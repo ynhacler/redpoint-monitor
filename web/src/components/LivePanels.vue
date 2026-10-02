@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 节点详情的实时指标块（设计 11.1、41.6，参考 ServerCat）：CPU → 内存 → 磁盘 → 网络，顺序与 App 一致。
-// 版式规则：标签全大写、次要色、小号；数值大号、等宽数字，单位缩小一档并用次要色（Qty）；
+// 节点详情的实时指标块（设计 11.1、41.6，参考 ServerCat）：CPU → 内存 → 网络 → 磁盘，顺序与 App 一致。
+// 磁盘可能有多块，网络放在磁盘之前，避免被挤到页面底部。
+// 版式规则：标签全大写、次要色、小号（界面字体）；数值用等宽字体（与参考一致），单位缩小一档并用次要色（Qty）；
 // 每块“左侧数值、右侧图形”，图形表达占比（环）或分布（每核分段条、竖向容量条）。
 // CPU 时间占比、每核、内存缓存、IOPS 等为可选字段（设计 4.4～4.9），旧版 Agent 不上报时对应部分不显示。
 import { computed } from 'vue'
@@ -89,7 +90,10 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     <!-- CPU -->
     <section class="block cpu">
       <div class="cpu-top">
-        <div class="hero" :class="cpuLv"><Qty :v="Math.round(cpu(server) ?? 0)" u="%" /></div>
+        <div class="hero-col">
+          <div class="hero" :class="cpuLv"><Qty :v="Math.round(cpu(server) ?? 0)" u="%" /></div>
+          <div v-if="r.cpu.temp_c" class="temp" :class="{ warn: r.cpu.temp_c >= 75, bad: r.cpu.temp_c >= 90 }" title="CPU 温度">{{ Math.round(r.cpu.temp_c) }}℃</div>
+        </div>
         <dl v-if="cpuParts.length" class="parts">
           <div v-for="p in cpuParts" :key="p.key" :title="p.hint">
             <dt><i :style="{ background: p.color }" />{{ p.name }}</dt>
@@ -114,12 +118,11 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           <div><dt>CORES</dt><dd><Qty :v="r.cpu.cores" /></dd></div>
           <div v-if="b"><dt>IDLE</dt><dd><Qty :v="pct1(b.idle)" u="%" /></dd></div>
           <div><dt>UPTIME</dt><dd><Qty :v="up.v" :u="up.u" /></dd></div>
-          <div v-if="r.cpu.temp_c"><dt>TEMP</dt><dd :class="{ warn: r.cpu.temp_c >= 75, bad: r.cpu.temp_c >= 90 }"><Qty :v="Math.round(r.cpu.temp_c)" u="℃" /></dd></div>
         </dl>
         <div class="load" :title="`负载 1 / 5 / 15 分钟：${loads.join(' / ')}，核心 ${r.cpu.cores}`">
           <div class="load-text">
             <dt>LOAD</dt>
-            <dd class="load-vals">{{ loads.join(' / ') }}</dd>
+            <dd class="load-vals">{{ loads.join('/') }}</dd>
           </div>
           <svg class="load-rings" viewBox="0 0 52 52" role="img" :aria-label="`负载 ${loads.join(' / ')}`">
             <g transform="rotate(-90 26 26)" fill="none" stroke-width="5">
@@ -138,10 +141,31 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       <dl class="cols">
         <div v-if="m.free != null"><dt><i style="background: var(--track)" />FREE</dt><dd><Qty :text="fmtBytesShort(m.free)" /></dd></div>
         <div><dt><i :style="{ background: `var(--${memLv})` }" />USED</dt><dd><Qty :text="fmtBytesShort(m.used)" /></dd></div>
-        <div v-if="m.cached != null"><dt><i style="background: var(--series-2)" />CACHE</dt><dd><Qty :text="fmtBytesShort(cache)" /></dd></div>
-        <div v-if="r.swap.total" :title="`Swap ${fmtBytesShort(r.swap.used)} / ${fmtBytesShort(r.swap.total)}`"><dt>SWAP</dt><dd><Qty :text="fmtBytesShort(r.swap.used)" /></dd></div>
+        <div v-if="m.cached != null"><dt><i style="background: var(--series-2)" />PAGE CACHE</dt><dd><Qty :text="fmtBytesShort(cache)" /></dd></div>
       </dl>
       <Ring :pct="mem(server)" :level="memLv" :segments="memSegments" :size="60" label="内存" />
+      <p v-if="r.swap.total" class="sub-line muted">
+        <span>SWAP <b><Qty :text="fmtBytesShort(r.swap.used)" /></b> / <Qty :text="fmtBytesShort(r.swap.total)" /></span>
+        <span>TOTAL <b><Qty :text="fmtBytesShort(m.total)" /></b></span>
+      </p>
+    </section>
+
+    <!-- 网络 -->
+    <section class="block row-block net" :title="`网卡：${r.network.map((n) => n.interface).join('、')}`">
+      <dl class="cols speeds">
+        <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
+        <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
+      </dl>
+      <dl class="totals" title="开机以来累计（网卡计数，重启后清零）；计费用量见“周期流量”">
+        <div><dt>↓<i style="background: var(--accent)" /></dt><dd><Qty :text="fmtBytesShort(totalRx)" /></dd></div>
+        <div><dt>↑<i style="background: var(--ok)" /></dt><dd><Qty :text="fmtBytesShort(totalTx)" /></dd></div>
+      </dl>
+      <Ring v-if="netSegments.length" :pct="undefined" :segments="netSegments" :size="60" label="下行与上行累计比例" />
+      <p v-if="r.conns" class="sub-line muted">
+        <span>TCP <b>{{ r.conns.tcp }}</b></span><span>UDP <b>{{ r.conns.udp }}</b></span>
+        <span>TIME_WAIT <b>{{ r.conns.time_wait }}</b></span>
+        <span v-if="r.processes">PROC <b>{{ r.processes.total }}</b></span>
+      </p>
     </section>
 
     <!-- 磁盘（设计 4.6、4.7）：每个挂载点一块 -->
@@ -177,29 +201,11 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       </table>
       <p v-if="io(d)?.util != null" class="muted util">{{ io(d)!.device }} · 繁忙 {{ fmtPct(io(d)!.util) }}</p>
     </section>
-
-    <!-- 网络 -->
-    <section class="block row-block net" :title="`网卡：${r.network.map((n) => n.interface).join('、')}`">
-      <dl class="cols speeds">
-        <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
-        <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
-      </dl>
-      <dl class="totals" title="开机以来累计（网卡计数，重启后清零）；计费用量见“周期流量”">
-        <div><dt>↓<i style="background: var(--accent)" /></dt><dd><Qty :text="fmtBytesShort(totalRx)" /></dd></div>
-        <div><dt>↑<i style="background: var(--ok)" /></dt><dd><Qty :text="fmtBytesShort(totalTx)" /></dd></div>
-      </dl>
-      <Ring v-if="netSegments.length" :pct="undefined" :segments="netSegments" :size="60" label="下行与上行累计比例" />
-      <p v-if="r.conns" class="conns muted">
-        <span>TCP <b>{{ r.conns.tcp }}</b></span><span>UDP <b>{{ r.conns.udp }}</b></span>
-        <span>TIME_WAIT <b>{{ r.conns.time_wait }}</b></span>
-        <span v-if="r.processes">PROC <b>{{ r.processes.total }}</b></span>
-      </p>
-    </section>
   </div>
 </template>
 
 <style scoped>
-/* 宽屏两列：CPU 占左列两行，内存、磁盘、网络依次排在其后 */
+/* 宽屏两列：CPU 占左列两行，内存、网络在右列，各磁盘依次排在其后 */
 .live { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-items: start; }
 .block { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-4) var(--space-5); min-width: 0;
   font-variant-numeric: tabular-nums; }
@@ -209,13 +215,18 @@ dl, dd { margin: 0; }
 dt { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); display: flex; align-items: center; gap: 6px;
   white-space: nowrap; letter-spacing: .04em; }
 dt i { width: 5px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
-dd { font-size: 22px; line-height: 28px; white-space: nowrap; }
+dd { font-size: 22px; line-height: 28px; white-space: nowrap; font-family: var(--font-mono); letter-spacing: -0.02em; }
+dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 
 /* CPU */
 .cpu-top { display: flex; align-items: flex-start; gap: var(--space-6); }
-.hero { font-size: 48px; line-height: 52px; font-weight: 300; letter-spacing: -0.02em; flex: none; }
+.hero-col { flex: none; }
+.hero { font-size: 48px; line-height: 52px; font-weight: 300; letter-spacing: -0.03em; }
 .hero :deep(.u) { font-size: .4em; }
-.parts { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding-top: 2px; }
+.hero.ok { color: var(--text); } /* 正常时用主文字色（参考 ServerCat），只有接近或超过阈值才着色 */
+.temp { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--ok); font-family: var(--font-mono); }
+/* SYS / USER / IOWAIT / STEAL 始终一行（参考 ServerCat）；窄屏缩小字号而不是换行 */
+.parts { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding-top: 4px; min-width: 0; }
 .cores { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-5); }
 .core-row { display: grid; grid-template-columns: repeat(40, minmax(0, 1fr)); gap: 4px; }
 .seg { height: 13px; border-radius: 99px; background: var(--track); }
@@ -227,22 +238,26 @@ dd { font-size: 22px; line-height: 28px; white-space: nowrap; }
 .vbar span { width: 100%; background: var(--ok); }
 .vbar span.warn { background: var(--warn); }
 .vbar span.bad { background: var(--bad); }
-.foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-5); }
-.facts { display: flex; gap: var(--space-6); flex-wrap: wrap; }
+.foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-5); }
+.facts { display: flex; gap: var(--space-6); }
 .load { display: flex; align-items: flex-end; gap: var(--space-3); }
 .load-text { text-align: right; }
 .load-text dt { justify-content: flex-end; }
-.load-vals { font-size: var(--font-md); line-height: var(--line-md); color: var(--text-muted); }
+.load-vals { font-size: var(--font-md); line-height: var(--line-md); color: var(--text-muted); letter-spacing: 0; }
 .load-rings { width: 52px; height: 52px; flex: none; }
 
 /* 内存、网络：左侧数值、右侧环 */
 .row-block { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.cols { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: var(--space-3); min-width: 0; }
+.cols { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
+.sub-line { flex-basis: 100%; margin: 0; padding-top: var(--space-3); border-top: 1px solid var(--border);
+  display: flex; gap: var(--space-4); flex-wrap: wrap; font-size: var(--font-sm); letter-spacing: .02em; }
+.sub-line b { color: var(--text); font-weight: var(--weight-regular); font-family: var(--font-mono); margin-left: 2px; }
 
 /* 磁盘 */
 .disk-head { display: flex; align-items: center; gap: var(--space-4); }
 .disk-name { flex: 1; min-width: 0; }
 .mount { font-family: var(--font-mono); font-size: 22px; line-height: 28px; }
+.cap, .io td { font-family: var(--font-mono); }
 .dev { font-size: var(--font-md); line-height: var(--line-md); }
 .disk-cap { text-align: right; }
 .cap { font-size: var(--font-lg); line-height: var(--line-lg); }
@@ -265,8 +280,6 @@ dd { font-size: 22px; line-height: 28px; white-space: nowrap; }
 .totals div { display: flex; align-items: center; gap: var(--space-2); }
 .totals dt { gap: 4px; }
 .totals dd { font-size: var(--font-lg); line-height: var(--line-lg); }
-.conns { flex-basis: 100%; margin: 0; display: flex; gap: var(--space-4); flex-wrap: wrap; font-size: var(--font-sm); letter-spacing: .02em; }
-.conns b { color: var(--text); font-weight: var(--weight-strong); margin-left: 2px; }
 .speeds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 @media (min-width: 900px) {
@@ -275,18 +288,19 @@ dd { font-size: 22px; line-height: 28px; white-space: nowrap; }
 }
 @media (max-width: 600px) {
   .block { padding: var(--space-4); }
-  .cpu-top { gap: var(--space-4); }
+  .cpu-top { gap: var(--space-3); }
   .hero { font-size: 40px; line-height: 44px; }
-  .parts { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--space-2); }
+  dt { font-size: var(--font-xs); letter-spacing: .02em; gap: 4px; }
   dd { font-size: 20px; line-height: 26px; }
+  .parts dd { font-size: 17px; line-height: 22px; }
   .core-row { gap: 3px; }
   .seg { height: 12px; }
-  /* 底部：四项数值固定一行四列，负载与负载环另起一行，左右对齐 */
-  .foot { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
-  .load { justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--border); }
-  .load-text { text-align: left; }
-  .load-text dt { justify-content: flex-start; }
+  /* 底部一行：CORES / IDLE / UPTIME 与 LOAD + 负载环（参考 ServerCat） */
+  .facts { gap: var(--space-4); }
+  .facts dd { font-size: 18px; line-height: 24px; }
+  .load { gap: var(--space-2); }
+  .load-vals { font-size: var(--font-xs); line-height: var(--line-xs); }
+  .load-rings { width: 40px; height: 40px; }
   .io th, .io td { padding-left: var(--space-2); }
   .io td { font-size: var(--font-md); }
 }
