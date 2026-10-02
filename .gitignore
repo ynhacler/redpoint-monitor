@@ -4,6 +4,8 @@
 !.env.example
 
 # Secrets
+.dev/
+*.token
 *.key
 *.pem
 *.p12
