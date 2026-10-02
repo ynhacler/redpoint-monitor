@@ -8,6 +8,7 @@ ask() { read -r -p "$1 [y/N] " a; [[ "$a" =~ ^[Yy]$ ]]; }
 
 if ! command -v brew >/dev/null; then
   say "Homebrew not found. Install it first:"
+  # shellcheck disable=SC2016  # 有意使用单引号：原样打印 Homebrew 官方安装命令，由用户自行复制执行
   echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
   exit 1
 fi

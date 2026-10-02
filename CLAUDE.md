@@ -11,16 +11,16 @@ Development order is **A (API + Agent) → B (Web) → C (App)** (design 35.1); 
 make dev          # server + fake agent + Vite → http://localhost:5173 (token in .dev/admin.token)
 make test         # Go tests — run after every Go change
 make lint         # go vet + vue-tsc
-python3 scripts/check_design_refs.py          # design numbering / references (add --write after editing design.md)
-make build-linux  # cross-compile linux amd64/arm64 into dist/
+make check-design # design numbering / references (run scripts/check_design_refs.py --write after editing design.md)
+make build-linux  # agent for 6 linux arches + server amd64/arm64 into dist/
 make vm-agent     # real Linux collector in an OrbStack VM
 make app-run      # Flutter app
 make deploy VPS=user@host                      # dev-only SSH deploy (design 27)
 make install-server / install-agent            # on a VPS checkout, after `make build`
 ```
 
-Before saying a task is done: `make test && make lint` pass, `check_design_refs.py` passes, and for UI
-changes, look at it in the browser.
+Before saying a task is done: `make test && make lint && make check-design` pass, and for UI changes,
+look at it in the browser. CI (`.github/workflows/ci.yml`) runs the same targets plus shellcheck.
 
 ## Layout
 
