@@ -43,13 +43,16 @@ internal/server/
 internal/logging/      slog setup + credential redaction (design 24.7)
 api/openapi.yaml       API contract — change it before the code (design 19.0.1)
 web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed
+  src/pages/           Overview, Servers, ServerDetail, ServerEdit, Install (routes in src/router.ts)
+  src/components/      design-system components (design 41.3)
+design/tokens.json     design tokens shared by Web and App (design 41.2)
 app/                   Flutter app (iOS/Android); run `make app-setup` once
 deploy/systemd/        hardened unit files
 scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design_refs.py
 docs/design.md         the design; numbering rules in design 40.9
 ```
 
-Planned (design 41.2, 27.5): `design/tokens.json`, `scripts/agent.sh.in`.
+Planned (design 27.5): `scripts/agent.sh.in`.
 
 ## Security invariants — never violate, even if asked casually
 
@@ -95,9 +98,11 @@ These are the product's core promise. If a request conflicts with one, stop and 
 - Protocol: only add optional fields. Old agents must keep working with new servers.
 - Traffic logic lives in pure functions with table tests (see traffic_test.go). Keep it that way —
   traffic accuracy is a core selling point.
-- Web: Vue 3 `<script setup lang="ts">`, self-built components on design tokens (design 41); no full UI
-  framework. ECharts for charts (confirm before adding). Decimal units for bytes (design 5.8).
-  Abnormal-first sorting.
+- Web: Vue 3 `<script setup lang="ts">` + vue-router, self-built components in `web/src/components` on
+  design tokens (design 41). Colors / sizes / spacing only via `var(--…)` from `design/tokens.json`
+  (generated into `web/src/styles/tokens.css` by `npm run tokens`; never edit the CSS by hand).
+  Charts: ECharts via `components/Chart.vue` (tree-shaken imports). Number formats only via `src/format.ts`
+  (design 41.4.1); health rules via `src/metrics.ts`. Abnormal-first sorting. Check light + dark + 375px.
 - App: Flutter, Material 3 themed from tokens. Credentials only in flutter_secure_storage.
 
 ## Git workflow (design 40.2, 40.8)

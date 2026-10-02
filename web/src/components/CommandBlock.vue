@@ -30,16 +30,18 @@ async function copy() {
 
 <template>
   <div class="cmd">
-    <pre ref="pre">{{ command }}</pre>
+    <!-- 每个词整体不换行，只在空格处折行：注册码、URL 中的连字符不会被拆开 -->
+    <pre ref="pre"><template v-for="(w, i) in command.split(' ')" :key="i"><span class="word">{{ w }}</span>{{ ' ' }}</template></pre>
     <button type="button" class="secondary" @click="copy">{{ copied ? '已复制' : '复制' }}</button>
   </div>
 </template>
 
 <style scoped>
-.cmd { position: relative; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
+.cmd { position: relative; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 pre {
-  margin: 0; padding: 14px 84px 14px 14px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; /* 优先在空格处换行，不把注册码拆开 */
-  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0; padding: var(--space-4) 84px var(--space-4) var(--space-4); /* 右侧 84px 留给“复制”按钮 */ overflow-x: auto; white-space: pre-wrap;
+  font-family: var(--font-mono); font-size: var(--font-sm); line-height: var(--line-md);
 }
-button { position: absolute; top: 8px; right: 8px; padding: 4px 12px; font-size: 12px; }
+.word { white-space: nowrap; }
+button { position: absolute; top: var(--space-2); right: var(--space-2); padding: var(--space-1) var(--space-3); font-size: var(--font-sm); }
 </style>

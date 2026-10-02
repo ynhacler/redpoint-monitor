@@ -4,6 +4,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ApiError, getInstallCommand, regenerateEnrollCode, UnauthorizedError, type EnrollCodeView } from '../api'
 import CommandBlock from './CommandBlock.vue'
+import StatusDot from './StatusDot.vue'
 
 const props = defineProps<{
   /** 节点 ID */
@@ -117,7 +118,7 @@ onUnmounted(stop)
 
       <p class="state">
         <template v-if="enrolled"><span class="ok">✓ 已连接 {{ view.server_name }}</span></template>
-        <template v-else-if="status === 'ACTIVE'"><span class="dot pending"></span> 等待主机连接…</template>
+        <template v-else-if="status === 'ACTIVE'"><StatusDot status="pending" dot-only /> 等待主机连接…</template>
       </p>
     </template>
     <p v-else class="muted">加载中…</p>
@@ -126,14 +127,14 @@ onUnmounted(stop)
       <button type="button" :disabled="busy" @click="regenerate">
         {{ enrolled ? '重新安装 / 更换主机' : '重新生成注册码' }}
       </button>
-      <button type="button" class="secondary" @click="emit('back')">{{ enrolled ? '返回列表' : '稍后安装' }}</button>
+      <button type="button" class="secondary" @click="emit('back')">{{ enrolled ? '查看节点' : '稍后安装' }}</button>
     </div>
   </section>
 </template>
 
 <style scoped>
-.note { background: var(--code-bg); border-left: 3px solid var(--warn); padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
-.note ol { margin: 6px 0; padding-left: 20px; }
-.state { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
-.actions { display: flex; gap: 8px; margin-top: 20px; }
+.note { background: var(--surface-2); border-left: 3px solid var(--warn); padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); margin: var(--space-3) 0; }
+.note ol { margin: var(--space-2) 0; padding-left: var(--space-5); }
+.state { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
+.actions { display: flex; gap: var(--space-2); margin-top: var(--space-5); }
 </style>

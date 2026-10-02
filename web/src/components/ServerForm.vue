@@ -15,8 +15,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 新建成功，携带注册码与安装命令 */
   created: [view: EnrollCodeView]
-  /** 编辑保存成功或已删除，返回列表 */
+  /** 编辑保存成功 */
   done: []
+  /** 节点已删除 */
+  deleted: []
   /** 取消，返回列表 */
   cancel: []
   /** Token 失效，需要重新输入 */
@@ -120,7 +122,7 @@ async function remove() {
   deleting.value = true
   try {
     await deleteServer(props.server.id)
-    emit('done')
+    emit('deleted')
   } catch (e) {
     if (e instanceof UnauthorizedError) emit('unauthorized')
     else if (e instanceof ApiError) formError.value = e.message
@@ -251,19 +253,19 @@ async function remove() {
 </template>
 
 <style scoped>
-fieldset { border: 0; padding: 0; margin: 20px 0 0; }
-legend { font-weight: 600; padding: 0; margin-bottom: 10px; }
-.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px; }
-.fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+fieldset { border: 0; padding: 0; margin: var(--space-5) 0 0; }
+legend { font-weight: var(--weight-strong); padding: 0; margin-bottom: var(--space-3); }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3) var(--space-4); }
+.fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .fields .wide { grid-column: 1 / -1; }
 /* 全局样式中输入框是 flex: 1（用于横排），在纵向的字段里会被拉高，这里取消 */
 .fields > label > input, .fields > label > select { flex: none; }
 .currency { flex: 0 0 72px; text-transform: uppercase; }
-small { font-size: 12px; }
+small { font-size: var(--font-sm); }
 .err { color: var(--bad); }
 .link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
-.actions { display: flex; gap: 8px; margin-top: 24px; }
-.danger { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+.actions { display: flex; gap: var(--space-2); margin-top: var(--space-6); }
+.danger { margin-top: var(--space-7); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .danger legend { color: var(--bad); }
 .danger-btn { background: var(--bad); }
 </style>
