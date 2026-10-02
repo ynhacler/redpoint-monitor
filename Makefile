@@ -48,7 +48,7 @@ dev-web: ## Run Vite dev server on :5173 (proxies /api to :8080)
 test: ## Run Go tests
 	go test ./...
 
-lint: ## go vet + Web type-check
+lint: web/node_modules/.package-lock.json ## go vet + Web type-check
 	go vet ./...
 	cd web && npx vue-tsc --noEmit
 
@@ -57,7 +57,12 @@ check-design: ## Check design doc numbering and section references (design 40.9.
 
 # ---------- builds ----------
 
-web: ## Build Web into web/dist (embedded by the server)
+# 依赖变化（package-lock.json 比已安装的新）时自动 npm ci：拉取新代码后直接 make build 即可，
+# 不会因为缺少新增的依赖而构建失败。npm ci 会写入 node_modules/.package-lock.json，作为“已安装”的标记。
+web/node_modules/.package-lock.json: web/package-lock.json
+	cd web && npm ci
+
+web: web/node_modules/.package-lock.json ## Build Web into web/dist (embedded by the server)
 	cd web && npm run build
 
 build: web ## Build server + agent for this machine into bin/
