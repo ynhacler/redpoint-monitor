@@ -45,7 +45,8 @@ const subtitle = computed(() =>
       <Metric :label="disk && disk.mount !== '/' ? `磁盘 ${disk.mount}` : '磁盘'" :value="fmtPct(disk?.usage)"
         :level="level(disk?.usage, thresholds.disk, thresholds.diskBad)"
         :hint="(s.latest?.disk ?? []).map((d) => `${d.mount}  ${fmtPct(d.usage)}  ${fmtBytes(d.used)} / ${fmtBytes(d.total)}`).join('\n')" />
-      <Metric label="网络" :value="`↓${fmtBytes(rx(s), true)} ↑${fmtBytes(tx(s), true)}`" />
+      <!-- 下行 / 上行分两行：卡片最窄 280px 时一行放不下（设计 41.2.3） -->
+      <Metric label="网络" :value="`↓${fmtBytes(rx(s), true)}\n↑${fmtBytes(tx(s), true)}`" />
     </div>
     <div v-else class="offline-note" :class="{ bad: s.status === 'offline' }">{{ offlineFor }}</div>
 
@@ -73,7 +74,7 @@ const subtitle = computed(() =>
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sub { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.metrics { display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: var(--space-4); margin: var(--space-4) 0; }
+.metrics { display: grid; grid-template-columns: repeat(3, auto) minmax(0, 1fr); gap: var(--space-3); margin: var(--space-4) 0; align-items: start; }
 .offline-note { margin: var(--space-4) 0; color: var(--text-muted); }
 .offline-note.bad { color: var(--bad); }
 .traffic-label { display: flex; justify-content: space-between; margin-bottom: var(--space-1); }
