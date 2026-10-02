@@ -76,7 +76,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
     </EmptyState>
     <template v-else>
-      <div v-if="sorted.length" class="grid">
+      <div v-if="sorted.length" class="grid server-grid">
         <ServerCard v-for="s in sorted" :key="s.id" :server="s" />
       </div>
       <p v-else-if="installed.length" class="muted">没有匹配的节点。</p>
@@ -103,6 +103,8 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 </template>
 
 <style scoped>
+/* 节点卡片一行五列，最窄需要约 320px（见 ServerCard） */
+.server-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 .filters { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-4); }
 .search { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 240px; max-width: 360px;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 0 var(--space-3); color: var(--text-muted); }

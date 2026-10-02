@@ -80,3 +80,14 @@ export function ioForDisk(d: DiskInfo, io: DiskIO[] | undefined): DiskIO | undef
   if (!name || !io) return undefined
   return io.filter((x) => name.startsWith(x.device)).sort((a, b) => b.device.length - a.device.length)[0]
 }
+
+/** 详情页的实时采样点（约 3 秒一个），用于迷你折线与实时网速图；null 表示该时刻没有数据 */
+export interface LiveSample {
+  /** Unix 秒 */
+  ts: number
+  cpu: number | null
+  mem: number | null
+  rx: number | null
+  tx: number | null
+  tcp?: number
+}

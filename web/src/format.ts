@@ -95,6 +95,17 @@ export function fmtDuration(seconds: number | null | undefined): string {
   return `${Math.floor(seconds / 86400)} 天`
 }
 
+/** 运行时间：取两级单位，“37 天 7 小时”“5 小时 12 分”“12 分”，用于详情页（列表用 fmtDuration） */
+export function fmtUptime(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return DASH
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (d > 0) return h ? `${d} 天 ${h} 小时` : `${d} 天`
+  if (h > 0) return m ? `${h} 小时 ${m} 分` : `${h} 小时`
+  return m > 0 ? `${m} 分` : `${Math.floor(seconds)} 秒`
+}
+
 /** 价格：按币种显示，如 “USD 5.99”；未填显示 “—” */
 export function fmtPrice(cents: number, currency: string): string {
   if (!cents) return DASH

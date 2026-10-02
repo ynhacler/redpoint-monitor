@@ -25,7 +25,14 @@ const props = defineProps<{
   caption?: string
   /** 无障碍名称，如 “CPU 使用率” */
   label?: string
+  /** 着色风格：底轨用当前状态色的淡色、百分比文字同色（节点列表的紧凑卡片） */
+  tinted?: boolean
 }>()
+
+const levelColor = computed(() => `var(--${props.level ?? 'ok'})`)
+const trackColor = computed(() =>
+  props.tinted && !props.segments ? `color-mix(in srgb, ${levelColor.value} 20%, transparent)` : 'var(--track)',
+)
 
 const d = computed(() => props.size ?? 52)
 const stroke = computed(() => Math.max(4, Math.round(d.value / 10)))
@@ -35,7 +42,7 @@ const clamp = (v: number) => Math.max(0, Math.min(100, v))
 
 // 每段的 dasharray / dashoffset：依次首尾相接，从 12 点方向顺时针
 const arcs = computed(() => {
-  const segs = props.segments ?? (props.pct == null ? [] : [{ value: props.pct, color: `var(--${props.level ?? 'ok'})` }])
+  const segs = props.segments ?? (props.pct == null ? [] : [{ value: props.pct, color: levelColor.value }])
   let start = 0
   return segs.map((s) => {
     const len = (clamp(s.value) / 100) * circ.value
@@ -50,12 +57,12 @@ const arcs = computed(() => {
   <figure class="ring" :style="{ width: `${d}px` }" role="img" :aria-label="`${label ?? ''} ${fmtPct(pct)}`">
     <svg :width="d" :height="d" :viewBox="`0 0 ${d} ${d}`">
       <g :transform="`rotate(-90 ${d / 2} ${d / 2})`" fill="none" :stroke-width="stroke">
-        <circle :cx="d / 2" :cy="d / 2" :r="r" stroke="var(--track)" />
+        <circle :cx="d / 2" :cy="d / 2" :r="r" :stroke="trackColor" />
         <circle v-for="(a, i) in arcs" :key="i" :cx="d / 2" :cy="d / 2" :r="r" :stroke="a.color"
-          :stroke-dasharray="a.dash" :stroke-dashoffset="a.offset" stroke-linecap="butt" />
+          :stroke-dasharray="a.dash" :stroke-dashoffset="a.offset" :stroke-linecap="segments ? 'butt' : 'round'" />
       </g>
-      <text :x="d / 2" :y="d / 2" text-anchor="middle" dominant-baseline="central" class="pct"
-        :class="segments ? '' : level" :style="{ fontSize: `${Math.round(d / 4.6)}px` }">{{ fmtPct(pct) }}</text>
+      <text v-if="pct != null || !segments" :x="d / 2" :y="d / 2" text-anchor="middle" dominant-baseline="central" class="pct"
+        :class="[segments ? '' : level, { tinted: tinted && !segments }]" :style="{ fontSize: `${Math.round(d / 4.6)}px` }">{{ fmtPct(pct) }}</text>
     </svg>
     <figcaption v-if="caption" class="caption num">{{ caption }}</figcaption>
   </figure>
@@ -67,5 +74,6 @@ const arcs = computed(() => {
 .pct { fill: var(--text); font-family: var(--font-mono); font-weight: var(--weight-strong); }
 .pct.warn { fill: var(--warn); }
 .pct.bad { fill: var(--bad); }
+.pct.tinted.ok { fill: var(--ok); }
 .caption { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 </style>
