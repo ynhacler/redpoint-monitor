@@ -84,6 +84,59 @@ var migrations = []string{
 		tx INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (server_id, day)
 	) WITHOUT ROWID;`,
+
+	// 迁移 2：节点的安装注册字段与 VPS 信息（设计 18.2、27.2、1.2.3）。
+	// 已有节点都是通过 add-server 直接签发 Token 的，因此 enroll_state 默认为 enrolled。
+	`ALTER TABLE servers ADD COLUMN enroll_state TEXT NOT NULL DEFAULT 'enrolled'; -- pending / enrolled（设计 27.7）
+	ALTER TABLE servers ADD COLUMN expected_hostname TEXT NOT NULL DEFAULT '';     -- 用户填写，注册时核对
+	ALTER TABLE servers ADD COLUMN expected_ipv4 TEXT NOT NULL DEFAULT '';
+	ALTER TABLE servers ADD COLUMN expected_ipv6 TEXT NOT NULL DEFAULT '';
+	ALTER TABLE servers ADD COLUMN verify_mode TEXT NOT NULL DEFAULT 'warn';       -- warn / strict（设计 27.6.3）
+	ALTER TABLE servers ADD COLUMN hostname TEXT NOT NULL DEFAULT '';              -- Agent 注册时的实际值
+	ALTER TABLE servers ADD COLUMN ipv4 TEXT NOT NULL DEFAULT '';                  -- 注册请求的实际来源地址
+	ALTER TABLE servers ADD COLUMN ipv6 TEXT NOT NULL DEFAULT '';
+	ALTER TABLE servers ADD COLUMN machine_id_hash TEXT NOT NULL DEFAULT '';       -- sha256(/etc/machine-id)，识别更换主机
+	ALTER TABLE servers ADD COLUMN enrolled_at INTEGER NOT NULL DEFAULT 0;         -- Unix 秒
+	ALTER TABLE servers ADD COLUMN group_name TEXT NOT NULL DEFAULT '';            -- 分组 / 标签，如“香港”
+	ALTER TABLE servers ADD COLUMN note TEXT NOT NULL DEFAULT '';
+	ALTER TABLE servers ADD COLUMN provider TEXT NOT NULL DEFAULT '';              -- 供应商
+	ALTER TABLE servers ADD COLUMN plan TEXT NOT NULL DEFAULT '';                  -- 套餐
+	ALTER TABLE servers ADD COLUMN region TEXT NOT NULL DEFAULT '';                -- 地区
+	ALTER TABLE servers ADD COLUMN price_cents INTEGER NOT NULL DEFAULT 0;         -- 续费价格 × 100，避免浮点误差
+	ALTER TABLE servers ADD COLUMN currency TEXT NOT NULL DEFAULT '';              -- ISO 4217，如 USD、CNY
+	ALTER TABLE servers ADD COLUMN billing_period TEXT NOT NULL DEFAULT '';        -- monthly / quarterly / … / one_time
+	ALTER TABLE servers ADD COLUMN expire_date TEXT NOT NULL DEFAULT '';           -- 到期日 YYYY-MM-DD，空表示未填
+	ALTER TABLE servers ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 3：注册码与审计日志（设计 18.13、18.16）。
+	`CREATE TABLE enroll_codes (
+		id INTEGER PRIMARY KEY,
+		server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE, -- 绑定的节点
+		code_hash TEXT NOT NULL UNIQUE,            -- 注册码 SHA-256，不保存明文
+		code_hint TEXT NOT NULL,                   -- 界面脱敏展示，如 ENR-7KQ2-****
+		status TEXT NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE / USED / REVOKED；过期由 expires_at 判断
+		expires_at INTEGER NOT NULL,               -- Unix 秒
+		used_at INTEGER NOT NULL DEFAULT 0,
+		used_by_machine_hash TEXT NOT NULL DEFAULT '',
+		used_from_ip TEXT NOT NULL DEFAULT '',
+		issued_token_id INTEGER NOT NULL DEFAULT 0, -- 签发的 agent_tokens.id，用于 10 分钟内重试幂等（设计 27.6.4）
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX enroll_codes_server ON enroll_codes(server_id);
+	CREATE TABLE audit_logs (
+		id INTEGER PRIMARY KEY,
+		ts INTEGER NOT NULL,                       -- Unix 秒
+		actor_type TEXT NOT NULL,                  -- admin / agent / cli / system（app_device 在阶段 C 加入）
+		actor_id TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL,                      -- 如 server.create、enroll_code.regenerate、agent.enroll
+		target_type TEXT NOT NULL DEFAULT '',
+		target_id TEXT NOT NULL DEFAULT '',
+		result TEXT NOT NULL,                      -- success / failure
+		client_ip TEXT NOT NULL DEFAULT '',
+		user_agent TEXT NOT NULL DEFAULT '',
+		details TEXT NOT NULL DEFAULT '{}'         -- JSON，写入前已脱敏（设计 24.7）
+	);
+	CREATE INDEX audit_logs_ts ON audit_logs(ts);`,
 }
 
 func (s *Store) migrate() error {
@@ -170,28 +223,54 @@ func (s *Store) AgentServerID(tok string) (int64, error) {
 	return id, err
 }
 
+// ServerRow 是节点的持久化信息（设计 18.2），也是 GET /api/v1/servers 每一项的基础字段。
 type ServerRow struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
-	LimitBytes int64  `json:"traffic_limit_bytes"`
+	LimitBytes int64  `json:"traffic_limit_bytes"` // 0 = 不限
 	ResetDay   int    `json:"traffic_reset_day"`
-	CountMode  string `json:"traffic_count_mode"`
+	CountMode  string `json:"traffic_count_mode"` // sum / rx / tx / max（设计 1.2.4）
 	LastSeenAt int64  `json:"last_seen_at"`
+
+	// 安装与注册（设计 27）
+	EnrollState      string `json:"enroll_state"` // pending / enrolled
+	ExpectedHostname string `json:"expected_hostname"`
+	ExpectedIPv4     string `json:"expected_ipv4"`
+	ExpectedIPv6     string `json:"expected_ipv6"`
+	VerifyMode       string `json:"verify_mode"` // warn / strict
+	Hostname         string `json:"hostname"`    // 注册时的实际值
+	IPv4             string `json:"ipv4"`
+	IPv6             string `json:"ipv6"`
+	MachineIDHash    string `json:"-"` // 【安全】主机指纹不对外返回，只用于识别更换主机
+	EnrolledAt       int64  `json:"enrolled_at"`
+
+	// VPS 信息（设计 1.2.3、27.2）
+	Group         string `json:"group"`
+	Note          string `json:"note"`
+	Provider      string `json:"provider"`
+	Plan          string `json:"plan"`
+	Region        string `json:"region"`
+	PriceCents    int64  `json:"price_cents"` // 续费价格 × 100
+	Currency      string `json:"currency"`
+	BillingPeriod string `json:"billing_period"`
+	ExpireDate    string `json:"expire_date"` // YYYY-MM-DD，空表示未填
+	CreatedAt     int64  `json:"created_at"`
 }
 
+// ListServers 返回全部节点，按名称排序。
 func (s *Store) ListServers() ([]ServerRow, error) {
-	rows, err := s.DB.Query(`SELECT id, name, traffic_limit_bytes, traffic_reset_day, traffic_count_mode, last_seen_at FROM servers ORDER BY name`)
+	rows, err := s.DB.Query(`SELECT ` + serverColumns + ` FROM servers ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []ServerRow
 	for rows.Next() {
-		var r ServerRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.LimitBytes, &r.ResetDay, &r.CountMode, &r.LastSeenAt); err != nil {
+		r, err := scanServer(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, r)
+		out = append(out, *r)
 	}
 	return out, rows.Err()
 }

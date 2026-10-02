@@ -37,6 +37,11 @@ internal/server/
   store.go             SQLite schema (append-only migrations) and queries
   traffic.go           traffic delta / billing cycle logic (unit tested)
   auth.go              token generation + hashing
+  apierror.go          error codes (design 43.4); middleware.go: request_id, recovery, logs, clientIP
+  nodes.go             create node / install command; enroll.go: enroll codes, /agent/enroll, rate limit
+  store_nodes.go       nodes, enroll codes, audit log persistence
+internal/logging/      slog setup + credential redaction (design 24.7)
+api/openapi.yaml       API contract — change it before the code (design 19.0.1)
 web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed
 app/                   Flutter app (iOS/Android); run `make app-setup` once
 deploy/systemd/        hardened unit files
@@ -44,7 +49,7 @@ scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design
 docs/design.md         the design; numbering rules in design 40.9
 ```
 
-Planned (design 19.0, 41.2, 27.5): `api/openapi.yaml`, `design/tokens.json`, `scripts/agent.sh.in`.
+Planned (design 41.2, 27.5): `design/tokens.json`, `scripts/agent.sh.in`.
 
 ## Security invariants — never violate, even if asked casually
 
@@ -83,8 +88,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
 - Errors to clients: `{"error": {"code", "message", "request_id", "details"}}` with stable codes from
   design 43.4 and Chinese messages; internals (SQL, paths, stacks) only in server logs. Security checks
   fail closed (design 43.1).
-- Auth: every route declares which principal may call it; default deny, checked in one middleware,
-  covered by the permission-matrix test (design 17.5).
+- Auth: register routes only through `handle(pattern, access, h)` in server.go routes(); add every new
+  route to the expected table in TestPermissionMatrix (design 17.2, 17.5).
 - DB: add a new entry to `migrations` in store.go; never edit an existing one. Writes go through the
   batched flush; realtime reads come from memory (`Server.latest`), not the DB.
 - Protocol: only add optional fields. Old agents must keep working with new servers.
@@ -106,8 +111,10 @@ These are the product's core promise. If a request conflicts with one, stop and 
 
 Working: agent (Linux real + fake) → server ingest → SQLite → `/api/v1/servers` → Web list and Flutter list.
 Traffic deltas with boot_id reset detection and billing cycles. Dev admin token auth (temporary, replaced in A2).
-Not yet: enroll codes / install flow, login, structured errors, alerts, push, downsampling, calibration,
-built-in HTTPS. See TODO.md.
+Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` and the Web pages are next.
+Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
+--server … --enroll …` and the binary must already be on the host (design 27.3.1).
+Not yet: login, alerts, push, downsampling, calibration, built-in HTTPS. See TODO.md.
 
 ## Dev environment notes (design 40)
 

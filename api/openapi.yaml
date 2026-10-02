@@ -1,0 +1,383 @@
+# 面板接口契约（设计 19.0.1）：新增或修改接口时先改这里，再写实现。
+# Web（TypeScript）与 App（Dart）的请求类型将由本文件生成（TODO(B)）；
+# 服务端测试校验响应与契约一致（TODO(A0)）。
+openapi: 3.1.0
+info:
+  title: RedPoint Monitor API
+  version: 0.2.0
+  description: |
+    约定（设计 19.0.2）：JSON，字段 snake_case；时间为 Unix 秒；字节、字节/秒、百分比（0～100）。
+    错误统一为 `{"error": {"code", "message", "request_id", "details"}}`，错误码见 ErrorCode（设计 43.4）。
+    每个响应都带 `X-Request-ID`。
+servers:
+  - url: /api/v1
+
+security:
+  - adminToken: []
+
+tags:
+  - name: agent
+    description: Agent 上报与注册（设计 19.10、27.6）
+  - name: servers
+    description: 节点与安装（设计 19.5、19.11）
+
+paths:
+  /agent/enroll:
+    post:
+      tags: [agent]
+      summary: 用一次性注册码换取 Agent Token（设计 27.6.2）
+      description: |
+        无需 Token，凭注册码认证；按 IP 单独限流（每分钟 10 次，失败过多临时封禁，设计 27.6.5）。
+        注册码不存在、已使用、已撤销、已过期统一返回 enroll_code_invalid，不区分原因。
+        注册成功后 10 分钟内，同一 machine_id_hash 用同一注册码重试，视为幂等重试：签发新 Token 并吊销上一个（设计 27.6.4）。
+        新 Agent 注册成功后，该节点之前的 Token 全部吊销（设计 27.8）。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrollRequest' }
+      responses:
+        '200':
+          description: 注册成功。agent_token 只在此返回一次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrollResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403':
+          description: 节点为严格核对模式且主机信息不一致（设计 27.6.3）；注册码保持可用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /agent/report:
+    post:
+      tags: [agent]
+      summary: Agent 定时上报（设计 6）
+      description: 只按 Token 哈希确定节点，请求体中的节点标识不可信（设计 1.6.6）。请求体上限 64 KB。
+      security:
+        - agentToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Report' }
+      responses:
+        '204': { description: 已接收 }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+
+  /servers:
+    get:
+      tags: [servers]
+      summary: 节点列表（实时状态取自内存）
+      description: TODO(A0)：改为 {"items", "next_cursor"} 格式（设计 19.0.2）。
+      responses:
+        '200':
+          description: 节点列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ServerView' }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [servers]
+      summary: 新建节点（状态：待安装），同时生成注册码（设计 19.11、27.2）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServerRequest' }
+      responses:
+        '201':
+          description: 已创建。完整注册码只在此返回一次
+          headers:
+            Location: { schema: { type: string }, description: 新节点的路径 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrollCodeView' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/install-command:
+    get:
+      tags: [servers]
+      summary: 查看安装命令与注册码状态
+      description: 不返回已生成过的完整注册码，命令中只有脱敏提示；丢失后需重新生成（设计 19.11）。
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '200':
+          description: 安装命令
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrollCodeView' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/enroll-code:
+    post:
+      tags: [servers]
+      summary: 重新生成注册码，旧码立即失效（设计 27.4）；对已注册节点即重新安装 / 更换主机（设计 27.8）
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enroll_ttl: { $ref: '#/components/schemas/EnrollTTL' }
+      responses:
+        '200':
+          description: 新注册码，完整值只在此返回一次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrollCodeView' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [servers]
+      summary: 撤销注册码
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '204': { description: 已撤销 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/metrics:
+    get:
+      tags: [servers]
+      summary: 节点历史指标（原始点，最长 24 小时）
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+        - name: range
+          in: query
+          description: Go duration，如 1h、30m；非法时按 1h 处理
+          schema: { type: string, default: 1h }
+      responses:
+        '200':
+          description: 指标点
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MetricPoint' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    adminToken:
+      type: http
+      scheme: bearer
+      description: 开发用 admin token（adm_…）。TODO(A2)：改为 Web 会话 Cookie + CSRF（设计 8.2）
+    agentToken:
+      type: http
+      scheme: bearer
+      description: Agent Token（agt_…），只能为 Token 绑定的节点上报（设计 23.2）
+
+  parameters:
+    ServerID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Error:
+      description: 统一错误响应（设计 43.4）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: 请求过于频繁
+      headers:
+        Retry-After: { schema: { type: integer }, description: 建议等待的秒数 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: 稳定的错误码，一经发布不再改名（设计 43.4）
+      enum: [validation_failed, bad_request, unauthorized, token_revoked, forbidden, not_found, conflict,
+             payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal]
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string, description: 中文提示，可直接展示给用户 }
+            request_id: { type: string, example: r_8f2c1a3b4d5e }
+            details:
+              type: array
+              description: 字段级错误，仅 validation_failed 使用
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    EnrollTTL:
+      type: string
+      enum: ['1h', '24h', '7d']
+      default: 24h
+      description: 注册码有效期（设计 27.2）
+
+    EnrollRequest:
+      type: object
+      description: 未知字段会被忽略，保证新版 Agent 与旧面板兼容
+      required: [enroll_code]
+      properties:
+        enroll_code: { type: string, pattern: '^ENR-[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$', description: 大小写不敏感 }
+        hostname: { type: string }
+        machine_id_hash: { type: string, example: 'sha256:…', description: sha256(/etc/machine-id)，用于重试幂等与识别更换主机 }
+        os: { type: string, example: ubuntu }
+        os_version: { type: string, example: '24.04' }
+        arch: { type: string, example: amd64 }
+        agent_version: { type: string }
+
+    EnrollResponse:
+      type: object
+      required: [server_id, server_name, agent_token, warnings]
+      properties:
+        server_id: { type: integer }
+        server_name: { type: string }
+        agent_token: { type: string, description: 'agt_…，写入 /etc/vpsmon-agent/token 后不再传输' }
+        warnings:
+          type: array
+          items: { type: string }
+          description: 主机名 / IP 与填写值不一致时的提示（设计 27.6.3）
+
+    CreateServerRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 64 }
+        expected_hostname: { type: string, description: 注册时核对 }
+        expected_ipv4: { type: string, format: ipv4 }
+        expected_ipv6: { type: string, format: ipv6 }
+        group: { type: string, maxLength: 32 }
+        note: { type: string, maxLength: 500 }
+        provider: { type: string, maxLength: 64 }
+        plan: { type: string, maxLength: 64 }
+        region: { type: string, maxLength: 64 }
+        traffic_limit_gb: { type: number, minimum: 0, description: 十进制 GB（设计 5.8），0 或省略表示不限 }
+        traffic_reset_day: { type: integer, minimum: 1, maximum: 31, default: 1 }
+        traffic_count_mode: { type: string, enum: [sum, rx, tx, max], default: sum, description: 设计 1.2.4 }
+        price: { type: number, minimum: 0, description: 续费价格，保留两位小数 }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$', description: ISO 4217；填写价格时必填 }
+        billing_period:
+          type: string
+          enum: ['', monthly, quarterly, semiannually, annually, biennially, triennially, one_time]
+        expire_date: { type: string, format: date, description: YYYY-MM-DD }
+        enroll_ttl: { $ref: '#/components/schemas/EnrollTTL' }
+        verify_mode: { type: string, enum: [warn, strict], default: warn, description: 核对严格程度（设计 27.6.3） }
+
+    InstallCommand:
+      type: object
+      required: [mode, command, server]
+      properties:
+        mode:
+          type: string
+          enum: [default, manual]
+          description: 面板尚未同步并验签任何官方版本时只有 manual（设计 27.3.1）
+        command: { type: string, description: '不使用管道执行（设计 27.3）' }
+        server: { type: string, description: 写进命令的面板对外地址 }
+        release:
+          type: ['object', 'null']
+          description: 已验签的官方版本；TODO(A7)
+
+    EnrollCodeView:
+      type: object
+      required: [server_id, server_name, enroll_state, enroll_code_hint, enroll_status, enroll_expires_at, install]
+      properties:
+        server_id: { type: integer }
+        server_name: { type: string }
+        enroll_state: { type: string, enum: [pending, enrolled] }
+        enroll_code: { type: string, description: 完整注册码，只在新建与重新生成时返回 }
+        enroll_code_hint: { type: string, example: 'ENR-7KQ2-****' }
+        enroll_status: { type: string, enum: [ACTIVE, USED, REVOKED, EXPIRED, NONE] }
+        enroll_expires_at: { type: integer, description: Unix 秒 }
+        install: { $ref: '#/components/schemas/InstallCommand' }
+
+    ServerView:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        status: { type: string, enum: [online, unknown, offline, pending], description: '≤30 秒在线，≤120 秒未知（设计 22）；pending 为待安装（设计 27.7）' }
+        last_seen_at: { type: integer }
+        enroll_state: { type: string, enum: [pending, enrolled] }
+        expected_hostname: { type: string }
+        expected_ipv4: { type: string }
+        expected_ipv6: { type: string }
+        verify_mode: { type: string }
+        hostname: { type: string }
+        ipv4: { type: string }
+        ipv6: { type: string }
+        enrolled_at: { type: integer }
+        group: { type: string }
+        note: { type: string }
+        provider: { type: string }
+        plan: { type: string }
+        region: { type: string }
+        price_cents: { type: integer, description: 续费价格 × 100 }
+        currency: { type: string }
+        billing_period: { type: string }
+        expire_date: { type: string }
+        traffic_limit_bytes: { type: integer }
+        traffic_reset_day: { type: integer }
+        traffic_count_mode: { type: string }
+        created_at: { type: integer }
+        latest: { $ref: '#/components/schemas/Report' }
+        traffic:
+          type: object
+          properties:
+            cycle_start: { type: string, format: date }
+            rx: { type: integer }
+            tx: { type: integer }
+            used: { type: integer, description: 按计费模式计算 }
+            limit: { type: integer, description: 字节，0 表示不限 }
+
+    Report:
+      type: object
+      description: Agent 上报，定义见 internal/protocol（设计 6.2）；只做向后兼容的新增
+      properties:
+        timestamp: { type: integer }
+        agent_version: { type: string }
+        final: { type: boolean }
+        system: { type: object }
+        cpu: { type: object }
+        memory: { type: object }
+        swap: { type: object }
+        disk: { type: array, items: { type: object } }
+        network: { type: array, items: { type: object } }
+
+    MetricPoint:
+      type: object
+      properties:
+        ts: { type: integer }
+        cpu: { type: number }
+        load1: { type: number }
+        mem_used: { type: integer }
+        mem_total: { type: integer }
+        swap_used: { type: integer }
+        disk_used: { type: integer }
+        disk_total: { type: integer }
+        rx_speed: { type: integer }
+        tx_speed: { type: integer }

@@ -1,0 +1,359 @@
+package server
+
+import (
+	"encoding/json"
+	"errors"
+	"math"
+	"net"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+// Web 新建节点与安装命令（设计 19.11、27.1～27.4）。全部接口要求 Web 管理员权限（设计 17.2）。
+
+// billingPeriods 是续费周期的可选值（设计 1.2.3、1.2.5）；空字符串表示未填。
+var billingPeriods = map[string]bool{"": true, "monthly": true, "quarterly": true, "semiannually": true,
+	"annually": true, "biennially": true, "triennially": true, "one_time": true}
+
+var (
+	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]{0,252})$`)
+	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`) // ISO 4217
+	// publicHost 是允许写进安装命令的面板主机名（含端口、IPv6 方括号）。
+	// 【安全】安装命令会被复制到主机上以 root 执行，Host 头中的任何 shell 特殊字符都不允许进入命令。
+	publicHost = regexp.MustCompile(`^[A-Za-z0-9.\-]+(:[0-9]{1,5})?$|^\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$`)
+)
+
+// createServerBody 是 POST /api/v1/servers 的请求体（设计 19.11、27.2）。
+type createServerBody struct {
+	Name             string   `json:"name"`
+	ExpectedHostname string   `json:"expected_hostname"`
+	ExpectedIPv4     string   `json:"expected_ipv4"`
+	ExpectedIPv6     string   `json:"expected_ipv6"`
+	Group            string   `json:"group"`
+	Note             string   `json:"note"`
+	Provider         string   `json:"provider"`
+	Plan             string   `json:"plan"`
+	Region           string   `json:"region"`
+	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 十进制 GB（设计 5.8）；空或 0 表示不限
+	TrafficResetDay  *int     `json:"traffic_reset_day"` // 1～31，默认 1
+	TrafficCountMode string   `json:"traffic_count_mode"`
+	Price            *float64 `json:"price"` // 续费价格，最多两位小数
+	Currency         string   `json:"currency"`
+	BillingPeriod    string   `json:"billing_period"`
+	ExpireDate       string   `json:"expire_date"` // YYYY-MM-DD
+	EnrollTTL        string   `json:"enroll_ttl"`  // 1h / 24h / 7d，默认 24h
+	VerifyMode       string   `json:"verify_mode"` // warn / strict，默认 warn
+}
+
+// validate 校验并规范化输入，返回字段级错误（设计 43.4 validation_failed）。
+func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
+	var errs []FieldError
+	bad := func(field, msg string) { errs = append(errs, FieldError{Field: field, Message: msg}) }
+	text := func(field, v string, max int) string {
+		v = strings.TrimSpace(v)
+		if utf8.RuneCountInString(v) > max {
+			bad(field, "不能超过 "+strconv.Itoa(max)+" 个字符")
+		}
+		return v
+	}
+
+	in := NodeInput{
+		Name:     text("name", b.Name, 64),
+		Group:    text("group", b.Group, 32),
+		Note:     text("note", b.Note, 500),
+		Provider: text("provider", b.Provider, 64),
+		Plan:     text("plan", b.Plan, 64),
+		Region:   text("region", b.Region, 64),
+	}
+	if in.Name == "" {
+		bad("name", "请填写名称")
+	}
+	if h := strings.TrimSpace(b.ExpectedHostname); h != "" {
+		if !hostnamePattern.MatchString(h) {
+			bad("expected_hostname", "主机名只能包含字母、数字、点、短横线和下划线")
+		}
+		in.ExpectedHostname = h
+	}
+	if v := strings.TrimSpace(b.ExpectedIPv4); v != "" {
+		if ip := net.ParseIP(v); ip == nil || ip.To4() == nil || strings.Contains(v, ":") {
+			bad("expected_ipv4", "IPv4 地址格式不正确")
+		} else {
+			in.ExpectedIPv4 = ip.String()
+		}
+	}
+	if v := strings.Trim(strings.TrimSpace(b.ExpectedIPv6), "[]"); v != "" {
+		if ip := net.ParseIP(v); ip == nil || !strings.Contains(v, ":") {
+			bad("expected_ipv6", "IPv6 地址格式不正确")
+		} else {
+			in.ExpectedIPv6 = ip.String()
+		}
+	}
+
+	in.VerifyMode = b.VerifyMode
+	if in.VerifyMode == "" {
+		in.VerifyMode = "warn"
+	}
+	if in.VerifyMode != "warn" && in.VerifyMode != "strict" {
+		bad("verify_mode", "只能是 warn（仅提示）或 strict（不一致时拒绝）")
+	}
+
+	if b.TrafficLimitGB != nil {
+		gb := *b.TrafficLimitGB
+		if gb < 0 || gb > 1e6 || math.IsNaN(gb) {
+			bad("traffic_limit_gb", "月流量额度应在 0～1000000 GB 之间")
+		} else {
+			in.LimitBytes = int64(math.Round(gb * 1e9)) // 十进制 GB，与多数服务商一致（设计 5.8）
+		}
+	}
+	in.ResetDay = 1
+	if b.TrafficResetDay != nil {
+		in.ResetDay = *b.TrafficResetDay
+		if in.ResetDay < 1 || in.ResetDay > 31 {
+			bad("traffic_reset_day", "流量重置日应在 1～31 之间")
+		}
+	}
+	in.CountMode = b.TrafficCountMode
+	switch in.CountMode {
+	case "":
+		in.CountMode = ModeSum
+	case ModeSum, ModeRx, ModeTx, ModeMax:
+	default:
+		bad("traffic_count_mode", "计费模式只能是 sum、rx、tx 或 max")
+	}
+
+	if b.Price != nil {
+		p := *b.Price
+		if p < 0 || p > 1e7 || math.IsNaN(p) {
+			bad("price", "价格应在 0～10000000 之间")
+		} else {
+			in.PriceCents = int64(math.Round(p * 100))
+		}
+	}
+	in.Currency = strings.ToUpper(strings.TrimSpace(b.Currency))
+	if in.Currency != "" && !currencyPattern.MatchString(in.Currency) {
+		bad("currency", "币种使用 3 位字母代码，如 USD、CNY")
+	}
+	if in.PriceCents > 0 && in.Currency == "" {
+		bad("currency", "填写价格时请同时填写币种")
+	}
+	in.BillingPeriod = b.BillingPeriod
+	if !billingPeriods[in.BillingPeriod] {
+		bad("billing_period", "续费周期不正确")
+	}
+	if d := strings.TrimSpace(b.ExpireDate); d != "" {
+		if _, err := time.Parse("2006-01-02", d); err != nil {
+			bad("expire_date", "到期日期格式应为 YYYY-MM-DD")
+		}
+		in.ExpireDate = d
+	}
+
+	ttl, ok := enrollTTLs[b.EnrollTTL]
+	if b.EnrollTTL == "" {
+		ttl, ok = enrollTTLs["24h"], true
+	}
+	if !ok {
+		bad("enroll_ttl", "注册码有效期只能是 1h、24h 或 7d")
+	}
+	return in, ttl, errs
+}
+
+// installView 是安装命令信息（设计 27.3）。
+type installView struct {
+	// Mode 为 "default"（下载 → 校验 → 执行）或 "manual"。
+	// 面板尚未同步并验签任何官方版本时只提供 manual（设计 27.3.1）。
+	Mode    string `json:"mode"`
+	Command string `json:"command"`
+	// Release 是已验签的官方版本信息；未同步时为 null。TODO(A7): 版本同步与验签后填写（设计 29.1）。
+	Release *struct{} `json:"release"`
+	Server  string    `json:"server"` // 写进命令的面板地址
+}
+
+// enrollCodeView 是注册码与安装命令的响应（新建节点、重新生成时返回明文，其余时候只返回提示）。
+type enrollCodeView struct {
+	ServerID        int64       `json:"server_id"`
+	ServerName      string      `json:"server_name"`
+	EnrollState     string      `json:"enroll_state"`
+	EnrollCode      string      `json:"enroll_code,omitempty"` // 完整注册码只在生成时返回一次（设计 19.11）
+	EnrollCodeHint  string      `json:"enroll_code_hint"`
+	EnrollStatus    string      `json:"enroll_status"` // ACTIVE / USED / REVOKED / EXPIRED / NONE
+	EnrollExpiresAt int64       `json:"enroll_expires_at"`
+	Install         installView `json:"install"`
+}
+
+// panelURL 返回写进安装命令的面板对外地址：优先使用 --public-url，
+// 否则由请求推断（在 Caddy 后面时 Host 为对外域名，X-Forwarded-Proto 为 https）。
+func (s *Server) panelURL(r *http.Request) string {
+	if s.publicURL != "" {
+		return s.publicURL
+	}
+	scheme := "http"
+	if r.TLS != nil || (fromTrustedProxy(r) && r.Header.Get("X-Forwarded-Proto") == "https") {
+		scheme = "https"
+	}
+	if !publicHost.MatchString(r.Host) {
+		return "https://YOUR-PANEL-ADDRESS" // Host 头异常时给出占位符，提示管理员配置 --public-url
+	}
+	return scheme + "://" + r.Host
+}
+
+// installCommand 生成安装命令。code 为明文注册码或脱敏提示。
+//
+// 目前没有已验签的官方版本，按设计 27.3.1 只提供手动方式的最后一步（27.3.3）：
+// 二进制需已安装在主机上。【安全】不生成 curl | sh，也不由面板分发二进制（设计 27.3、CLAUDE.md 约束 2、9）。
+func (s *Server) installCommand(r *http.Request, code string) installView {
+	url := s.panelURL(r)
+	return installView{Mode: "manual", Server: url,
+		Command: "sudo vpsmon-agent install --server " + url + " --enroll " + code}
+}
+
+// handleCreateServer：POST /api/v1/servers，admin。新建“待安装”节点并生成注册码（设计 19.11、27.2）。
+// 成功 201；字段错误 422；名称重复 409。
+func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
+	var body createServerBody
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	dec.DisallowUnknownFields() // Web 表单的字段写错时直接报错，而不是被静默忽略
+	if err := dec.Decode(&body); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	in, ttl, errs := body.validate()
+	if len(errs) > 0 {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
+		return
+	}
+	now := time.Now()
+	code, nc := newEnrollCode(ttl, now)
+	id, err := s.store.CreatePendingServer(in, nc, now)
+	if errors.Is(err, errNameTaken) {
+		s.writeError(w, r, &APIError{Code: CodeConflict, Message: "名称已被使用",
+			Details: []FieldError{{Field: "name", Message: "名称已被使用"}}})
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.create", TargetType: "server", TargetID: id,
+		Success: true, Details: map[string]any{"name": in.Name, "code_hint": nc.hint, "ttl": ttl.String()}})
+	w.Header().Set("Location", "/api/v1/servers/"+strconv.FormatInt(id, 10))
+	writeJSONStatus(w, http.StatusCreated, enrollCodeView{ServerID: id, ServerName: in.Name, EnrollState: enrollPending,
+		EnrollCode: code, EnrollCodeHint: nc.hint, EnrollStatus: codeActive, EnrollExpiresAt: nc.expiresAt,
+		Install: s.installCommand(r, code)})
+}
+
+// pathID 解析路径中的节点 ID。
+func pathID(r *http.Request) (int64, error) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errorf(CodeBadRequest, "节点编号格式不正确")
+	}
+	return id, nil
+}
+
+// handleInstallCommand：GET /api/v1/servers/{id}/install-command，admin。
+// 不返回已生成过的完整注册码（设计 19.11）：命令中只有脱敏提示，丢失后需重新生成。
+func (s *Server) handleInstallCommand(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	node, err := s.store.GetServer(id)
+	if errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	v := enrollCodeView{ServerID: id, ServerName: node.Name, EnrollState: node.EnrollState, EnrollStatus: "NONE"}
+	c, err := s.store.LatestEnrollCode(id, time.Now())
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	hint := "ENR-…"
+	if c != nil {
+		v.EnrollCodeHint, v.EnrollStatus, v.EnrollExpiresAt, hint = c.Hint, c.Status, c.ExpiresAt, c.Hint
+	}
+	v.Install = s.installCommand(r, hint)
+	writeJSON(w, v)
+}
+
+// handleRegenerateCode：POST /api/v1/servers/{id}/enroll-code，admin。
+// 生成新注册码，旧码立即失效（设计 27.4）；对已注册节点即“重新安装 / 更换主机”（设计 27.8）。
+// 请求体可选：{"enroll_ttl": "24h"}。
+func (s *Server) handleRegenerateCode(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var body struct {
+		EnrollTTL string `json:"enroll_ttl"`
+	}
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
+			s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+			return
+		}
+	}
+	ttl, ok := enrollTTLs[body.EnrollTTL]
+	if body.EnrollTTL == "" {
+		ttl, ok = enrollTTLs["24h"], true
+	}
+	if !ok {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed,
+			Details: []FieldError{{Field: "enroll_ttl", Message: "注册码有效期只能是 1h、24h 或 7d"}}})
+		return
+	}
+	now := time.Now()
+	code, nc := newEnrollCode(ttl, now)
+	if err := s.store.ReplaceEnrollCode(id, nc, now); errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	} else if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	node, err := s.store.GetServer(id)
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "enroll_code.regenerate", TargetType: "server", TargetID: id,
+		Success: true, Details: map[string]any{"code_hint": nc.hint, "ttl": ttl.String(), "enroll_state": node.EnrollState}})
+	writeJSON(w, enrollCodeView{ServerID: id, ServerName: node.Name, EnrollState: node.EnrollState,
+		EnrollCode: code, EnrollCodeHint: nc.hint, EnrollStatus: codeActive, EnrollExpiresAt: nc.expiresAt,
+		Install: s.installCommand(r, code)})
+}
+
+// handleRevokeCode：DELETE /api/v1/servers/{id}/enroll-code，admin。撤销注册码，成功 204（设计 27.4）。
+func (s *Server) handleRevokeCode(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.store.RevokeEnrollCodes(id); errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	} else if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "enroll_code.revoke", TargetType: "server", TargetID: id, Success: true})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeJSONStatus 以指定状态码返回 JSON（如 201 Created）。
+func writeJSONStatus(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}

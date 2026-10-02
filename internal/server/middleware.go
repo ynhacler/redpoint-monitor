@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -117,11 +119,8 @@ func (s *Server) logRequest(r *http.Request, ri *reqInfo, status int, dur time.D
 		// Agent 上报量大，成功请求只在 DEBUG 级别记录（设计 24.6）
 		level = slog.LevelDebug
 	}
-	// TODO(A6): 内置 HTTPS 之前面板在 Caddy 后面，这里是代理地址；
-	// 需要在“只信任回环代理”的前提下读取 X-Forwarded-For（设计 25、26）。
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	attrs := []any{"component", "http", "request_id", ri.id, "route", route, "status", status,
-		"dur_ms", dur.Milliseconds(), "ip", ip}
+		"dur_ms", dur.Milliseconds(), "ip", clientIP(r)}
 	if ri.principal != "" {
 		attrs = append(attrs, "principal", ri.principal)
 		if ri.principalID != 0 {
@@ -129,6 +128,48 @@ func (s *Server) logRequest(r *http.Request, ri *reqInfo, status int, dur time.D
 		}
 	}
 	s.log.Log(r.Context(), level, "request", attrs...)
+}
+
+// clientIP 返回客户端地址，用于限流、注册核对与日志（设计 24.6、27.6.3）。
+//
+// 【安全】只有直接连接来自回环地址（同机的 Caddy 反向代理，设计 26）时才读取 X-Forwarded-For，
+// 并且只取最后一项——那是代理自己追加的真实来源；前面的项由客户端控制，可以伪造。
+// 面板直接对外时忽略该头，否则任何人都能伪造来源 IP 绕过限流。
+func clientIP(r *http.Request) string {
+	host := remoteHost(r)
+	if !fromTrustedProxy(r) {
+		return host
+	}
+	xff := r.Header.Values("X-Forwarded-For")
+	parts := strings.Split(xff[len(xff)-1], ",")
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if p := net.ParseIP(last); p != nil {
+		return p.String()
+	}
+	return host
+}
+
+// fromTrustedProxy 判断请求是否经由同机反向代理转发：直接对端是回环地址且带有 X-Forwarded-For。
+func fromTrustedProxy(r *http.Request) bool {
+	ip := net.ParseIP(remoteHost(r))
+	return ip != nil && ip.IsLoopback() && len(r.Header.Values("X-Forwarded-For")) > 0
+}
+
+// remoteHost 返回直接连接的对端地址（不考虑 X-Forwarded-For）。
+func remoteHost(r *http.Request) string {
+	h, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return h
+}
+
+// audit 写一条审计记录，自动带上来源 IP 与 User-Agent。写入失败只记日志，不影响请求本身。
+func (s *Server) audit(r *http.Request, e AuditEntry) {
+	e.ClientIP, e.UserAgent = clientIP(r), r.UserAgent()
+	if err := s.store.Audit(e, time.Now()); err != nil {
+		s.log.Error("audit write failed", "component", "audit", "action", e.Action, "err", err)
+	}
 }
 
 // writeJSON 以 200 返回 JSON。
@@ -157,8 +198,11 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		s.log.Debug("request rejected", "component", "http", "request_id", ri.id, "code", ae.Code, "err", ae.Cause)
 	}
 	if ae.Code == CodeRateLimited {
-		// TODO(A1): 限流器给出具体的 Retry-After 秒数（设计 27.6.5、43.2）
-		w.Header().Set("Retry-After", "60")
+		secs := int(ae.RetryAfter.Seconds() + 0.999) // 向上取整，至少 1 秒
+		if secs < 1 {
+			secs = 60
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(ae.Status())

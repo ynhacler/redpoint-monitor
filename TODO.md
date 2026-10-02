@@ -31,23 +31,26 @@
 - [x] 设计文档 v1.2 与 `scripts/check_design_refs.py`（设计 40.9）
 - [x] GitHub Actions CI：go vet/test、Web 类型检查与构建、设计文档校验、shellcheck、交叉编译全部架构（设计 40.8.3）
 - [ ] CI 补充注释检查：revive exported 规则、eslint-plugin-jsdoc（设计 39.7）
-- [ ] `api/openapi.yaml` 契约骨架，覆盖现有接口；服务端测试校验响应与契约一致（设计 19.0.1）
+- [x] `api/openapi.yaml` 契约骨架，覆盖现有接口（设计 19.0.1）
+- [ ] 服务端测试校验响应与契约一致（设计 19.0.1）
 - [ ] 列表接口改为 `{"items", "next_cursor"}`，Web 与 App 同步修改（设计 19.0.2）
 - [x] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
 - [x] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
-- [ ] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）
+- [x] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）
 - [x] `/healthz` 返回版本号（git describe）（设计 40.3.2）
 - [x] 构建 amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4、35.2）
 
 ### A1 节点与注册（核心）
 
-- [ ] 迁移：servers 增加 expected_* / verify_mode / enroll_state / machine_id_hash 等字段（设计 18.2）；enroll_codes 表（设计 18.13）
-- [ ] `POST /api/v1/servers` 新建节点（待安装）+ 注册码；重新生成 / 撤销注册码（设计 19.11、27.4）
-- [ ] `POST /api/v1/agent/enroll`：一次性注册码换 Agent Token、信息核对、10 分钟重试幂等、单独限流（设计 27.6）
+- [x] 迁移：servers 增加 expected_* / verify_mode / enroll_state / machine_id_hash 与 VPS 信息字段（设计 18.2、1.2.3）；enroll_codes 表（设计 18.13）
+- [x] `POST /api/v1/servers` 新建节点（待安装）+ 注册码；重新生成 / 撤销注册码（设计 19.11、27.4）
+- [x] `POST /api/v1/agent/enroll`：一次性注册码换 Agent Token、信息核对、10 分钟重试幂等、单独限流（设计 27.6）
 - [ ] `vpsmon-agent install / uninstall / status`，`POST /api/v1/agent/unregister`（设计 27.6.1、27.11）
 - [ ] `scripts/agent.sh.in` + `scripts/release-agent-sh.sh`：架构识别、内置 SHA256、试运行、`--download-only`（设计 27.5）
-- [ ] 审计日志精简版 `audit_logs` + `vpsmon-server audit`（设计 18.16、24.8）
-- [ ] Agent Token 吊销 / 轮换；重装时吊销旧 Token（设计 27.8）
+- [x] 审计日志精简版 `audit_logs`：节点新建、注册码生成 / 撤销、Agent 注册（设计 18.16、24.8）
+- [ ] `vpsmon-server audit` 查看审计日志（设计 24.8）
+- [x] 重装 / 重试注册时吊销旧 Token（设计 27.6.4、27.8）
+- [ ] Web 手动吊销 / 轮换 Agent Token（设计 17.2）
 
 ### A2 Web 登录（替换开发用 admin token）
 
@@ -75,7 +78,7 @@
 ### A6 部署与运维
 
 - [ ] 内置 HTTPS（ACME，`--domain`）（设计 25）
-- [ ] 请求日志记录真实客户端 IP：只信任回环代理的 X-Forwarded-For（设计 24.6、26）
+- [x] 请求日志记录真实客户端 IP：只信任回环代理的 X-Forwarded-For（设计 24.6、26）
 - [ ] `vpsmon-server backup / restore`、`diag`（设计 25、24.10）
 
 ### A7 Agent 本地升级与发布
