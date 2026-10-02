@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"math"
 	"strings"
@@ -204,5 +205,41 @@ func TestRunTaskRestartsAfterPanic(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "background task panicked") {
 		t.Error("panic 应记录 ERROR 与堆栈")
+	}
+}
+
+// 磁盘 IO：旧版 Agent 的时段为 NULL，聚合时只用有值的点，历史接口返回 null（设计 4.7）。
+func TestDiskIOAggregation(t *testing.T) {
+	s, _, _ := testServer(t)
+	st := s.store
+	base := int64(1_790_000_000) - int64(1_790_000_000)%3600
+	for ts := base; ts < base+600; ts += 10 {
+		insertRaw(t, st, 1, ts, 1, 1)
+		if ts >= base+300 { // 后 5 分钟升级为新版 Agent，开始上报 IO
+			st.DB.Exec(`UPDATE metrics_raw SET disk_read = ?, disk_write = 2000 WHERE server_id = 1 AND ts = ?`, (ts-base)%60*10, ts)
+		}
+	}
+	st.Downsample(time.Unix(base+3600+120, 0))
+
+	var oldRead, newRead, newMax, fiveMinRead sql.NullInt64
+	st.DB.QueryRow(`SELECT disk_read FROM metrics_1m WHERE server_id = 1 AND ts = ?`, base).Scan(&oldRead)
+	st.DB.QueryRow(`SELECT disk_read, disk_read_max FROM metrics_1m WHERE server_id = 1 AND ts = ?`, base+300).Scan(&newRead, &newMax)
+	st.DB.QueryRow(`SELECT disk_read FROM metrics_5m WHERE server_id = 1 AND ts = ?`, base+300).Scan(&fiveMinRead)
+	if oldRead.Valid {
+		t.Errorf("旧版 Agent 时段的 IO 应为 NULL，实际 %v", oldRead.Int64)
+	}
+	if newRead.Int64 != 250 || newMax.Int64 != 500 {
+		t.Errorf("1 分钟 IO：avg=%d max=%d，应为 250 / 500", newRead.Int64, newMax.Int64)
+	}
+	if fiveMinRead.Int64 != 250 {
+		t.Errorf("5 分钟 IO 应为 250（只用有值的桶加权），实际 %d", fiveMinRead.Int64)
+	}
+
+	pts, err := st.MetricsHistory(1, "metrics_1m", time.Unix(base, 0))
+	if err != nil || len(pts) < 10 {
+		t.Fatalf("history：%v %d", err, len(pts))
+	}
+	if pts[0].DiskRead != nil || pts[5].DiskRead == nil || *pts[5].DiskWrite != 2000 {
+		t.Errorf("历史接口：无数据时段应为 null，有数据时段有值")
 	}
 }

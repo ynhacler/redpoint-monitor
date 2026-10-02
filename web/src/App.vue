@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { fmtBytes, getToken, listServers, setToken, UnauthorizedError, type EnrollCodeView, type ServerView } from './api'
+import {
+  fmtBytes, getToken, listServers, setToken, UnauthorizedError,
+  type DiskInfo, type EnrollCodeView, type ServerView,
+} from './api'
 import InstallCommand from './components/InstallCommand.vue'
 import ServerForm from './components/ServerForm.vue'
 
@@ -87,8 +90,17 @@ function trafficPct(s: ServerView) {
 // 卡片只显示一个总网速：Agent 统计的网卡（默认路由网卡）之和。
 const rx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.rx_speed, 0) ?? 0
 const tx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.tx_speed, 0) ?? 0
-// 卡片只显示根分区；其他挂载点放在详情页。
-const disk = (s: ServerView) => s.latest?.disk.find((d) => d.mount === '/')?.usage ?? 0
+// 多个挂载点时卡片显示使用率最高的一个：异常优先，快满的盘不能被根分区掩盖（设计 1.5.6）
+const fullestDisk = (s: ServerView): DiskInfo | undefined =>
+  s.latest?.disk.reduce<DiskInfo | undefined>((a, d) => (!a || d.usage > a.usage ? d : a), undefined)
+const disk = (s: ServerView) => fullestDisk(s)?.usage ?? 0
+// 非根分区时在数值旁标出挂载点；悬停显示全部挂载点
+const diskMount = (s: ServerView) => {
+  const d = fullestDisk(s)
+  return d && d.mount !== '/' ? d.mount : ''
+}
+const diskTitle = (s: ServerView) =>
+  (s.latest?.disk ?? []).map((d) => `${d.mount}  ${d.usage.toFixed(0)}%  ${fmtBytes(d.used)} / ${fmtBytes(d.total)}`).join('\n')
 
 onMounted(() => {
   if (!needToken.value) start()
@@ -158,7 +170,10 @@ onUnmounted(stop)
           <dl class="metrics">
             <div><dt>CPU</dt><dd>{{ s.latest.cpu.usage.toFixed(0) }}%</dd></div>
             <div><dt>内存</dt><dd>{{ s.latest.memory.usage.toFixed(0) }}%</dd></div>
-            <div><dt>磁盘</dt><dd>{{ disk(s).toFixed(0) }}%</dd></div>
+            <div :title="diskTitle(s)">
+              <dt>{{ diskMount(s) ? `磁盘 ${diskMount(s)}` : '磁盘' }}</dt>
+              <dd :class="{ bad: disk(s) >= 90 }">{{ disk(s).toFixed(0) }}%</dd>
+            </div>
             <div><dt>网络</dt><dd>↓{{ fmtBytes(rx(s), true) }} ↑{{ fmtBytes(tx(s), true) }}</dd></div>
           </dl>
         </template>

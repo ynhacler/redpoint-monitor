@@ -44,6 +44,8 @@ func (f *fake) Collect() (protocol.Report, error) {
 	memUsed := uint64(float64(memTotal) * (0.45 + 0.05*math.Sin(t/60)))
 	diskTotal := uint64(40 << 30)
 	diskUsed := uint64(18 << 30)
+	ioRead := uint64(200_000 + 150_000*math.Sin(t/25))
+	ioWrite := uint64(800_000 + 600_000*math.Cos(t/35))
 
 	return protocol.Report{
 		System: protocol.System{
@@ -56,7 +58,11 @@ func (f *fake) Collect() (protocol.Report, error) {
 		},
 		Memory: protocol.Memory{Total: memTotal, Used: memUsed, Available: memTotal - memUsed, Usage: pct(memUsed, memTotal)},
 		Swap:   protocol.Swap{Total: 1 << 30, Used: 64 << 20},
-		Disk:   []protocol.Disk{{Mount: "/", Total: diskTotal, Used: diskUsed, Usage: pct(diskUsed, diskTotal)}},
+		Disk: []protocol.Disk{
+			{Mount: "/", Total: diskTotal, Used: diskUsed, Usage: pct(diskUsed, diskTotal), FSType: "ext4", Device: "/dev/vda1"},
+			{Mount: "/data", Total: 100 << 30, Used: 87 << 30, Usage: 87, FSType: "xfs", Device: "/dev/vdb1"},
+		},
+		DiskIO: []protocol.DiskIO{{Device: "vda", ReadSpeed: ioRead, WriteSpeed: ioWrite}},
 		Network: []protocol.NetIface{{
 			Interface: "eth0", IfIndex: 2, RxBytes: f.rx, TxBytes: f.tx, RxSpeed: rxSpeed, TxSpeed: txSpeed,
 		}},

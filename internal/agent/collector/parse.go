@@ -4,6 +4,7 @@ package collector
 
 import (
 	"bufio"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -157,4 +158,116 @@ func parseOSRelease(s string) (id, version string) {
 		}
 	}
 	return
+}
+
+// mountEntry 是 /proc/self/mounts 中的一行。
+type mountEntry struct {
+	Device, Mount, FSType string
+}
+
+// diskFSTypes 是会采集容量的本地块设备文件系统（设计 4.6）。
+//
+// 用白名单而不是黑名单：tmpfs、overlay、proc、cgroup、squashfs（snap）等虚拟文件系统自然被排除；
+// 更重要的是排除 NFS / CIFS 等网络文件系统——服务端失联时 statfs 会长时间阻塞，拖住整个上报。
+var diskFSTypes = map[string]bool{
+	"ext2": true, "ext3": true, "ext4": true, "xfs": true, "btrfs": true, "zfs": true, "f2fs": true,
+	"vfat": true, "exfat": true, "ntfs": true, "ntfs3": true, "jfs": true, "reiserfs": true, "bcachefs": true,
+}
+
+// maxMounts：最多上报的挂载点数量，防止异常主机（大量绑定挂载）撑大上报体。
+const maxMounts = 16
+
+// parseMounts 解析 /proc/self/mounts。挂载路径中的空格等字符被内核转义为 \040 形式，这里还原。
+func parseMounts(s string) []mountEntry {
+	var out []mountEntry
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) < 3 {
+			continue
+		}
+		out = append(out, mountEntry{Device: unescapeMount(f[0]), Mount: unescapeMount(f[1]), FSType: f[2]})
+	}
+	return out
+}
+
+// unescapeMount 还原 \040（空格）、\011（制表符）、\012（换行）、\134（反斜杠）等八进制转义。
+func unescapeMount(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(n))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// selectMounts 选出要采集容量的挂载点：白名单文件系统，同一设备只取一个（Docker 等的绑定挂载会让
+// 同一块盘出现多次，重复计算会误导），“/” 排在最前，其余按路径排序，最多 maxMounts 个。
+func selectMounts(entries []mountEntry) []mountEntry {
+	byDevice := map[string]mountEntry{}
+	for _, e := range entries {
+		if !diskFSTypes[e.FSType] {
+			continue
+		}
+		prev, ok := byDevice[e.Device]
+		// 同一设备保留路径最短的挂载点（通常是原始挂载，而不是绑定挂载）
+		if !ok || len(e.Mount) < len(prev.Mount) {
+			byDevice[e.Device] = e
+		}
+	}
+	out := make([]mountEntry, 0, len(byDevice))
+	for _, e := range byDevice {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if (out[i].Mount == "/") != (out[j].Mount == "/") {
+			return out[i].Mount == "/"
+		}
+		return out[i].Mount < out[j].Mount
+	})
+	if len(out) > maxMounts {
+		out = out[:maxMounts]
+	}
+	return out
+}
+
+// ioCounters 是一块磁盘的累计 IO 计数。
+type ioCounters struct {
+	readBytes, writeBytes, readOps, writeOps, ioTimeMs uint64
+}
+
+// parseDiskstats 解析 /proc/diskstats（设计 4.7）。
+// 列：major minor name reads merged sectors_read ms_read writes merged sectors_written ms_write in_flight io_ms …
+// 扇区固定按 512 字节计（内核文档 iostats.rst），与设备实际扇区大小无关。
+func parseDiskstats(s string) map[string]ioCounters {
+	out := map[string]ioCounters{}
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) < 13 {
+			continue
+		}
+		u := func(i int) uint64 { n, _ := strconv.ParseUint(f[i], 10, 64); return n }
+		out[f[2]] = ioCounters{readOps: u(3), readBytes: u(5) * 512, writeOps: u(7), writeBytes: u(9) * 512, ioTimeMs: u(12)}
+	}
+	return out
+}
+
+// skipIODevice 排除不代表真实磁盘的设备：回环、内存盘、压缩内存交换、光驱、软驱、网络块设备。
+func skipIODevice(name string) bool {
+	for _, p := range []string{"loop", "ram", "zram", "sr", "fd", "nbd"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }

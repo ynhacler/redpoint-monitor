@@ -427,8 +427,34 @@ components:
         cpu: { type: object }
         memory: { type: object }
         swap: { type: object }
-        disk: { type: array, items: { type: object } }
+        disk:
+          type: array
+          description: 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次
+          items:
+            type: object
+            properties:
+              mount: { type: string }
+              total: { type: integer }
+              used: { type: integer }
+              usage: { type: number, description: 与 df 的 Use% 一致 }
+              fstype: { type: string }
+              device: { type: string }
+              available: { type: integer }
         network: { type: array, items: { type: object } }
+        disk_io:
+          type: array
+          description: 可选，整块磁盘的 IO（设计 4.7）
+          items:
+            type: object
+            properties:
+              device: { type: string }
+              read_bytes: { type: integer }
+              write_bytes: { type: integer }
+              read_ops: { type: integer }
+              write_ops: { type: integer }
+              io_time_ms: { type: integer }
+              read_speed: { type: integer }
+              write_speed: { type: integer }
 
     MetricPoint:
       type: object
@@ -446,3 +472,7 @@ components:
         rx_speed_max: { type: integer }
         tx_speed: { type: integer }
         tx_speed_max: { type: integer }
+        disk_read: { type: ['integer', 'null'], description: 所有磁盘读速率之和，字节/秒；旧版 Agent 时段为 null（设计 4.7） }
+        disk_read_max: { type: ['integer', 'null'] }
+        disk_write: { type: ['integer', 'null'] }
+        disk_write_max: { type: ['integer', 'null'] }
