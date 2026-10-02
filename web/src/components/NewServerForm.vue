@@ -1,0 +1,214 @@
+<script setup lang="ts">
+// 新建节点表单（设计 27.2）：基本信息、VPS 信息、安装选项三组；VPS 信息可以以后再填。
+// 提交成功后由父组件跳到安装命令页；字段错误显示在对应输入框下（设计 43.6）。
+import { reactive, ref } from 'vue'
+import { ApiError, createServer, UnauthorizedError, type CreateServerInput, type EnrollCodeView } from '../api'
+
+const emit = defineEmits<{
+  /** 创建成功，携带注册码与安装命令 */
+  created: [view: EnrollCodeView]
+  /** 取消，返回列表 */
+  cancel: []
+  /** Token 失效，需要重新输入 */
+  unauthorized: []
+}>()
+
+// 表单状态全部用字符串保存，提交时再转换，空值不提交（表示未填写）
+const f = reactive({
+  name: '', expected_hostname: '', expected_ipv4: '', expected_ipv6: '', group: '', note: '',
+  provider: '', plan: '', region: '',
+  traffic_limit_gb: '', traffic_reset_day: '1', traffic_count_mode: 'sum',
+  price: '', currency: 'USD', billing_period: '', expire_date: '',
+  enroll_ttl: '24h', verify_mode: 'warn',
+})
+const fieldErrors = ref<Record<string, string>>({})
+const formError = ref('')
+const submitting = ref(false)
+const showVps = ref(false)
+
+// 选项文案（设计 1.2.4、1.2.5、27.2、27.6.3）
+const countModes = [
+  { v: 'sum', t: '入 + 出（RX + TX）' }, { v: 'max', t: '入、出取较大值' },
+  { v: 'tx', t: '仅出站（TX）' }, { v: 'rx', t: '仅入站（RX）' },
+]
+const periods = [
+  { v: '', t: '未填' }, { v: 'monthly', t: '月付' }, { v: 'quarterly', t: '季付' },
+  { v: 'semiannually', t: '半年付' }, { v: 'annually', t: '年付' }, { v: 'biennially', t: '两年付' },
+  { v: 'triennially', t: '三年付' }, { v: 'one_time', t: '一次性' },
+]
+
+function buildInput(): CreateServerInput {
+  const text = (v: string) => v.trim() || undefined
+  const num = (v: string) => (v.trim() === '' ? undefined : Number(v))
+  const price = num(f.price)
+  return {
+    name: f.name.trim(),
+    expected_hostname: text(f.expected_hostname),
+    expected_ipv4: text(f.expected_ipv4),
+    expected_ipv6: text(f.expected_ipv6),
+    group: text(f.group),
+    note: text(f.note),
+    provider: text(f.provider),
+    plan: text(f.plan),
+    region: text(f.region),
+    traffic_limit_gb: num(f.traffic_limit_gb),
+    traffic_reset_day: num(f.traffic_reset_day),
+    traffic_count_mode: f.traffic_count_mode as CreateServerInput['traffic_count_mode'],
+    price,
+    currency: price ? text(f.currency) : undefined, // 不填价格时不提交币种，避免无意义的数据
+    billing_period: f.billing_period || undefined,
+    expire_date: text(f.expire_date),
+    enroll_ttl: f.enroll_ttl as CreateServerInput['enroll_ttl'],
+    verify_mode: f.verify_mode as CreateServerInput['verify_mode'],
+  }
+}
+
+async function submit() {
+  fieldErrors.value = {}
+  formError.value = ''
+  if (!f.name.trim()) {
+    fieldErrors.value = { name: '请填写名称' }
+    return
+  }
+  submitting.value = true
+  try {
+    emit('created', await createServer(buildInput()))
+  } catch (e) {
+    if (e instanceof UnauthorizedError) {
+      emit('unauthorized')
+    } else if (e instanceof ApiError && e.details.length) {
+      // 422 / 409：在对应字段下显示错误；VPS 信息组有错误时自动展开
+      fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
+      if (e.details.some((d) => !['name', 'expected_hostname', 'expected_ipv4', 'expected_ipv6', 'group', 'note'].includes(d.field))) {
+        showVps.value = true
+      }
+    } else if (e instanceof ApiError) {
+      formError.value = e.requestId ? `${e.message}（编号 ${e.requestId}）` : e.message
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
+
+<template>
+  <form class="panel" novalidate @submit.prevent="submit">
+    <h2>新建节点</h2>
+    <p class="muted">保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。</p>
+
+    <fieldset>
+      <legend>基本信息</legend>
+      <div class="fields">
+        <label class="wide">名称 *
+          <input v-model="f.name" placeholder="如 DMIT-HK" autofocus />
+          <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
+        </label>
+        <label>主机名
+          <input v-model="f.expected_hostname" placeholder="hostname 命令的输出" />
+          <small v-if="fieldErrors.expected_hostname" class="err">{{ fieldErrors.expected_hostname }}</small>
+          <small v-else class="muted">注册时核对</small>
+        </label>
+        <label>分组
+          <input v-model="f.group" placeholder="如 香港、落地" />
+          <small v-if="fieldErrors.group" class="err">{{ fieldErrors.group }}</small>
+        </label>
+        <label>IPv4
+          <input v-model="f.expected_ipv4" placeholder="103.1.2.3" inputmode="decimal" />
+          <small v-if="fieldErrors.expected_ipv4" class="err">{{ fieldErrors.expected_ipv4 }}</small>
+        </label>
+        <label>IPv6
+          <input v-model="f.expected_ipv6" placeholder="2001:db8::1" />
+          <small v-if="fieldErrors.expected_ipv6" class="err">{{ fieldErrors.expected_ipv6 }}</small>
+        </label>
+        <label class="wide">备注
+          <input v-model="f.note" />
+          <small v-if="fieldErrors.note" class="err">{{ fieldErrors.note }}</small>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>
+        <button type="button" class="link" @click="showVps = !showVps">
+          {{ showVps ? '▾' : '▸' }} VPS 信息<span class="muted">（流量套餐、费用，可以以后再填）</span>
+        </button>
+      </legend>
+      <div v-show="showVps" class="fields">
+        <label>供应商<input v-model="f.provider" placeholder="如 DMIT" /></label>
+        <label>套餐<input v-model="f.plan" /></label>
+        <label>地区<input v-model="f.region" placeholder="如 香港" /></label>
+        <label>月流量（GB）
+          <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" placeholder="不填表示不限" />
+          <small v-if="fieldErrors.traffic_limit_gb" class="err">{{ fieldErrors.traffic_limit_gb }}</small>
+          <small v-else class="muted">按 1 GB = 10⁹ 字节计算</small>
+        </label>
+        <label>流量重置日
+          <input v-model="f.traffic_reset_day" type="number" min="1" max="31" />
+          <small v-if="fieldErrors.traffic_reset_day" class="err">{{ fieldErrors.traffic_reset_day }}</small>
+        </label>
+        <label>计费模式
+          <select v-model="f.traffic_count_mode">
+            <option v-for="m in countModes" :key="m.v" :value="m.v">{{ m.t }}</option>
+          </select>
+        </label>
+        <label>续费价格
+          <div class="row">
+            <input v-model="f.price" type="number" min="0" step="0.01" />
+            <input v-model="f.currency" class="currency" maxlength="3" placeholder="USD" />
+          </div>
+          <small v-if="fieldErrors.price || fieldErrors.currency" class="err">{{ fieldErrors.price || fieldErrors.currency }}</small>
+        </label>
+        <label>续费周期
+          <select v-model="f.billing_period">
+            <option v-for="p in periods" :key="p.v" :value="p.v">{{ p.t }}</option>
+          </select>
+        </label>
+        <label>到期日期
+          <input v-model="f.expire_date" type="date" />
+          <small v-if="fieldErrors.expire_date" class="err">{{ fieldErrors.expire_date }}</small>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>安装选项</legend>
+      <div class="fields">
+        <label>注册码有效期
+          <select v-model="f.enroll_ttl">
+            <option value="1h">1 小时</option>
+            <option value="24h">24 小时</option>
+            <option value="7d">7 天</option>
+          </select>
+        </label>
+        <label>主机信息核对
+          <select v-model="f.verify_mode">
+            <option value="warn">不一致时仅提示</option>
+            <option value="strict">不一致时拒绝注册</option>
+          </select>
+          <small class="muted">NAT、IPv6-only 主机建议仅提示</small>
+        </label>
+      </div>
+    </fieldset>
+
+    <p v-if="formError" class="banner">{{ formError }}</p>
+    <div class="actions">
+      <button type="submit" :disabled="submitting">{{ submitting ? '保存中…' : '保存并生成安装命令' }}</button>
+      <button type="button" class="secondary" @click="emit('cancel')">取消</button>
+    </div>
+  </form>
+</template>
+
+<style scoped>
+fieldset { border: 0; padding: 0; margin: 20px 0 0; }
+legend { font-weight: 600; padding: 0; margin-bottom: 10px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px; }
+.fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.fields .wide { grid-column: 1 / -1; }
+/* 全局样式中输入框是 flex: 1（用于横排），在纵向的字段里会被拉高，这里取消 */
+.fields > label > input, .fields > label > select { flex: none; }
+.currency { flex: 0 0 72px; text-transform: uppercase; }
+small { font-size: 12px; }
+.err { color: var(--bad); }
+.link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
+.actions { display: flex; gap: 8px; margin-top: 24px; }
+</style>
