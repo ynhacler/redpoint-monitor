@@ -2,10 +2,12 @@
 // 应用外壳：顶部导航、深浅色切换、账号与退出，以及各页面的容器。
 // 登录状态与节点数据由 store 统一管理，各页面共用（设计 41.6）；未登录时由路由守卫带到 /login。
 import { computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import Icon from './components/Icon.vue'
 import { logout, state, stopPolling } from './store'
 import { applyTheme, cycleTheme, themeMode } from './theme'
 
+const route = useRoute()
 const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } as const
 // 使用初始密码时只显示账号页，不显示导航（设计 17.4）
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
@@ -19,8 +21,8 @@ onUnmounted(stopPolling)
     <div class="inner">
       <RouterLink to="/" class="brand">VPS Monitor</RouterLink>
       <nav v-if="signedIn">
-        <RouterLink to="/" exact-active-class="active">总览</RouterLink>
-        <RouterLink to="/servers" active-class="active">节点</RouterLink>
+        <!-- 节点详情、编辑、安装命令也属于“节点” -->
+        <RouterLink to="/" :class="{ active: route.path === '/' || route.path.startsWith('/servers') }">节点</RouterLink>
         <RouterLink to="/logs" active-class="active">日志</RouterLink>
       </nav>
       <div class="tools">

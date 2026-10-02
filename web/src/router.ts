@@ -9,8 +9,9 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { title: '登录', public: true } },
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { title: '账号' } },
     { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
-    { path: '/', name: 'overview', component: () => import('./pages/OverviewPage.vue'), meta: { title: '总览' } },
-    { path: '/servers', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { title: '节点' } },
+    // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效
+    { path: '/', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { title: '节点' } },
+    { path: '/servers', redirect: (to) => ({ path: '/', query: to.query }) },
     { path: '/servers/new', name: 'server-new', component: () => import('./pages/ServerEditPage.vue'), meta: { title: '新建节点' } },
     { path: '/servers/:id(\\d+)', name: 'server', component: () => import('./pages/ServerDetailPage.vue'), props: true, meta: { title: '节点详情' } },
     { path: '/servers/:id(\\d+)/edit', name: 'server-edit', component: () => import('./pages/ServerEditPage.vue'), props: true, meta: { title: '编辑节点' } },
