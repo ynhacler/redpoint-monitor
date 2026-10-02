@@ -321,4 +321,48 @@ func TestBackfillIngest(t *testing.T) {
 	if at != now {
 		t.Errorf("实时状态应保留最新采集时间 %d，实际 %d", now, at)
 	}
+	post(now+1, 6000) // 旧报告不能回退计数基线，下一份只应增加 1000 字节
+	s.flush()
+	rx, _, _ = s.store.TrafficSince(1, time.Now().AddDate(0, 0, -1))
+	if rx != 5000 {
+		t.Errorf("乱序补发后流量应为 5000（不重复计算），实际 %d", rx)
+	}
+}
+
+// 数据库写入失败后，flush 必须保留批次供下一轮重试（设计 43.3.2）。
+func TestFlushRetriesFailedBatch(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("retry", 0, 1)
+	now := time.Now().Unix()
+	body := []byte(fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"network":[{"interface":"eth0","rx_bytes":1000,"tx_bytes":0}]}`, now))
+	if rec := do(h, "POST", "/api/v1/agent/report", tok, body); rec.Code != 204 {
+		t.Fatalf("上报失败：%d", rec.Code)
+	}
+	if _, err := s.store.DB.Exec(`CREATE TRIGGER fail_metrics BEFORE INSERT ON metrics_raw BEGIN SELECT RAISE(FAIL, 'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	s.flush()
+	s.mu.Lock()
+	queued := len(s.pending)
+	s.mu.Unlock()
+	if queued != 1 {
+		t.Fatalf("数据库写入失败后应保留批次，队列长度=%d", queued)
+	}
+	if _, err := s.store.DB.Exec(`DROP TRIGGER fail_metrics`); err != nil {
+		t.Fatal(err)
+	}
+	s.flush()
+	s.mu.Lock()
+	queued = len(s.pending)
+	s.mu.Unlock()
+	if queued != 0 {
+		t.Errorf("重试成功后队列应清空，队列长度=%d", queued)
+	}
+	var n int
+	if err := s.store.DB.QueryRow(`SELECT COUNT(*) FROM metrics_raw WHERE server_id = 1 AND ts = ?`, now).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("重试后应持久化一条指标，实际 %d", n)
+	}
 }

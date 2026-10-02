@@ -256,7 +256,9 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if snap := s.latest[sid]; snap == nil || !at.Before(snap.At) {
+	snap := s.latest[sid]
+	stale := snap != nil && at.Before(snap.At)
+	if !stale {
 		s.latest[sid] = &snapshot{ReceivedAt: now, At: at, Report: rep}
 	} else {
 		snap.ReceivedAt = now
@@ -266,7 +268,11 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 		s.counters[sid] = map[string]*Counter{}
 	}
 	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}}
+	// 乱序补发仍写入历史指标，但不能回退累计计数基线，否则后续上报会重复计费。
 	for _, ni := range rep.Network {
+		if stale {
+			break
+		}
 		cur := Counter{BootID: rep.System.BootID, IfIndex: ni.IfIndex, Rx: ni.RxBytes, Tx: ni.TxBytes}
 		drx, dtx, reset := ComputeDelta(s.counters[sid][ni.Interface], cur)
 		if reset {
@@ -304,6 +310,15 @@ func (s *Server) flush() {
 	if len(batch) == 0 {
 		return
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			// 写库失败时保留原批次，并排在并发到达的新上报之前，确保计数与指标按序落盘。
+			s.mu.Lock()
+			s.pending = append(batch, s.pending...)
+			s.mu.Unlock()
+		}
+	}()
 	tx, err := s.store.DB.Begin()
 	if err != nil {
 		s.log.Error("flush begin failed", "component", "store", "err", err)
@@ -363,7 +378,9 @@ func (s *Server) flush() {
 	}
 	if err := tx.Commit(); err != nil {
 		s.log.Error("flush commit failed", "component", "store", "err", err)
+		return
 	}
+	committed = true
 }
 
 // runTask 运行后台任务：捕获 panic 并记录堆栈，按 1 秒、2 秒、4 秒…最长 1 分钟的间隔自动重启（设计 43.3.1）。
