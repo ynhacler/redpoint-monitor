@@ -3,10 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"strconv"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -77,7 +78,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 // Run starts background loops and the HTTP server; blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context, listen string) error {
 	go s.flushLoop(ctx)
-	go s.retentionLoop(ctx)
+	go s.runTask(ctx, "maintenance", s.maintenance)
 
 	srv := &http.Server{
 		Addr:              listen,
@@ -151,7 +152,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
-	handle("GET /api/v1/servers/{id}/metrics", accessAdmin, s.handleMetrics)
+	handle("GET /api/v1/servers/{id}/metrics/history", accessAdmin, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
 	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
@@ -331,20 +332,60 @@ func (s *Server) flush() {
 	}
 }
 
-// retentionLoop deletes expired raw points.
-// TODO(A3): 删除前先降采样到 metrics_1m / 5m / 1h（设计 21）。
-func (s *Server) retentionLoop(ctx context.Context) {
-	t := time.NewTicker(10 * time.Minute)
-	defer t.Stop()
+// runTask 运行后台任务：捕获 panic 并记录堆栈，按 1 秒、2 秒、4 秒…最长 1 分钟的间隔自动重启（设计 43.3.1）。
+// 任务正常返回（ctx 取消）时结束。TODO(A5): 连续失败时触发面板自身告警（设计 16.1）。
+func (s *Server) runTask(ctx context.Context, name string, fn func(context.Context)) {
+	backoff := time.Second
 	for {
+		done := func() (finished bool) {
+			defer func() {
+				if v := recover(); v != nil {
+					s.log.Error("background task panicked", "component", "task", "task", name,
+						"panic", v, "stack", string(debug.Stack()))
+				}
+			}()
+			fn(ctx)
+			return true
+		}()
+		if done || ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, time.Minute)
+	}
+}
+
+// maintenance 每分钟逐级降采样；每 10 分钟清理过期数据；每小时归还磁盘空间（设计 21）。
+func (s *Server) maintenance(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for tick := 0; ; tick++ {
+		now := time.Now()
+		if n, err := s.store.Downsample(now); err != nil {
+			s.log.Error("downsample failed", "component", "store", "err", err)
+		} else {
+			s.log.Debug("downsampled", "component", "store", "1m", n["metrics_1m"], "5m", n["metrics_5m"], "1h", n["metrics_1h"])
+		}
+		if tick%10 == 0 {
+			if n, err := s.store.PruneExpired(now); err != nil {
+				s.log.Error("retention failed", "component", "store", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired metrics deleted", "component", "store", "rows", n)
+			}
+		}
+		if tick%60 == 0 {
+			if err := s.store.Vacuum(); err != nil {
+				s.log.Error("incremental vacuum failed", "component", "store", "err", err)
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			cutoff := time.Now().Add(-rawRetention).Unix()
-			if _, err := s.store.DB.Exec(`DELETE FROM metrics_raw WHERE ts < ?`, cutoff); err != nil {
-				s.log.Error("retention failed", "component", "store", "err", err)
-			}
 		}
 	}
 }
@@ -417,23 +458,57 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 	return v, nil
 }
 
-// handleMetrics：GET /api/v1/servers/{id}/metrics?range=1h，admin 认证。range 非法时按 1 小时处理。
-func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+// historyRanges：可选的时间范围与对应的粒度表，点数都在 2200 以内，便于图表直接绘制（设计 19.7、41.5）。
+var historyRanges = map[string]struct {
+	d     time.Duration
+	table string
+	step  int64
+}{
+	"1h":  {time.Hour, "metrics_raw", 10},
+	"6h":  {6 * time.Hour, "metrics_raw", 10},
+	"24h": {24 * time.Hour, "metrics_1m", 60},
+	"7d":  {7 * 24 * time.Hour, "metrics_5m", 300},
+	"30d": {30 * 24 * time.Hour, "metrics_1h", 3600},
+}
+
+// historyView 是历史指标响应：{"range", "resolution", "items"}（列表格式见设计 19.0.2）。
+type historyView struct {
+	Range      string        `json:"range"`
+	Resolution int64         `json:"resolution"` // 点的间隔，秒
+	Items      []MetricPoint `json:"items"`
+}
+
+// handleHistory：GET /api/v1/servers/{id}/metrics/history?range=1h，admin（设计 19.7）。
+// range 为 1h / 6h / 24h / 7d / 30d，默认 1h；其他值返回 422。
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
 	if err != nil {
-		s.writeError(w, r, errorf(CodeBadRequest, "节点编号格式不正确"))
+		s.writeError(w, r, err)
 		return
 	}
-	rng, err := time.ParseDuration(r.URL.Query().Get("range"))
-	if err != nil || rng <= 0 || rng > rawRetention {
-		rng = time.Hour
+	name := r.URL.Query().Get("range")
+	if name == "" {
+		name = "1h"
 	}
-	pts, err := s.store.Metrics(id, time.Now().Add(-rng))
+	rg, ok := historyRanges[name]
+	if !ok {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed,
+			Details: []FieldError{{Field: "range", Message: "时间范围只能是 1h、6h、24h、7d 或 30d"}}})
+		return
+	}
+	if _, err := s.store.GetServer(id); errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	} else if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	pts, err := s.store.MetricsHistory(id, rg.table, time.Now().Add(-rg.d))
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, pts)
+	writeJSON(w, historyView{Range: name, Resolution: rg.step, Items: pts})
 }
 
 func (s *Server) webHandler() http.Handler {
