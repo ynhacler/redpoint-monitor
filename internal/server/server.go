@@ -28,6 +28,8 @@ type Options struct {
 	Logger    *slog.Logger // 为 nil 时使用 slog.Default()
 	Version   string       // 由 git describe 注入，/healthz 与启动日志中显示（设计 40.3.2）
 	PublicURL string       // 面板对外地址，写进安装命令；为空时由请求推断（设计 27.3.1）
+	// NoLoginCaptcha 关闭登录滑动验证码（默认开启，设计 17.4）；仅用于需要脚本登录的场景
+	NoLoginCaptcha bool
 }
 
 type Server struct {
@@ -39,6 +41,7 @@ type Server struct {
 	publicURL   string
 	enrollLimit *enrollLimiter
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
+	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
 	routeTable  []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
@@ -77,7 +80,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c}, nil
+		latest: map[int64]*snapshot{}, counters: c, captcha: captchaFor(opts)}, nil
 }
 
 // Run starts background loops and the HTTP server; blocks until ctx is cancelled.
@@ -121,6 +124,13 @@ type routeSpec struct {
 	access  access
 }
 
+func captchaFor(o Options) *captchaStore {
+	if o.NoLoginCaptcha {
+		return nil
+	}
+	return newCaptchaStore()
+}
+
 // routes 注册全部路由，外层统一套上 middleware（request_id、panic 恢复、请求日志）。
 //
 // 【安全】默认拒绝（设计 17.5）：路由只能通过 handle 注册，且必须声明允许的主体；
@@ -147,6 +157,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /healthz", accessPublic, s.handleHealthz)
 
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
+	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
 	handle("GET /api/v1/auth/me", accessAdmin, s.handleMe)
 	handle("POST /api/v1/auth/logout", accessAdmin, s.handleLogout)

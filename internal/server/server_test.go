@@ -31,7 +31,8 @@ func testServer(t *testing.T) (*Server, http.Handler, *bytes.Buffer) {
 		t.Fatal(err)
 	}
 	web := fstest.MapFS{"index.html": {Data: []byte("<html>spa</html>")}}
-	s, err := New(st, web, Options{Logger: log, Version: "v-test"})
+	// 关闭验证码，其他测试直接登录；验证码在 captcha_test.go 中单独测试
+	s, err := New(st, web, Options{Logger: log, Version: "v-test", NoLoginCaptcha: true})
 	if err != nil {
 		t.Fatal(err)
 	}

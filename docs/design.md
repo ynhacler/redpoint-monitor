@@ -333,6 +333,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 24 | 登录增加自建滑动拼图验证码（服务端校验位置与拖动用时，一次性，可用 --no-login-captcha 关闭）；接口 /auth/captcha；错误码 captcha_failed | 17.4、19.1、43.4 |
 | 23 | Web 登录改为会话 Cookie + CSRF（8.2 与 17.1、17.4、19.0.2 统一，Web 不使用 Access / Refresh Token）；19.1 去掉 /auth/refresh，增加 /auth/password、/auth/reauth；错误码目录增加 password_change_required、reauth_required | 8.2、19.1、43.4 |
 | 22 | 24.7 脱敏示例与正文统一为“只保留前缀与末 4 位”（agt_…r5sx） | 24.7 |
 | 21 | 统一前后矛盾的示例：19.11 的安装命令改为与 27.3.1 一致的“下载 → 校验 → 执行”；27.9 的 Ansible 示例改为按版本下载并校验哈希，取消管道执行；27.6.2 的注册失败响应改为 43.4 的统一错误格式（enroll_code_invalid）；注册码过期时间统一为 Unix 秒；新增 scripts/check_design_refs.py | 19.11、27.6.2、27.9、39.5.3、40.9.3 |
@@ -4514,6 +4515,9 @@ App 可执行静音与维护（低风险操作，设计 8.4.1）
 ```text
 密码：Argon2id 存储；最少 12 位；首次登录强制修改初始化密码
 登录限流：同一 IP 每分钟 5 次失败后锁定 15 分钟；失败记录写入审计日志
+登录验证码：自建滑动拼图，服务端生成图片并保存正确位置，校验位置误差（≤ 6 像素）与拖动用时（≥ 300 毫秒），
+  一次性、2 分钟有效；不接入第三方验证码服务（设计 1.8）。只增加脚本尝试的成本，不替代登录限流；
+  需要脚本登录时可用 --no-login-captcha 关闭
 会话：HttpOnly、Secure、SameSite=Strict Cookie；修改密码后其他会话全部失效
 CSRF：所有修改类请求校验 CSRF Token
 敏感操作二次确认：删除节点、吊销全部设备、下载备份、关闭注册接口、修改通知渠道
@@ -5049,7 +5053,8 @@ WebSocket /ws：实时状态与事件推送（第 20 章），消息同样在契
 Web 管理端继续使用用户名/密码认证：
 
 ```http
-POST /api/v1/auth/login       用户名 + 密码，写入会话 Cookie（设计 8.2）
+GET  /api/v1/auth/captcha     获取登录滑动验证码（设计 17.4）
+POST /api/v1/auth/login       用户名 + 密码 + 验证码结果，写入会话 Cookie（设计 8.2）
 POST /api/v1/auth/logout
 GET  /api/v1/auth/me          当前账号与 CSRF Token
 POST /api/v1/auth/password    修改密码，其他会话失效
@@ -9211,6 +9216,7 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | internal | 500 | 服务器内部错误（编号 r_8f2c1a） |
 | password_change_required | 403 | 请先修改初始密码 |
 | reauth_required | 403 | 请重新输入密码以确认此操作 |
+| captcha_failed | 400 | 滑块验证未通过，请重试 |
 
 ---
 

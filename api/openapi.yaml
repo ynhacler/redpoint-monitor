@@ -24,6 +24,30 @@ tags:
     description: 节点与安装（设计 19.5、19.11）
 
 paths:
+  /auth/captcha:
+    get:
+      tags: [auth]
+      summary: 获取登录滑动验证码（设计 17.4）
+      description: 一次性、2 分钟有效；正确位置只在服务端。面板以 --no-login-captcha 启动时返回 404。与登录共用 IP 限流。
+      security: []
+      responses:
+        '200':
+          description: 验证码图片
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, background, piece, piece_y, width, height, piece_size]
+                properties:
+                  id: { type: string }
+                  background: { type: string, description: 'data:image/png;base64,…（带缺口）' }
+                  piece: { type: string, description: 拼图块 PNG }
+                  piece_y: { type: integer }
+                  width: { type: integer }
+                  height: { type: integer }
+                  piece_size: { type: integer }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /auth/login:
     post:
       tags: [auth]
@@ -41,6 +65,9 @@ paths:
                 username: { type: string }
                 password: { type: string }
                 remember: { type: boolean, description: 为 true 时 Cookie 保存 7 天，否则为会话 Cookie }
+                captcha_id: { type: string }
+                captcha_x: { type: number, description: 拼图块左边缘位置，像素 }
+                captcha_ms: { type: integer, description: 拖动用时，毫秒 }
       responses:
         '200':
           description: 已登录；响应头 Set-Cookie 写入 vpsmon_session（HttpOnly、SameSite=Strict，HTTPS 下 Secure）
@@ -358,7 +385,7 @@ components:
       description: 稳定的错误码，一经发布不再改名（设计 43.4）
       enum: [validation_failed, bad_request, unauthorized, token_revoked, forbidden, not_found, conflict,
              payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal,
-             password_change_required, reauth_required]
+             password_change_required, reauth_required, captcha_failed]
 
     Error:
       type: object

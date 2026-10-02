@@ -32,6 +32,7 @@ const (
 	// 以下两个在设计 43.4 的表格之外补充（修订记录第 23 条）
 	CodePasswordChangeRequired Code = "password_change_required"
 	CodeReauthRequired         Code = "reauth_required"
+	CodeCaptchaFailed          Code = "captcha_failed" // 修订记录第 24 条
 )
 
 // codeInfo 是每个错误码对应的 HTTP 状态与默认中文提示。
@@ -54,6 +55,7 @@ var codeInfo = map[Code]struct {
 	CodeInternal:               {http.StatusInternalServerError, "服务器内部错误"},
 	CodePasswordChangeRequired: {http.StatusForbidden, "请先修改初始密码"},
 	CodeReauthRequired:         {http.StatusForbidden, "请重新输入密码以确认此操作"},
+	CodeCaptchaFailed:          {http.StatusBadRequest, "滑块验证未通过，请重试"},
 }
 
 // FieldError 是表单字段级错误，放在响应的 details 中，Web 在对应字段下显示（设计 43.6）。

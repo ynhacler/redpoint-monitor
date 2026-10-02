@@ -285,9 +285,35 @@ export interface Me {
   csrf_token: string
 }
 
-/** 登录。失败时抛出 ApiError（401 用户名或密码错误、429 失败过多）。 */
-export async function login(username: string, password: string, remember: boolean): Promise<Me> {
-  const me = await request<Me>('POST', '/auth/login', { username, password, remember })
+/** 登录滑动验证码（设计 17.4）：背景（带缺口）与拼图块图片，正确位置只在服务端 */
+export interface Captcha {
+  id: string
+  background: string
+  piece: string
+  piece_y: number
+  width: number
+  height: number
+  piece_size: number
+}
+
+/** 滑块结果：拼图块左边缘位置（图片像素）与拖动用时 */
+export interface CaptchaAnswer {
+  id: string
+  x: number
+  ms: number
+}
+
+/** 获取一次登录验证码；每次登录尝试后都需重新获取（一次性）。 */
+export function getCaptcha(): Promise<Captcha> {
+  return request('GET', '/auth/captcha')
+}
+
+/** 登录。失败时抛出 ApiError（401 用户名或密码错误、400 验证码未通过、429 失败过多）。 */
+export async function login(username: string, password: string, remember: boolean, captcha?: CaptchaAnswer): Promise<Me> {
+  const me = await request<Me>('POST', '/auth/login', {
+    username, password, remember,
+    captcha_id: captcha?.id ?? '', captcha_x: captcha?.x ?? 0, captcha_ms: captcha?.ms ?? 0,
+  })
   setCsrf(me.csrf_token)
   return me
 }

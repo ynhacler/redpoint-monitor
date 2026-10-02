@@ -3,7 +3,8 @@
 // 登录成功后回到原来要访问的页面；使用初始密码时先去修改密码（设计 17.4）。
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError } from '../api'
+import { ApiError, type CaptchaAnswer } from '../api'
+import SliderCaptcha from '../components/SliderCaptcha.vue'
 import { login, state } from '../store'
 
 const route = useRoute()
@@ -13,16 +14,24 @@ const password = ref('')
 const remember = ref(false)
 const error = ref('')
 const busy = ref(false)
+// 滑动验证码（设计 17.4）：完成后才能登录；每次登录尝试后重新获取（一次性）
+const captchaOn = ref(true)
+const answer = ref<CaptchaAnswer>()
+const captchaRef = ref<InstanceType<typeof SliderCaptcha>>()
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
     error.value = '请输入用户名和密码'
     return
   }
+  if (captchaOn.value && !answer.value) {
+    error.value = '请先拖动滑块完成验证'
+    return
+  }
   busy.value = true
   error.value = ''
   try {
-    await login(username.value.trim(), password.value, remember.value)
+    await login(username.value.trim(), password.value, remember.value, answer.value)
     password.value = ''
     if (state.me?.must_change_password) {
       router.replace({ name: 'account' })
@@ -35,6 +44,8 @@ async function submit() {
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : '登录失败'
     password.value = ''
+    answer.value = undefined
+    captchaRef.value?.reload()
   } finally {
     busy.value = false
   }
@@ -57,6 +68,7 @@ async function submit() {
         <input v-model="remember" type="checkbox" />
         记住登录（7 天）
       </label>
+      <SliderCaptcha v-if="captchaOn" ref="captchaRef" @done="(a) => (answer = a)" @disabled="captchaOn = false" />
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
       <button type="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
       <p class="small muted hint">忘记密码：在面板主机上执行 <code>vpsmon-server admin reset-password</code></p>
