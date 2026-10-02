@@ -13,11 +13,12 @@ import (
 // Counters grow monotonically so the server's traffic logic is exercised realistically.
 type fake struct {
 	start  time.Time
-	bootID string
-	rx, tx uint64
+	bootID string // new per process start, so restarting the fake agent looks like a reboot
+	rx, tx uint64 // cumulative counters, like /proc/net/dev
 	last   time.Time
 }
 
+// NewFake returns a collector with synthetic data (used by --fake and on non-Linux).
 func NewFake() Collector {
 	return &fake{start: time.Now(), bootID: "fake-boot-" + time.Now().Format("150405"), last: time.Now()}
 }
@@ -31,6 +32,8 @@ func (f *fake) Collect() (protocol.Report, error) {
 	f.last = now
 	t := now.Sub(f.start).Seconds()
 
+	// Slow sine waves plus a little noise: values move visibly in the UI every few seconds
+	// without jumping around randomly. Speeds stay positive, so counters only grow.
 	rxSpeed := uint64(2_000_000 + 1_500_000*math.Sin(t/30) + rand.Float64()*300_000)
 	txSpeed := uint64(400_000 + 300_000*math.Cos(t/45) + rand.Float64()*100_000)
 	f.rx += uint64(float64(rxSpeed) * dt)

@@ -8,9 +8,12 @@ import (
 	"strings"
 )
 
+// cpuTimes is a snapshot of cumulative CPU jiffies since boot (all cores summed).
 type cpuTimes struct{ idle, total uint64 }
 
-// parseProcStat reads the aggregate "cpu" line of /proc/stat.
+// parseProcStat reads the aggregate "cpu" line of /proc/stat and counts the per-core
+// "cpuN" lines. Counting lines reflects the cores this VPS actually has online, unlike
+// runtime.NumCPU which can be limited by the agent's own cgroup/affinity.
 func parseProcStat(s string) (cpuTimes, int) {
 	var t cpuTimes
 	cores := 0
@@ -28,6 +31,8 @@ func parseProcStat(s string) (cpuTimes, int) {
 					break
 				}
 				t.total += n
+				// iowait counts as idle: the CPU is free, just waiting on disk. Steal (i == 7)
+				// stays busy so an oversold host shows up as high usage.
 				if i == 3 || i == 4 { // idle + iowait
 					t.idle += n
 				}
@@ -39,6 +44,8 @@ func parseProcStat(s string) (cpuTimes, int) {
 	return t, cores
 }
 
+// cpuUsage returns the busy percentage between two samples. It returns 0 for the first
+// sample (no prev) and when counters went backwards, instead of a nonsense value.
 func cpuUsage(prev, cur cpuTimes) float64 {
 	dt := cur.total - prev.total
 	if prev.total == 0 || dt == 0 || cur.total < prev.total {
@@ -62,6 +69,8 @@ func parseMeminfo(s string) map[string]uint64 {
 			continue
 		}
 		n, _ := strconv.ParseUint(f[0], 10, 64)
+		// The kernel writes "kB" but means KiB (1024). Lines without a unit
+		// (e.g. HugePages_Total) are plain counts.
 		if len(f) > 1 && f[1] == "kB" {
 			n *= 1024
 		}
@@ -81,6 +90,8 @@ func parseNetDev(s string) map[string]netCounters {
 		if !ok {
 			continue // header lines
 		}
+		// 8 receive fields then 8 transmit fields, each group starting with bytes,
+		// so RX bytes is f[0] and TX bytes is f[8].
 		f := strings.Fields(rest)
 		if len(f) < 9 {
 			continue
@@ -98,6 +109,8 @@ func parseDefaultRouteIfaces(s string) []string {
 	seen := map[string]bool{}
 	sc := bufio.NewScanner(strings.NewReader(s))
 	for sc.Scan() {
+		// Columns: Iface Destination(hex) Gateway ... ; destination 0.0.0.0 is the default route.
+		// Multiple entries per interface are possible (metrics), hence the dedupe.
 		f := strings.Fields(sc.Text())
 		if len(f) >= 2 && f[1] == "00000000" && !seen[f[0]] {
 			seen[f[0]] = true
@@ -117,6 +130,7 @@ func parseDefaultRoute6Ifaces(s string) []string {
 		// dest(32 hex) dest_prefix_len ... iface(last)
 		if len(f) >= 10 && f[0] == strings.Repeat("0", 32) && f[1] == "00" {
 			name := f[len(f)-1]
+			// The kernel lists an unreachable ::/0 route on lo; it carries no real traffic.
 			if name != "lo" && !seen[name] {
 				seen[name] = true
 				out = append(out, name)
@@ -126,7 +140,8 @@ func parseDefaultRoute6Ifaces(s string) []string {
 	return out
 }
 
-// parseOSRelease returns ID and VERSION_ID from /etc/os-release.
+// parseOSRelease returns ID and VERSION_ID from /etc/os-release (e.g. "ubuntu", "24.04").
+// ID is machine-friendly and stable, unlike PRETTY_NAME; the UI formats it.
 func parseOSRelease(s string) (id, version string) {
 	sc := bufio.NewScanner(strings.NewReader(s))
 	for sc.Scan() {
