@@ -49,13 +49,15 @@ type Server struct {
 }
 
 type snapshot struct {
-	ReceivedAt time.Time
-	Report     protocol.Report
+	ReceivedAt time.Time       // 最近一次收到上报的时间，决定在线状态（设计 22）
+	At         time.Time       // Report 的采集时间
+	Report     protocol.Report // 采集时间最新的一份上报
 }
 
 type pendingWrite struct {
 	serverID int64
-	at       time.Time
+	at       time.Time // 指标点时间：Agent 的采集时间（补发的缓存数据）或收到时间
+	seen     time.Time // 收到时间，写入 last_seen_at
 	rep      protocol.Report
 	rx, tx   uint64 // traffic delta to add to today's bucket
 	counters map[string]Counter
@@ -228,20 +230,58 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
 		return
 	}
-	s.ingest(sid, rep, time.Now())
+	now := time.Now()
+	at, skewed := pointTime(rep, now)
+	if skewed {
+		// TODO(A5): 时钟偏差超过 60 秒时产生 Agent 异常提示（设计 16.1、43.5）
+		s.log.Warn("agent clock ahead of server", "component", "agent-api", "server_id", sid,
+			"skew_s", rep.Timestamp-now.Unix())
+	}
+	s.ingest(sid, rep, at, now)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) ingest(sid int64, rep protocol.Report, now time.Time) {
+const (
+	maxBackfill = time.Hour        // 接受补发的最早时间：Agent 断网缓存最多保留 30 分钟，留出余量
+	maxSkew     = 60 * time.Second // Agent 时钟超前超过此值视为时钟偏差（设计 43.5）
+)
+
+// pointTime 决定指标点的时间（设计 1.6.14 时间戳校验）。
+//
+// Agent 断网恢复后会补发缓存的上报，必须按采集时间入库，否则历史曲线会把这段数据堆在“现在”。
+// 采集时间在 [now-1h, now+60s] 内时采用；更早的视为异常，使用收到时间；超前过多说明 Agent 时钟偏差，
+// 也使用收到时间，并返回 skewed=true。旧版 Agent 的 timestamp 就是发送时间，行为不变。
+func pointTime(rep protocol.Report, now time.Time) (at time.Time, skewed bool) {
+	if rep.Timestamp == 0 {
+		return now, false
+	}
+	t := time.Unix(rep.Timestamp, 0)
+	switch {
+	case t.After(now.Add(maxSkew)):
+		return now, true
+	case t.Before(now.Add(-maxBackfill)):
+		return now, false
+	}
+	return t, false
+}
+
+// ingest 把一份上报写入内存状态并排队等待批量写库。at 为指标点时间，now 为收到时间。
+// 补发的旧数据不会覆盖更新的实时状态；同一时间点重复上报在写库时覆盖（主键去重），
+// 流量增量为 0，不会重复计算。
+func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.latest[sid] = &snapshot{ReceivedAt: now, Report: rep}
+	if snap := s.latest[sid]; snap == nil || !at.Before(snap.At) {
+		s.latest[sid] = &snapshot{ReceivedAt: now, At: at, Report: rep}
+	} else {
+		snap.ReceivedAt = now
+	}
 
 	if s.counters[sid] == nil {
 		s.counters[sid] = map[string]*Counter{}
 	}
-	pw := pendingWrite{serverID: sid, at: now, rep: rep, counters: map[string]Counter{}}
+	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}}
 	for _, ni := range rep.Network {
 		cur := Counter{BootID: rep.System.BootID, IfIndex: ni.IfIndex, Rx: ni.RxBytes, Tx: ni.TxBytes}
 		drx, dtx, reset := ComputeDelta(s.counters[sid][ni.Interface], cur)
@@ -322,7 +362,7 @@ func (s *Server) flush() {
 				return
 			}
 		}
-		if _, err := tx.Exec(`UPDATE servers SET last_seen_at = ? WHERE id = ?`, p.at.Unix(), p.serverID); err != nil {
+		if _, err := tx.Exec(`UPDATE servers SET last_seen_at = MAX(last_seen_at, ?) WHERE id = ?`, p.seen.Unix(), p.serverID); err != nil {
 			s.log.Error("flush last_seen failed", "component", "store", "err", err)
 			return
 		}

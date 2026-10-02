@@ -16,9 +16,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,6 +30,7 @@ import (
 	"time"
 
 	"vpsmon/internal/agent/collector"
+	"vpsmon/internal/agent/report"
 	"vpsmon/internal/agent/setup"
 	"vpsmon/internal/protocol"
 )
@@ -130,14 +129,12 @@ func run() {
 		col = collector.New(opts)
 	}
 
-	r := &reporter{
-		endpoint: strings.TrimRight(*server, "/") + "/api/v1/agent/report",
-		server:   *server,
-		stateDir: *stateDir,
-		token:    tok,
+	r := &report.Reporter{
+		Endpoint: strings.TrimRight(*server, "/") + "/api/v1/agent/report",
+		Token:    tok,
 		// 【安全】使用默认 Transport：系统 CA、始终校验证书（设计 23.1）。
 		// 10 秒超时：面板卡住时不让上报循环一直阻塞。
-		client: &http.Client{Timeout: 10 * time.Second},
+		Client: &http.Client{Timeout: 10 * time.Second},
 	}
 	// 【安全】只记录上报地址，不记录 Token（设计 24.7）。
 	log.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
@@ -150,22 +147,65 @@ func run() {
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	tick := time.NewTicker(*interval)
 	defer tick.Stop()
+	// retry：上报失败后按退避时间（1 秒起）重试，不必等到下一个采集周期（设计 43.5）
+	retry := time.NewTimer(time.Hour)
+	retry.Stop()
 
-	// 上报在定时器内同步执行：面板变慢时推迟下一次上报，而不是堆积并发请求（延迟受 http.Client 超时约束）。
+	writeStatus := func() {
+		st := r.Status()
+		setup.WriteStatus(*stateDir, setup.Status{Version: version, Server: *server, LastAttempt: st.LastAttempt,
+			LastSuccess: st.LastSuccess, LastError: st.LastError, Queued: st.Queued})
+	}
+	// flush 发送缓存的上报，并按需要安排下一次重试
+	flush := func(ctx context.Context, force bool) {
+		r.Flush(ctx, force)
+		writeStatus() // 供 vpsmon-agent status 显示最近一次上报（设计 24.5）
+		if next := r.NextAttempt(); !next.IsZero() {
+			retry.Reset(time.Until(next))
+		}
+	}
+
+	// 上报同步执行：面板变慢时推迟下一次，而不是堆积并发请求（延迟受 http.Client 超时约束）。
 	for {
 		select {
 		case <-tick.C:
-			r.send(context.Background(), col, false)
+			if rep, ok := collect(col, false); ok {
+				r.Enqueue(rep)
+			}
+			flush(context.Background(), false)
+		case <-retry.C:
+			flush(context.Background(), false)
 		case <-sig:
-			// 退出前补报，避免最后一个周期到停止之间的流量丢失（设计 5.5）。
+			// 退出前补报，避免最后一个周期到停止之间的流量丢失（设计 5.5）。忽略退避，立即尝试。
 			// 2 秒超时：停止过久会被 systemd 强制 SIGKILL（单元中 TimeoutStopSec=5）。
+			if rep, ok := collect(col, true); ok {
+				r.Enqueue(rep)
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			r.send(ctx, col, true)
+			flush(ctx, true)
 			cancel()
-			log.Println("stopped")
+			if q := r.Status().Queued; q > 0 {
+				log.Printf("stopped with %d unsent reports (traffic counters are cumulative and will catch up)", q)
+			} else {
+				log.Println("stopped")
+			}
 			return
 		}
 	}
+}
+
+// collect 采集一份上报并填写时间戳与版本。采集失败只记录，不影响下一个周期。
+// Timestamp 是采集时间：断网后补发时，面板按它把数据放回正确的位置（设计 1.6.14）。
+func collect(col collector.Collector, final bool) (protocol.Report, bool) {
+	rep, err := col.Collect()
+	if err != nil {
+		log.Printf("collect: %v", err)
+		return rep, false
+	}
+	rep.Timestamp = time.Now().Unix()
+	rep.AgentVersion = version
+	rep.Final = final
+	return rep, true
 }
 
 // loadToken 按优先级读取 Agent Token：--token、--token-file、环境变量 MONITOR_AGENT_TOKEN。
@@ -187,60 +227,4 @@ func loadToken(flagTok, file string) (string, error) {
 		return os.Getenv("MONITOR_AGENT_TOKEN"), nil
 	}
 	return "", errors.New("no agent token: use --token-file or MONITOR_AGENT_TOKEN")
-}
-
-// reporter 负责向面板推送上报。
-//
-// 【安全】只推不拉：忽略响应体，面板返回的任何内容都不能让 Agent 执行动作（设计 1.6.8）。
-type reporter struct {
-	endpoint string
-	server   string
-	stateDir string // 每次上报后写 status.json；为空时不写
-	token    string
-	client   *http.Client
-	status   setup.Status
-}
-
-// send 采集一次并上报。错误只记录不退出：面板故障不能导致 Agent 退出，下个周期照常上报。
-func (r *reporter) send(ctx context.Context, col collector.Collector, final bool) {
-	rep, err := col.Collect()
-	if err != nil {
-		log.Printf("collect: %v", err)
-		return
-	}
-	rep.Timestamp = time.Now().Unix()
-	rep.AgentVersion = version
-	rep.Final = final
-	r.status.Version, r.status.Server, r.status.LastAttempt = version, r.server, rep.Timestamp
-	if err := r.post(ctx, rep); err != nil {
-		// TODO(A3): 有上限的内存重试缓冲 + 指数退避（设计 1.6.14、43.5）。
-		// 网卡计数是累计值，断网期间流量不会丢，丢的只是这段时间的指标点。
-		log.Printf("report: %v", err)
-		r.status.LastError = err.Error()
-	} else {
-		r.status.LastSuccess, r.status.LastError = rep.Timestamp, ""
-	}
-	setup.WriteStatus(r.stateDir, r.status) // 供 vpsmon-agent status 显示最近一次上报（设计 24.5）
-}
-
-// post 发送一次上报，非 2xx 状态视为失败。
-func (r *reporter) post(ctx context.Context, rep protocol.Report) error {
-	body, _ := json.Marshal(rep)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+r.token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	// 只看状态码。目前 401（Token 被吊销或填错）也会在下个周期继续重试；
-	// TODO(A3): 按设计 43.5，401 时停止上报并每小时记录一次 ERROR。
-	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("server returned %s", resp.Status)
-	}
-	return nil
 }

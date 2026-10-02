@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"vpsmon/internal/logging"
+	"vpsmon/internal/protocol"
 )
 
 // testServer 创建一个使用临时数据库与内存日志的面板，返回 Server、路由与日志缓冲。
@@ -254,5 +257,64 @@ func TestAsAPIError(t *testing.T) {
 	wrapped := errors.Join(errors.New("ctx"), errorf(CodeConflict, ""))
 	if !isAPIError(asAPIError(wrapped), CodeConflict) {
 		t.Error("被包装的具名错误应保留原错误码（%w 包装，设计 43.3.1）")
+	}
+}
+
+func TestPointTime(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	cases := []struct {
+		name   string
+		ts     int64
+		want   int64
+		skewed bool
+	}{
+		{"旧版 Agent 没有时间戳", 0, now.Unix(), false},
+		{"正常上报", now.Unix() - 1, now.Unix() - 1, false},
+		{"断网后补发 20 分钟前的数据（设计 1.6.14）", now.Unix() - 1200, now.Unix() - 1200, false},
+		{"超过 1 小时的旧数据视为异常，用收到时间", now.Unix() - 7200, now.Unix(), false},
+		{"Agent 时钟超前 2 分钟（设计 43.5）", now.Unix() + 120, now.Unix(), true},
+		{"超前 30 秒在容忍范围内", now.Unix() + 30, now.Unix() + 30, false},
+	}
+	for _, c := range cases {
+		at, skewed := pointTime(protocol.Report{Timestamp: c.ts}, now)
+		if at.Unix() != c.want || skewed != c.skewed {
+			t.Errorf("%s：%d skewed=%v，应为 %d skewed=%v", c.name, at.Unix(), skewed, c.want, c.skewed)
+		}
+	}
+}
+
+// 补发的旧数据按采集时间入库，且不覆盖更新的实时状态；重复上报不重复计流量。
+func TestBackfillIngest(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("bf", 0, 1)
+	post := func(ts int64, rx uint64) {
+		body := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"cpu":{"usage":%d},"network":[{"interface":"eth0","rx_bytes":%d,"tx_bytes":0}]}`, ts, ts%100, rx)
+		if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(body)); rec.Code != 204 {
+			t.Fatalf("上报失败：%d", rec.Code)
+		}
+	}
+	now := time.Now().Unix()
+	post(now-600, 1000) // 断网期间缓存的数据，恢复后按顺序补发
+	post(now-590, 2000)
+	post(now, 5000)
+	post(now, 5000) // Agent 以为失败而重发的同一份
+	s.flush()
+
+	var n int
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM metrics_raw WHERE ts IN (?, ?, ?)`, now-600, now-590, now).Scan(&n)
+	if n != 3 {
+		t.Errorf("补发的点应按采集时间入库，重复的一份去重：%d 行", n)
+	}
+	rx, _, _ := s.store.TrafficSince(1, time.Now().AddDate(0, 0, -1))
+	if rx != 4000 {
+		t.Errorf("流量增量应为 4000（首次只建基线，重复上报增量为 0），实际 %d", rx)
+	}
+
+	post(now-300, 3000) // 更旧的补发数据晚到：不能覆盖实时状态
+	s.mu.Lock()
+	at := s.latest[1].At.Unix()
+	s.mu.Unlock()
+	if at != now {
+		t.Errorf("实时状态应保留最新采集时间 %d，实际 %d", now, at)
 	}
 }
