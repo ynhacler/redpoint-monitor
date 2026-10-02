@@ -11,6 +11,17 @@ export interface NetIface {
   tx_speed: number
 }
 
+/** 一个挂载点的容量（设计 4.6）。字节；usage 为 0～100，口径与 df 的 Use% 一致。 */
+export interface DiskInfo {
+  mount: string
+  total: number
+  used: number
+  usage: number
+  fstype?: string
+  device?: string
+  available?: number
+}
+
 /** 一份 Agent 上报（internal/protocol.Report）。字节类字段为原始字节数，usage 为 0～100 的百分比。 */
 export interface Report {
   timestamp: number
@@ -19,8 +30,11 @@ export interface Report {
   cpu: { usage: number; cores: number; load1: number }
   memory: { total: number; used: number; usage: number }
   swap: { total: number; used: number }
-  disk: { mount: string; total: number; used: number; usage: number }[]
+  /** 每个挂载点的容量（设计 4.6） */
+  disk: DiskInfo[]
   network: NetIface[]
+  /** 各磁盘的读写速率（设计 4.7）；旧版 Agent 不上报 */
+  disk_io?: { device: string; read_speed: number; write_speed: number }[]
 }
 
 /**

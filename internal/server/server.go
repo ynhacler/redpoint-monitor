@@ -328,7 +328,7 @@ func (s *Server) flush() {
 	defer tx.Rollback()
 	for _, p := range batch {
 		rep := p.rep
-		var diskUsed, diskTotal, rxs, txs uint64
+		var diskUsed, diskTotal, rxs, txs, ioRead, ioWrite uint64
 		for _, d := range rep.Disk {
 			if d.Mount == "/" {
 				diskUsed, diskTotal = d.Used, d.Total
@@ -338,11 +338,21 @@ func (s *Server) flush() {
 			rxs += n.RxSpeed
 			txs += n.TxSpeed
 		}
+		// 磁盘读写速率为所有磁盘之和；旧版 Agent 不上报 IO，写入 NULL 而不是 0，避免把“没有数据”画成“空闲”
+		var ioR, ioW any
+		if len(rep.DiskIO) > 0 {
+			for _, d := range rep.DiskIO {
+				ioRead += d.ReadSpeed
+				ioWrite += d.WriteSpeed
+			}
+			ioR, ioW = ioRead, ioWrite
+		}
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO metrics_raw
-			(server_id, ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			(server_id, ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed,
+			disk_read, disk_write)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			p.serverID, p.at.Unix(), rep.CPU.Usage, rep.CPU.Load1, rep.Memory.Used, rep.Memory.Total,
-			rep.Swap.Used, diskUsed, diskTotal, rxs, txs); err != nil {
+			rep.Swap.Used, diskUsed, diskTotal, rxs, txs, ioR, ioW); err != nil {
 			s.log.Error("flush metrics failed", "component", "store", "err", err)
 			return
 		}

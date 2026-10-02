@@ -206,6 +206,21 @@ var migrations = []string{
 		level TEXT PRIMARY KEY,       -- metrics_1m / metrics_5m / metrics_1h
 		done_until INTEGER NOT NULL   -- 此时间之前的桶已聚合完成，Unix 秒
 	);`,
+	// 迁移 5：磁盘读写速率（所有磁盘之和，字节/秒，设计 4.7）。旧数据为 NULL。
+	`ALTER TABLE metrics_raw ADD COLUMN disk_read INTEGER;
+	ALTER TABLE metrics_raw ADD COLUMN disk_write INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN disk_read INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN disk_read_max INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN disk_write INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN disk_write_max INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN disk_read INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN disk_read_max INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN disk_write INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN disk_write_max INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN disk_read INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN disk_read_max INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN disk_write INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN disk_write_max INTEGER;`,
 }
 
 func (s *Store) migrate() error {
@@ -389,13 +404,29 @@ type MetricPoint struct {
 	RxMax     uint64  `json:"rx_speed_max"`
 	TxSpeed   uint64  `json:"tx_speed"`
 	TxMax     uint64  `json:"tx_speed_max"`
+	// 磁盘读写速率（所有磁盘之和，字节/秒，设计 4.7）；旧版 Agent 的时段为 null
+	DiskRead     *uint64 `json:"disk_read"`
+	DiskReadMax  *uint64 `json:"disk_read_max"`
+	DiskWrite    *uint64 `json:"disk_write"`
+	DiskWriteMax *uint64 `json:"disk_write_max"`
+}
+
+// nullable 把可空整数转为指针，JSON 中 NULL 输出为 null。
+func nullable(v sql.NullInt64) *uint64 {
+	if !v.Valid {
+		return nil
+	}
+	u := uint64(v.Int64)
+	return &u
 }
 
 // MetricsHistory 读取某一粒度表中 since 之后的点。table 只能是内部常量，不来自用户输入。
 func (s *Store) MetricsHistory(serverID int64, table string, since time.Time) ([]MetricPoint, error) {
-	cols := `ts, cpu, cpu_max, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed_max, tx_speed, tx_speed_max`
+	cols := `ts, cpu, cpu_max, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed_max,
+		tx_speed, tx_speed_max, disk_read, disk_read_max, disk_write, disk_write_max`
 	if table == "metrics_raw" {
-		cols = `ts, cpu, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed, tx_speed, tx_speed`
+		cols = `ts, cpu, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed,
+			tx_speed, tx_speed, disk_read, disk_read, disk_write, disk_write`
 	}
 	rows, err := s.DB.Query(`SELECT `+cols+` FROM `+table+` WHERE server_id = ? AND ts >= ? ORDER BY ts`, serverID, since.Unix())
 	if err != nil {
@@ -406,10 +437,12 @@ func (s *Store) MetricsHistory(serverID int64, table string, since time.Time) ([
 	for rows.Next() {
 		var p MetricPoint
 		var cpu, cpuMax, load1 sql.NullFloat64
-		var mu, mt, su, du, dt, rx, rxm, tx, txm sql.NullInt64
-		if err := rows.Scan(&p.TS, &cpu, &cpuMax, &load1, &mu, &mt, &su, &du, &dt, &rx, &rxm, &tx, &txm); err != nil {
+		var mu, mt, su, du, dt, rx, rxm, tx, txm, dr, drm, dw, dwm sql.NullInt64
+		if err := rows.Scan(&p.TS, &cpu, &cpuMax, &load1, &mu, &mt, &su, &du, &dt, &rx, &rxm, &tx, &txm,
+			&dr, &drm, &dw, &dwm); err != nil {
 			return nil, err
 		}
+		p.DiskRead, p.DiskReadMax, p.DiskWrite, p.DiskWriteMax = nullable(dr), nullable(drm), nullable(dw), nullable(dwm)
 		p.CPU, p.CPUMax, p.Load1 = cpu.Float64, cpuMax.Float64, load1.Float64
 		p.MemUsed, p.MemTotal, p.SwapUsed = uint64(mu.Int64), uint64(mt.Int64), uint64(su.Int64)
 		p.DiskUsed, p.DiskTotal = uint64(du.Int64), uint64(dt.Int64)

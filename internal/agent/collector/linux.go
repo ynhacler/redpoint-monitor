@@ -5,6 +5,7 @@ package collector
 import (
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -21,7 +22,8 @@ type linux struct {
 	opts     Options
 	prevCPU  cpuTimes               // 上一次 /proc/stat 采样，用于计算 CPU 使用率
 	prevNet  map[string]netCounters // 上一次各网卡的累计字节数，用于计算网速
-	prevTime time.Time              // prevNet 的采样时间
+	prevIO   map[string]ioCounters  // 上一次各磁盘的累计 IO，用于计算读写速率
+	prevTime time.Time              // prevNet / prevIO 的采样时间
 }
 
 // New 返回真实的 Linux 采集器。未指定排除列表时使用 DefaultExclude，
@@ -30,7 +32,7 @@ func New(opts Options) Collector {
 	if len(opts.Exclude) == 0 {
 		opts.Exclude = DefaultExclude
 	}
-	return &linux{opts: opts, prevNet: map[string]netCounters{}}
+	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{}}
 }
 
 // readFile 读取失败时返回空字符串。文件缺失是正常情况（精简容器、旧内核、未启用 IPv6），
@@ -79,14 +81,30 @@ func (c *linux) Collect() (protocol.Report, error) {
 	r.Memory = protocol.Memory{Total: total, Available: avail, Used: total - avail, Usage: pct(total-avail, total)}
 	r.Swap = protocol.Swap{Total: m["SwapTotal"], Used: m["SwapTotal"] - m["SwapFree"]}
 
-	// 磁盘：目前只采集根分区。TODO(A3): 多挂载点与磁盘 IO（设计 4.6、4.7）。
-	// Statfs 不需要权限。已用 = Blocks - Bfree，root 保留块计为已用，与 df 的 Used 列一致。
-	var st syscall.Statfs_t
-	if err := syscall.Statfs("/", &st); err == nil {
-		dt := st.Blocks * uint64(st.Bsize)
-		used := dt - st.Bfree*uint64(st.Bsize)
-		r.Disk = []protocol.Disk{{Mount: "/", Total: dt, Used: used, Usage: pct(used, dt)}}
+	// 磁盘容量：本地块设备文件系统的每个挂载点（设计 4.6）
+	r.Disk = collectDisks(readFile("/proc/self/mounts"))
+
+	// 磁盘 IO：只统计整块磁盘（/sys/block 下的设备），分区的 IO 已包含在所属磁盘中（设计 4.7）
+	ioNow := parseDiskstats(readFile("/proc/diskstats"))
+	elapsedIO := now.Sub(c.prevTime).Seconds()
+	for name, cur := range ioNow {
+		if skipIODevice(name) {
+			continue
+		}
+		if _, err := os.Stat("/sys/block/" + name); err != nil {
+			continue // 分区或已移除的设备
+		}
+		d := protocol.DiskIO{Device: name, ReadBytes: cur.readBytes, WriteBytes: cur.writeBytes,
+			ReadOps: cur.readOps, WriteOps: cur.writeOps, IOTimeMs: cur.ioTimeMs}
+		// 计数倒退（设备重新挂载）时本轮不计算速率，与网速处理一致
+		if p, ok := c.prevIO[name]; ok && elapsedIO > 0 && cur.readBytes >= p.readBytes && cur.writeBytes >= p.writeBytes {
+			d.ReadSpeed = uint64(float64(cur.readBytes-p.readBytes) / elapsedIO)
+			d.WriteSpeed = uint64(float64(cur.writeBytes-p.writeBytes) / elapsedIO)
+		}
+		r.DiskIO = append(r.DiskIO, d)
 	}
+	sort.Slice(r.DiskIO, func(i, j int) bool { return r.DiskIO[i].Device < r.DiskIO[j].Device })
+	c.prevIO = ioNow
 
 	// 网络：上报原始累计计数，流量统计由面板负责（设计 5.3）；
 	// 网速只用于展示，取与上一次采样的差值（设计 5.2）。
@@ -107,6 +125,31 @@ func (c *linux) Collect() (protocol.Report, error) {
 	c.prevNet = counters
 	c.prevTime = now
 	return r, nil
+}
+
+// collectDisks 对选出的挂载点调用 statfs（不需要权限）。读不到挂载表时退回只采集 “/”。
+//
+// 已用 = Blocks - Bfree（root 保留块计为已用）；使用率 = 已用 / (已用 + Bavail)，与 df 的 Use% 一致：
+// 普通用户可用空间耗尽时显示 100%，即使 root 保留块还有剩余。
+func collectDisks(mounts string) []protocol.Disk {
+	sel := selectMounts(parseMounts(mounts))
+	if len(sel) == 0 {
+		sel = []mountEntry{{Mount: "/"}}
+	}
+	var out []protocol.Disk
+	for _, m := range sel {
+		var st syscall.Statfs_t
+		if err := syscall.Statfs(m.Mount, &st); err != nil || st.Blocks == 0 {
+			continue // 单个挂载点失败不影响其他（设计 43.5）
+		}
+		bs := uint64(st.Bsize)
+		total := st.Blocks * bs
+		used := total - st.Bfree*bs
+		avail := st.Bavail * bs
+		out = append(out, protocol.Disk{Mount: m.Mount, Total: total, Used: used, Available: avail,
+			Usage: pct(used, used+avail), FSType: m.FSType, Device: m.Device})
+	}
+	return out
 }
 
 // selectIfaces 选出参与统计的网卡（设计 5.6）：
