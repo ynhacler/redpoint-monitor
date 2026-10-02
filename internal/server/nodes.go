@@ -309,10 +309,14 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteServer：DELETE /api/v1/servers/{id}，admin。删除节点及其全部历史数据，不可恢复，成功 204。
 // 该节点的 Agent Token 随之删除，主机上的 Agent 之后上报会得到 401。
-// TODO(A2): 敏感操作需重新输入密码（设计 17.4）；目前由 Web 端要求输入节点名称确认。
+// 【安全】敏感操作：需在 10 分钟内重新输入过密码（POST /api/v1/auth/reauth，设计 17.4），否则 403 reauth_required。
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := requireReauth(r); err != nil {
 		s.writeError(w, r, err)
 		return
 	}

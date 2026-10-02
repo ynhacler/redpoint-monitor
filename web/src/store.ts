@@ -1,11 +1,16 @@
-// 全局状态：开发用 Token 与节点列表的轮询。总览、列表、详情共用同一份数据，避免各页面重复请求。
+// 全局状态：登录状态与节点列表的轮询。总览、列表、详情共用同一份数据，避免各页面重复请求。
 // 页面还少，用 Vue 的 reactive 即可；TODO(B): 状态变复杂后考虑 Pinia（设计 3.3，需先确认依赖）。
 import { computed, reactive } from 'vue'
-import { getToken, listServers, setToken, UnauthorizedError, type EnrollCodeView, type ServerView } from './api'
+import {
+  getMe, listServers, login as apiLogin, logoutSession, UnauthorizedError,
+  type EnrollCodeView, type Me, type ServerView,
+} from './api'
 
 export const state = reactive({
-  /** 是否需要输入 Token（未保存或已失效） */
-  needToken: !getToken(),
+  /** 当前登录账号；null 表示未登录（设计 19.1） */
+  me: null as Me | null,
+  /** 是否已向面板确认过登录状态（首次加载前不跳转，避免闪一下登录页） */
+  authChecked: false,
   servers: [] as ServerView[],
   /** 首次加载完成前为 false，用于显示“加载中” */
   loaded: false,
@@ -15,8 +20,13 @@ export const state = reactive({
 })
 
 let timer: number | undefined
+/** 会话失效时的回调（由 router 设置为跳转登录页），避免 store 依赖 router 造成循环引用 */
+let onSignedOut: () => void = () => {}
+export function setSignedOutHandler(f: () => void) {
+  onSignedOut = f
+}
 
-/** 拉取一次节点列表。401 时停止轮询并要求重新输入 Token。 */
+/** 拉取一次节点列表。401（会话失效）时停止轮询并回到登录页。 */
 export async function refresh() {
   try {
     state.servers = await listServers()
@@ -24,11 +34,8 @@ export async function refresh() {
     state.error = ''
     state.loaded = true
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      logout()
-    } else {
-      state.error = '无法连接面板，正在重试'
-    }
+    if (e instanceof UnauthorizedError) signedOut()
+    else state.error = '无法连接面板，正在重试'
   }
 }
 
@@ -44,17 +51,46 @@ export function stopPolling() {
   timer = undefined
 }
 
-export function login(token: string) {
-  setToken(token.trim())
-  state.needToken = false
+/** 页面加载时恢复登录状态：会话 Cookie 仍有效则直接进入，否则留在登录页。 */
+export async function checkAuth() {
+  try {
+    state.me = await getMe()
+  } catch {
+    state.me = null
+  } finally {
+    state.authChecked = true
+  }
+}
+
+/** 登录成功后开始轮询（需修改初始密码时先不轮询，接口会返回 403） */
+export async function login(username: string, password: string, remember: boolean) {
+  state.me = await apiLogin(username, password, remember)
+  if (!state.me.must_change_password) startPolling()
+}
+
+/** 修改密码成功后：清除“需修改密码”标记并开始轮询 */
+export function passwordChanged() {
+  if (state.me) state.me.must_change_password = false
   startPolling()
 }
 
-export function logout() {
+/** 主动退出登录 */
+export async function logout() {
+  try {
+    await logoutSession()
+  } catch {
+    /* 会话已失效时忽略，照常回到登录页 */
+  }
+  signedOut()
+}
+
+/** 会话结束（退出或失效）：清空数据，回到登录页 */
+function signedOut() {
   stopPolling()
-  setToken('')
-  state.needToken = true
+  state.me = null
+  state.servers = []
   state.loaded = false
+  onSignedOut()
 }
 
 /** 节点异常程度排序（设计 1.5.6）：离线 > 未知 > 在线；待安装单独显示，不参与 */

@@ -53,12 +53,13 @@
 - [x] 重装 / 重试注册时吊销旧 Token（设计 27.6.4、27.8）
 - [ ] Web 手动吊销 / 轮换 Agent Token（设计 17.2）
 - [x] 节点查看 / 修改 / 删除：`GET/PUT/DELETE /api/v1/servers/{id}` 与 Web 编辑页（设计 19.5）
-- [ ] 删除节点等敏感操作改为重新输入密码确认（设计 17.4，依赖 A2）
 
 ### A2 Web 登录（替换开发用 admin token）
 
-- [ ] 单管理员、Argon2id、会话 Cookie、CSRF、登录限流、`admin reset-password`（设计 8.2、17.4、23.4）——需要 `golang.org/x/crypto`，先确认依赖
-- [ ] 删除 `adm_` 开发 token 及其接口
+- [x] 单管理员、Argon2id、会话 Cookie、CSRF、登录限流、强制修改初始密码、`admin reset-password`（设计 8.2、17.4、23.4）
+- [x] 删除 `adm_` 开发 token 及其接口
+- [x] 敏感操作重新输入密码：删除节点（设计 17.4）
+- [ ] App 改为 AK 配对后才能重新连接面板（开发 token 已删除，随阶段 C）
 
 ### A3 数据质量
 
@@ -97,7 +98,7 @@
 
 - [x] 设计令牌 `design/tokens.json` → `web/src/styles/tokens.css`；自建组件（StatusDot、Metric、UsageBar、ServerCard、TrafficCard、Chart、EmptyState、CommandBlock）；深浅色（设计 41.2、41.3）
 - [ ] 请求类型由 OpenAPI 生成；统一错误处理（设计 19.0.1、43.6）
-- [ ] 登录页
+- [x] 登录页、修改密码页（设计 8.1）
 - [x] 总览；节点列表（搜索 / 分组 / 排序）；节点详情与历史曲线（ECharts、vue-router 已确认）（设计 9～11、41.5）
 - [ ] 图标改用 Lucide（设计 41.4.3，需确认依赖）；目前为内置的少量 SVG
 - [ ] 节点详情：健康摘要（设计 1.5.7）、告警记录（随 A5）

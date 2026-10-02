@@ -38,7 +38,8 @@ type Server struct {
 
 	publicURL   string
 	enrollLimit *enrollLimiter
-	routeTable  []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
+	routeTable  []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -74,6 +75,8 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	}
 	return &Server{store: store, web: web, log: opts.Logger, version: opts.Version,
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
+		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
+			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c}, nil
 }
 
@@ -143,6 +146,13 @@ func (s *Server) routes() http.Handler {
 
 	handle("GET /healthz", accessPublic, s.handleHealthz)
 
+	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
+	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
+	handle("GET /api/v1/auth/me", accessAdmin, s.handleMe)
+	handle("POST /api/v1/auth/logout", accessAdmin, s.handleLogout)
+	handle("POST /api/v1/auth/password", accessAdmin, s.handleChangePassword)
+	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
+
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
 	handle("POST /api/v1/agent/report", accessAgent, s.handleReport)
@@ -169,32 +179,6 @@ func (s *Server) routes() http.Handler {
 // 只用于存活检查，不返回任何节点或配置信息。
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok", "version": s.version})
-}
-
-// admin 用开发用 admin token 保护 Web / App 的读取接口。
-// TODO(A2): 改为 Web 会话登录（设计 8.2）；TODO(C): App Device Token，只读范围（设计 12.5）。
-//
-// 【安全】查询凭证出错（如数据库故障）时按失败处理：返回 500 而不是放行，
-// 也不伪装成 401，避免把故障误报为“Token 错误”（设计 43.1）。
-func (s *Server) admin(h http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tok := bearer(r)
-		if tok == "" {
-			s.writeError(w, r, errorf(CodeUnauthorized, ""))
-			return
-		}
-		ok, err := s.store.ValidAdminToken(tok)
-		if err != nil {
-			s.writeError(w, r, internalError(err))
-			return
-		}
-		if !ok {
-			s.writeError(w, r, errorf(CodeUnauthorized, ""))
-			return
-		}
-		info(r).principal = "admin"
-		h(w, r)
-	})
 }
 
 // agent 用 Agent Token 认证，并把 Token 绑定的节点 ID 放进请求信息（设计 23.2）。
@@ -421,6 +405,9 @@ func (s *Server) maintenance(ctx context.Context) {
 			s.log.Debug("downsampled", "component", "store", "1m", n["metrics_1m"], "5m", n["metrics_5m"], "1h", n["metrics_1h"])
 		}
 		if tick%10 == 0 {
+			if err := s.store.PruneSessions(now); err != nil {
+				s.log.Error("session prune failed", "component", "auth", "err", err)
+			}
 			if n, err := s.store.PruneExpired(now); err != nil {
 				s.log.Error("retention failed", "component", "store", "err", err)
 			} else if n > 0 {

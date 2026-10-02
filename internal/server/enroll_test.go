@@ -39,12 +39,25 @@ func enroll(h http.Handler, code, hostname, machine string) (*httptest.ResponseR
 	return rec, res
 }
 
+// adminToken 创建管理员账号（如尚无）并登录，返回会话令牌；已通过重新验证，可执行删除等敏感操作。
 func adminToken(t *testing.T, s *Server) string {
 	t.Helper()
-	tok, err := s.store.CreateAdminToken()
+	if n, _ := s.store.UserCount(); n == 0 {
+		h, _ := HashPassword("correct horse battery")
+		if _, err := s.store.SetAdminPassword("admin", h, false, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u, err := s.store.UserByName("admin")
 	if err != nil {
 		t.Fatal(err)
 	}
+	tok, err := s.store.CreateSession(u.ID, "127.0.0.1", "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	se, _ := s.store.LookupSession(tok, time.Now())
+	s.store.SetReauth(se.ID, time.Now().Add(reauthValid))
 	return tok
 }
 
@@ -397,6 +410,11 @@ func TestPermissionMatrix(t *testing.T) {
 	// 新增路由时必须同时在这里登记，否则测试失败——防止误把管理接口声明为公开。
 	want := map[string]access{
 		"GET /healthz":                             accessPublic,
+		"POST /api/v1/auth/login":                  accessPublic,
+		"GET /api/v1/auth/me":                      accessAdmin,
+		"POST /api/v1/auth/logout":                 accessAdmin,
+		"POST /api/v1/auth/password":               accessAdmin,
+		"POST /api/v1/auth/reauth":                 accessAdmin,
 		"POST /api/v1/agent/enroll":                accessEnroll,
 		"POST /api/v1/agent/report":                accessAgent,
 		"POST /api/v1/agent/unregister":            accessAgent,
@@ -433,7 +451,15 @@ func TestPermissionMatrix(t *testing.T) {
 		}
 		path = strings.ReplaceAll(path, "{id}", "1")
 		for name, tok := range creds {
+			if name == "admin" {
+				tok = adminToken(t, s) // 每次用新会话：矩阵中的 /auth/logout 会注销当前会话
+			}
 			rec := do(h, method, path, tok, []byte(`{}`))
+			if rt.pattern == "POST /api/v1/auth/login" {
+				// 登录接口本身就是校验凭证：空请求体返回 401（用户名或密码错误）是业务结果，
+				// 这里只要求它在期望表中声明为 public，不按状态码判断放行与否
+				continue
+			}
 			want := contains(allowed[rt.access], name)
 			if got := rec.Code != 401 && rec.Code != 403; got != want {
 				t.Errorf("%s 用 %s 凭证：状态码 %d，应%s", rt.pattern, name, rec.Code, map[bool]string{true: "放行", false: "拒绝"}[want])

@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f .dev/admin.token ] || make dev-init
+[ -f .dev/admin.password ] || make dev-init
 
 pids=()
 cleanup() {
@@ -35,7 +35,7 @@ go run ./cmd/agent --server http://127.0.0.1:8080 --token-file .dev/agent.token 
 pids+=($!)
 
 # 3. Vite（/api 代理到 :8080）
-echo "→ web on http://localhost:5173  (admin token: $(cat .dev/admin.token))"
+echo "→ web on http://localhost:5173  (login: admin / $(cat .dev/admin.password))"
 (cd web && npm run dev -- --clearScreen false) 2>&1 | prefix "[web]    " &
 pids+=($!)
 

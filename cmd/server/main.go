@@ -1,10 +1,12 @@
 // vpsmon-server：单二进制面板，内嵌 Web 与 SQLite（设计 2.1、25）。
 //
-//	vpsmon-server init        --data DIR               创建数据库，输出一个开发用 admin token
-//	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token
+//	vpsmon-server init        --data DIR               创建数据库与管理员账号，输出初始密码
+//	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
+//	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
 //	vpsmon-server run         --data DIR --listen ADDR [--log-format json|text] [--log-level info]
 //
-// 【安全】Token 只在 stdout 输出一次，数据库只保存哈希（设计 23.2）。
+// 【安全】密码与 Token 只在 stdout 输出一次，数据库只保存哈希（设计 23.2、23.4）。
+// 本地 CLI 需要面板主机的 root / 数据目录权限，这是最高信任边界（设计 17.2）。
 package main
 
 import (
@@ -18,6 +20,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"vpsmon/internal/logging"
 	"vpsmon/internal/server"
@@ -30,7 +33,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `vpsmon-server %s
 
 usage:
-  vpsmon-server init       --data DIR
+  vpsmon-server init       --data DIR [--username admin]
+  vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
                            [--public-url https://monitor.example.com]
@@ -52,14 +56,23 @@ func main() {
 		fmt.Println(version)
 
 	case "init":
+		username := fsx.String("username", "admin", "admin username")
 		_ = fsx.Parse(args)
 		st := open(*data)
-		tok, err := st.CreateAdminToken()
-		if err != nil {
+		if n, err := st.UserCount(); err != nil {
 			log.Fatal(err)
+		} else if n > 0 {
+			log.Fatal("already initialised; use `vpsmon-server admin reset-password` to reset the password")
 		}
-		fmt.Fprintln(os.Stderr, "initialised", *data, "— admin token (shown once):")
-		fmt.Println(tok)
+		setPassword(st, *username, "initialised "+*data)
+
+	case "admin":
+		if len(args) == 0 || args[0] != "reset-password" {
+			usage()
+		}
+		username := fsx.String("username", "admin", "admin username")
+		_ = fsx.Parse(args[1:])
+		setPassword(open(*data), *username, "password reset; all sessions of this account were signed out")
 
 	case "add-server":
 		name := fsx.String("name", "", "server name")
@@ -98,6 +111,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		if n, err := st.UserCount(); err == nil && n == 0 {
+			// 从开发 token 版本升级时没有账号：提示在面板主机上创建（设计 17.2）
+			logger.Warn("no admin account; create one with: vpsmon-server admin reset-password --data "+*data,
+				"component", "auth")
+		}
 		// 启动时记录版本、数据目录、监听地址、数据库与迁移版本、HTTPS 模式（设计 24.6）
 		logger.Info("starting", "component", "server", "version", version, "data", *data, "listen", *listen,
 			"db", "sqlite", "schema_version", schema, "https", "off (reverse proxy)")
@@ -118,6 +136,27 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+// setPassword 为管理员设置随机初始密码（只输出一次，首次登录必须修改，设计 17.4）。
+//
+// 本地开发可用环境变量 VPSMON_INIT_PASSWORD 指定密码，此时不要求修改（make dev-init 使用）。
+// 密码打印到 stdout，说明打印到 stderr，便于脚本把密码重定向到文件。
+func setPassword(st *server.Store, username, note string) {
+	pw, mustChange := os.Getenv("VPSMON_INIT_PASSWORD"), false
+	if pw == "" {
+		pw, mustChange = server.RandomPassword(), true
+	}
+	hash, err := server.HashPassword(pw)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := st.SetAdminPassword(username, hash, mustChange, time.Now()); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Fprintf(os.Stderr, "%s — username: %s, password (shown once%s):\n", note, username,
+		map[bool]string{true: ", must be changed at first login", false: ""}[mustChange])
+	fmt.Println(pw)
 }
 
 func open(dir string) *server.Store {

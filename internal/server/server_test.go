@@ -39,9 +39,15 @@ func testServer(t *testing.T) (*Server, http.Handler, *bytes.Buffer) {
 }
 
 // do 发送请求；token 非空时带 Authorization 头。
+// do 发送请求。token 为会话令牌（ses_）时放进 Cookie 并附带 CSRF（Web 管理员）；
+// 其他非空值作为 Bearer（Agent Token 或伪造凭证）。
 func do(h http.Handler, method, path, token string, body []byte) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
-	if token != "" {
+	switch {
+	case strings.HasPrefix(token, PrefixSession):
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+		req.Header.Set(csrfHeader, csrfFor(token))
+	case token != "":
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	rec := httptest.NewRecorder()
@@ -167,16 +173,14 @@ func TestUnknownAPIPathIsJSON404(t *testing.T) {
 
 func TestAdminAuth(t *testing.T) {
 	s, h, _ := testServer(t)
-	tok, err := s.store.CreateAdminToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	tok := adminToken(t, s)
 	for _, c := range []struct {
 		name, token string
 		status      int
 	}{
 		{"无 Token", "", 401},
-		{"错误的 Token", "adm_wrongwrongwrongwrong", 401},
+		{"伪造的会话", "ses_wrongwrongwrongwrong", 401},
+		{"旧的开发 token 已不再有效", "adm_wrongwrongwrongwrong", 401},
 		{"Agent Token 不能当 admin 用（设计 1.6.6）", "agt_aaaaaaaaaaaaaaaa", 401},
 		{"有效 Token", tok, 200},
 	} {
@@ -195,7 +199,7 @@ func TestAdminAuth(t *testing.T) {
 // 【安全】数据库故障时鉴权按失败处理，返回 500 而不是放行；也不伪装成 401 误导排查（设计 43.1）。
 func TestAuthFailsClosedOnDBError(t *testing.T) {
 	s, h, _ := testServer(t)
-	tok, _ := s.store.CreateAdminToken()
+	tok := adminToken(t, s)
 	s.store.DB.Close()
 	for _, c := range []struct{ name, method, path, token string }{
 		{"admin 接口", "GET", "/api/v1/servers", tok},

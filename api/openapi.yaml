@@ -13,15 +13,98 @@ servers:
   - url: /api/v1
 
 security:
-  - adminToken: []
+  - session: []
 
 tags:
+  - name: auth
+    description: Web 登录（设计 8.2、17.4、19.1）
   - name: agent
     description: Agent 上报与注册（设计 19.10、27.6）
   - name: servers
     description: 节点与安装（设计 19.5、19.11）
 
 paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 用户名 + 密码登录，写入会话 Cookie
+      description: 同一 IP 1 分钟内失败 5 次锁定 15 分钟（设计 17.4）。用户名不存在与密码错误返回相同结果。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                remember: { type: boolean, description: 为 true 时 Cookie 保存 7 天，否则为会话 Cookie }
+      responses:
+        '200':
+          description: 已登录；响应头 Set-Cookie 写入 vpsmon_session（HttpOnly、SameSite=Strict，HTTPS 下 Secure）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 当前账号与 CSRF Token（页面刷新后恢复登录状态）
+      responses:
+        '200':
+          description: 当前账号
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 退出登录（删除当前会话）
+      responses:
+        '204': { description: 已退出 }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: 修改密码；成功后该账号其他会话全部失效（设计 17.4）
+      description: 使用初始 / 重置密码登录时，除 /auth/* 以外的接口都返回 403 password_change_required，直到修改密码。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 12 }
+      responses:
+        '204': { description: 已修改 }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /auth/reauth:
+    post:
+      tags: [auth]
+      summary: 敏感操作前重新输入密码，10 分钟内有效（设计 17.4）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        '204': { description: 已验证 }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /agent/enroll:
     post:
       tags: [agent]
@@ -151,10 +234,11 @@ paths:
     delete:
       tags: [servers]
       summary: 删除节点及其全部历史数据，不可恢复
-      description: 该节点的 Agent Token 随之删除。TODO(A2)：需重新输入密码（设计 17.4）。
+      description: 该节点的 Agent Token 随之删除。敏感操作：需在 10 分钟内调用过 /auth/reauth，否则 403 reauth_required（设计 17.4）。
       responses:
         '204': { description: 已删除 }
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
   /servers/{id}/install-command:
@@ -235,10 +319,13 @@ paths:
 
 components:
   securitySchemes:
-    adminToken:
-      type: http
-      scheme: bearer
-      description: 开发用 admin token（adm_…）。TODO(A2)：改为 Web 会话 Cookie + CSRF（设计 8.2）
+    session:
+      type: apiKey
+      in: cookie
+      name: vpsmon_session
+      description: |
+        Web 管理员会话 Cookie（设计 8.2、17.4）。修改类请求（非 GET / HEAD）还必须带 X-CSRF-Token 头，
+        值来自登录或 /auth/me 响应中的 csrf_token，否则 403。
     agentToken:
       type: http
       scheme: bearer
@@ -270,7 +357,8 @@ components:
       type: string
       description: 稳定的错误码，一经发布不再改名（设计 43.4）
       enum: [validation_failed, bad_request, unauthorized, token_revoked, forbidden, not_found, conflict,
-             payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal]
+             payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal,
+             password_change_required, reauth_required]
 
     Error:
       type: object
@@ -292,6 +380,14 @@ components:
                 properties:
                   field: { type: string }
                   message: { type: string }
+
+    Me:
+      type: object
+      required: [username, must_change_password, csrf_token]
+      properties:
+        username: { type: string }
+        must_change_password: { type: boolean, description: 使用初始 / 重置密码登录，需先修改密码 }
+        csrf_token: { type: string, description: 修改类请求放在 X-CSRF-Token 头中 }
 
     EnrollTTL:
       type: string

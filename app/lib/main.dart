@@ -1,6 +1,6 @@
 // VPS Monitor app — development skeleton.
 //
-// Current state: connects with server URL + dev admin token (read-only use).
+// 当前状态：面板已删除开发用 admin token（A2），本骨架暂时无法连接，阶段 C 改为 AK 配对后恢复。
 // TODO(C): 改为 AK 扫码配对 → Device Token + Refresh Token（设计 12.3）。
 // TODO(C): 端到端加密推送（设计 30）。
 //

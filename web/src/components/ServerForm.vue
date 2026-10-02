@@ -4,7 +4,7 @@
 // 编辑模式下提供删除（设计 19.5），需输入节点名称确认。
 import { computed, reactive, ref } from 'vue'
 import {
-  ApiError, createServer, deleteServer, updateServer, UnauthorizedError,
+  ApiError, createServer, deleteServer, reauth, updateServer, UnauthorizedError,
   type CreateServerInput, type EnrollCodeView, type ServerView,
 } from '../api'
 
@@ -114,19 +114,23 @@ async function submit() {
   }
 }
 
-// 删除确认：输入节点名称，避免误删（设计 41.3 Dialog）。TODO(A2): 改为重新输入密码（设计 17.4）。
-const confirmName = ref('')
+// 删除是敏感操作：重新输入密码确认（设计 17.4），同时防止误删。
+const deletePassword = ref('')
+const deleteError = ref('')
 const deleting = ref(false)
 async function remove() {
-  if (!props.server || confirmName.value !== props.server.name) return
+  if (!props.server || !deletePassword.value) return
   deleting.value = true
+  deleteError.value = ''
   try {
+    await reauth(deletePassword.value)
     await deleteServer(props.server.id)
     emit('deleted')
   } catch (e) {
     if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) formError.value = e.message
+    else if (e instanceof ApiError) deleteError.value = e.details[0]?.message ?? e.message
   } finally {
+    deletePassword.value = ''
     deleting.value = false
   }
 }
@@ -243,11 +247,13 @@ async function remove() {
       <legend>删除节点</legend>
       <p class="muted">删除后该节点的历史指标与流量统计一并删除，不可恢复；主机上的 Agent 将无法再上报。</p>
       <div class="row">
-        <input v-model="confirmName" :placeholder="`输入 ${server.name} 以确认`" autocomplete="off" />
-        <button type="button" class="danger-btn" :disabled="confirmName !== server.name || deleting" @click="remove">
-          {{ deleting ? '删除中…' : '删除节点' }}
+        <input v-model="deletePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
+          @keydown.enter.prevent="remove" />
+        <button type="button" class="danger-btn" :disabled="!deletePassword || deleting" @click="remove">
+          {{ deleting ? '删除中…' : `删除 ${server.name}` }}
         </button>
       </div>
+      <small v-if="deleteError" class="err">{{ deleteError }}</small>
     </fieldset>
   </form>
 </template>
@@ -267,5 +273,5 @@ small { font-size: var(--font-sm); }
 .actions { display: flex; gap: var(--space-2); margin-top: var(--space-6); }
 .danger { margin-top: var(--space-7); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .danger legend { color: var(--bad); }
-.danger-btn { background: var(--bad); }
+.danger-btn { background: var(--bad); color: var(--on-accent); }
 </style>
