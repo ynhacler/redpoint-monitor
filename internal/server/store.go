@@ -267,6 +267,9 @@ var migrations = []string{
 		created_at INTEGER NOT NULL
 	);
 	CREATE INDEX traffic_adjustments_cycle ON traffic_adjustments(server_id, cycle_start);`,
+
+	// 迁移 9：服务商标称带宽（设计 27.2）。Agent 采集不到端口速率，只能手动填写
+	`ALTER TABLE servers ADD COLUMN bandwidth_mbps INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
@@ -367,6 +370,7 @@ type ServerRow struct {
 	Plan          string  `json:"plan"`
 	Region        string  `json:"region"`
 	Country       string  `json:"country"`        // ISO 3166-1 两位代码（大写），空表示未填
+	BandwidthMbps int     `json:"bandwidth_mbps"` // 服务商标称带宽（端口速率），Mbps；0 表示未填
 	TrafficUnit   string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
 	TrafficFactor float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
 	PriceCents    int64   `json:"price_cents"`    // 续费价格 × 100

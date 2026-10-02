@@ -133,6 +133,12 @@ export function fmtUptime(seconds: number | null | undefined): string {
   return m > 0 ? `${m} 分` : `${Math.floor(seconds)} 秒`
 }
 
+/** 带宽：Mbps 数值，≥1000 时换算为 Gbps（“1 Gbps”“200 Mbps”）；0 表示未填 */
+export function fmtBandwidth(mbps: number | null | undefined): string {
+  if (!mbps) return DASH
+  return mbps >= 1000 ? `${Math.round((mbps / 1000) * 10) / 10} Gbps` : `${mbps} Mbps`
+}
+
 /** 价格：按币种显示，如 “USD 5.99”；未填显示 “—” */
 export function fmtPrice(cents: number, currency: string): string {
   if (!cents) return DASH

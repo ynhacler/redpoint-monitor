@@ -74,6 +74,7 @@ func TestCreateServerValidation(t *testing.T) {
 		{"IPv6 填成了 IPv4", `{"name":"a","expected_ipv6":"1.2.3.4"}`, 422, "expected_ipv6"},
 		{"重置日超出范围", `{"name":"a","traffic_reset_day":32}`, 422, "traffic_reset_day"},
 		{"计费模式错误", `{"name":"a","traffic_count_mode":"both"}`, 422, "traffic_count_mode"},
+		{"带宽为负", `{"name":"a","bandwidth_mbps":-1}`, 422, "bandwidth_mbps"},
 		{"有价格没币种", `{"name":"a","price":4.99}`, 422, "currency"},
 		{"到期日期格式错误", `{"name":"a","expire_date":"2026/12/31"}`, 422, "expire_date"},
 		{"续费周期错误", `{"name":"a","billing_period":"weekly"}`, 422, "billing_period"},

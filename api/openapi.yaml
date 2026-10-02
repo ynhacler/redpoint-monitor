@@ -636,6 +636,7 @@ components:
         plan: { type: string, maxLength: 64 }
         region: { type: string, maxLength: 64 }
         country: { type: string, pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 两位代码（大小写不敏感，保存为大写）；用于显示国旗' }
+        bandwidth_mbps: { type: integer, minimum: 0, maximum: 1000000, description: 服务商标称带宽（端口速率），Mbps；0 或省略表示未填（设计 27.2） }
         traffic_limit_gb: { type: number, minimum: 0, description: 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 }
         traffic_unit: { type: string, enum: [decimal, binary], default: decimal, description: 'decimal：1 GB = 10^9 字节；binary：1 GiB = 2^30 字节（设计 5.8）' }
         traffic_factor: { type: number, minimum: 0.5, maximum: 2, default: 1, description: 统计系数，修正固定比例偏差（设计 5.7） }
@@ -699,6 +700,7 @@ components:
         plan: { type: string }
         region: { type: string }
         country: { type: string, description: ISO 3166-1 两位代码（大写），空表示未填 }
+        bandwidth_mbps: { type: integer, description: 标称带宽 Mbps，0 表示未填 }
         price_cents: { type: integer, description: 续费价格 × 100 }
         currency: { type: string }
         billing_period: { type: string }
