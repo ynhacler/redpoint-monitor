@@ -163,7 +163,7 @@ const expireDays = computed(() => {
 <template>
   <main class="page">
     <div class="nav-row">
-      <RouterLink to="/servers" class="back muted small"><Icon name="arrow-left" :size="14" />节点</RouterLink>
+      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />节点</RouterLink>
       <div v-if="s" class="actions-row">
         <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
         <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary"><Icon name="edit" />编辑</RouterLink>
@@ -171,7 +171,7 @@ const expireDays = computed(() => {
     </div>
 
     <p v-if="!state.loaded" class="muted">加载中…</p>
-    <p v-else-if="!s" class="muted">节点不存在或已删除。<RouterLink to="/servers">返回列表</RouterLink></p>
+    <p v-else-if="!s" class="muted">节点不存在或已删除。<RouterLink to="/">返回列表</RouterLink></p>
 
     <template v-else>
       <div v-if="s.status === 'pending'" class="banner warn">

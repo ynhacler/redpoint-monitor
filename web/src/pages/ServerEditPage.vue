@@ -37,17 +37,17 @@ function created(v: EnrollCodeView) {
 function done() {
   refresh()
   // 删除后详情页已不存在，回到列表；保存后回到详情
-  router.push(props.id && server.value ? `/servers/${props.id}` : '/servers')
+  router.push(props.id && server.value ? `/servers/${props.id}` : '/')
 }
 function deleted() {
   refresh()
-  router.push('/servers')
+  router.push('/')
 }
 </script>
 
 <template>
   <main class="page">
-    <RouterLink :to="id ? `/servers/${id}` : '/servers'" class="back muted small"><Icon name="arrow-left" :size="14" />返回</RouterLink>
+    <RouterLink :to="id ? `/servers/${id}` : '/'" class="back muted small"><Icon name="arrow-left" :size="14" />返回</RouterLink>
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="banner">{{ error }}</p>
     <ServerForm
