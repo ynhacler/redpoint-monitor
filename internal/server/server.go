@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,8 +24,9 @@ const (
 
 // Options 是创建 Server 时的可选配置。
 type Options struct {
-	Logger  *slog.Logger // 为 nil 时使用 slog.Default()
-	Version string       // 由 git describe 注入，/healthz 与启动日志中显示（设计 40.3.2）
+	Logger    *slog.Logger // 为 nil 时使用 slog.Default()
+	Version   string       // 由 git describe 注入，/healthz 与启动日志中显示（设计 40.3.2）
+	PublicURL string       // 面板对外地址，写进安装命令；为空时由请求推断（设计 27.3.1）
 }
 
 type Server struct {
@@ -32,6 +34,10 @@ type Server struct {
 	web     fs.FS
 	log     *slog.Logger
 	version string
+
+	publicURL   string
+	enrollLimit *enrollLimiter
+	routeTable  []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -64,6 +70,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		opts.Logger = slog.Default()
 	}
 	return &Server{store: store, web: web, log: opts.Logger, version: opts.Version,
+		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		latest: map[int64]*snapshot{}, counters: c}, nil
 }
 
@@ -92,17 +99,62 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	return err
 }
 
+// access 是路由允许的主体（设计 17.1、17.2）。
+type access string
+
+const (
+	accessPublic access = "public" // 无需凭证：健康检查、静态页面
+	accessEnroll access = "enroll" // 凭请求体中的注册码认证，由处理函数校验并单独限流（设计 27.6）
+	accessAdmin  access = "admin"  // Web 管理员
+	accessAgent  access = "agent"  // Agent Token，只能操作 Token 绑定的节点
+)
+
+// routeSpec 记录一条路由及其允许的主体。
+type routeSpec struct {
+	pattern string
+	access  access
+}
+
 // routes 注册全部路由，外层统一套上 middleware（request_id、panic 恢复、请求日志）。
-// TODO(A0): 每个路由显式声明允许的主体，未声明时启动报错；权限矩阵表驱动测试（设计 17.5）。
+//
+// 【安全】默认拒绝（设计 17.5）：路由只能通过 handle 注册，且必须声明允许的主体；
+// 鉴权在 handle 包装的统一中间件中完成，业务代码不自行判断凭证类型。
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.HandleFunc("POST /api/v1/agent/report", s.handleReport)
-	mux.Handle("GET /api/v1/servers", s.admin(s.handleListServers))
-	mux.Handle("GET /api/v1/servers/{id}/metrics", s.admin(s.handleMetrics))
+	s.routeTable = nil
+	handle := func(pattern string, acc access, h http.HandlerFunc) {
+		var wrapped http.Handler
+		switch acc {
+		case accessPublic, accessEnroll:
+			wrapped = h
+		case accessAdmin:
+			wrapped = s.admin(h)
+		case accessAgent:
+			wrapped = s.agent(h)
+		default:
+			panic("route " + pattern + ": unknown access " + string(acc)) // 未声明主体的路由在启动时直接失败
+		}
+		s.routeTable = append(s.routeTable, routeSpec{pattern, acc})
+		mux.Handle(pattern, wrapped)
+	}
+
+	handle("GET /healthz", accessPublic, s.handleHealthz)
+
+	// Agent（设计 19.10）
+	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
+	handle("POST /api/v1/agent/report", accessAgent, s.handleReport)
+
+	// 节点（设计 19.5、19.11）
+	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
+	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
+	handle("GET /api/v1/servers/{id}/metrics", accessAdmin, s.handleMetrics)
+	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
+	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
+	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
+
 	// /api/ 下未定义的路径返回 JSON 404；否则会落到下面的 SPA 回退，返回 200 的 HTML
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { s.writeError(w, r, errNotFound) })
-	mux.Handle("/", s.webHandler())
+	handle("/api/", accessPublic, func(w http.ResponseWriter, r *http.Request) { s.writeError(w, r, errNotFound) })
+	handle("/", accessPublic, s.webHandler().ServeHTTP)
 	return s.middleware(mux)
 }
 
@@ -138,21 +190,30 @@ func (s *Server) admin(h http.HandlerFunc) http.Handler {
 	})
 }
 
+// agent 用 Agent Token 认证，并把 Token 绑定的节点 ID 放进请求信息（设计 23.2）。
+//
+// 【安全】只按 Token 哈希查找节点，请求体中的任何节点标识都不可信（设计 1.6.6）；
+// 查询出错时返回 500，不放行（设计 43.1）。
+func (s *Server) agent(h http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sid, err := s.store.AgentServerID(bearer(r))
+		if err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		if sid == 0 {
+			s.writeError(w, r, errorf(CodeUnauthorized, "Agent 凭证无效或已被吊销，请重新注册"))
+			return
+		}
+		info(r).principal, info(r).principalID = "agent", sid
+		h(w, r)
+	})
+}
+
 // handleReport：POST /api/v1/agent/report，Agent Token 认证（设计 6.1）。
 // 成功返回 204；Token 无效 401；请求体不是合法 JSON 400；超过 64 KB 413。
-//
-// 【安全】只按 Token 哈希查找节点，请求体中的任何节点标识都不可信（设计 1.6.6）。
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
-	sid, err := s.store.AgentServerID(bearer(r))
-	if err != nil {
-		s.writeError(w, r, internalError(err))
-		return
-	}
-	if sid == 0 {
-		s.writeError(w, r, errorf(CodeUnauthorized, "Agent 凭证无效或已被吊销，请重新注册"))
-		return
-	}
-	info(r).principal, info(r).principalID = "agent", sid
+	sid := info(r).principalID
 	var rep protocol.Report
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReportSize)).Decode(&rep); err != nil {
 		if ae := asAPIError(err); ae.Code == CodePayloadTooLarge {
@@ -286,7 +347,7 @@ func (s *Server) retentionLoop(ctx context.Context) {
 
 type serverView struct {
 	ServerRow
-	Status  string           `json:"status"` // online | unknown | offline
+	Status  string           `json:"status"` // online / unknown / offline / pending（设计 22、27.7）
 	Latest  *protocol.Report `json:"latest,omitempty"`
 	Traffic trafficView      `json:"traffic"`
 }
@@ -311,6 +372,9 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	out := make([]serverView, 0, len(rows))
 	for _, row := range rows {
 		v := serverView{ServerRow: row, Status: "offline"}
+		if row.EnrollState == enrollPending {
+			v.Status = "pending" // 待安装：单独显示，不参与在线判断，不触发离线告警（设计 27.7）
+		}
 		s.mu.Lock()
 		if snap := s.latest[row.ID]; snap != nil {
 			rep := snap.Report
@@ -318,7 +382,7 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 			v.LastSeenAt = snap.ReceivedAt.Unix()
 		}
 		s.mu.Unlock()
-		if v.LastSeenAt > 0 {
+		if v.LastSeenAt > 0 && row.EnrollState != enrollPending {
 			age := now.Sub(time.Unix(v.LastSeenAt, 0))
 			switch {
 			case age <= onlineWithin:

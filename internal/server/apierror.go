@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"time"
 )
 
 // 接口错误的统一表示与错误码目录（设计 19.0.2、43.4）。
@@ -61,10 +62,11 @@ type FieldError struct {
 // 【安全】Message 与 Details 会原样返回客户端，不得包含 SQL、文件路径、堆栈、内部地址（设计 43.3.1）；
 // 排障信息放进 Cause，只写入服务端日志。
 type APIError struct {
-	Code    Code
-	Message string       // 为空时使用错误码的默认提示
-	Details []FieldError // 仅 validation_failed 使用
-	Cause   error        // 内部原因，只记录日志，不返回客户端
+	Code       Code
+	Message    string        // 为空时使用错误码的默认提示
+	Details    []FieldError  // 仅 validation_failed 使用
+	Cause      error         // 内部原因，只记录日志，不返回客户端
+	RetryAfter time.Duration // 仅 rate_limited 使用，写入 Retry-After 响应头（设计 43.2）
 }
 
 func (e *APIError) Error() string {

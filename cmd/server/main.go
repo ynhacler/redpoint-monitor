@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"vpsmon/internal/logging"
@@ -32,6 +33,7 @@ usage:
   vpsmon-server init       --data DIR
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
+                           [--public-url https://monitor.example.com]
   vpsmon-server version
 `, version)
 	os.Exit(2)
@@ -79,6 +81,7 @@ func main() {
 		listen := fsx.String("listen", "127.0.0.1:8080", "listen address")
 		logFormat := fsx.String("log-format", "json", "log format: json or text (design 24.3)")
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
+		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
 		_ = fsx.Parse(args)
 		level, err := logging.ParseLevel(*logLevel)
 		if err != nil {
@@ -98,7 +101,11 @@ func main() {
 		// 启动时记录版本、数据目录、监听地址、数据库与迁移版本、HTTPS 模式（设计 24.6）
 		logger.Info("starting", "component", "server", "version", version, "data", *data, "listen", *listen,
 			"db", "sqlite", "schema_version", schema, "https", "off (reverse proxy)")
-		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version})
+		// 【安全】安装命令中的面板地址必须是 HTTPS：Agent 会拒绝向非回环地址明文上报（设计 23.1）
+		if *publicURL != "" && !strings.HasPrefix(*publicURL, "https://") {
+			log.Fatal("--public-url must start with https://")
+		}
+		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL})
 		if err != nil {
 			log.Fatal(err)
 		}
