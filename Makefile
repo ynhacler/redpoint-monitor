@@ -11,7 +11,7 @@ VM      ?= vpsmon-dev
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 .PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint web build build-linux \
-        vm-create vm-agent app-setup app-run deploy deploy-agent remote-add-server clean
+        vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
@@ -96,6 +96,13 @@ deploy: build-linux ## Deploy server to VPS: make deploy VPS=root@1.2.3.4
 deploy-agent: build-linux ## Deploy agent: make deploy-agent VPS=root@host SERVER=https://... TOKEN_FILE=path
 	@test -n "$(VPS)" -a -n "$(SERVER)" -a -n "$(TOKEN_FILE)" || (echo "usage: make deploy-agent VPS=user@host SERVER=https://monitor.example.com TOKEN_FILE=./hk1.token" && exit 1)
 	scripts/deploy.sh agent $(VPS) $(SERVER) $(TOKEN_FILE)
+
+install-server: ## On the VPS, after `make build`: install/upgrade the server as a systemd service
+	sudo scripts/install.sh server
+
+install-agent: ## On the VPS, after `make build`: make install-agent SERVER=https://... TOKEN_FILE=path
+	@test -n "$(SERVER)" -a -n "$(TOKEN_FILE)" || (echo "usage: make install-agent SERVER=https://monitor.example.com TOKEN_FILE=./node.token" && exit 1)
+	sudo scripts/install.sh agent $(SERVER) $(TOKEN_FILE)
 
 remote-add-server: ## Add a server on the VPS: make remote-add-server VPS=root@host NAME=HK-1 (token → ./NAME.token)
 	@test -n "$(VPS)" -a -n "$(NAME)" || (echo "usage: make remote-add-server VPS=user@host NAME=HK-1" && exit 1)
