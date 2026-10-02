@@ -27,6 +27,8 @@ const props = defineProps<{
   label?: string
   /** 着色风格：底轨用当前状态色的淡色、百分比文字同色（节点列表的紧凑卡片） */
   tinted?: boolean
+  /** 中间只显示数字、不带 %（旁边已有大号百分比时） */
+  bare?: boolean
 }>()
 
 const levelColor = computed(() => `var(--${props.level ?? 'ok'})`)
@@ -63,7 +65,7 @@ const arcs = computed(() => {
           :stroke-dasharray="a.dash" :stroke-dashoffset="a.offset" :stroke-linecap="segments ? 'butt' : 'round'" />
       </g>
       <text v-if="pct != null || !segments" :x="d / 2" :y="d / 2" text-anchor="middle" dominant-baseline="central" class="pct"
-        :class="[segments ? '' : level, { tinted: tinted && !segments }]" :style="{ fontSize: `${Math.round(d / 4.6)}px` }">{{ fmtPct(pct) }}</text>
+        :class="[segments ? '' : level, { tinted: tinted && !segments }]" :style="{ fontSize: `${Math.round(d / (bare ? 3.4 : 4.6))}px` }">{{ bare && pct != null ? Math.round(pct) : fmtPct(pct) }}</text>
     </svg>
     <figcaption v-if="caption" class="caption num">{{ caption }}</figcaption>
   </figure>

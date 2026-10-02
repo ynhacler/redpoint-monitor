@@ -6,7 +6,7 @@ import { computed } from 'vue'
 const props = defineProps<{
   /** 按时间顺序的数值；null 表示该点没有数据，折线在此断开 */
   values: (number | null)[]
-  /** 纵轴上限；不填时取数据最大值（至少为 1，避免全 0 时除零） */
+  /** 纵轴上限；不填时取数据最大值的 1.3 倍（留出余量，曲线落在中部；至少为 1，避免全 0 时除零） */
   max?: number
   /** CSS 颜色，只用设计令牌 */
   color?: string
@@ -16,7 +16,7 @@ const props = defineProps<{
 
 const W = 100
 const h = computed(() => props.height ?? 32)
-const top = computed(() => props.max ?? Math.max(1, ...props.values.map((v) => v ?? 0)))
+const top = computed(() => props.max ?? Math.max(1, Math.max(...props.values.map((v) => v ?? 0)) * 1.3))
 // 折线按 null 断成多段；每段同时生成面积
 const parts = computed(() => {
   const n = props.values.length

@@ -110,6 +110,18 @@ export function fmtUptimeShort(seconds: number | null | undefined): string {
   return `${(days / 365).toFixed(1)}年`
 }
 
+/** 开机时间拆成数值与单位（规则同 fmtUptimeShort），用于“数值大、单位小”的展示 */
+export function uptimeParts(seconds: number | null | undefined): { v: string; u: string } {
+  if (seconds == null || seconds < 0) return { v: DASH, u: '' }
+  const days = seconds / 86400
+  if (days < 1) {
+    const h = Math.floor(seconds / 3600)
+    return h < 1 ? { v: '<1', u: '小时' } : { v: String(h), u: '小时' }
+  }
+  if (days <= 999) return { v: String(Math.floor(days)), u: '天' }
+  return { v: (days / 365).toFixed(1), u: '年' }
+}
+
 /** 运行时间：取两级单位，“37 天 7 小时”“5 小时 12 分”“12 分”，用于详情页（列表用 fmtDuration） */
 export function fmtUptime(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH
