@@ -22,6 +22,8 @@ tags:
     description: Agent 上报与注册（设计 19.10、27.6）
   - name: servers
     description: 节点与安装（设计 19.5、19.11）
+  - name: traffic
+    description: 流量统计、校准与预测（设计 5、19.8、32）
 
 paths:
   /auth/captcha:
@@ -344,6 +346,137 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/traffic/current:
+    get:
+      tags: [traffic]
+      summary: 本计费周期流量、校准与预测（设计 19.8、5.7、32）；与节点中的 traffic 字段相同
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '200':
+          description: 本周期流量
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrafficView' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/traffic/daily:
+    get:
+      tags: [traffic]
+      summary: 最近 N 天每日流量，按日期升序，无数据的日期补 0
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 400, default: 30 } }
+      responses:
+        '200':
+          description: 每日流量
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day: { type: string, format: date }
+                        rx: { type: integer }
+                        tx: { type: integer }
+                        used: { type: integer, description: 按计费模式取值并乘以系数；不含校准 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/traffic/monthly:
+    get:
+      tags: [traffic]
+      summary: 最近 N 个计费周期（含当前），最新在前；历史周期按当前的计费模式、系数与额度计算
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+        - { name: cycles, in: query, schema: { type: integer, minimum: 1, maximum: 36, default: 12 } }
+      responses:
+        '200':
+          description: 每个计费周期的流量
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        cycle_start: { type: string, format: date }
+                        cycle_end: { type: string, format: date, description: 下一周期开始日（不含） }
+                        rx: { type: integer }
+                        tx: { type: integer }
+                        adjustment: { type: integer }
+                        used: { type: integer }
+                        limit: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/traffic/calibrate:
+    post:
+      tags: [traffic]
+      summary: 手动校准本周期已用流量（设计 5.7）
+      description: 偏差 = 填写值 − 当前统计值，只作用于当前周期；再次校准覆盖之前的偏差，不累加。
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [used_gb]
+              properties:
+                used_gb: { type: number, minimum: 0, description: 服务商面板显示的已用量，按节点的 traffic_unit 口径 }
+                note: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: 校准后的本周期流量
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrafficView' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /servers/{id}/traffic/adjustments:
+    get:
+      tags: [traffic]
+      summary: 校准历史（最近 50 条，最新在前）
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '200':
+          description: 校准记录
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        cycle_start: { type: string, format: date }
+                        measured_bytes: { type: integer, description: 校准时的统计值（已乘系数） }
+                        reported_bytes: { type: integer, description: 用户填写值 }
+                        adjustment_bytes: { type: integer }
+                        note: { type: string }
+                        created_at: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
 components:
   securitySchemes:
     session:
@@ -462,7 +595,9 @@ components:
         plan: { type: string, maxLength: 64 }
         region: { type: string, maxLength: 64 }
         country: { type: string, pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 两位代码（大小写不敏感，保存为大写）；用于显示国旗' }
-        traffic_limit_gb: { type: number, minimum: 0, description: 十进制 GB（设计 5.8），0 或省略表示不限 }
+        traffic_limit_gb: { type: number, minimum: 0, description: 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 }
+        traffic_unit: { type: string, enum: [decimal, binary], default: decimal, description: 'decimal：1 GB = 10^9 字节；binary：1 GiB = 2^30 字节（设计 5.8）' }
+        traffic_factor: { type: number, minimum: 0.5, maximum: 2, default: 1, description: 统计系数，修正固定比例偏差（设计 5.7） }
         traffic_reset_day: { type: integer, minimum: 1, maximum: 31, default: 1 }
         traffic_count_mode: { type: string, enum: [sum, rx, tx, max], default: sum, description: 设计 1.2.4 }
         price: { type: number, minimum: 0, description: 续费价格，保留两位小数 }
@@ -532,14 +667,32 @@ components:
         traffic_count_mode: { type: string }
         created_at: { type: integer }
         latest: { $ref: '#/components/schemas/Report' }
-        traffic:
+        traffic_unit: { type: string, enum: [decimal, binary] }
+        traffic_factor: { type: number }
+        traffic: { $ref: '#/components/schemas/TrafficView' }
+
+    TrafficView:
+      type: object
+      description: 本计费周期流量（设计 5.7、5.8、32）。字节数均为整数，GB 换算由客户端按 unit 完成。
+      properties:
+        cycle_start: { type: string, format: date }
+        cycle_end: { type: string, format: date, description: 下一周期开始日（不含） }
+        rx: { type: integer }
+        tx: { type: integer }
+        measured: { type: integer, description: 统计值：按计费模式取值 × 系数，不含校准 }
+        adjustment: { type: integer, description: 本周期最近一次校准的偏差，可为负 }
+        calibrated_at: { type: integer, description: 最近一次校准时间，Unix 秒；未校准时省略 }
+        used: { type: integer, description: 展示值 = 统计值 + 校准偏差 }
+        limit: { type: integer, description: 字节，0 表示不限 }
+        unit: { type: string, enum: [decimal, binary] }
+        factor: { type: number }
+        forecast:
           type: object
+          description: 周期结束时的预计用量；周期开始不足 3 天时省略（设计 32）
           properties:
-            cycle_start: { type: string, format: date }
-            rx: { type: integer }
-            tx: { type: integer }
-            used: { type: integer, description: 按计费模式计算 }
-            limit: { type: integer, description: 字节，0 表示不限 }
+            daily: { type: integer, description: 采用的日均 }
+            total: { type: integer }
+            over: { type: boolean, description: 预计超过额度 }
 
     Report:
       type: object

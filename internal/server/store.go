@@ -252,6 +252,21 @@ var migrations = []string{
 
 	// 迁移 7：节点所在国家 / 地区（设计 1.2.3），用于界面显示国旗；由用户手动选择，不做 IP 地理识别。
 	`ALTER TABLE servers ADD COLUMN country TEXT NOT NULL DEFAULT '';  -- ISO 3166-1 两位代码，如 JP、HK；空表示未填`,
+
+	// 迁移 8：流量单位口径、统计系数与手动校准（设计 5.7、5.8、18.12）
+	`ALTER TABLE servers ADD COLUMN traffic_unit TEXT NOT NULL DEFAULT 'decimal'; -- decimal（10^9）/ binary（2^30）
+	ALTER TABLE servers ADD COLUMN traffic_factor REAL NOT NULL DEFAULT 1.0;      -- 统计系数，长期修正固定比例偏差
+	CREATE TABLE traffic_adjustments (
+		id INTEGER PRIMARY KEY,
+		server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+		cycle_start TEXT NOT NULL,          -- 校准所属计费周期的开始日 YYYY-MM-DD；周期重置后不再生效
+		measured_bytes INTEGER NOT NULL,    -- 校准时的统计值（已乘系数）
+		reported_bytes INTEGER NOT NULL,    -- 用户填写的服务商面板数值
+		adjustment_bytes INTEGER NOT NULL,  -- reported - measured
+		note TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX traffic_adjustments_cycle ON traffic_adjustments(server_id, cycle_start);`,
 }
 
 func (s *Store) migrate() error {
@@ -346,17 +361,19 @@ type ServerRow struct {
 	EnrolledAt       int64  `json:"enrolled_at"`
 
 	// VPS 信息（设计 1.2.3、27.2）
-	Group         string `json:"group"`
-	Note          string `json:"note"`
-	Provider      string `json:"provider"`
-	Plan          string `json:"plan"`
-	Region        string `json:"region"`
-	Country       string `json:"country"`     // ISO 3166-1 两位代码（大写），空表示未填
-	PriceCents    int64  `json:"price_cents"` // 续费价格 × 100
-	Currency      string `json:"currency"`
-	BillingPeriod string `json:"billing_period"`
-	ExpireDate    string `json:"expire_date"` // YYYY-MM-DD，空表示未填
-	CreatedAt     int64  `json:"created_at"`
+	Group         string  `json:"group"`
+	Note          string  `json:"note"`
+	Provider      string  `json:"provider"`
+	Plan          string  `json:"plan"`
+	Region        string  `json:"region"`
+	Country       string  `json:"country"`        // ISO 3166-1 两位代码（大写），空表示未填
+	TrafficUnit   string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
+	TrafficFactor float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
+	PriceCents    int64   `json:"price_cents"`    // 续费价格 × 100
+	Currency      string  `json:"currency"`
+	BillingPeriod string  `json:"billing_period"`
+	ExpireDate    string  `json:"expire_date"` // YYYY-MM-DD，空表示未填
+	CreatedAt     int64   `json:"created_at"`
 }
 
 // ListServers 返回全部节点，按名称排序。

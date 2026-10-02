@@ -12,14 +12,14 @@ export interface Series {
 // 详情页折线图（设计 41.3 Chart、41.5）：统一主题，折线 1.5px、无数据点标记、面积透明度 ≤ 10%，
 // 网格线为 border 色虚线，同一图表最多 3 条线，颜色依次 accent / ok / warn；悬停显示同一时刻的全部数值。
 // 颜色从 CSS 令牌读取，切换深浅色时自动重绘。
-import { LineChart } from 'echarts/charts'
+import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// 按需引入，只打包折线图需要的模块
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+// 按需引入，只打包折线图与柱状图需要的模块
+echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const props = defineProps<{
   /** 图表标题 */
@@ -30,6 +30,8 @@ const props = defineProps<{
   format: (v: number) => string
   /** 纵轴最大值，如百分比图固定为 100 */
   max?: number
+  /** bar：柱状图（每日流量），横轴按天；默认折线 */
+  kind?: 'line' | 'bar'
 }>()
 
 const el = ref<HTMLDivElement | null>(null)
@@ -77,15 +79,19 @@ function render() {
         axisLabel: { color: muted, fontSize: fs, formatter: (v: number) => props.format(v) },
         splitLine: { lineStyle: { color: border, type: 'dashed' } },
       },
-      series: props.series.slice(0, 3).map((s) => ({
-        name: s.name,
-        type: 'line',
-        data: s.data,
-        showSymbol: false,
-        connectNulls: false,
-        lineStyle: { width: 1.5 },
-        areaStyle: { opacity: 0.08 },
-      })),
+      series: props.series.slice(0, 3).map((s) =>
+        props.kind === 'bar'
+          ? { name: s.name, type: 'bar', data: s.data, barMaxWidth: 16, itemStyle: { borderRadius: [2, 2, 0, 0] } }
+          : {
+              name: s.name,
+              type: 'line',
+              data: s.data,
+              showSymbol: false,
+              connectNulls: false,
+              lineStyle: { width: 1.5 },
+              areaStyle: { opacity: 0.08 },
+            },
+      ),
     },
     { notMerge: true },
   )
@@ -108,7 +114,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('vpsmon-theme', render)
   chart?.dispose()
 })
-watch(() => [props.series, props.max], render, { deep: true })
+watch(() => [props.series, props.max, props.kind], render, { deep: true })
 </script>
 
 <template>

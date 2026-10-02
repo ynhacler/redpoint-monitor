@@ -154,7 +154,7 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
 
       <!-- 流量 -->
       <section class="section">
-        <TrafficCard :server="s" />
+        <TrafficCard :server="s" @unauthorized="logout" />
       </section>
 
       <!-- 磁盘（设计 4.6） -->

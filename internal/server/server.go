@@ -179,6 +179,11 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
 	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
+	handle("GET /api/v1/servers/{id}/traffic/current", accessAdmin, s.handleTrafficCurrent)
+	handle("GET /api/v1/servers/{id}/traffic/daily", accessAdmin, s.handleTrafficDaily)
+	handle("GET /api/v1/servers/{id}/traffic/monthly", accessAdmin, s.handleTrafficMonthly)
+	handle("GET /api/v1/servers/{id}/traffic/adjustments", accessAdmin, s.handleAdjustments)
+	handle("POST /api/v1/servers/{id}/traffic/calibrate", accessAdmin, s.handleCalibrate)
 
 	// /api/ 下未定义的路径返回 JSON 404；否则会落到下面的 SPA 回退，返回 200 的 HTML
 	handle("/api/", accessPublic, func(w http.ResponseWriter, r *http.Request) { s.writeError(w, r, errNotFound) })
@@ -462,14 +467,6 @@ type serverView struct {
 	Traffic trafficView      `json:"traffic"`
 }
 
-type trafficView struct {
-	CycleStart string `json:"cycle_start"`
-	Rx         uint64 `json:"rx"`
-	Tx         uint64 `json:"tx"`
-	Used       uint64 `json:"used"`  // after applying count mode
-	Limit      int64  `json:"limit"` // 0 = unlimited
-}
-
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
 // TODO(A0): 列表改为 {"items", "next_cursor"} 格式（设计 19.0.2），与 Web、App 同步修改。
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
@@ -513,13 +510,11 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 			v.Status = "unknown"
 		}
 	}
-	start := CycleStart(now, row.ResetDay)
-	rx, tx, err := s.store.TrafficSince(row.ID, start)
+	t, err := s.trafficOf(row, now)
 	if err != nil {
 		return v, err
 	}
-	v.Traffic = trafficView{CycleStart: start.Format("2006-01-02"), Rx: rx, Tx: tx,
-		Used: CountedBytes(row.CountMode, rx, tx), Limit: row.LimitBytes}
+	v.Traffic = t
 	return v, nil
 }
 

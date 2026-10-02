@@ -333,6 +333,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 26 | 流量：19.8 增加校准与校准历史接口、daily / monthly 参数；第 32 章明确预测公式为“已用 + 日均 × 剩余天数”；统计系数范围 0.5～2 | 5.7、19.8、32 |
 | 25 | 节点增加国家 / 地区（手动选择）并显示国旗（flag-icons），不做 IP 地理识别 | 1.2.3、41.4.3 |
 | 24 | 登录增加自建滑动拼图验证码（服务端校验位置与拖动用时，一次性，可用 --no-login-captcha 关闭）；接口 /auth/captcha；错误码 captcha_failed | 17.4、19.1、43.4 |
 | 23 | Web 登录改为会话 Cookie + CSRF（8.2 与 17.1、17.4、19.0.2 统一，Web 不使用 Access / Refresh Token）；19.1 去掉 /auth/refresh，增加 /auth/password、/auth/reauth；错误码目录增加 password_change_required、reauth_required | 8.2、19.1、43.4 |
@@ -5219,10 +5220,15 @@ range=30d
 ## 19.8 流量
 
 ```http
-GET /api/v1/servers/{id}/traffic/current
-GET /api/v1/servers/{id}/traffic/daily
-GET /api/v1/servers/{id}/traffic/monthly
+GET  /api/v1/servers/{id}/traffic/current        本周期：统计值、校准偏差、展示值、预测（同节点中的 traffic 字段）
+GET  /api/v1/servers/{id}/traffic/daily?days=30  每日流量，无数据的日期补 0
+GET  /api/v1/servers/{id}/traffic/monthly?cycles=12
+POST /api/v1/servers/{id}/traffic/calibrate      手动校准（见 5.7），请求 {"used_gb", "note"}
+GET  /api/v1/servers/{id}/traffic/adjustments    校准历史
 ```
+
+字节数都以整数返回，GB / GiB 换算由客户端按节点的 `traffic_unit` 完成（见 5.8）。
+历史周期按当前的计费模式、系数与额度计算（这些设置不保存历史版本）。
 
 ---
 
@@ -7534,6 +7540,7 @@ Email、Discord、企业微信、钉钉、飞书、Bark（第二阶段）
 补充规则：
 
 ```text
+实际计算：预计 = 已用 + 日均 × 剩余天数（日均取最近 7 天时与上面的“日均 × 周期总天数”不同，以此为准）
 计算基于校准后的已用量（见 5.7）
 周期开始不足 3 天时不显示预测，避免样本过少导致误报
 优先使用最近 7 天日均，周期日均作为兜底，更贴近近期用量变化

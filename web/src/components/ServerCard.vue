@@ -3,7 +3,7 @@
 // 整张卡片可点击进入详情（设计 11）。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
-import { DASH, fmtBytes, fmtDuration, fmtPct } from '../format'
+import { DASH, fmtBytes, fmtDuration, fmtPct, fmtTraffic } from '../format'
 import { cpu, fullestDisk, isLive, issues, mem, rx, thresholds, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Metric from './Metric.vue'
@@ -55,7 +55,7 @@ const subtitle = computed(() =>
       <div class="traffic-label small">
         <span class="muted">本周期流量</span>
         <span class="num">
-          {{ fmtBytes(s.traffic.used) }}<span class="muted"> / {{ s.traffic.limit ? fmtBytes(s.traffic.limit) : '不限' }}</span>
+          {{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限' }}</span>
         </span>
       </div>
       <UsageBar v-if="traffic != null" :pct="traffic" />
