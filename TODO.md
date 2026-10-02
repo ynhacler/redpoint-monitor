@@ -103,7 +103,9 @@
 
 - [x] 设计令牌 `design/tokens.json` → `web/src/styles/tokens.css`；自建组件（StatusDot、Metric、UsageBar、ServerCard、TrafficCard、Chart、EmptyState、CommandBlock）；深浅色（设计 41.2、41.3）
 - [ ] 请求类型由 OpenAPI 生成；统一错误处理（设计 19.0.1、43.6）
-- [x] 登录页、修改密码页（设计 8.1）
+- [x] 登录页、修改密码页（设计 8.1）；窄屏顶栏保留账号入口
+- [x] 日志页：登录日志、操作日志（只读、按结果筛选、分页），审计保留 1 年（设计 24.8）
+- [ ] 日志按主体 / 操作筛选、CSV 导出；当前登录会话列表与踢出（设计 24.8）
 - [x] 总览；节点列表（搜索 / 分组 / 排序）；节点详情与历史曲线（ECharts、vue-router 已确认）（设计 9～11、41.5）
 - [ ] 图标改用 Lucide（设计 41.4.3，需确认依赖）；目前为内置的少量 SVG
 - [x] 节点国家 / 地区与国旗（手动选择，flag-icons）

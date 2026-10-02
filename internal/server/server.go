@@ -170,6 +170,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/agent/unregister", accessAgent, s.handleUnregister)
 
 	// 节点（设计 19.5、19.11）
+	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
 	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
 	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
@@ -440,6 +441,11 @@ func (s *Server) maintenance(ctx context.Context) {
 		if tick%10 == 0 {
 			if err := s.store.PruneSessions(now); err != nil {
 				s.log.Error("session prune failed", "component", "auth", "err", err)
+			}
+			if n, err := s.store.PruneAudit(now); err != nil {
+				s.log.Error("audit prune failed", "component", "audit", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired audit logs deleted", "component", "audit", "rows", n)
 			}
 			if n, err := s.store.PruneExpired(now); err != nil {
 				s.log.Error("retention failed", "component", "store", "err", err)

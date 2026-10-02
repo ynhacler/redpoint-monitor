@@ -62,6 +62,14 @@ export function fmtTime(unix: number | null | undefined, now = new Date()): stri
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** 完整时间到秒：2026-10-02 16:31:05，用于日志等需要精确时间的地方 */
+export function fmtDateTime(unix: number | null | undefined): string {
+  if (!unix) return DASH
+  const d = new Date(unix * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 /** 时长：“4 分钟”“2 小时”“3 天”，用于离线时长与运行时间（设计 41.4.1） */
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH

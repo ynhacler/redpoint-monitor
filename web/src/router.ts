@@ -8,6 +8,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { title: '登录', public: true } },
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { title: '账号' } },
+    { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
     { path: '/', name: 'overview', component: () => import('./pages/OverviewPage.vue'), meta: { title: '总览' } },
     { path: '/servers', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { title: '节点' } },
     { path: '/servers/new', name: 'server-new', component: () => import('./pages/ServerEditPage.vue'), meta: { title: '新建节点' } },

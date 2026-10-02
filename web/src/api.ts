@@ -316,6 +316,38 @@ export function calibrateTraffic(id: number, usedGB: number, note = ''): Promise
   return request('POST', `/servers/${id}/traffic/calibrate`, { used_gb: usedGB, note })
 }
 
+/** 一条审计记录（设计 24.8）；details 已脱敏 */
+export interface AuditLog {
+  id: number
+  ts: number
+  actor_type: 'admin' | 'agent' | 'cli' | 'system'
+  /** 管理员用户名（登录失败时为填写的用户名）或节点 ID */
+  actor_id: string
+  action: string
+  target_type: string
+  target_id: string
+  /** 对象为节点且仍存在时的名称 */
+  target_name: string
+  result: 'success' | 'failure'
+  client_ip: string
+  user_agent: string
+  details: Record<string, unknown>
+}
+
+export interface AuditQuery {
+  category?: 'login' | 'operation'
+  result?: 'success' | 'failure'
+  cursor?: string
+  limit?: number
+}
+
+/** 审计日志，按时间倒序；next_cursor 为空表示没有更多 */
+export function listAuditLogs(q: AuditQuery): Promise<{ items: AuditLog[]; next_cursor: string }> {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') qs.set(k, String(v))
+  return request('GET', `/audit-logs?${qs}`)
+}
+
 /** 查看安装命令；不含完整注册码。 */
 export function getInstallCommand(id: number): Promise<EnrollCodeView> {
   return request('GET', `/servers/${id}/install-command`)

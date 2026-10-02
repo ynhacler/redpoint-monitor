@@ -21,13 +21,16 @@ onUnmounted(stopPolling)
       <nav v-if="signedIn">
         <RouterLink to="/" exact-active-class="active">总览</RouterLink>
         <RouterLink to="/servers" active-class="active">节点</RouterLink>
+        <RouterLink to="/logs" active-class="active">日志</RouterLink>
       </nav>
       <div class="tools">
         <button class="text" type="button" :title="`主题：${themeLabels[themeMode]}（点击切换）`" @click="cycleTheme">
           <Icon :name="themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor'" />
         </button>
         <template v-if="state.me">
-          <RouterLink to="/account" class="user small" title="账号与密码">{{ state.me.username }}</RouterLink>
+          <RouterLink to="/account" class="user small" title="账号与密码">
+            <Icon name="user" /><span class="username">{{ state.me.username }}</span>
+          </RouterLink>
           <button class="text" type="button" title="退出登录" @click="logout">
             <Icon name="logout" />
           </button>
@@ -45,19 +48,22 @@ onUnmounted(stopPolling)
 <style scoped>
 .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
 .inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); height: 52px; display: flex; align-items: center; gap: var(--space-6); }
-.brand { color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }
+.brand { white-space: nowrap; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }
 nav { display: flex; gap: var(--space-1); }
-nav a { color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
+nav a { white-space: nowrap; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
 nav a:hover { color: var(--text); text-decoration: none; }
 nav a.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
 .tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
 .tools button { padding: var(--space-1); }
-.user { color: var(--text-muted); }
+.user { color: var(--text-muted); display: flex; align-items: center; gap: var(--space-1); }
 .user:hover { color: var(--text); text-decoration: none; }
 .banner-wrap { padding-bottom: 0; }
 .banner-wrap .banner { margin: 0; }
 @media (max-width: 600px) {
-  .inner { gap: var(--space-3); }
-  .user { display: none; }
+  .inner { gap: var(--space-2); }
+  .brand { font-size: var(--font-md); }
+  .tools { gap: var(--space-1); }
+  .username { display: none; } /* 窄屏只显示图标，仍可进入账号页修改密码 */
+  nav a { padding: var(--space-1) var(--space-2); }
 }
 </style>

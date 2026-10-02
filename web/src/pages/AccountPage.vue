@@ -64,6 +64,9 @@ async function submit() {
       <p v-if="message" class="small" role="status">{{ message }}</p>
       <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
     </form>
+    <p v-if="!forced" class="account-links small muted">
+      发现异常登录？查看<RouterLink to="/logs?tab=login">登录日志</RouterLink>，修改密码后其他设备会被退出。
+    </p>
   </main>
 </template>
 
@@ -73,4 +76,5 @@ async function submit() {
 .account p { margin: 0; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
 .account button { align-self: flex-start; }
+.account-links { max-width: 420px; margin: var(--space-4) auto 0; }
 </style>

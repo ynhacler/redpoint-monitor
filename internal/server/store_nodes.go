@@ -414,12 +414,17 @@ func (s *Store) Audit(e AuditEntry, now time.Time) error {
 	if e.TargetID != 0 {
 		target = strconv.FormatInt(e.TargetID, 10)
 	}
+	// 登录失败时 actor_id 是请求中填写的用户名，可能是任意内容，截断后保存
+	actor := e.ActorID
+	if len(actor) > 64 {
+		actor = actor[:64]
+	}
 	ua := e.UserAgent
 	if len(ua) > 256 {
 		ua = ua[:256] // 防止超长 User-Agent 撑大审计表
 	}
 	_, err := s.DB.Exec(`INSERT INTO audit_logs (ts, actor_type, actor_id, action, target_type, target_id, result,
 		client_ip, user_agent, details) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		now.Unix(), e.ActorType, e.ActorID, e.Action, e.TargetType, target, result, e.ClientIP, logging.Redact(ua), details)
+		now.Unix(), e.ActorType, logging.Redact(actor), e.Action, e.TargetType, target, result, e.ClientIP, logging.Redact(ua), details)
 	return err
 }
