@@ -82,17 +82,17 @@ const diskTip = computed(() =>
         <span class="cap">{{ r.cpu.cores }} 核</span>
       </div>
       <div class="col">
-        <span class="label">内存</span>
+        <span class="label">Mem</span>
         <Ring :pct="mem(s)" :level="gaugeLevel(mem(s), 'mem')" :size="52" tinted label="内存" />
         <span class="cap">{{ fmtBytesShort(r.memory.total) }}</span>
       </div>
       <div class="col" :title="diskTip">
-        <span class="label">{{ disk && disk.mount !== '/' ? disk.mount : '磁盘' }}</span>
+        <span class="label">Disk</span>
         <Ring :pct="disk?.usage" :level="gaugeLevel(disk?.usage, 'disk')" :size="52" tinted label="磁盘" />
-        <span class="cap">{{ fmtBytesShort(disk?.total) }}</span>
+        <span class="cap" :title="disk?.mount">{{ fmtBytesShort(disk?.total) }}</span>
       </div>
       <div class="col" :title="`上行 ${fmtBytes(tx(s), true)}，开机以来 ${fmtBytes(netTotal.tx)}\n下行 ${fmtBytes(rx(s), true)}，开机以来 ${fmtBytes(netTotal.rx)}`">
-        <span class="label">网络</span>
+        <span class="label">Net</span>
         <div class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(tx(s)) }}</span>
           <span class="t">{{ fmtBytesShort(netTotal.tx) }}</span>
@@ -101,7 +101,7 @@ const diskTip = computed(() =>
         </div>
       </div>
       <div class="col" :title="io ? `写 ${fmtBytes(io.write, true)}，开机以来 ${fmtBytes(io.writeTotal)}\n读 ${fmtBytes(io.read, true)}，开机以来 ${fmtBytes(io.readTotal)}` : '旧版 Agent 未上报磁盘 IO'">
-        <span class="label">IO</span>
+        <span class="label">I/O</span>
         <div v-if="io" class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(io.write) }}</span>
           <span class="t">{{ fmtBytesShort(io.writeTotal) }}</span>
