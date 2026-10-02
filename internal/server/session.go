@@ -284,15 +284,26 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Remember bool   `json:"remember"`
+		Username  string  `json:"username"`
+		Password  string  `json:"password"`
+		Remember  bool    `json:"remember"`
+		CaptchaID string  `json:"captcha_id"`
+		CaptchaX  float64 `json:"captcha_x"`  // 拼图块左边缘的位置，像素
+		CaptchaMs int     `json:"captcha_ms"` // 拖动用时，毫秒
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		s.writeError(w, r, err)
 		return
 	}
 	name := strings.TrimSpace(body.Username)
+	// 先校验验证码再核对密码：未通过验证码的请求不会触发密码比对（设计 17.4）
+	if s.captcha != nil && !s.captcha.verify(body.CaptchaID, body.CaptchaX, body.CaptchaMs, time.Now()) {
+		s.loginLimit.fail(ip)
+		s.audit(r, AuditEntry{ActorType: "admin", ActorID: name, Action: "auth.login", Success: false,
+			Details: map[string]any{"reason": "captcha"}})
+		s.writeError(w, r, errorf(CodeCaptchaFailed, ""))
+		return
+	}
 	fail := func(reason string) {
 		s.loginLimit.fail(ip)
 		s.audit(r, AuditEntry{ActorType: "admin", ActorID: name, Action: "auth.login", Success: false,

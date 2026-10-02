@@ -3,7 +3,7 @@
 import { computed, reactive } from 'vue'
 import {
   getMe, listServers, login as apiLogin, logoutSession, UnauthorizedError,
-  type EnrollCodeView, type Me, type ServerView,
+  type CaptchaAnswer, type EnrollCodeView, type Me, type ServerView,
 } from './api'
 
 export const state = reactive({
@@ -63,8 +63,8 @@ export async function checkAuth() {
 }
 
 /** 登录成功后开始轮询（需修改初始密码时先不轮询，接口会返回 403） */
-export async function login(username: string, password: string, remember: boolean) {
-  state.me = await apiLogin(username, password, remember)
+export async function login(username: string, password: string, remember: boolean, captcha?: CaptchaAnswer) {
+  state.me = await apiLogin(username, password, remember, captcha)
   if (!state.me.must_change_password) startPolling()
 }
 

@@ -411,6 +411,7 @@ func TestPermissionMatrix(t *testing.T) {
 	want := map[string]access{
 		"GET /healthz":                             accessPublic,
 		"POST /api/v1/auth/login":                  accessPublic,
+		"GET /api/v1/auth/captcha":                 accessPublic,
 		"GET /api/v1/auth/me":                      accessAdmin,
 		"POST /api/v1/auth/logout":                 accessAdmin,
 		"POST /api/v1/auth/password":               accessAdmin,

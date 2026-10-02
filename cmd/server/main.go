@@ -94,6 +94,7 @@ func main() {
 		listen := fsx.String("listen", "127.0.0.1:8080", "listen address")
 		logFormat := fsx.String("log-format", "json", "log format: json or text (design 24.3)")
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
+		noCaptcha := fsx.Bool("no-login-captcha", false, "disable the login slider captcha (design 17.4); login rate limiting stays on")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
 		_ = fsx.Parse(args)
 		level, err := logging.ParseLevel(*logLevel)
@@ -123,7 +124,8 @@ func main() {
 		if *publicURL != "" && !strings.HasPrefix(*publicURL, "https://") {
 			log.Fatal("--public-url must start with https://")
 		}
-		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL})
+		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL,
+			NoLoginCaptcha: *noCaptcha})
 		if err != nil {
 			log.Fatal(err)
 		}
