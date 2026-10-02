@@ -52,6 +52,8 @@
 - [ ] `vpsmon-server audit` 查看审计日志（设计 24.8）
 - [x] 重装 / 重试注册时吊销旧 Token（设计 27.6.4、27.8）
 - [ ] Web 手动吊销 / 轮换 Agent Token（设计 17.2）
+- [x] 节点查看 / 修改 / 删除：`GET/PUT/DELETE /api/v1/servers/{id}` 与 Web 编辑页（设计 19.5）
+- [ ] 删除节点等敏感操作改为重新输入密码确认（设计 17.4，依赖 A2）
 
 ### A2 Web 登录（替换开发用 admin token）
 

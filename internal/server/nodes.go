@@ -245,6 +245,104 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Install: s.installCommand(r, code)})
 }
 
+// handleGetServer：GET /api/v1/servers/{id}，admin。单个节点，格式与列表中的一项相同（设计 19.5）。
+func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	row, err := s.store.GetServer(id)
+	if errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	v, err := s.viewOf(*row, time.Now())
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	writeJSON(w, v)
+}
+
+// handleUpdateServer：PUT /api/v1/servers/{id}，admin。整体替换可编辑信息（字段同新建，enroll_ttl 忽略）；
+// 未提供的可选字段视为清空。成功 200 返回最新节点；字段错误 422；名称重复 409；不存在 404。
+func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var body createServerBody
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	body.EnrollTTL = "" // 修改信息不涉及注册码
+	in, _, errs := body.validate()
+	if len(errs) > 0 {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
+		return
+	}
+	switch err := s.store.UpdateServer(id, in, time.Now()); {
+	case errors.Is(err, errNoServer):
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	case errors.Is(err, errNameTaken):
+		s.writeError(w, r, &APIError{Code: CodeConflict, Message: "名称已被使用",
+			Details: []FieldError{{Field: "name", Message: "名称已被使用"}}})
+		return
+	case err != nil:
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.update", TargetType: "server", TargetID: id,
+		Success: true, Details: map[string]any{"name": in.Name}})
+	s.handleGetServer(w, r)
+}
+
+// handleDeleteServer：DELETE /api/v1/servers/{id}，admin。删除节点及其全部历史数据，不可恢复，成功 204。
+// 该节点的 Agent Token 随之删除，主机上的 Agent 之后上报会得到 401。
+// TODO(A2): 敏感操作需重新输入密码（设计 17.4）；目前由 Web 端要求输入节点名称确认。
+func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	name, err := s.store.DeleteServer(id)
+	if errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	// 清理内存状态；同时丢弃尚未写库的上报，避免删除后又写入孤立的指标行
+	s.mu.Lock()
+	delete(s.latest, id)
+	delete(s.counters, id)
+	kept := s.pending[:0]
+	for _, p := range s.pending {
+		if p.serverID != id {
+			kept = append(kept, p)
+		}
+	}
+	s.pending = kept
+	s.mu.Unlock()
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.delete", TargetType: "server", TargetID: id,
+		Success: true, Details: map[string]any{"name": name}})
+	s.log.Info("server deleted", "component", "servers", "server_id", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // pathID 解析路径中的节点 ID。
 func pathID(r *http.Request) (int64, error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

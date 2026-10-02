@@ -44,6 +44,8 @@ input, select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(
 button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; font: inherit; }
 button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
 button:disabled { opacity: .6; cursor: default; }
+button.link-btn { background: none; color: var(--muted); padding: 0 2px; font-size: 12px; }
+button.link-btn:hover { color: var(--accent); }
 
 .title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 16px; max-width: 860px; }

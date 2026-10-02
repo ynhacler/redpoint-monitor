@@ -103,6 +103,56 @@ func insertCode(tx *sql.Tx, serverID int64, c newCode, now time.Time) error {
 	return err
 }
 
+// UpdateServer 修改节点的可编辑信息（设计 19.5）；注册状态、实际主机信息不受影响。
+func (s *Store) UpdateServer(id int64, in NodeInput, now time.Time) error {
+	res, err := s.DB.Exec(`UPDATE servers SET name = ?, expected_hostname = ?, expected_ipv4 = ?, expected_ipv6 = ?,
+			verify_mode = ?, group_name = ?, note = ?, provider = ?, plan = ?, region = ?, traffic_limit_bytes = ?,
+			traffic_reset_day = ?, traffic_count_mode = ?, price_cents = ?, currency = ?, billing_period = ?,
+			expire_date = ?, updated_at = ? WHERE id = ?`,
+		in.Name, in.ExpectedHostname, in.ExpectedIPv4, in.ExpectedIPv6, in.VerifyMode, in.Group, in.Note,
+		in.Provider, in.Plan, in.Region, in.LimitBytes, in.ResetDay, in.CountMode, in.PriceCents, in.Currency,
+		in.BillingPeriod, in.ExpireDate, now.Unix(), id)
+	if isUniqueName(err) {
+		return errNameTaken
+	}
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errNoServer
+	}
+	return nil
+}
+
+// DeleteServer 删除节点及其全部数据：Token、注册码（外键级联）、指标、流量计数与日统计。
+// 不可恢复；审计日志保留（只追加，设计 24.8）。
+func (s *Store) DeleteServer(id int64) (string, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	var name string
+	if err := tx.QueryRow(`SELECT name FROM servers WHERE id = ?`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+		return "", errNoServer
+	} else if err != nil {
+		return "", err
+	}
+	for _, q := range []string{
+		`DELETE FROM metrics_raw WHERE server_id = ?`,
+		`DELETE FROM traffic_counters WHERE server_id = ?`,
+		`DELETE FROM traffic_daily WHERE server_id = ?`,
+		`DELETE FROM agent_tokens WHERE server_id = ?`, // 外键已设置级联，这里显式删除，不依赖 PRAGMA foreign_keys
+		`DELETE FROM enroll_codes WHERE server_id = ?`,
+		`DELETE FROM servers WHERE id = ?`,
+	} {
+		if _, err := tx.Exec(q, id); err != nil {
+			return "", err
+		}
+	}
+	return name, tx.Commit()
+}
+
 // ReplaceEnrollCode 作废节点现有的可用注册码并写入新码（设计 27.4 [重新生成]、27.8 重装）。
 func (s *Store) ReplaceEnrollCode(serverID int64, code newCode, now time.Time) error {
 	tx, err := s.DB.Begin()
