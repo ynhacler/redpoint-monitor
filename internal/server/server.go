@@ -143,6 +143,7 @@ func (s *Server) routes() http.Handler {
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
 	handle("POST /api/v1/agent/report", accessAgent, s.handleReport)
+	handle("POST /api/v1/agent/unregister", accessAgent, s.handleUnregister)
 
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)

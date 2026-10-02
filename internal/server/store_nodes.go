@@ -266,6 +266,23 @@ func (s *Store) Enroll(req EnrollRequest, verify verifyFunc, now time.Time) (*En
 	return res, tx.Commit()
 }
 
+// Unregister 处理 Agent 卸载（设计 27.11）：吊销该节点全部 Token，节点回到“待安装”。
+// 历史数据、流量统计保留，重新安装后继续使用（与设计 27.8 一致）。
+func (s *Store) Unregister(serverID int64, now time.Time) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE agent_tokens SET revoked_at = ? WHERE server_id = ? AND revoked_at IS NULL`, now.Unix(), serverID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE servers SET enroll_state = ?, updated_at = ? WHERE id = ?`, enrollPending, now.Unix(), serverID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // splitIP 按地址族拆分来源地址，返回 (ipv4, ipv6)，另一项为空。
 func splitIP(ip string) (string, string) {
 	if ip == "" {

@@ -5,7 +5,14 @@
 //   - 只走 HTTPS；仅回环地址或显式 --allow-http（本地开发）允许明文
 //   - 以非 root 用户运行
 //
-// 不负责：注册与安装（TODO(A1)：vpsmon-agent install，设计 27.6）、升级（设计 29）。
+// 子命令（设计 27.11）：
+//
+//	vpsmon-agent install --server URL --enroll ENR-…   注册并安装为 systemd 服务（需要 root）
+//	vpsmon-agent status                                 服务状态与最近一次上报
+//	vpsmon-agent uninstall                              停止并删除，通知面板（需要 root）
+//	vpsmon-agent [run] --server URL --token-file F      前台运行（systemd 单元使用）
+//
+// 不负责：升级（设计 29）。
 package main
 
 import (
@@ -17,20 +24,75 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"vpsmon/internal/agent/collector"
+	"vpsmon/internal/agent/setup"
 	"vpsmon/internal/protocol"
 )
 
 var version = "0.1.0-dev" // 构建时通过 -ldflags "-X main.version=..." 覆盖为 git describe
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "install":
+			os.Exit(cmdInstall(os.Args[2:]))
+		case "status":
+			if err := setup.PrintStatus(setup.Options{Out: os.Stdout}); err != nil {
+				os.Exit(1)
+			}
+			return
+		case "uninstall":
+			os.Exit(cmdUninstall())
+		case "version":
+			fmt.Println(version)
+			return
+		case "run":
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+		}
+	}
+	// 【兼容】不带子命令时直接按参数前台运行：已部署的 systemd 单元就是这样调用的
+	run()
+}
+
+// cmdInstall 执行 vpsmon-agent install（设计 27.6.1），返回进程退出码。
+func cmdInstall(args []string) int {
+	fs := flag.NewFlagSet("install", flag.ExitOnError)
+	server := fs.String("server", "", "panel URL, e.g. https://monitor.example.com")
+	code := fs.String("enroll", "", "one-time enroll code from the panel (ENR-XXXX-XXXX-XXXX-XXXX)")
+	allowHTTP := fs.Bool("allow-http", false, "allow plain HTTP to a non-loopback panel (development only)")
+	_ = fs.Parse(args)
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "✗ install 只支持 Linux")
+		return 1
+	}
+	self, _ := os.Executable()
+	err := setup.Install(context.Background(), setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
+		Version: version, Self: self, Out: os.Stdout})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// cmdUninstall 执行 vpsmon-agent uninstall（设计 27.11），返回进程退出码。
+func cmdUninstall() int {
+	if err := setup.Uninstall(context.Background(), setup.Options{Out: os.Stdout}); err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// run 前台运行：定时采集并上报，直到收到 SIGTERM / SIGINT。
+func run() {
 	server := flag.String("server", "", "server base URL, e.g. https://monitor.example.com")
 	token := flag.String("token", "", "agent token (prefer --token-file or MONITOR_AGENT_TOKEN)")
 	tokenFile := flag.String("token-file", "", "file containing the agent token")
@@ -38,6 +100,7 @@ func main() {
 	fake := flag.Bool("fake", false, "send fake metrics (for development)")
 	allowHTTP := flag.Bool("allow-http", false, "allow plain HTTP to a non-loopback server (development only)")
 	ifaces := flag.String("interfaces", "", "comma-separated interfaces to count; empty = auto")
+	stateDir := flag.String("state-dir", "", "directory for status.json read by `vpsmon-agent status` (systemd: /var/lib/vpsmon-agent)")
 	showVersion := flag.Bool("version", false, "print version")
 	flag.Parse()
 
@@ -51,7 +114,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := checkServerURL(*server, *allowHTTP); err != nil {
+	if err := setup.ValidateServerURL(*server, *allowHTTP); err != nil {
 		log.Fatal(err)
 	}
 
@@ -69,6 +132,8 @@ func main() {
 
 	r := &reporter{
 		endpoint: strings.TrimRight(*server, "/") + "/api/v1/agent/report",
+		server:   *server,
+		stateDir: *stateDir,
 		token:    tok,
 		// 【安全】使用默认 Transport：系统 CA、始终校验证书（设计 23.1）。
 		// 10 秒超时：面板卡住时不让上报循环一直阻塞。
@@ -124,35 +189,16 @@ func loadToken(flagTok, file string) (string, error) {
 	return "", errors.New("no agent token: use --token-file or MONITOR_AGENT_TOKEN")
 }
 
-// checkServerURL 校验面板地址，强制 HTTPS。
-//
-// 【安全】每个请求都携带 Bearer Token，公网明文 HTTP 会泄露 Token（设计 23.1）；
-// 回环地址的流量不离开本机，因此允许 HTTP。
-func checkServerURL(raw string, allowHTTP bool) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("invalid --server %q", raw)
-	}
-	if u.Scheme == "https" {
-		return nil
-	}
-	if u.Scheme == "http" {
-		h := u.Hostname()
-		if h == "localhost" || h == "127.0.0.1" || h == "::1" || allowHTTP {
-			return nil
-		}
-		return errors.New("refusing plain HTTP to a remote server; use HTTPS (or --allow-http for local dev)")
-	}
-	return fmt.Errorf("unsupported scheme %q", u.Scheme)
-}
-
 // reporter 负责向面板推送上报。
 //
 // 【安全】只推不拉：忽略响应体，面板返回的任何内容都不能让 Agent 执行动作（设计 1.6.8）。
 type reporter struct {
 	endpoint string
+	server   string
+	stateDir string // 每次上报后写 status.json；为空时不写
 	token    string
 	client   *http.Client
+	status   setup.Status
 }
 
 // send 采集一次并上报。错误只记录不退出：面板故障不能导致 Agent 退出，下个周期照常上报。
@@ -165,11 +211,16 @@ func (r *reporter) send(ctx context.Context, col collector.Collector, final bool
 	rep.Timestamp = time.Now().Unix()
 	rep.AgentVersion = version
 	rep.Final = final
+	r.status.Version, r.status.Server, r.status.LastAttempt = version, r.server, rep.Timestamp
 	if err := r.post(ctx, rep); err != nil {
 		// TODO(A3): 有上限的内存重试缓冲 + 指数退避（设计 1.6.14、43.5）。
 		// 网卡计数是累计值，断网期间流量不会丢，丢的只是这段时间的指标点。
 		log.Printf("report: %v", err)
+		r.status.LastError = err.Error()
+	} else {
+		r.status.LastSuccess, r.status.LastError = rep.Timestamp, ""
 	}
+	setup.WriteStatus(r.stateDir, r.status) // 供 vpsmon-agent status 显示最近一次上报（设计 24.5）
 }
 
 // post 发送一次上报，非 2xx 状态视为失败。
