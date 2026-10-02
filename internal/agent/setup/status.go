@@ -28,6 +28,7 @@ type Status struct {
 	LastAttempt int64  `json:"last_attempt"` // Unix 秒
 	LastSuccess int64  `json:"last_success"` // Unix 秒；0 表示从未成功
 	LastError   string `json:"last_error"`   // 最近一次失败的原因；成功后清空
+	Queued      int    `json:"queued"`       // 断网缓存中等待补发的份数（设计 1.6.14）
 }
 
 // WriteStatus 原子写入 status.json。dir 为空或不存在时直接忽略（例如在 Mac 上开发），
@@ -100,6 +101,9 @@ func PrintStatus(o Options) error {
 			time.Since(time.Unix(st.LastSuccess, 0)).Round(time.Second))
 	} else {
 		fmt.Fprintln(o.Out, "最近成功：从未成功")
+	}
+	if st.Queued > 0 {
+		fmt.Fprintf(o.Out, "待补发：  %d 份（网络恢复后自动按时间顺序补发）\n", st.Queued)
 	}
 	if st.LastError != "" {
 		fmt.Fprintf(o.Out, "最近错误：%s（%s）\n", st.LastError, time.Unix(st.LastAttempt, 0).Format("15:04:05"))
