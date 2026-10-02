@@ -5,9 +5,10 @@
 import { computed, reactive, ref } from 'vue'
 import {
   ApiError, createServer, deleteServer, reauth, updateServer, UnauthorizedError,
-  type CreateServerInput, type EnrollCodeView, type ServerView,
+  type CreateServerInput, type EnrollCodeView, type ServerView, type TrafficUnit,
 } from '../api'
 import { countryOptions } from '../countries'
+import { bytesToGB } from '../format'
 import Flag from './Flag.vue'
 
 const countries = countryOptions()
@@ -36,8 +37,9 @@ const f = reactive({
   name: sv?.name ?? '', expected_hostname: sv?.expected_hostname ?? '', expected_ipv4: sv?.expected_ipv4 ?? '',
   expected_ipv6: sv?.expected_ipv6 ?? '', group: sv?.group ?? '', note: sv?.note ?? '',
   provider: sv?.provider ?? '', plan: sv?.plan ?? '', region: sv?.region ?? '', country: sv?.country ?? '',
-  // 字节 → 十进制 GB（设计 5.8）；0 表示不限，显示为空
-  traffic_limit_gb: sv?.traffic_limit_bytes ? String(sv.traffic_limit_bytes / 1e9) : '',
+  // 字节 → 按节点口径的 GB / GiB（设计 5.8）；0 表示不限，显示为空
+  traffic_limit_gb: sv?.traffic_limit_bytes ? String(+bytesToGB(sv.traffic_limit_bytes, sv.traffic_unit).toFixed(3)) : '',
+  traffic_unit: sv?.traffic_unit ?? 'decimal', traffic_factor: String(sv?.traffic_factor ?? 1),
   traffic_reset_day: String(sv?.traffic_reset_day ?? 1), traffic_count_mode: sv?.traffic_count_mode ?? 'sum',
   price: sv?.price_cents ? (sv.price_cents / 100).toFixed(2) : '', currency: sv?.currency || 'USD',
   billing_period: sv?.billing_period ?? '', expire_date: sv?.expire_date ?? '',
@@ -77,6 +79,8 @@ function buildInput(): CreateServerInput {
     country: f.country || undefined,
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
+    traffic_unit: f.traffic_unit as TrafficUnit,
+    traffic_factor: num(f.traffic_factor),
     traffic_count_mode: f.traffic_count_mode as CreateServerInput['traffic_count_mode'],
     price,
     currency: price ? text(f.currency) : undefined, // 不填价格时不提交币种，避免无意义的数据
@@ -203,10 +207,17 @@ async function remove() {
         <label>供应商<input v-model="f.provider" placeholder="如 DMIT" /></label>
         <label>套餐<input v-model="f.plan" /></label>
         <label>地区<input v-model="f.region" placeholder="如 香港" /></label>
-        <label>月流量（GB）
+        <label>月流量（{{ f.traffic_unit === 'binary' ? 'GiB' : 'GB' }}）
           <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" placeholder="不填表示不限" />
           <small v-if="fieldErrors.traffic_limit_gb" class="err">{{ fieldErrors.traffic_limit_gb }}</small>
-          <small v-else class="muted">按 1 GB = 10⁹ 字节计算</small>
+        </label>
+        <label>计量单位
+          <select v-model="f.traffic_unit">
+            <option value="decimal">十进制：1 GB = 10⁹ 字节</option>
+            <option value="binary">二进制：1 GiB = 2³⁰ 字节</option>
+          </select>
+          <small v-if="fieldErrors.traffic_unit" class="err">{{ fieldErrors.traffic_unit }}</small>
+          <small v-else class="muted">与服务商面板一致；多数服务商用十进制</small>
         </label>
         <label>流量重置日
           <input v-model="f.traffic_reset_day" type="number" min="1" max="31" />
@@ -216,6 +227,11 @@ async function remove() {
           <select v-model="f.traffic_count_mode">
             <option v-for="m in countModes" :key="m.v" :value="m.v">{{ m.t }}</option>
           </select>
+        </label>
+        <label>统计系数
+          <input v-model="f.traffic_factor" type="number" min="0.5" max="2" step="0.01" />
+          <small v-if="fieldErrors.traffic_factor" class="err">{{ fieldErrors.traffic_factor }}</small>
+          <small v-else class="muted">统计值长期比服务商偏低 3% 时填 1.03；一般保持 1</small>
         </label>
         <label>续费价格
           <div class="row">

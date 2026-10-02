@@ -40,7 +40,9 @@ type createServerBody struct {
 	Plan             string   `json:"plan"`
 	Region           string   `json:"region"`
 	Country          string   `json:"country"`           // ISO 3166-1 两位代码，大小写不敏感
-	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 十进制 GB（设计 5.8）；空或 0 表示不限
+	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 按 traffic_unit 口径的 GB / GiB；空或 0 表示不限
+	TrafficUnit      string   `json:"traffic_unit"`      // decimal（默认）/ binary（设计 5.8）
+	TrafficFactor    *float64 `json:"traffic_factor"`    // 统计系数 0.5～2，默认 1（设计 5.7）
 	TrafficResetDay  *int     `json:"traffic_reset_day"` // 1～31，默认 1
 	TrafficCountMode string   `json:"traffic_count_mode"`
 	Price            *float64 `json:"price"` // 续费价格，最多两位小数
@@ -107,12 +109,28 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		bad("verify_mode", "只能是 warn（仅提示）或 strict（不一致时拒绝）")
 	}
 
+	// 单位口径：服务商对 “1 TB” 的定义不一致，额度按节点选择的口径换算（设计 5.8）
+	in.Unit = b.TrafficUnit
+	if in.Unit == "" {
+		in.Unit = UnitDecimal
+	}
+	if in.Unit != UnitDecimal && in.Unit != UnitBinary {
+		bad("traffic_unit", "单位只能是 decimal（1 GB = 10⁹ 字节）或 binary（1 GiB = 2³⁰ 字节）")
+	}
 	if b.TrafficLimitGB != nil {
 		gb := *b.TrafficLimitGB
 		if gb < 0 || gb > 1e6 || math.IsNaN(gb) {
 			bad("traffic_limit_gb", "月流量额度应在 0～1000000 GB 之间")
 		} else {
-			in.LimitBytes = int64(math.Round(gb * 1e9)) // 十进制 GB，与多数服务商一致（设计 5.8）
+			in.LimitBytes = GBToBytes(gb, in.Unit)
+		}
+	}
+	// 系数用于修正固定比例偏差，0.5～2 足以覆盖实际情况，超出多半是输入错误（设计 5.7）
+	in.Factor = 1
+	if b.TrafficFactor != nil {
+		in.Factor = *b.TrafficFactor
+		if in.Factor < 0.5 || in.Factor > 2 || math.IsNaN(in.Factor) {
+			bad("traffic_factor", "统计系数应在 0.5～2 之间")
 		}
 	}
 	in.ResetDay = 1

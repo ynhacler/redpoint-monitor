@@ -25,6 +25,22 @@ export function fmtBytes(n: number | null | undefined, perSec = false): string {
   return `${i === 0 ? Math.round(n) : num(n)} ${units[i]}${perSec ? '/s' : ''}`
 }
 
+/** 流量按节点的单位口径显示（设计 5.8）：decimal 用 GB（10⁹），binary 用 GiB（2³⁰） */
+export function fmtTraffic(n: number | null | undefined, unit: 'decimal' | 'binary' = 'decimal'): string {
+  if (unit !== 'binary') return fmtBytes(n)
+  if (n == null || Number.isNaN(n)) return DASH
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i++
+  }
+  return `${i === 0 ? Math.round(n) : num(n)} ${units[i]}`
+}
+
+/** 字节 → GB / GiB 数值（表单回填用） */
+export const bytesToGB = (n: number, unit: 'decimal' | 'binary' = 'decimal') => n / (unit === 'binary' ? 2 ** 30 : 1e9)
+
 /** 百分比取整，小于 1% 显示 “<1%”（设计 41.4.1） */
 export function fmtPct(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return DASH

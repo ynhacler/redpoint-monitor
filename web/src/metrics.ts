@@ -42,12 +42,8 @@ export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[]
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'bad' ? -1 : 1))
 }
 
-/** 本周期还剩几天重置（设计 1.5.8）。cycle_start 为 YYYY-MM-DD，重置日按每月同一天计算 */
+/** 本周期还剩几天重置（设计 1.5.8）：按面板返回的下一周期开始日计算，与服务端口径一致 */
 export function daysToReset(s: ServerView, now = new Date()): number {
-  const day = s.traffic_reset_day || 1
-  const next = new Date(now.getFullYear(), now.getMonth(), day)
-  if (next <= now) next.setMonth(next.getMonth() + 1)
-  // 重置日大于当月天数时（如 31 日），落到当月最后一天
-  if (next.getDate() !== day) next.setDate(0)
-  return Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 86400000))
+  const end = new Date(s.traffic.cycle_end + 'T00:00:00')
+  return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86400000))
 }

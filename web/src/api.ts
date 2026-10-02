@@ -75,12 +75,50 @@ export interface ServerView {
   traffic_limit_bytes: number
   traffic_reset_day: number
   traffic_count_mode: 'sum' | 'rx' | 'tx' | 'max'
+  /** 计量单位口径（设计 5.8） */
+  traffic_unit: TrafficUnit
+  /** 统计系数，默认 1（设计 5.7） */
+  traffic_factor: number
   /** 最后一次上报时间，Unix 秒；0 表示从未上报 */
   last_seen_at: number
   /** 收到首次上报之前不存在 */
   latest?: Report
-  /** 当前计费周期：used 按节点的计费模式取 rx、tx 或 rx+tx；limit 为字节，0 表示不限（设计 1.2.4） */
-  traffic: { cycle_start: string; rx: number; tx: number; used: number; limit: number }
+  traffic: TrafficView
+}
+
+/** decimal：1 GB = 10⁹ 字节；binary：1 GiB = 2³⁰ 字节（设计 5.8） */
+export type TrafficUnit = 'decimal' | 'binary'
+
+/** 本计费周期流量（设计 5.7、32）。字节数均为整数。 */
+export interface TrafficView {
+  /** YYYY-MM-DD */
+  cycle_start: string
+  /** 下一周期开始日（不含） */
+  cycle_end: string
+  rx: number
+  tx: number
+  /** 统计值：按计费模式取值 × 系数，不含校准 */
+  measured: number
+  /** 本周期最近一次校准的偏差，可为负 */
+  adjustment: number
+  /** 最近一次校准时间，Unix 秒；未校准时没有 */
+  calibrated_at?: number
+  /** 展示值 = 统计值 + 校准偏差 */
+  used: number
+  /** 字节，0 表示不限 */
+  limit: number
+  unit: TrafficUnit
+  factor: number
+  /** 周期开始不足 3 天时没有（设计 32） */
+  forecast?: { daily: number; total: number; over: boolean }
+}
+
+/** 一天的流量；used 按计费模式取值 × 系数，不含校准 */
+export interface TrafficDay {
+  day: string
+  rx: number
+  tx: number
+  used: number
 }
 
 // 【安全】登录状态由 HttpOnly 会话 Cookie 维持，页面脚本读不到它（设计 17.4）。
@@ -170,8 +208,11 @@ export interface CreateServerInput {
   region?: string
   /** ISO 3166-1 两位代码 */
   country?: string
-  /** 月流量额度，十进制 GB（设计 5.8）；0 或不填表示不限 */
+  /** 月流量额度，按 traffic_unit 口径的 GB / GiB（设计 5.8）；0 或不填表示不限 */
   traffic_limit_gb?: number
+  traffic_unit?: TrafficUnit
+  /** 统计系数 0.5～2 */
+  traffic_factor?: number
   /** 流量重置日 1～31 */
   traffic_reset_day?: number
   traffic_count_mode?: 'sum' | 'rx' | 'tx' | 'max'
@@ -263,6 +304,16 @@ export interface HistoryView {
 /** 获取节点历史指标。 */
 export function getHistory(id: number, range: HistoryRange): Promise<HistoryView> {
   return request('GET', `/servers/${id}/metrics/history?range=${range}`)
+}
+
+/** 最近 days 天的每日流量，按日期升序，无数据的日期为 0（设计 19.8） */
+export async function getTrafficDaily(id: number, days = 30): Promise<TrafficDay[]> {
+  return (await request<{ items: TrafficDay[] }>('GET', `/servers/${id}/traffic/daily?days=${days}`)).items
+}
+
+/** 手动校准本周期已用流量（设计 5.7）：usedGB 按节点的单位口径，返回校准后的本周期流量 */
+export function calibrateTraffic(id: number, usedGB: number, note = ''): Promise<TrafficView> {
+  return request('POST', `/servers/${id}/traffic/calibrate`, { used_gb: usedGB, note })
 }
 
 /** 查看安装命令；不含完整注册码。 */
