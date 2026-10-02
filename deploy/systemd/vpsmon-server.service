@@ -1,0 +1,22 @@
+[Unit]
+Description=VPS Monitor server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=vpsmon
+Group=vpsmon
+# Loopback only until Web login + HTTPS land (M3). Access via: ssh -L 8080:127.0.0.1:8080 vps
+ExecStart=/usr/local/bin/vpsmon-server run --data /var/lib/vpsmon --listen 127.0.0.1:8080
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/vpsmon
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug builds only: allow http:// to the local dev server (10.0.2.2:8080 from the emulator).
+         Release builds keep cleartext disabled (design 1.6.7). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:usesCleartextTraffic="true" />
+</manifest>

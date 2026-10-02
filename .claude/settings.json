@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(make build)",
+      "Bash(make build-linux)",
+      "Bash(make web)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go build:*)",
+      "Bash(go run:*)",
+      "Bash(go mod tidy)",
+      "Bash(npm run:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(flutter analyze)",
+      "Bash(flutter test)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(curl -s http://127.0.0.1:8080/*)"
+    ],
+    "deny": [
+      "Read(./.dev/**)",
+      "Read(./**/*.token)",
+      "Bash(make deploy:*)",
+      "Bash(scripts/deploy.sh:*)"
+    ]
+  }
+}

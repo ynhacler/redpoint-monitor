@@ -1,0 +1,64 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #16181d;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --accent: #2563eb;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --text: #e6e8ec;
+    --muted: #8b93a1;
+    --border: #262a33;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+}
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 20px; margin: 0; }
+.summary { margin: 4px 0 20px; }
+.muted { color: var(--muted); }
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }
+code { font-size: 12px; background: var(--border); padding: 1px 5px; border-radius: 4px; }
+.banner { background: var(--bad); color: #fff; padding: 8px 12px; border-radius: 8px; }
+
+.token { max-width: 480px; margin-top: 24px; }
+.token label { display: block; margin-bottom: 8px; }
+.row { display: flex; gap: 8px; }
+input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); }
+button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.card.offline { border-color: color-mix(in srgb, var(--bad) 50%, var(--border)); }
+.head { display: flex; align-items: center; gap: 8px; }
+.head h2 { font-size: 15px; margin: 0; }
+.os { margin-left: auto; font-size: 12px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.dot.online { background: var(--ok); }
+.dot.unknown { background: var(--warn); }
+.dot.offline { background: var(--bad); }
+
+.metrics { display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: 4px 16px; margin: 12px 0; }
+.metrics div { min-width: 0; }
+.metrics dt { font-size: 11px; color: var(--muted); }
+.metrics dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.traffic-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+.fill { height: 100%; background: var(--ok); }
+.fill.warn { background: var(--warn); }
+.fill.crit { background: var(--bad); }

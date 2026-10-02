@@ -1,0 +1,48 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Secrets
+*.key
+*.pem
+*.p12
+*.mobileprovision
+*.jks
+*.keystore
+secrets/
+private/
+
+# Go
+bin/
+dist/
+*.test
+coverage.out
+
+# Vue
+web/node_modules/
+web/dist/
+
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+
+# Android
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+
+# iOS
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/ephemeral/
+
+# Database/runtime
+*.db
+*.db-wal
+*.db-shm
+data/
+logs/
+tmp/

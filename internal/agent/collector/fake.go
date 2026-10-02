@@ -1,0 +1,60 @@
+package collector
+
+import (
+	"math"
+	"math/rand"
+	"runtime"
+	"time"
+
+	"vpsmon/internal/protocol"
+)
+
+// fake produces plausible, slowly changing metrics for local development.
+// Counters grow monotonically so the server's traffic logic is exercised realistically.
+type fake struct {
+	start  time.Time
+	bootID string
+	rx, tx uint64
+	last   time.Time
+}
+
+func NewFake() Collector {
+	return &fake{start: time.Now(), bootID: "fake-boot-" + time.Now().Format("150405"), last: time.Now()}
+}
+
+func (f *fake) Collect() (protocol.Report, error) {
+	now := time.Now()
+	dt := now.Sub(f.last).Seconds()
+	if dt <= 0 {
+		dt = 1
+	}
+	f.last = now
+	t := now.Sub(f.start).Seconds()
+
+	rxSpeed := uint64(2_000_000 + 1_500_000*math.Sin(t/30) + rand.Float64()*300_000)
+	txSpeed := uint64(400_000 + 300_000*math.Cos(t/45) + rand.Float64()*100_000)
+	f.rx += uint64(float64(rxSpeed) * dt)
+	f.tx += uint64(float64(txSpeed) * dt)
+
+	memTotal := uint64(2 << 30)
+	memUsed := uint64(float64(memTotal) * (0.45 + 0.05*math.Sin(t/60)))
+	diskTotal := uint64(40 << 30)
+	diskUsed := uint64(18 << 30)
+
+	return protocol.Report{
+		System: protocol.System{
+			Hostname: "fake-node", OS: "fake", OSVersion: "1", Kernel: "fake",
+			Arch: runtime.GOARCH, Uptime: uint64(t), BootID: f.bootID,
+		},
+		CPU: protocol.CPU{
+			Usage: 15 + 10*math.Sin(t/20) + rand.Float64()*5, Cores: 2,
+			Load1: 0.3, Load5: 0.25, Load15: 0.2,
+		},
+		Memory: protocol.Memory{Total: memTotal, Used: memUsed, Available: memTotal - memUsed, Usage: pct(memUsed, memTotal)},
+		Swap:   protocol.Swap{Total: 1 << 30, Used: 64 << 20},
+		Disk:   []protocol.Disk{{Mount: "/", Total: diskTotal, Used: diskUsed, Usage: pct(diskUsed, diskTotal)}},
+		Network: []protocol.NetIface{{
+			Interface: "eth0", IfIndex: 2, RxBytes: f.rx, TxBytes: f.tx, RxSpeed: rxSpeed, TxSpeed: txSpeed,
+		}},
+	}, nil
+}
