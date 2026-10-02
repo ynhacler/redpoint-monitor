@@ -10,7 +10,7 @@ VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint web build build-linux \
+.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design web build build-linux \
         vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
@@ -52,6 +52,9 @@ lint: ## go vet + Web type-check
 	go vet ./...
 	cd web && npx vue-tsc --noEmit
 
+check-design: ## Check design doc numbering and section references (design 40.9.3)
+	python3 scripts/check_design_refs.py
+
 # ---------- builds ----------
 
 web: ## Build Web into web/dist (embedded by the server)
@@ -61,11 +64,23 @@ build: web ## Build server + agent for this machine into bin/
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-server ./cmd/server
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-agent ./cmd/agent
 
-build-linux: web ## Cross-compile linux/amd64 + linux/arm64 into dist/
-	@for arch in amd64 arm64; do \
-	  echo "→ linux/$$arch"; \
+# Agent 覆盖安装脚本支持的全部架构，构建名与设计 27.5.4 一致（armv7 / armv6 即 GOARCH=arm + GOARM）。
+# 面板只构建 amd64 / arm64：面板机器通常是常见 VPS，其他架构按需再加。
+# 全部静态编译（CGO_ENABLED=0），不区分 glibc / musl。
+AGENT_ARCHS  := amd64 arm64 armv7 armv6 386 riscv64
+SERVER_ARCHS := amd64 arm64
+
+build-linux: web ## Cross-compile agent (6 arches) + server (amd64/arm64) into dist/
+	@mkdir -p dist && rm -f dist/vpsmon-* dist/SHA256SUMS
+	@for arch in $(AGENT_ARCHS); do \
+	  goarch=$$arch; goarm=; \
+	  case $$arch in armv7) goarch=arm; goarm=7;; armv6) goarch=arm; goarm=6;; esac; \
+	  echo "→ agent  linux/$$arch"; \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
+	done
+	@for arch in $(SERVER_ARCHS); do \
+	  echo "→ server linux/$$arch"; \
 	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-server-linux-$$arch ./cmd/server || exit 1; \
-	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
 	done
 	@cd dist && shasum -a 256 vpsmon-* > SHA256SUMS && echo "dist/SHA256SUMS written"
 

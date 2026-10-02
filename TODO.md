@@ -29,13 +29,14 @@
 ### A0 工程基础
 
 - [x] 设计文档 v1.2 与 `scripts/check_design_refs.py`（设计 40.9）
-- [ ] GitHub Actions CI：go vet/test、Web 类型检查与构建、设计文档校验、交叉编译全部架构（设计 40.8.3）
+- [x] GitHub Actions CI：go vet/test、Web 类型检查与构建、设计文档校验、shellcheck、交叉编译全部架构（设计 40.8.3）
+- [ ] CI 补充注释检查：revive exported 规则、eslint-plugin-jsdoc（设计 39.7）
 - [ ] `api/openapi.yaml` 契约骨架，覆盖现有接口；服务端测试校验响应与契约一致（设计 19.0.1）
 - [ ] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
 - [ ] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
 - [ ] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）
 - [ ] `/healthz` 返回版本号（git describe）（设计 40.3.2）
-- [ ] 构建 amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4、35.2）
+- [x] 构建 amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4、35.2）
 
 ### A1 节点与注册（核心）
 
