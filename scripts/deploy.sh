@@ -44,7 +44,7 @@ install -d -o vpsmon -g vpsmon -m 0750 /var/lib/vpsmon
 install -m 0755 "/tmp/vpsmon-server-linux-$arch" /usr/local/bin/vpsmon-server
 install -m 0644 /tmp/vpsmon-server.service /etc/systemd/system/vpsmon-server.service
 if [ ! -f /var/lib/vpsmon/monitor.db ]; then
-  echo "first deploy — admin token (save it, shown once):"
+  echo "first deploy — admin login (username admin; password shown once, change it at first login):"
   sudo -u vpsmon /usr/local/bin/vpsmon-server init --data /var/lib/vpsmon
 fi
 systemctl daemon-reload

@@ -1,6 +1,5 @@
 // 轻量接口客户端，类型与 internal/protocol、internal/server 的 JSON 保持一致。
 // TODO(B): 类型改为由 api/openapi.yaml 生成，不再手写（设计 19.0.1）。
-// TODO(A2): 用 Web 会话登录替换开发用 admin token（设计 8.2）。
 
 /** 一块网卡的数据：rx/tx_bytes 为内核累计字节数，rx/tx_speed 为 Agent 计算的字节/秒。 */
 export interface NetIface {
@@ -82,28 +81,13 @@ export interface ServerView {
   traffic: { cycle_start: string; rx: number; tx: number; used: number; limit: number }
 }
 
-const TOKEN_KEY = 'vpsmon.token'
+// 【安全】登录状态由 HttpOnly 会话 Cookie 维持，页面脚本读不到它（设计 17.4）。
+// 修改类请求需要的 CSRF 值从登录 / /auth/me 响应中取得，只保存在内存里。
+let csrfToken = ''
 
-/**
- * 读取开发用 admin token。
- * 【安全】存放在 sessionStorage 而不是 localStorage：关闭标签页即清除，在正式登录（A2）之前缩小泄露面。
- * 部分隐私浏览模式下访问 storage 会抛异常，因此用 try/catch。
- */
-export function getToken(): string {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-/** 保存开发用 admin token（仅当前标签页有效）。 */
-export function setToken(t: string) {
-  try {
-    sessionStorage.setItem(TOKEN_KEY, t)
-  } catch {
-    /* storage 不可用时忽略 */
-  }
+/** 设置 CSRF 值（登录、刷新登录状态后调用） */
+export function setCsrf(t: string) {
+  csrfToken = t
 }
 
 /** 表单字段级错误（设计 43.4 details）。 */
@@ -130,11 +114,12 @@ export class ApiError extends Error {
   }
 }
 
-/** 收到 401 时抛出，让界面区分“Token 错误或失效”（重新输入）与“面板不可达”（继续轮询并提示）。 */
+/** 收到 401 时抛出，让界面区分“未登录或会话失效”（回到登录页）与“面板不可达”（继续轮询并提示）。 */
 export class UnauthorizedError extends ApiError {}
 
 /**
- * 统一请求封装（设计 43.6）：附带 Token，把错误响应转换为 ApiError / UnauthorizedError。
+ * 统一请求封装（设计 43.6）：同源请求自动带上会话 Cookie；修改类请求附带 X-CSRF-Token；
+ * 把错误响应转换为 ApiError / UnauthorizedError。
  * 使用相对路径：开发时由 Vite 代理到 :8080；生产环境页面由面板内嵌提供，始终同源。
  */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -143,9 +128,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     res = await fetch('/api/v1' + path, {
       method,
       headers: {
-        Authorization: `Bearer ${getToken()}`,
+        ...(method === 'GET' ? {} : { 'X-CSRF-Token': csrfToken }),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
+      credentials: 'same-origin',
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
@@ -290,3 +276,40 @@ export function revokeEnrollCode(id: number): Promise<void> {
   return request('DELETE', `/servers/${id}/enroll-code`)
 }
 
+
+/** 当前登录信息（设计 19.1） */
+export interface Me {
+  username: string
+  /** 使用初始 / 重置密码登录，必须先修改密码（设计 17.4） */
+  must_change_password: boolean
+  csrf_token: string
+}
+
+/** 登录。失败时抛出 ApiError（401 用户名或密码错误、429 失败过多）。 */
+export async function login(username: string, password: string, remember: boolean): Promise<Me> {
+  const me = await request<Me>('POST', '/auth/login', { username, password, remember })
+  setCsrf(me.csrf_token)
+  return me
+}
+
+/** 读取当前登录状态；未登录时抛出 UnauthorizedError。 */
+export async function getMe(): Promise<Me> {
+  const me = await request<Me>('GET', '/auth/me')
+  setCsrf(me.csrf_token)
+  return me
+}
+
+/** 退出登录。 */
+export function logoutSession(): Promise<void> {
+  return request('POST', '/auth/logout')
+}
+
+/** 修改密码；成功后其他会话全部失效（设计 17.4）。 */
+export function changePassword(current: string, next: string): Promise<void> {
+  return request('POST', '/auth/password', { current_password: current, new_password: next })
+}
+
+/** 敏感操作前重新输入密码，10 分钟内有效（设计 17.4）。 */
+export function reauth(password: string): Promise<void> {
+  return request('POST', '/auth/reauth', { password })
+}

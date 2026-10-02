@@ -333,6 +333,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 23 | Web 登录改为会话 Cookie + CSRF（8.2 与 17.1、17.4、19.0.2 统一，Web 不使用 Access / Refresh Token）；19.1 去掉 /auth/refresh，增加 /auth/password、/auth/reauth；错误码目录增加 password_change_required、reauth_required | 8.2、19.1、43.4 |
 | 22 | 24.7 脱敏示例与正文统一为“只保留前缀与末 4 位”（agt_…r5sx） | 24.7 |
 | 21 | 统一前后矛盾的示例：19.11 的安装命令改为与 27.3.1 一致的“下载 → 校验 → 执行”；27.9 的 Ansible 示例改为按版本下载并校验哈希，取消管道执行；27.6.2 的注册失败响应改为 43.4 的统一错误格式（enroll_code_invalid）；注册码过期时间统一为 Unix 秒；新增 scripts/check_design_refs.py | 19.11、27.6.2、27.9、39.5.3、40.9.3 |
 | 20 | 收紧 MVP（必须：Agent 基础采集 + 注册 + 本地升级；单二进制 Server + SQLite；Web 节点 / 安装 / 告警 / 流量 / AK；App 配对 / 列表 / 详情 / 官方 E2E Push），其余按 MVP 之后第一批、第二批、第二阶段排期；安装命令改为“下载 → 按面板验签得到的固定哈希校验 → 执行”，取消管道执行；新增目录、术语表与文档自动校验 | 27.3、27.5、29.1、29.21、31、35、36、40.9、42 |
@@ -3466,27 +3467,26 @@ LDAP
 POST /api/v1/auth/login
        │
        ▼
-后端校验密码
+后端校验密码（Argon2id，设计 23.4）
        │
        ▼
-返回 Access Token
-     + Refresh Token
+写入会话 Cookie（HttpOnly、Secure、SameSite=Strict）
+返回 CSRF Token（修改类请求放在 X-CSRF-Token 头中）
        │
        ▼
 进入 Dashboard
 ```
 
-Access Token：
+会话：
 
 ```text
-15～30 分钟
+空闲 12 小时失效，最长 7 天（设计 17.1）
+勾选“记住登录”时 Cookie 保存 7 天，否则关闭浏览器即失效
+修改密码后其他会话全部失效（设计 17.4）
 ```
 
-Refresh Token：
-
-```text
-7～30 天
-```
+Web 不使用 Access Token / Refresh Token：会话 Cookie 不能被页面脚本读取，比把令牌交给前端保存更安全。
+Device Token 与 Refresh Token 只用于 App（设计 12.5）。
 
 ---
 
@@ -5049,10 +5049,11 @@ WebSocket /ws：实时状态与事件推送（第 20 章），消息同样在契
 Web 管理端继续使用用户名/密码认证：
 
 ```http
-POST /api/v1/auth/login
+POST /api/v1/auth/login       用户名 + 密码，写入会话 Cookie（设计 8.2）
 POST /api/v1/auth/logout
-POST /api/v1/auth/refresh
-GET  /api/v1/auth/me
+GET  /api/v1/auth/me          当前账号与 CSRF Token
+POST /api/v1/auth/password    修改密码，其他会话失效
+POST /api/v1/auth/reauth      敏感操作前重新输入密码，10 分钟内有效（设计 17.4）
 ```
 
 该认证只用于 Web 管理端，不直接提供给 App。
@@ -9208,6 +9209,8 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | quota_exceeded | 409 | 本周期流量已用超过 90%，已禁止测速 |
 | unavailable | 503 | 服务暂时不可用，请稍后重试 |
 | internal | 500 | 服务器内部错误（编号 r_8f2c1a） |
+| password_change_required | 403 | 请先修改初始密码 |
+| reauth_required | 403 | 请重新输入密码以确认此操作 |
 
 ---
 

@@ -28,13 +28,19 @@ deps: ## Download Go and npm dependencies
 dev: ## Run server + fake agent + Web (Vite) together; Ctrl-C stops all
 	@scripts/dev.sh
 
-dev-init: ## Create local DB, admin token and two demo servers (.dev/*.token)
+dev-init: ## Create local DB, admin login (.dev/admin.password) and two demo servers (.dev/*.token)
 	@mkdir -p $(DEV)
-	@if [ -f $(DEV)/admin.token ]; then echo "already initialised ($(DEV)); run 'make clean' to reset"; exit 0; fi; \
-	go run ./cmd/server init --data $(DATA) > $(DEV)/admin.token && \
-	go run ./cmd/server add-server --data $(DATA) --name Mac-Fake --limit-gb 1000 --reset-day 1 > $(DEV)/agent.token && \
-	go run ./cmd/server add-server --data $(DATA) --name Orb-VM --limit-gb 500 --reset-day 15 > $(DEV)/agent-vm.token && \
-	echo "admin token: $$(cat $(DEV)/admin.token)  (paste into the Web/App)"
+	@if [ -f $(DEV)/admin.password ]; then echo "already initialised ($(DEV)); run 'make clean' to reset"; exit 0; fi; \
+	pw=$$(LC_ALL=C tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16); \
+	if [ -f $(DATA)/monitor.db ]; then \
+	  VPSMON_INIT_PASSWORD=$$pw go run ./cmd/server admin reset-password --data $(DATA) >/dev/null || exit 1; \
+	else \
+	  VPSMON_INIT_PASSWORD=$$pw go run ./cmd/server init --data $(DATA) >/dev/null && \
+	  go run ./cmd/server add-server --data $(DATA) --name Mac-Fake --limit-gb 1000 --reset-day 1 > $(DEV)/agent.token && \
+	  go run ./cmd/server add-server --data $(DATA) --name Orb-VM --limit-gb 500 --reset-day 15 > $(DEV)/agent-vm.token || exit 1; \
+	fi; \
+	echo "$$pw" > $(DEV)/admin.password && chmod 600 $(DEV)/admin.password && \
+	echo "web login: admin / $$pw"
 
 dev-server: ## Run the server on $(LISTEN)
 	go run ./cmd/server run --data $(DATA) --listen $(LISTEN)

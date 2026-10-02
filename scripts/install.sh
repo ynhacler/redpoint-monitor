@@ -24,7 +24,7 @@ server)
   install -m 0755 bin/vpsmon-server /usr/local/bin/vpsmon-server
   install -m 0644 deploy/systemd/vpsmon-server.service /etc/systemd/system/vpsmon-server.service
   if [ ! -f /var/lib/vpsmon/monitor.db ]; then
-    echo "first install — admin token (save it, shown once):"
+    echo "first install — admin login (username admin; password shown once, change it at first login):"
     # 3. 首次安装时初始化数据库；以 vpsmon 身份执行，数据库文件归服务用户所有
     sudo -u vpsmon /usr/local/bin/vpsmon-server init --data /var/lib/vpsmon
   fi
@@ -34,6 +34,12 @@ server)
   systemctl restart vpsmon-server
   sleep 1
   systemctl --no-pager --lines=3 status vpsmon-server | head -n 5
+  # 从开发 token 版本升级后没有管理员账号：提示创建（设计 17.2）
+  if journalctl -u vpsmon-server -n 30 --no-pager 2>/dev/null | grep -q "no admin account"; then
+    echo
+    echo "No admin account yet (upgraded from the dev-token version). Create one:"
+    echo "  sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon"
+  fi
   echo
   echo "Add a node:  sudo -u vpsmon vpsmon-server add-server --data /var/lib/vpsmon --name NAME > NAME.token"
   ;;

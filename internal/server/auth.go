@@ -11,7 +11,6 @@ import (
 
 // Token prefixes make leaked tokens recognisable and prevent cross-use (design 1.6.6).
 const (
-	PrefixAdmin = "adm_" // dev-only admin token; replaced by Web login in M3
 	PrefixAgent = "agt_"
 )
 

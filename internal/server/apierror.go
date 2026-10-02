@@ -29,6 +29,9 @@ const (
 	CodeQuotaExceeded     Code = "quota_exceeded"
 	CodeUnavailable       Code = "unavailable"
 	CodeInternal          Code = "internal"
+	// 以下两个在设计 43.4 的表格之外补充（修订记录第 23 条）
+	CodePasswordChangeRequired Code = "password_change_required"
+	CodeReauthRequired         Code = "reauth_required"
 )
 
 // codeInfo 是每个错误码对应的 HTTP 状态与默认中文提示。
@@ -36,19 +39,21 @@ var codeInfo = map[Code]struct {
 	status  int
 	message string
 }{
-	CodeValidationFailed:  {http.StatusUnprocessableEntity, "请检查填写的内容"},
-	CodeBadRequest:        {http.StatusBadRequest, "请求格式不正确"},
-	CodeUnauthorized:      {http.StatusUnauthorized, "登录已失效，请重新登录"},
-	CodeTokenRevoked:      {http.StatusUnauthorized, "凭证已被吊销"},
-	CodeForbidden:         {http.StatusForbidden, "没有权限执行此操作"},
-	CodeNotFound:          {http.StatusNotFound, "请求的资源不存在"},
-	CodeConflict:          {http.StatusConflict, "数据已被修改或名称已被使用，请刷新后重试"},
-	CodePayloadTooLarge:   {http.StatusRequestEntityTooLarge, "数据过大"},
-	CodeEnrollCodeInvalid: {http.StatusBadRequest, "注册码无效或已过期"},
-	CodeRateLimited:       {http.StatusTooManyRequests, "操作过于频繁，请稍后再试"},
-	CodeQuotaExceeded:     {http.StatusConflict, "本周期流量已接近上限，操作已被禁止"},
-	CodeUnavailable:       {http.StatusServiceUnavailable, "服务暂时不可用，请稍后重试"},
-	CodeInternal:          {http.StatusInternalServerError, "服务器内部错误"},
+	CodeValidationFailed:       {http.StatusUnprocessableEntity, "请检查填写的内容"},
+	CodeBadRequest:             {http.StatusBadRequest, "请求格式不正确"},
+	CodeUnauthorized:           {http.StatusUnauthorized, "登录已失效，请重新登录"},
+	CodeTokenRevoked:           {http.StatusUnauthorized, "凭证已被吊销"},
+	CodeForbidden:              {http.StatusForbidden, "没有权限执行此操作"},
+	CodeNotFound:               {http.StatusNotFound, "请求的资源不存在"},
+	CodeConflict:               {http.StatusConflict, "数据已被修改或名称已被使用，请刷新后重试"},
+	CodePayloadTooLarge:        {http.StatusRequestEntityTooLarge, "数据过大"},
+	CodeEnrollCodeInvalid:      {http.StatusBadRequest, "注册码无效或已过期"},
+	CodeRateLimited:            {http.StatusTooManyRequests, "操作过于频繁，请稍后再试"},
+	CodeQuotaExceeded:          {http.StatusConflict, "本周期流量已接近上限，操作已被禁止"},
+	CodeUnavailable:            {http.StatusServiceUnavailable, "服务暂时不可用，请稍后重试"},
+	CodeInternal:               {http.StatusInternalServerError, "服务器内部错误"},
+	CodePasswordChangeRequired: {http.StatusForbidden, "请先修改初始密码"},
+	CodeReauthRequired:         {http.StatusForbidden, "请重新输入密码以确认此操作"},
 }
 
 // FieldError 是表单字段级错误，放在响应的 details 中，Web 在对应字段下显示（设计 43.6）。

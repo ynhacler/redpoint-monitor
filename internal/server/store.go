@@ -221,6 +221,34 @@ var migrations = []string{
 	ALTER TABLE metrics_1h ADD COLUMN disk_read_max INTEGER;
 	ALTER TABLE metrics_1h ADD COLUMN disk_write INTEGER;
 	ALTER TABLE metrics_1h ADD COLUMN disk_write_max INTEGER;`,
+
+	// 迁移 6：Web 登录（设计 17.4、18.1）。会话只保存令牌哈希；开发用 admin token 随之删除。
+	// 升级后需在面板主机上执行 vpsmon-server admin reset-password 创建管理员账号。
+	`CREATE TABLE users (
+		id INTEGER PRIMARY KEY,
+		username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+		email TEXT NOT NULL DEFAULT '',
+		password_hash TEXT NOT NULL,                   -- Argon2id PHC 字符串（设计 23.4）
+		role TEXT NOT NULL DEFAULT 'admin',            -- MVP 只有单管理员（设计 35.2）
+		status TEXT NOT NULL DEFAULT 'active',
+		must_change_password INTEGER NOT NULL DEFAULT 0, -- 初始化 / 重置的随机密码，首次登录必须修改
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		last_login_at INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE sessions (
+		id INTEGER PRIMARY KEY,
+		token_hash TEXT NOT NULL UNIQUE,               -- 会话令牌 SHA-256，不保存明文
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL,                 -- 空闲超过 12 小时失效（设计 17.1）
+		expires_at INTEGER NOT NULL,                   -- 最长 7 天
+		reauth_until INTEGER NOT NULL DEFAULT 0,       -- 敏感操作重新验证后 10 分钟内有效（设计 17.4）
+		client_ip TEXT NOT NULL DEFAULT '',
+		user_agent TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX sessions_user ON sessions(user_id);
+	DROP TABLE admin_tokens;`,
 }
 
 func (s *Store) migrate() error {
@@ -256,20 +284,6 @@ func (s *Store) SchemaVersion() (int, error) {
 	var v int
 	err := s.DB.QueryRow(`SELECT COALESCE(MAX(v),0) FROM schema_version`).Scan(&v)
 	return v, err
-}
-
-func (s *Store) CreateAdminToken() (string, error) {
-	tok := NewToken(PrefixAdmin)
-	_, err := s.DB.Exec(`INSERT INTO admin_tokens (token_hash, created_at) VALUES (?, ?)`, HashToken(tok), time.Now().Unix())
-	return tok, err
-}
-
-// ValidAdminToken 判断开发用 admin token 是否有效。
-// 【安全】查询失败时返回 error 而不是 false，调用方据此返回 500，不把故障伪装成“Token 错误”（设计 43.1）。
-func (s *Store) ValidAdminToken(tok string) (bool, error) {
-	var n int
-	err := s.DB.QueryRow(`SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ?`, HashToken(tok)).Scan(&n)
-	return n > 0, err
 }
 
 // CreateServer adds a node and returns a fresh agent token (shown once, never stored).

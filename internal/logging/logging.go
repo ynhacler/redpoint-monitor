@@ -14,11 +14,11 @@ import (
 
 // 【安全】按前缀识别凭证（设计 24.7）：
 //
-//	adm_ / agt_ / dev_ / rt_   小写 base32 Token（auth.go 的 NewToken）
+//	ses_ / agt_ / dev_ / rt_   小写 base32 Token（auth.go 的 NewToken）；adm_ 为已移除的旧开发 token，仍按凭证处理
 //	MNT- / ENR-                AK 与注册码，大写分组格式（设计 8.4、27.4）
 //
 // 前缀前要求不是字母或数字，避免误伤 “redemption_” 之类的普通单词。
-var credential = regexp.MustCompile(`(^|[^A-Za-z0-9])((?:adm|agt|dev|rt)_[a-z0-9]{8,}|(?:MNT|ENR)-[A-Z0-9][A-Z0-9-]{7,})`)
+var credential = regexp.MustCompile(`(^|[^A-Za-z0-9])((?:adm|ses|agt|dev|rt)_[a-z0-9]{8,}|(?:MNT|ENR)-[A-Z0-9][A-Z0-9-]{7,})`)
 
 // Redact 把字符串中出现的凭证替换为“前缀 + … + 末 4 位”，例如 agt_…r5sx（设计 24.7）。
 // 保留前缀便于判断是哪类凭证，保留末 4 位便于与用户手里的凭证对照，其余部分不可恢复。

@@ -25,7 +25,10 @@ const slowRequest = time.Second
 type reqInfo struct {
 	id          string // request_id，同时出现在响应头、错误响应与日志中（设计 43.4）
 	principal   string // admin / agent；未认证时为空
-	principalID int64  // agent 为节点 ID
+	principalID int64  // agent 为节点 ID；admin 为账号 ID
+	// Web 管理员的会话与令牌（仅 admin 主体）；令牌只用于派生 CSRF，不记录日志
+	session      *session
+	sessionToken string
 }
 
 type ctxKey struct{}

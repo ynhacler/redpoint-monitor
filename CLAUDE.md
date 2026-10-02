@@ -8,7 +8,7 @@ Development order is **A (API + Agent) → B (Web) → C (App)** (design 35.1); 
 ## Commands
 
 ```bash
-make dev          # server + fake agent + Vite → http://localhost:5173 (token in .dev/admin.token)
+make dev          # server + fake agent + Vite → http://localhost:5173 (login admin / .dev/admin.password)
 make test         # Go tests — run after every Go change
 make lint         # go vet + vue-tsc
 make check-design # design numbering / references (run scripts/check_design_refs.py --write after editing design.md)
@@ -65,7 +65,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
    Agent/updater verify with embedded public keys and refuse downgrades.
 3. **Separate credentials.** Web admin, App device token, Agent token, enroll code are never
    interchangeable (design 17.1). Agent tokens can only report for their own server; an enroll code can
-   only claim its own node. Prefixes: `adm_`, `agt_`, `ENR-`, future `dev_`/`rt_`/`MNT-`.
+   only claim its own node. Prefixes: `ses_` (Web session), `agt_`, `ENR-`, future `dev_`/`rt_`/`MNT-`.
+   Web admin = username + Argon2id password → HttpOnly session cookie + `X-CSRF-Token` on writes (design 17.4).
 4. **Store hashes, show once.** Tokens, AKs and enroll codes are shown once; only SHA-256 hashes are
    stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).
 5. **App is read-only** (+ mute / maintenance mode). No App credential may change config or trigger upgrades.
@@ -115,7 +116,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
 ## Current state (M1 done, phase A starting)
 
 Working: agent (Linux real + fake) → server ingest → SQLite → `/api/v1/servers` → Web list and Flutter list.
-Traffic deltas with boot_id reset detection and billing cycles. Dev admin token auth (temporary, replaced in A2).
+Traffic deltas with boot_id reset detection and billing cycles. Web login with sessions (A2); the old `adm_` dev
+token is gone. Forgot password: `vpsmon-server admin reset-password --data DIR` on the panel host.
 Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` and the Web pages are next.
 Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
 --server … --enroll …` and the binary must already be on the host (design 27.3.1).
