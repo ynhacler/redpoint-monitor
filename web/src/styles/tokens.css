@@ -1,0 +1,77 @@
+/* 自动生成，请勿手工编辑：修改 design/tokens.json 后运行 npm run tokens（设计 41.2） */
+:root {
+  --font-xs: 11px;
+  --line-xs: 16px;
+  --font-sm: 12px;
+  --line-sm: 18px;
+  --font-md: 14px;
+  --line-md: 22px;
+  --font-lg: 16px;
+  --line-lg: 24px;
+  --font-xl: 20px;
+  --line-xl: 28px;
+  --font-num: 28px;
+  --line-num: 32px;
+  --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --weight-regular: 400;
+  --weight-strong: 600;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-full: 9999px;
+  --max-width: 1200px;
+  --card-min: 280px;
+  --bg: #F6F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F6;
+  --border: #E5E7EB;
+  --text: #16181D;
+  --text-muted: #6B7280;
+  --accent: #2563EB;
+  --on-accent: #FFFFFF;
+  --ok: #16A34A;
+  --warn: #D97706;
+  --bad: #DC2626;
+  --muted-state: #9CA3AF;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0F1115;
+    --surface: #171A21;
+    --surface-2: #12151B;
+    --border: #262A33;
+    --text: #E6E8EC;
+    --text-muted: #8B93A1;
+    --accent: #3B82F6;
+    --on-accent: #FFFFFF;
+    --ok: #22C55E;
+    --warn: #F59E0B;
+    --bad: #EF4444;
+    --muted-state: #6B7280;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #0F1115;
+  --surface: #171A21;
+  --surface-2: #12151B;
+  --border: #262A33;
+  --text: #E6E8EC;
+  --text-muted: #8B93A1;
+  --accent: #3B82F6;
+  --on-accent: #FFFFFF;
+  --ok: #22C55E;
+  --warn: #F59E0B;
+  --bad: #EF4444;
+  --muted-state: #6B7280;
+  color-scheme: dark;
+}

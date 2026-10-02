@@ -95,10 +95,12 @@
 
 完成标准（设计 35.1）：不使用命令行即可完成从新建节点到查看告警的全部操作；浅色 / 深色截图通过 41.7 检查。
 
-- [ ] 设计令牌 `design/tokens.json` → `web/src/styles/tokens.css`；自建组件（设计 41.2、41.3）
+- [x] 设计令牌 `design/tokens.json` → `web/src/styles/tokens.css`；自建组件（StatusDot、Metric、UsageBar、ServerCard、TrafficCard、Chart、EmptyState、CommandBlock）；深浅色（设计 41.2、41.3）
 - [ ] 请求类型由 OpenAPI 生成；统一错误处理（设计 19.0.1、43.6）
 - [ ] 登录页
-- [ ] 总览；节点列表；节点详情与历史曲线（ECharts，先确认依赖）（设计 9～11、41.5）
+- [x] 总览；节点列表（搜索 / 分组 / 排序）；节点详情与历史曲线（ECharts、vue-router 已确认）（设计 9～11、41.5）
+- [ ] 图标改用 Lucide（设计 41.4.3，需确认依赖）；目前为内置的少量 SVG
+- [ ] 节点详情：健康摘要（设计 1.5.7）、告警记录（随 A5）
 - [x] 新建节点表单 → 安装命令页（轮询显示注册结果）；待安装节点；重新生成注册码（设计 27.2、27.3.4）
 - [ ] 安装命令页改用 WebSocket `server.enrolled` 事件（设计 19.11、20）
 - [ ] 流量套餐配置与校准

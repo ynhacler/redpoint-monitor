@@ -26,9 +26,10 @@ export interface DiskInfo {
 export interface Report {
   timestamp: number
   agent_version: string
+  /** uptime 为秒 */
   system: { hostname: string; os: string; os_version: string; kernel: string; arch: string; uptime: number }
-  cpu: { usage: number; cores: number; load1: number }
-  memory: { total: number; used: number; usage: number }
+  cpu: { usage: number; cores: number; load1: number; load5?: number; load15?: number }
+  memory: { total: number; used: number; usage: number; available?: number }
   swap: { total: number; used: number }
   /** 每个挂载点的容量（设计 4.6） */
   disk: DiskInfo[]
@@ -52,6 +53,9 @@ export interface ServerView {
   expected_ipv4: string
   expected_ipv6: string
   verify_mode: 'warn' | 'strict'
+  /** 注册时间，Unix 秒；0 表示未注册 */
+  enrolled_at: number
+  created_at: number
   /** 注册时的实际值（设计 18.2） */
   hostname: string
   ipv4: string
@@ -233,6 +237,44 @@ export function deleteServer(id: number): Promise<void> {
   return request('DELETE', `/servers/${id}`)
 }
 
+/** 历史曲线上的一个点（设计 19.7）。平均值与 *_max；磁盘 IO 在旧版 Agent 时段为 null。 */
+export interface MetricPoint {
+  /** 桶起点，Unix 秒 */
+  ts: number
+  cpu: number
+  cpu_max: number
+  load1: number
+  mem_used: number
+  mem_total: number
+  swap_used: number
+  disk_used: number
+  disk_total: number
+  rx_speed: number
+  rx_speed_max: number
+  tx_speed: number
+  tx_speed_max: number
+  disk_read: number | null
+  disk_read_max: number | null
+  disk_write: number | null
+  disk_write_max: number | null
+}
+
+/** 可选的历史时间范围（设计 19.7、41.5） */
+export type HistoryRange = '1h' | '6h' | '24h' | '7d' | '30d'
+
+/** 历史指标：粒度随范围变化（10 秒～1 小时，设计 21） */
+export interface HistoryView {
+  range: HistoryRange
+  /** 点的间隔，秒 */
+  resolution: number
+  items: MetricPoint[]
+}
+
+/** 获取节点历史指标。 */
+export function getHistory(id: number, range: HistoryRange): Promise<HistoryView> {
+  return request('GET', `/servers/${id}/metrics/history?range=${range}`)
+}
+
 /** 查看安装命令；不含完整注册码。 */
 export function getInstallCommand(id: number): Promise<EnrollCodeView> {
   return request('GET', `/servers/${id}/install-command`)
@@ -248,18 +290,3 @@ export function revokeEnrollCode(id: number): Promise<void> {
   return request('DELETE', `/servers/${id}/enroll-code`)
 }
 
-/**
- * 把字节数格式化为可读字符串，如 “1.5 GB”（小于 10 保留一位小数）。
- * 使用十进制单位（1 GB = 10^9 Byte），与多数服务商一致（设计 5.8）。
- * @param n 字节数
- * @param perSec 为 true 时追加 “/s”，用于网速
- */
-export function fmtBytes(n: number, perSec = false): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  while (n >= 1000 && i < units.length - 1) {
-    n /= 1000 // 十进制单位（设计 5.8）
-    i++
-  }
-  return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${units[i]}${perSec ? '/s' : ''}`
-}

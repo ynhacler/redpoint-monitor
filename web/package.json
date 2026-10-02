@@ -9,10 +9,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && node -e \"require('fs').writeFileSync('dist/.gitkeep','')\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tokens": "node scripts/gen-tokens.mjs",
+    "predev": "npm run tokens",
+    "prebuild": "npm run tokens"
   },
   "dependencies": {
-    "vue": "^3.5.43"
+    "echarts": "^6.1.0",
+    "vue": "^3.5.43",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.9",
