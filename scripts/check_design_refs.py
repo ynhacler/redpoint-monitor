@@ -26,7 +26,8 @@ HEADING = re.compile(r"^(#{1,6}) (.+?)\s*$")
 NUMBERED = re.compile(r"^(" + NUM + r")\.?(?:\s|$)")
 
 # 文档内引用（设计 40.9.2）：（设计 5.5）、（设计 27.6.1、27.10）、见 29.1、第 27 章、第 41.7 节、5.5～5.8
-LIST = NUM + r"(?:\s*[、，,～~]\s*" + NUM + r")*"
+# 中文列表只用“、”与“～”分隔；逗号后面通常是正文（如“设计 43.5，401 时…”），不算引用
+LIST = NUM + r"(?:\s*[、～~]\s*" + NUM + r")*"
 REF_CN = re.compile(r"(?:设计|见)\s*(" + LIST + r")")
 REF_CHAPTER = re.compile(r"第\s*(" + NUM + r")\s*[章节]")
 # 代码与 TODO.md 中的英文写法：design 5.5、design 21, 18.4、design ch.21

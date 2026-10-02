@@ -88,7 +88,7 @@ func (s *Server) routes() http.Handler {
 }
 
 // admin guards Web/App read APIs with the dev admin token.
-// TODO(M3): replace with Web session login; TODO(M4): App device tokens (read-only scope).
+// TODO(A2): 改为 Web 会话登录（设计 8.2）；TODO(C): App Device Token，只读范围（设计 12.5）。
 func (s *Server) admin(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if tok := bearer(r); tok == "" || !s.store.ValidAdminToken(tok) {
@@ -188,7 +188,7 @@ func (s *Server) flush() {
 			return
 		}
 		if p.rx > 0 || p.tx > 0 {
-			// Day bucket uses server local time. TODO: per-server billing timezone.
+			// 按面板本地时区划分日期。TODO(A4): 按节点设置计费时区（设计 1.2.4）。
 			if _, err := tx.Exec(`INSERT INTO traffic_daily (server_id, day, rx, tx) VALUES (?,?,?,?)
 				ON CONFLICT(server_id, day) DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx`,
 				p.serverID, p.at.Format("2006-01-02"), p.rx, p.tx); err != nil {
@@ -214,7 +214,7 @@ func (s *Server) flush() {
 }
 
 // retentionLoop deletes expired raw points.
-// TODO(M2): downsample into metrics_1m / 5m / 1h before deleting (design ch. 21).
+// TODO(A3): 删除前先降采样到 metrics_1m / 5m / 1h（设计 21）。
 func (s *Server) retentionLoop(ctx context.Context) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()

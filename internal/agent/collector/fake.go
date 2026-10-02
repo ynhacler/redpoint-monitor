@@ -9,20 +9,21 @@ import (
 	"vpsmon/internal/protocol"
 )
 
-// fake produces plausible, slowly changing metrics for local development.
-// Counters grow monotonically so the server's traffic logic is exercised realistically.
+// fake 为本地开发生成合理且缓慢变化的指标。
+// 网卡计数单调递增，让面板的流量逻辑以接近真实的方式运行。
 type fake struct {
 	start  time.Time
-	bootID string // new per process start, so restarting the fake agent looks like a reboot
-	rx, tx uint64 // cumulative counters, like /proc/net/dev
+	bootID string // 每次进程启动生成新值，重启假数据 Agent 等同于一次“重启”（设计 5.5）
+	rx, tx uint64 // 累计字节数，与 /proc/net/dev 一样
 	last   time.Time
 }
 
-// NewFake returns a collector with synthetic data (used by --fake and on non-Linux).
+// NewFake 返回假数据采集器（用于 --fake 与非 Linux 平台）。
 func NewFake() Collector {
 	return &fake{start: time.Now(), bootID: "fake-boot-" + time.Now().Format("150405"), last: time.Now()}
 }
 
+// Collect 生成一份假数据上报。
 func (f *fake) Collect() (protocol.Report, error) {
 	now := time.Now()
 	dt := now.Sub(f.last).Seconds()
@@ -32,8 +33,8 @@ func (f *fake) Collect() (protocol.Report, error) {
 	f.last = now
 	t := now.Sub(f.start).Seconds()
 
-	// Slow sine waves plus a little noise: values move visibly in the UI every few seconds
-	// without jumping around randomly. Speeds stay positive, so counters only grow.
+	// 缓慢的正弦波加少量噪声：界面上每隔几秒能看到变化，又不会随机乱跳。
+	// 网速始终为正，因此计数只增不减。
 	rxSpeed := uint64(2_000_000 + 1_500_000*math.Sin(t/30) + rand.Float64()*300_000)
 	txSpeed := uint64(400_000 + 300_000*math.Cos(t/45) + rand.Float64()*100_000)
 	f.rx += uint64(float64(rxSpeed) * dt)
