@@ -109,6 +109,8 @@ export interface ServerView {
   region: string
   /** 国家 / 地区，ISO 3166-1 两位代码（大写）；空表示未填 */
   country: string
+  /** 服务商标称带宽（端口速率），Mbps；0 表示未填。Agent 采集不到，只能手动填写 */
+  bandwidth_mbps: number
   /** 续费价格 × 100 */
   price_cents: number
   currency: string
@@ -251,6 +253,8 @@ export interface CreateServerInput {
   region?: string
   /** ISO 3166-1 两位代码 */
   country?: string
+  /** 标称带宽，Mbps */
+  bandwidth_mbps?: number
   /** 月流量额度，按 traffic_unit 口径的 GB / GiB（设计 5.8）；0 或不填表示不限 */
   traffic_limit_gb?: number
   traffic_unit?: TrafficUnit

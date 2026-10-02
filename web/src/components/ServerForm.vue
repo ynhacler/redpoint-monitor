@@ -8,7 +8,7 @@ import {
   type CreateServerInput, type EnrollCodeView, type ServerView, type TrafficUnit,
 } from '../api'
 import { countryOptions } from '../countries'
-import { bytesToGB } from '../format'
+import { bytesToGB, fmtBytes } from '../format'
 import Flag from './Flag.vue'
 
 const countries = countryOptions()
@@ -37,6 +37,7 @@ const f = reactive({
   name: sv?.name ?? '', expected_hostname: sv?.expected_hostname ?? '', expected_ipv4: sv?.expected_ipv4 ?? '',
   expected_ipv6: sv?.expected_ipv6 ?? '', group: sv?.group ?? '', note: sv?.note ?? '',
   provider: sv?.provider ?? '', plan: sv?.plan ?? '', region: sv?.region ?? '', country: sv?.country ?? '',
+  bandwidth_mbps: sv?.bandwidth_mbps ? String(sv.bandwidth_mbps) : '',
   // 字节 → 按节点口径的 GB / GiB（设计 5.8）；0 表示不限，显示为空
   traffic_limit_gb: sv?.traffic_limit_bytes ? String(+bytesToGB(sv.traffic_limit_bytes, sv.traffic_unit).toFixed(3)) : '',
   traffic_unit: sv?.traffic_unit ?? 'decimal', traffic_factor: String(sv?.traffic_factor ?? 1),
@@ -49,7 +50,27 @@ const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const submitting = ref(false)
 // 编辑时如果已经填过 VPS 信息，默认展开
-const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
+const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.bandwidth_mbps || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
+// 注册核对：新建时默认收起（大多数情况不需要）；编辑时如果填过预期值则展开
+const showVerify = ref(!!(sv && (sv.expected_hostname || sv.expected_ipv4 || sv.expected_ipv6 || sv.verify_mode === 'strict')))
+
+// Agent 自动采集的信息（只读展示，设计 27.2）：这些不需要、也不应该手动填写
+const r = sv?.latest
+const collected = computed(() => {
+  if (!sv || sv.enroll_state !== 'enrolled') return []
+  const disks = r?.disk ?? []
+  return [
+    { k: '主机名', v: sv.hostname || r?.system.hostname },
+    { k: 'IPv4', v: sv.ipv4, hint: '注册时面板看到的来源地址' },
+    { k: 'IPv6', v: sv.ipv6, hint: '注册时面板看到的来源地址' },
+    { k: '系统', v: [r?.system.os, r?.system.os_version].filter(Boolean).join(' ') },
+    { k: '内核 / 架构', v: [r?.system.kernel, r?.system.arch].filter(Boolean).join(' · ') },
+    { k: 'CPU', v: r ? [r.system.cpu_model, `${r.cpu.cores} 核`].filter(Boolean).join(' · ') : '' },
+    { k: '内存', v: r ? fmtBytes(r.memory.total) + (r.swap.total ? ` · Swap ${fmtBytes(r.swap.total)}` : '') : '' },
+    { k: '磁盘', v: disks.length ? `${fmtBytes(disks.reduce((a, d) => a + d.total, 0))} · ${disks.map((d) => d.mount).join('、')}` : '' },
+    { k: 'Agent', v: r?.agent_version },
+  ]
+})
 
 // 选项文案（设计 1.2.4、1.2.5、27.2、27.6.3）
 const countModes = [
@@ -63,8 +84,10 @@ const periods = [
 ]
 
 function buildInput(): CreateServerInput {
-  const text = (v: string) => v.trim() || undefined
-  const num = (v: string) => (v.trim() === '' ? undefined : Number(v))
+  // 【注意】Vue 的 v-model 在 type="number" 的输入框上会把值转成数字（清空时为 ''），
+  // 因此这里统一先转成字符串再处理，否则修改任何数字字段后提交会因 .trim() 报错而无反应
+  const text = (v: string | number) => String(v ?? '').trim() || undefined
+  const num = (v: string | number) => (String(v ?? '').trim() === '' ? undefined : Number(v))
   const price = num(f.price)
   return {
     name: f.name.trim(),
@@ -77,6 +100,7 @@ function buildInput(): CreateServerInput {
     plan: text(f.plan),
     region: text(f.region),
     country: f.country || undefined,
+    bandwidth_mbps: num(f.bandwidth_mbps),
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_unit: f.traffic_unit as TrafficUnit,
@@ -112,7 +136,9 @@ async function submit() {
     } else if (e instanceof ApiError && e.details.length) {
       // 422 / 409：在对应字段下显示错误；VPS 信息组有错误时自动展开
       fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-      if (e.details.some((d) => !['name', 'expected_hostname', 'expected_ipv4', 'expected_ipv6', 'group', 'note'].includes(d.field))) {
+      const verifyFields = ['expected_hostname', 'expected_ipv4', 'expected_ipv6', 'verify_mode']
+      if (e.details.some((d) => verifyFields.includes(d.field))) showVerify.value = true
+      if (e.details.some((d) => ![...verifyFields, 'name', 'country', 'group', 'note'].includes(d.field))) {
         showVps.value = true
       }
     } else if (e instanceof ApiError) {
@@ -148,7 +174,10 @@ async function remove() {
 <template>
   <form class="panel" novalidate @submit.prevent="submit">
     <h2>{{ editing ? '编辑节点' : '新建节点' }}</h2>
-    <p v-if="!editing" class="muted">保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。</p>
+    <p v-if="!editing" class="muted">
+      只需填写 Agent 采集不到的信息。主机名、IP、系统、CPU、内存、磁盘等在安装 Agent 后自动采集，无需填写。
+      保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。
+    </p>
 
     <fieldset>
       <legend>基本信息</legend>
@@ -156,11 +185,6 @@ async function remove() {
         <label class="wide">名称 *
           <input v-model="f.name" placeholder="如 DMIT-HK" autofocus />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
-        </label>
-        <label>主机名
-          <input v-model="f.expected_hostname" placeholder="hostname 命令的输出" />
-          <small v-if="fieldErrors.expected_hostname" class="err">{{ fieldErrors.expected_hostname }}</small>
-          <small v-else class="muted">注册时核对</small>
         </label>
         <label>国家 / 地区
           <div class="row">
@@ -182,14 +206,6 @@ async function remove() {
           <input v-model="f.group" placeholder="如 香港、落地" />
           <small v-if="fieldErrors.group" class="err">{{ fieldErrors.group }}</small>
         </label>
-        <label>IPv4
-          <input v-model="f.expected_ipv4" placeholder="103.1.2.3" inputmode="decimal" />
-          <small v-if="fieldErrors.expected_ipv4" class="err">{{ fieldErrors.expected_ipv4 }}</small>
-        </label>
-        <label>IPv6
-          <input v-model="f.expected_ipv6" placeholder="2001:db8::1" />
-          <small v-if="fieldErrors.expected_ipv6" class="err">{{ fieldErrors.expected_ipv6 }}</small>
-        </label>
         <label class="wide">备注
           <input v-model="f.note" />
           <small v-if="fieldErrors.note" class="err">{{ fieldErrors.note }}</small>
@@ -197,16 +213,31 @@ async function remove() {
       </div>
     </fieldset>
 
+    <!-- Agent 自动采集（只读）：让用户清楚哪些不需要填写（设计 27.2） -->
+    <fieldset v-if="collected.length">
+      <legend>Agent 自动采集<span class="muted">（只读，随上报更新）</span></legend>
+      <dl class="collected">
+        <template v-for="c in collected" :key="c.k">
+          <dt>{{ c.k }}</dt><dd :title="c.hint">{{ c.v || '—' }}</dd>
+        </template>
+      </dl>
+    </fieldset>
+
     <fieldset>
       <legend>
         <button type="button" class="link" @click="showVps = !showVps">
-          {{ showVps ? '▾' : '▸' }} VPS 信息<span class="muted">（流量套餐、费用，可以以后再填）</span>
+          {{ showVps ? '▾' : '▸' }} VPS 信息<span class="muted">（服务商提供，Agent 采集不到；可以以后再填）</span>
         </button>
       </legend>
       <div v-show="showVps" class="fields">
         <label>供应商<input v-model="f.provider" placeholder="如 DMIT" /></label>
         <label>套餐<input v-model="f.plan" /></label>
-        <label>地区<input v-model="f.region" placeholder="如 香港" /></label>
+        <label>城市 / 机房<input v-model="f.region" placeholder="如 东京、Equinix TY8" /></label>
+        <label>带宽（Mbps）
+          <input v-model="f.bandwidth_mbps" type="number" min="0" step="1" placeholder="如 1000" />
+          <small v-if="fieldErrors.bandwidth_mbps" class="err">{{ fieldErrors.bandwidth_mbps }}</small>
+          <small v-else class="muted">服务商标称的端口速率</small>
+        </label>
         <label>月流量（{{ f.traffic_unit === 'binary' ? 'GiB' : 'GB' }}）
           <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" placeholder="不填表示不限" />
           <small v-if="fieldErrors.traffic_limit_gb" class="err">{{ fieldErrors.traffic_limit_gb }}</small>
@@ -253,21 +284,43 @@ async function remove() {
     </fieldset>
 
     <fieldset>
-      <legend>安装选项</legend>
-      <div class="fields">
-        <label v-if="!editing">注册码有效期
-          <select v-model="f.enroll_ttl">
-            <option value="1h">1 小时</option>
-            <option value="24h">24 小时</option>
-            <option value="7d">7 天</option>
-          </select>
+      <legend>
+        <button type="button" class="link" @click="showVerify = !showVerify">
+          {{ showVerify ? '▾' : '▸' }} 注册核对<span class="muted">（可选：填写预期值，Agent 注册时与实际值比对）</span>
+        </button>
+      </legend>
+      <div v-show="showVerify" class="fields">
+        <label>预期主机名
+          <input v-model="f.expected_hostname" placeholder="hostname 命令的输出" />
+          <small v-if="fieldErrors.expected_hostname" class="err">{{ fieldErrors.expected_hostname }}</small>
         </label>
-        <label>主机信息核对
+        <label>预期 IPv4
+          <input v-model="f.expected_ipv4" placeholder="103.1.2.3" inputmode="decimal" />
+          <small v-if="fieldErrors.expected_ipv4" class="err">{{ fieldErrors.expected_ipv4 }}</small>
+        </label>
+        <label>预期 IPv6
+          <input v-model="f.expected_ipv6" placeholder="2001:db8::1" />
+          <small v-if="fieldErrors.expected_ipv6" class="err">{{ fieldErrors.expected_ipv6 }}</small>
+        </label>
+        <label>核对严格程度
           <select v-model="f.verify_mode">
             <option value="warn">不一致时仅提示</option>
             <option value="strict">不一致时拒绝注册</option>
           </select>
           <small class="muted">NAT、IPv6-only 主机建议仅提示</small>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset v-if="!editing">
+      <legend>安装选项</legend>
+      <div class="fields">
+        <label>注册码有效期
+          <select v-model="f.enroll_ttl">
+            <option value="1h">1 小时</option>
+            <option value="24h">24 小时</option>
+            <option value="7d">7 天</option>
+          </select>
         </label>
       </div>
     </fieldset>
@@ -309,6 +362,10 @@ small { font-size: var(--font-sm); }
 .err { color: var(--bad); }
 .link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
 .actions { display: flex; gap: var(--space-2); margin-top: var(--space-6); }
+.collected { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0;
+  padding: var(--space-3) var(--space-4); background: var(--surface-2); border-radius: var(--radius-sm); font-size: var(--font-sm); }
+.collected dt { color: var(--text-muted); }
+.collected dd { margin: 0; overflow-wrap: anywhere; }
 .danger { margin-top: var(--space-7); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .danger legend { color: var(--bad); }
 .danger-btn { background: var(--bad); color: var(--on-accent); }

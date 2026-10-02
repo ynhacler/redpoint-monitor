@@ -20,9 +20,9 @@ func TestGetAndUpdateServer(t *testing.T) {
 		t.Fatalf("GET 单个节点：%d %s", rec.Code, rec.Body)
 	}
 
-	rec = do(h, "PUT", path, admin, []byte(`{"name":"HK-1 新名字","provider":"DMIT","price":9.9,"currency":"usd","billing_period":"monthly"}`))
+	rec = do(h, "PUT", path, admin, []byte(`{"name":"HK-1 新名字","provider":"DMIT","price":9.9,"currency":"usd","billing_period":"monthly","bandwidth_mbps":1000}`))
 	json.Unmarshal(rec.Body.Bytes(), &v)
-	if rec.Code != 200 || v.Name != "HK-1 新名字" || v.PriceCents != 990 || v.Currency != "USD" {
+	if rec.Code != 200 || v.Name != "HK-1 新名字" || v.PriceCents != 990 || v.Currency != "USD" || v.BandwidthMbps != 1000 {
 		t.Fatalf("修改后应返回最新节点：%d %s", rec.Code, rec.Body)
 	}
 	if v.LimitBytes != 0 {

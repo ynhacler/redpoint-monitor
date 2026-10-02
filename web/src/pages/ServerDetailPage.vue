@@ -11,7 +11,7 @@ import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import TrafficCard from '../components/TrafficCard.vue'
-import { DASH, fmtBytes, fmtPrice, fmtTime, periodNames } from '../format'
+import { DASH, fmtBandwidth, fmtBytes, fmtPrice, fmtTime, periodNames } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
 import { logout, serverById, state } from '../store'
 
@@ -234,11 +234,12 @@ const expireDays = computed(() => {
           <dl class="kv">
             <dt>供应商</dt><dd>{{ s.provider || DASH }}</dd>
             <dt>套餐</dt><dd>{{ s.plan || DASH }}</dd>
+            <dt>带宽</dt><dd>{{ fmtBandwidth(s.bandwidth_mbps) }}</dd>
             <dt>国家 / 地区</dt><dd>
               <template v-if="s.country"><Flag :code="s.country" /> {{ countryName(s.country) }}</template>
               <template v-else>{{ DASH }}</template>
             </dd>
-            <dt>地区</dt><dd>{{ s.region || DASH }}</dd>
+            <dt>城市 / 机房</dt><dd>{{ s.region || DASH }}</dd>
             <dt>分组</dt><dd>{{ s.group || DASH }}</dd>
             <dt>续费</dt><dd>{{ fmtPrice(s.price_cents, s.currency) }}<template v-if="s.billing_period"> / {{ periodNames[s.billing_period] }}</template></dd>
             <dt>到期</dt>

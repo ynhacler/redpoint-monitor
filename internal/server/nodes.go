@@ -40,6 +40,7 @@ type createServerBody struct {
 	Plan             string   `json:"plan"`
 	Region           string   `json:"region"`
 	Country          string   `json:"country"`           // ISO 3166-1 两位代码，大小写不敏感
+	BandwidthMbps    *int     `json:"bandwidth_mbps"`    // 标称带宽 Mbps；空或 0 表示未填
 	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 按 traffic_unit 口径的 GB / GiB；空或 0 表示不限
 	TrafficUnit      string   `json:"traffic_unit"`      // decimal（默认）/ binary（设计 5.8）
 	TrafficFactor    *float64 `json:"traffic_factor"`    // 统计系数 0.5～2，默认 1（设计 5.7）
@@ -79,6 +80,14 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 	in.Country = strings.ToUpper(strings.TrimSpace(b.Country))
 	if in.Country != "" && !countryPattern.MatchString(in.Country) {
 		bad("country", "国家 / 地区代码应为两位字母，如 JP、HK")
+	}
+	// 带宽由服务商标称，Agent 无法采集（设计 27.2）；上限 1 Tbps 足以覆盖独服与大带宽 VPS
+	if b.BandwidthMbps != nil {
+		if *b.BandwidthMbps < 0 || *b.BandwidthMbps > 1_000_000 {
+			bad("bandwidth_mbps", "带宽应在 0～1000000 Mbps 之间")
+		} else {
+			in.BandwidthMbps = *b.BandwidthMbps
+		}
 	}
 	if h := strings.TrimSpace(b.ExpectedHostname); h != "" {
 		if !hostnamePattern.MatchString(h) {
