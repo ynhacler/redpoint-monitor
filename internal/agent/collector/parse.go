@@ -4,55 +4,186 @@ package collector
 
 import (
 	"bufio"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
+
+	"vpsmon/internal/protocol"
 )
 
-// cpuTimes 是开机以来累计 CPU jiffies 的快照（所有核心之和）。
-type cpuTimes struct{ idle, total uint64 }
+// cpuTimes 是一个 CPU 行开机以来累计的 jiffies：user nice system idle iowait irq softirq steal。
+// guest / guest_nice 已包含在 user / nice 中，不再单独保存，避免重复累加。
+type cpuTimes [8]uint64
 
-// parseProcStat 读取 /proc/stat 中汇总的 “cpu” 行，并统计 “cpuN” 行数作为核心数（设计 4.4）。
-// 按行计数反映的是这台 VPS 实际在线的核心数；runtime.NumCPU 可能受 Agent 自身 cgroup / 亲和性限制。
-func parseProcStat(s string) (cpuTimes, int) {
-	var t cpuTimes
-	cores := 0
+func (t cpuTimes) total() (n uint64) {
+	for _, v := range t {
+		n += v
+	}
+	return
+}
+
+// idle 把 iowait 计为空闲：CPU 本身空闲，只是在等磁盘。steal 计为忙碌，
+// 宿主机超售时会表现为使用率偏高，这正是 VPS 用户需要看到的。
+func (t cpuTimes) idle() uint64 { return t[3] + t[4] }
+
+// procStat 是一次 /proc/stat 快照。
+type procStat struct {
+	all     cpuTimes   // 汇总的 “cpu” 行
+	cores   []cpuTimes // “cpuN” 行，按出现顺序
+	running int        // procs_running：正在运行或可运行的任务数
+}
+
+// parseProcStat 解析 /proc/stat（设计 4.4、4.9）。核心数按 “cpuN” 行计数，反映这台 VPS 实际在线的核心数；
+// runtime.NumCPU 可能受 Agent 自身 cgroup / 亲和性限制。
+func parseProcStat(s string) procStat {
+	var ps procStat
 	sc := bufio.NewScanner(strings.NewReader(s))
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) == 0 {
 			continue
 		}
-		if f[0] == "cpu" {
-			for i, v := range f[1:] {
-				n, _ := strconv.ParseUint(v, 10, 64)
-				// 字段顺序：user nice system idle iowait irq softirq steal guest guest_nice
-				if i >= 8 { // guest 时间已经包含在 user / nice 中，不能重复累加
-					break
-				}
-				t.total += n
-				// iowait 计为空闲：CPU 本身空闲，只是在等磁盘。steal（i == 7）计为忙碌，
-				// 宿主机超售时会表现为使用率偏高，这正是 VPS 用户需要看到的。
-				if i == 3 || i == 4 { // idle + iowait
-					t.idle += n
-				}
-			}
-		} else if strings.HasPrefix(f[0], "cpu") {
-			cores++
+		switch {
+		case f[0] == "cpu":
+			ps.all = parseCPULine(f[1:])
+		case strings.HasPrefix(f[0], "cpu"):
+			ps.cores = append(ps.cores, parseCPULine(f[1:]))
+		case f[0] == "procs_running" && len(f) > 1:
+			ps.running, _ = strconv.Atoi(f[1])
 		}
 	}
-	return t, cores
+	return ps
+}
+
+func parseCPULine(f []string) cpuTimes {
+	var t cpuTimes
+	for i := 0; i < len(f) && i < len(t); i++ {
+		t[i], _ = strconv.ParseUint(f[i], 10, 64)
+	}
+	return t
 }
 
 // cpuUsage 返回两次采样之间的忙碌百分比（0～100）。
 // 首次采样（没有 prev）或计数倒退时返回 0，而不是一个无意义的值。
 func cpuUsage(prev, cur cpuTimes) float64 {
-	dt := cur.total - prev.total
-	if prev.total == 0 || dt == 0 || cur.total < prev.total {
+	pt, ct := prev.total(), cur.total()
+	if pt == 0 || ct <= pt || cur.idle() < prev.idle() {
 		return 0
 	}
-	di := cur.idle - prev.idle
-	return float64(dt-di) * 100 / float64(dt)
+	dt := ct - pt
+	return float64(dt-(cur.idle()-prev.idle())) * 100 / float64(dt)
+}
+
+// cpuBreakdown 返回两次采样之间各类时间的占比；首次采样或计数倒退时返回 nil（设计 4.4）。
+func cpuBreakdown(prev, cur cpuTimes) *protocol.CPUBreakdown {
+	pt, ct := prev.total(), cur.total()
+	if pt == 0 || ct <= pt {
+		return nil
+	}
+	var p [8]float64
+	for i := range cur {
+		if cur[i] < prev[i] {
+			return nil
+		}
+		p[i] = float64(cur[i]-prev[i]) * 100 / float64(ct-pt)
+	}
+	r := func(v float64) float64 { return math.Round(v*10) / 10 }
+	return &protocol.CPUBreakdown{User: r(p[0]), Nice: r(p[1]), System: r(p[2]), Idle: r(p[3]),
+		IOWait: r(p[4]), IRQ: r(p[5]), SoftIRQ: r(p[6]), Steal: r(p[7])}
+}
+
+// perCoreUsage 返回每个核心的使用率；核心数变化（CPU 热插拔）时本轮不返回。
+func perCoreUsage(prev, cur []cpuTimes) []float64 {
+	if len(prev) != len(cur) || len(cur) == 0 {
+		return nil
+	}
+	out := make([]float64, len(cur))
+	for i := range cur {
+		out[i] = math.Round(cpuUsage(prev[i], cur[i])*10) / 10
+	}
+	return out
+}
+
+// parseCPUModel 从 /proc/cpuinfo 取 CPU 型号：x86 为 model name；部分 ARM 内核只有 Hardware 或 Processor。
+func parseCPUModel(s string) string {
+	var hw string
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for sc.Scan() {
+		k, v, ok := strings.Cut(sc.Text(), ":")
+		if !ok {
+			continue
+		}
+		k, v = strings.TrimSpace(k), strings.Join(strings.Fields(v), " ")
+		switch k {
+		case "model name":
+			return v
+		case "Hardware", "Processor":
+			if hw == "" {
+				hw = v
+			}
+		}
+	}
+	return hw
+}
+
+// parseSockstat 解析 /proc/net/sockstat 或 sockstat6，返回 TCP、UDP 的 inuse 与 TCP 的 tw（设计 4.9）。
+//
+//	TCP: inuse 5 orphan 0 tw 3 alloc 7 mem 1
+//	UDP6: inuse 1
+func parseSockstat(s string) (tcp, udp, tw int) {
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) < 3 {
+			continue
+		}
+		field := func(name string) int {
+			for i := 1; i+1 < len(f); i += 2 {
+				if f[i] == name {
+					n, _ := strconv.Atoi(f[i+1])
+					return n
+				}
+			}
+			return 0
+		}
+		switch f[0] {
+		case "TCP:", "TCP6:":
+			tcp += field("inuse")
+			tw += field("tw")
+		case "UDP:", "UDP6:":
+			udp += field("inuse")
+		}
+	}
+	return
+}
+
+// tempReading 是一个温度传感器读数。
+type tempReading struct {
+	name  string // hwmon 的 name 或 thermal_zone 的 type
+	milli int64  // 千分之一摄氏度，与 sysfs 一致
+}
+
+// cpuSensors 是可信的 CPU 温度传感器。acpitz 等主板 / 虚拟化传感器在 VPS 上常为固定假值，不采用。
+var cpuSensors = []string{"coretemp", "k10temp", "zenpower", "x86_pkg_temp", "cpu_thermal", "cpu-thermal", "soc_thermal", "soc-thermal"}
+
+// pickCPUTemp 取可信 CPU 传感器的最高温度（摄氏度，保留一位小数）；没有时返回 0，表示不上报。
+func pickCPUTemp(rs []tempReading) float64 {
+	var best int64
+	for _, r := range rs {
+		ok := false
+		for _, n := range cpuSensors {
+			if strings.EqualFold(r.name, n) {
+				ok = true
+				break
+			}
+		}
+		// 超出 0～150 ℃ 的读数视为传感器异常
+		if ok && r.milli > 0 && r.milli < 150_000 && r.milli > best {
+			best = r.milli
+		}
+	}
+	return math.Round(float64(best)/100) / 10
 }
 
 // parseMeminfo 返回 /proc/meminfo 各字段的值，单位为字节，键为字段名（MemTotal、MemAvailable …）。
@@ -243,6 +374,7 @@ func selectMounts(entries []mountEntry) []mountEntry {
 // ioCounters 是一块磁盘的累计 IO 计数。
 type ioCounters struct {
 	readBytes, writeBytes, readOps, writeOps, ioTimeMs uint64
+	readMs, writeMs                                    uint64 // 读 / 写请求累计耗时（含排队），用于平均耗时
 }
 
 // parseDiskstats 解析 /proc/diskstats（设计 4.7）。
@@ -257,7 +389,8 @@ func parseDiskstats(s string) map[string]ioCounters {
 			continue
 		}
 		u := func(i int) uint64 { n, _ := strconv.ParseUint(f[i], 10, 64); return n }
-		out[f[2]] = ioCounters{readOps: u(3), readBytes: u(5) * 512, writeOps: u(7), writeBytes: u(9) * 512, ioTimeMs: u(12)}
+		out[f[2]] = ioCounters{readOps: u(3), readBytes: u(5) * 512, readMs: u(6), writeOps: u(7), writeBytes: u(9) * 512,
+			writeMs: u(10), ioTimeMs: u(12)}
 	}
 	return out
 }
@@ -270,4 +403,20 @@ func skipIODevice(name string) bool {
 		}
 	}
 	return false
+}
+
+// ioRates 计算两次采样之间的 IOPS、平均耗时与忙碌占比（设计 4.7）；计数倒退或间隔无效时返回 false。
+func ioRates(prev, cur ioCounters, elapsed float64) (readIOPS, writeIOPS, awaitMs, util float64, ok bool) {
+	if elapsed <= 0 || cur.readOps < prev.readOps || cur.writeOps < prev.writeOps ||
+		cur.readMs < prev.readMs || cur.writeMs < prev.writeMs || cur.ioTimeMs < prev.ioTimeMs {
+		return 0, 0, 0, 0, false
+	}
+	r2 := func(v float64) float64 { return math.Round(v*100) / 100 }
+	dr, dw := cur.readOps-prev.readOps, cur.writeOps-prev.writeOps
+	readIOPS, writeIOPS = r2(float64(dr)/elapsed), r2(float64(dw)/elapsed)
+	if dr+dw > 0 {
+		awaitMs = r2(float64(cur.readMs-prev.readMs+cur.writeMs-prev.writeMs) / float64(dr+dw))
+	}
+	util = math.Min(100, r2(float64(cur.ioTimeMs-prev.ioTimeMs)/(elapsed*10)))
+	return readIOPS, writeIOPS, awaitMs, util, true
 }

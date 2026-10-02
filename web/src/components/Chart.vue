@@ -32,6 +32,8 @@ const props = defineProps<{
   max?: number
   /** bar：柱状图（每日流量），横轴按天；默认折线 */
   kind?: 'line' | 'bar'
+  /** 不显示图例（外部已有图例时使用）；默认多条线时显示 */
+  hideLegend?: boolean
 }>()
 
 const el = ref<HTMLDivElement | null>(null)
@@ -51,8 +53,8 @@ function render() {
     {
       animation: false,
       color: colors,
-      grid: { left: 8, right: 12, top: 28, bottom: 4, containLabel: true },
-      legend: props.series.length > 1
+      grid: { left: 8, right: 12, top: props.series.length > 1 && !props.hideLegend ? 28 : 12, bottom: 4, containLabel: true },
+      legend: props.series.length > 1 && !props.hideLegend
         ? { top: 0, right: 0, itemWidth: 12, itemHeight: 2, textStyle: { color: muted, fontSize: fs } }
         : undefined,
       tooltip: {

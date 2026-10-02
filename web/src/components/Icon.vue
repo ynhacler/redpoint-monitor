@@ -4,6 +4,7 @@
 defineProps<{
   /** 图标名 */
   name: 'plus' | 'edit' | 'terminal' | 'arrow-left' | 'sun' | 'moon' | 'monitor' | 'search' | 'logout' | 'user'
+    | 'thermometer' | 'power' | 'activity' | 'arrow-up' | 'arrow-down'
   /** 尺寸，px */
   size?: number
 }>()
@@ -19,6 +20,11 @@ const paths: Record<string, string> = {
   search: 'm21 21-4.3-4.3M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
   user: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
+  thermometer: 'M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z',
+  power: 'M12 2v10M18.4 6.6a9 9 0 1 1-12.77.04',
+  activity: 'M3 3h18v18H3zM7 14l2.5-3 3 4 2.5-5 2 4',
+  'arrow-up': 'M12 19V5M5 12l7-7 7 7',
+  'arrow-down': 'M12 5v14M19 12l-7 7-7-7',
 }
 </script>
 

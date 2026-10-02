@@ -41,6 +41,22 @@ export function fmtTraffic(n: number | null | undefined, unit: 'decimal' | 'bina
 /** 字节 → GB / GiB 数值（表单回填用） */
 export const bytesToGB = (n: number, unit: 'decimal' | 'binary' = 'decimal') => n / (unit === 'binary' ? 2 ** 30 : 1e9)
 
+/**
+ * 紧凑字节：“746 K”“2.6 M”“1.1 T”，用于卡片等空间紧张处（十进制，设计 5.8）。
+ * 最多一位小数，避免列宽跳动；需要完整单位时用 fmtBytes。
+ */
+export function fmtBytesShort(n: number | null | undefined, perSec = false): string {
+  if (n == null || Number.isNaN(n)) return DASH
+  const units = ['B', 'K', 'M', 'G', 'T', 'P']
+  let i = 0
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000
+    i++
+  }
+  const v = i === 0 || n >= 100 ? Math.round(n) : Math.round(n * 10) / 10
+  return `${v} ${units[i]}${perSec ? '/s' : ''}`
+}
+
 /** 百分比取整，小于 1% 显示 “<1%”（设计 41.4.1） */
 export function fmtPct(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return DASH
@@ -77,6 +93,44 @@ export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`
   return `${Math.floor(seconds / 86400)} 天`
+}
+
+/**
+ * 开机时间（紧凑）：不足 1 天按小时（“5小时”，不足 1 小时为“<1小时”）；1～999 天按天（“10天”）；
+ * 超过 999 天按年，保留一位小数（“2.8年”），避免列表中出现 4 位天数。
+ */
+export function fmtUptimeShort(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return DASH
+  const days = seconds / 86400
+  if (days < 1) {
+    const h = Math.floor(seconds / 3600)
+    return h < 1 ? '<1小时' : `${h}小时`
+  }
+  if (days <= 999) return `${Math.floor(days)}天`
+  return `${(days / 365).toFixed(1)}年`
+}
+
+/** 开机时间拆成数值与单位（规则同 fmtUptimeShort），用于“数值大、单位小”的展示 */
+export function uptimeParts(seconds: number | null | undefined): { v: string; u: string } {
+  if (seconds == null || seconds < 0) return { v: DASH, u: '' }
+  const days = seconds / 86400
+  if (days < 1) {
+    const h = Math.floor(seconds / 3600)
+    return h < 1 ? { v: '<1', u: '小时' } : { v: String(h), u: '小时' }
+  }
+  if (days <= 999) return { v: String(Math.floor(days)), u: '天' }
+  return { v: (days / 365).toFixed(1), u: '年' }
+}
+
+/** 运行时间：取两级单位，“37 天 7 小时”“5 小时 12 分”“12 分”，用于详情页（列表用 fmtDuration） */
+export function fmtUptime(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return DASH
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (d > 0) return h ? `${d} 天 ${h} 小时` : `${d} 天`
+  if (h > 0) return m ? `${h} 小时 ${m} 分` : `${h} 小时`
+  return m > 0 ? `${m} 分` : `${Math.floor(seconds)} 秒`
 }
 
 /** 价格：按币种显示，如 “USD 5.99”；未填显示 “—” */

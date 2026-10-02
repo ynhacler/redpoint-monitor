@@ -742,10 +742,63 @@ components:
         timestamp: { type: integer }
         agent_version: { type: string }
         final: { type: boolean }
-        system: { type: object }
-        cpu: { type: object }
-        memory: { type: object }
+        system:
+          type: object
+          properties:
+            hostname: { type: string }
+            os: { type: string }
+            os_version: { type: string }
+            kernel: { type: string }
+            arch: { type: string }
+            uptime: { type: integer, description: 秒 }
+            boot_id: { type: string }
+            cpu_model: { type: string, description: 可选（设计 4.4） }
+        cpu:
+          type: object
+          properties:
+            usage: { type: number }
+            cores: { type: integer }
+            load1: { type: number }
+            load5: { type: number }
+            load15: { type: number }
+            breakdown:
+              type: object
+              description: 可选：两次采样之间各类时间占比 0～100（设计 4.4）
+              properties:
+                user: { type: number }
+                nice: { type: number }
+                system: { type: number }
+                iowait: { type: number }
+                irq: { type: number }
+                softirq: { type: number }
+                steal: { type: number }
+                idle: { type: number }
+            per_core: { type: array, items: { type: number }, description: 可选；GET /servers 列表中省略 }
+            temp_c: { type: number, description: 可选，CPU 温度 ℃ }
+        memory:
+          type: object
+          properties:
+            total: { type: integer }
+            used: { type: integer, description: MemTotal − MemAvailable }
+            available: { type: integer }
+            usage: { type: number }
+            free: { type: integer, description: 可选 }
+            buffers: { type: integer, description: 可选 }
+            cached: { type: integer, description: 可选：Cached + SReclaimable }
         swap: { type: object }
+        processes:
+          type: object
+          description: 可选（设计 4.9）
+          properties:
+            total: { type: integer }
+            running: { type: integer }
+        conns:
+          type: object
+          description: 可选（设计 4.9）：sockstat 的 inuse，IPv4 + IPv6
+          properties:
+            tcp: { type: integer }
+            udp: { type: integer }
+            time_wait: { type: integer }
         disk:
           type: array
           description: 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次
@@ -774,6 +827,10 @@ components:
               io_time_ms: { type: integer }
               read_speed: { type: integer }
               write_speed: { type: integer }
+              read_iops: { type: number, description: 可选 }
+              write_iops: { type: number, description: 可选 }
+              await_ms: { type: number, description: 可选：每次 IO 平均耗时 }
+              util: { type: number, description: 可选：设备忙碌占比 0～100 }
 
     MetricPoint:
       type: object

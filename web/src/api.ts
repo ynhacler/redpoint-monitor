@@ -25,16 +25,59 @@ export interface DiskInfo {
 export interface Report {
   timestamp: number
   agent_version: string
-  /** uptime 为秒 */
-  system: { hostname: string; os: string; os_version: string; kernel: string; arch: string; uptime: number }
-  cpu: { usage: number; cores: number; load1: number; load5?: number; load15?: number }
-  memory: { total: number; used: number; usage: number; available?: number }
+  /** uptime 为秒；cpu_model 为可选（旧版 Agent 不带） */
+  system: { hostname: string; os: string; os_version: string; kernel: string; arch: string; uptime: number; cpu_model?: string }
+  cpu: {
+    usage: number
+    cores: number
+    load1: number
+    load5?: number
+    load15?: number
+    /** 各类 CPU 时间占比（设计 4.4）；以下均为可选，旧版 Agent 不带 */
+    breakdown?: CPUBreakdown
+    /** 每核使用率；节点列表接口省略，只在详情中返回 */
+    per_core?: number[]
+    /** CPU 温度 ℃；读不到时没有 */
+    temp_c?: number
+  }
+  /** free / buffers / cached 为可选：buffers 与 cached 可回收，不计入 used（设计 4.5） */
+  memory: { total: number; used: number; usage: number; available?: number; free?: number; buffers?: number; cached?: number }
   swap: { total: number; used: number }
   /** 每个挂载点的容量（设计 4.6） */
   disk: DiskInfo[]
   network: NetIface[]
-  /** 各磁盘的读写速率（设计 4.7）；旧版 Agent 不上报 */
-  disk_io?: { device: string; read_speed: number; write_speed: number }[]
+  /** 各磁盘的 IO（设计 4.7）；旧版 Agent 不上报 */
+  disk_io?: DiskIO[]
+  /** 进程数、套接字数（设计 4.9）；旧版 Agent 不上报 */
+  processes?: { total: number; running: number }
+  conns?: { tcp: number; udp: number; time_wait: number }
+}
+
+/** 两次采样之间各类 CPU 时间的占比，0～100 */
+export interface CPUBreakdown {
+  user: number
+  nice: number
+  system: number
+  iowait: number
+  irq: number
+  softirq: number
+  steal: number
+  idle: number
+}
+
+/** 一块磁盘的 IO：累计字节与本轮速率；iops / await / util 为可选（设计 4.7） */
+export interface DiskIO {
+  device: string
+  read_bytes?: number
+  write_bytes?: number
+  read_speed: number
+  write_speed: number
+  read_iops?: number
+  write_iops?: number
+  /** 平均每次 IO 耗时，毫秒 */
+  await_ms?: number
+  /** 设备忙碌占比 0～100 */
+  util?: number
 }
 
 /**
