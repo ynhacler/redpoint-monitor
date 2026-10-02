@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtDuration, fmtPct } from '../format'
 import { cpu, fullestDisk, isLive, issues, mem, rx, thresholds, trafficPct, tx } from '../metrics'
+import Flag from './Flag.vue'
 import Metric from './Metric.vue'
 import StatusDot from './StatusDot.vue'
 import UsageBar from './UsageBar.vue'
@@ -33,7 +34,7 @@ const subtitle = computed(() =>
 <template>
   <RouterLink :to="`/servers/${s.id}`" class="card" :class="[s.status, { attention: problems.length }]">
     <div class="head">
-      <h2 class="name">{{ s.name }}</h2>
+      <h2 class="name"><Flag :code="s.country" /> {{ s.name }}</h2>
       <StatusDot :status="s.status" />
     </div>
     <div class="sub muted small">{{ subtitle || DASH }}</div>

@@ -249,6 +249,9 @@ var migrations = []string{
 	);
 	CREATE INDEX sessions_user ON sessions(user_id);
 	DROP TABLE admin_tokens;`,
+
+	// 迁移 7：节点所在国家 / 地区（设计 1.2.3），用于界面显示国旗；由用户手动选择，不做 IP 地理识别。
+	`ALTER TABLE servers ADD COLUMN country TEXT NOT NULL DEFAULT '';  -- ISO 3166-1 两位代码，如 JP、HK；空表示未填`,
 }
 
 func (s *Store) migrate() error {
@@ -348,6 +351,7 @@ type ServerRow struct {
 	Provider      string `json:"provider"`
 	Plan          string `json:"plan"`
 	Region        string `json:"region"`
+	Country       string `json:"country"`     // ISO 3166-1 两位代码（大写），空表示未填
 	PriceCents    int64  `json:"price_cents"` // 续费价格 × 100
 	Currency      string `json:"currency"`
 	BillingPeriod string `json:"billing_period"`

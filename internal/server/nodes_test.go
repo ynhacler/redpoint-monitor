@@ -88,3 +88,22 @@ func TestDeleteServer(t *testing.T) {
 		t.Errorf("删除应写入审计日志（设计 24.8）：%d", n)
 	}
 }
+
+func TestServerCountry(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	code, v, _ := createNode(t, h, admin, `{"name":"jp-1","country":"jp"}`)
+	if code != 201 {
+		t.Fatalf("新建失败：%d", code)
+	}
+	if n, _ := s.store.GetServer(v.ServerID); n.Country != "JP" {
+		t.Errorf("国家代码应规范化为大写：%q", n.Country)
+	}
+	if code, _, e := createNode(t, h, admin, `{"name":"x","country":"Japan"}`); code != 422 || e.Details[0].Field != "country" {
+		t.Errorf("非两位代码应返回 422：%d %+v", code, e.Details)
+	}
+	rec := do(h, "PUT", "/api/v1/servers/"+itoa(v.ServerID), admin, []byte(`{"name":"jp-1","country":"HK"}`))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"country":"HK"`) {
+		t.Errorf("修改国家：%d %s", rec.Code, rec.Body)
+	}
+}

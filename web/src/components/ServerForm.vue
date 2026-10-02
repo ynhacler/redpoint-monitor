@@ -7,6 +7,10 @@ import {
   ApiError, createServer, deleteServer, reauth, updateServer, UnauthorizedError,
   type CreateServerInput, type EnrollCodeView, type ServerView,
 } from '../api'
+import { countryOptions } from '../countries'
+import Flag from './Flag.vue'
+
+const countries = countryOptions()
 
 const props = defineProps<{
   /** 编辑的节点；为空时是新建 */
@@ -31,7 +35,7 @@ const sv = props.server
 const f = reactive({
   name: sv?.name ?? '', expected_hostname: sv?.expected_hostname ?? '', expected_ipv4: sv?.expected_ipv4 ?? '',
   expected_ipv6: sv?.expected_ipv6 ?? '', group: sv?.group ?? '', note: sv?.note ?? '',
-  provider: sv?.provider ?? '', plan: sv?.plan ?? '', region: sv?.region ?? '',
+  provider: sv?.provider ?? '', plan: sv?.plan ?? '', region: sv?.region ?? '', country: sv?.country ?? '',
   // 字节 → 十进制 GB（设计 5.8）；0 表示不限，显示为空
   traffic_limit_gb: sv?.traffic_limit_bytes ? String(sv.traffic_limit_bytes / 1e9) : '',
   traffic_reset_day: String(sv?.traffic_reset_day ?? 1), traffic_count_mode: sv?.traffic_count_mode ?? 'sum',
@@ -70,6 +74,7 @@ function buildInput(): CreateServerInput {
     provider: text(f.provider),
     plan: text(f.plan),
     region: text(f.region),
+    country: f.country || undefined,
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_count_mode: f.traffic_count_mode as CreateServerInput['traffic_count_mode'],
@@ -152,6 +157,22 @@ async function remove() {
           <input v-model="f.expected_hostname" placeholder="hostname 命令的输出" />
           <small v-if="fieldErrors.expected_hostname" class="err">{{ fieldErrors.expected_hostname }}</small>
           <small v-else class="muted">注册时核对</small>
+        </label>
+        <label>国家 / 地区
+          <div class="row">
+            <Flag :code="f.country" />
+            <select v-model="f.country">
+              <option value="">未选择</option>
+              <optgroup label="常用">
+                <option v-for="c in countries.common" :key="c.code" :value="c.code">{{ c.name }}（{{ c.code }}）</option>
+              </optgroup>
+              <optgroup label="全部">
+                <option v-for="c in countries.all" :key="c.code" :value="c.code">{{ c.name }}（{{ c.code }}）</option>
+              </optgroup>
+            </select>
+          </div>
+          <small v-if="fieldErrors.country" class="err">{{ fieldErrors.country }}</small>
+          <small v-else class="muted">节点卡片上显示国旗</small>
         </label>
         <label>分组
           <input v-model="f.group" placeholder="如 香港、落地" />
@@ -266,6 +287,7 @@ legend { font-weight: var(--weight-strong); padding: 0; margin-bottom: var(--spa
 .fields .wide { grid-column: 1 / -1; }
 /* 全局样式中输入框是 flex: 1（用于横排），在纵向的字段里会被拉高，这里取消 */
 .fields > label > input, .fields > label > select { flex: none; }
+.fields .row select { flex: 1; }
 .currency { flex: 0 0 72px; text-transform: uppercase; }
 small { font-size: var(--font-sm); }
 .err { color: var(--bad); }

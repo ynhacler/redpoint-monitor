@@ -22,6 +22,7 @@ var billingPeriods = map[string]bool{"": true, "monthly": true, "quarterly": tru
 var (
 	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]{0,252})$`)
 	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`) // ISO 4217
+	countryPattern  = regexp.MustCompile(`^[A-Z]{2}$`) // ISO 3166-1 alpha-2
 	// publicHost 是允许写进安装命令的面板主机名（含端口、IPv6 方括号）。
 	// 【安全】安装命令会被复制到主机上以 root 执行，Host 头中的任何 shell 特殊字符都不允许进入命令。
 	publicHost = regexp.MustCompile(`^[A-Za-z0-9.\-]+(:[0-9]{1,5})?$|^\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$`)
@@ -38,6 +39,7 @@ type createServerBody struct {
 	Provider         string   `json:"provider"`
 	Plan             string   `json:"plan"`
 	Region           string   `json:"region"`
+	Country          string   `json:"country"`           // ISO 3166-1 两位代码，大小写不敏感
 	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 十进制 GB（设计 5.8）；空或 0 表示不限
 	TrafficResetDay  *int     `json:"traffic_reset_day"` // 1～31，默认 1
 	TrafficCountMode string   `json:"traffic_count_mode"`
@@ -71,6 +73,10 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 	}
 	if in.Name == "" {
 		bad("name", "请填写名称")
+	}
+	in.Country = strings.ToUpper(strings.TrimSpace(b.Country))
+	if in.Country != "" && !countryPattern.MatchString(in.Country) {
+		bad("country", "国家 / 地区代码应为两位字母，如 JP、HK")
 	}
 	if h := strings.TrimSpace(b.ExpectedHostname); h != "" {
 		if !hostnamePattern.MatchString(h) {
