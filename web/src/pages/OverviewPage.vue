@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import EmptyState from '../components/EmptyState.vue'
+import Flag from '../components/Flag.vue'
 import Icon from '../components/Icon.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { fmtBytes, fmtPct } from '../format'
@@ -69,7 +70,7 @@ const tops = computed<Top[]>(() => {
         <div v-if="attention.length" class="panel list">
           <RouterLink v-for="{ s, problems } in attention" :key="s.id" :to="`/servers/${s.id}`" class="item">
             <StatusDot :status="s.status" dot-only />
-            <span class="item-name">{{ s.name }}</span>
+            <span class="item-name"><Flag :code="s.country" /> {{ s.name }}</span>
             <span class="tags">
               <span v-for="p in problems" :key="p.text" class="tag" :class="p.level">{{ p.text }}</span>
             </span>
@@ -84,7 +85,7 @@ const tops = computed<Top[]>(() => {
           <div v-for="t in tops" :key="t.title" class="panel top">
             <div class="muted small top-title">{{ t.title }}</div>
             <RouterLink v-for="r in t.rows" :key="r.s.id" :to="`/servers/${r.s.id}`" class="top-row">
-              <span class="item-name">{{ r.s.name }}</span>
+              <span class="item-name"><Flag :code="r.s.country" /> {{ r.s.name }}</span>
               <span class="num">{{ r.text }}</span>
             </RouterLink>
             <p v-if="!t.rows.length" class="muted small">暂无在线节点</p>

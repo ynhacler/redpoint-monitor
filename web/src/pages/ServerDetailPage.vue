@@ -4,7 +4,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, getHistory, UnauthorizedError, type HistoryRange, type HistoryView } from '../api'
 import Chart, { type Series } from '../components/Chart.vue'
+import Flag from '../components/Flag.vue'
 import Icon from '../components/Icon.vue'
+import { countryName } from '../countries'
 import Metric from '../components/Metric.vue'
 import StatusDot from '../components/StatusDot.vue'
 import TrafficCard from '../components/TrafficCard.vue'
@@ -104,7 +106,7 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
       <!-- 状态 -->
       <div class="page-head">
         <div class="title">
-          <div class="row"><h1>{{ s.name }}</h1><StatusDot :status="s.status" /></div>
+          <div class="row"><h1><Flag :code="s.country" /> {{ s.name }}</h1><StatusDot :status="s.status" /></div>
           <div class="muted small">
             {{ [s.ipv4 || s.expected_ipv4, s.region, s.provider, s.group].filter(Boolean).join(' · ') || DASH }}
           </div>
@@ -191,6 +193,10 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
           <dl class="kv">
             <dt>供应商</dt><dd>{{ s.provider || DASH }}</dd>
             <dt>套餐</dt><dd>{{ s.plan || DASH }}</dd>
+            <dt>国家 / 地区</dt><dd>
+              <template v-if="s.country"><Flag :code="s.country" /> {{ countryName(s.country) }}</template>
+              <template v-else>{{ DASH }}</template>
+            </dd>
             <dt>地区</dt><dd>{{ s.region || DASH }}</dd>
             <dt>分组</dt><dd>{{ s.group || DASH }}</dd>
             <dt>续费</dt><dd>{{ fmtPrice(s.price_cents, s.currency) }}<template v-if="s.billing_period"> / {{ periodNames[s.billing_period] }}</template></dd>

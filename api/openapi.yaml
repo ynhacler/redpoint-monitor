@@ -461,6 +461,7 @@ components:
         provider: { type: string, maxLength: 64 }
         plan: { type: string, maxLength: 64 }
         region: { type: string, maxLength: 64 }
+        country: { type: string, pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 两位代码（大小写不敏感，保存为大写）；用于显示国旗' }
         traffic_limit_gb: { type: number, minimum: 0, description: 十进制 GB（设计 5.8），0 或省略表示不限 }
         traffic_reset_day: { type: integer, minimum: 1, maximum: 31, default: 1 }
         traffic_count_mode: { type: string, enum: [sum, rx, tx, max], default: sum, description: 设计 1.2.4 }
@@ -521,6 +522,7 @@ components:
         provider: { type: string }
         plan: { type: string }
         region: { type: string }
+        country: { type: string, description: ISO 3166-1 两位代码（大写），空表示未填 }
         price_cents: { type: integer, description: 续费价格 × 100 }
         currency: { type: string }
         billing_period: { type: string }

@@ -64,6 +64,8 @@ export interface ServerView {
   provider: string
   plan: string
   region: string
+  /** 国家 / 地区，ISO 3166-1 两位代码（大写）；空表示未填 */
+  country: string
   /** 续费价格 × 100 */
   price_cents: number
   currency: string
@@ -166,6 +168,8 @@ export interface CreateServerInput {
   provider?: string
   plan?: string
   region?: string
+  /** ISO 3166-1 两位代码 */
+  country?: string
   /** 月流量额度，十进制 GB（设计 5.8）；0 或不填表示不限 */
   traffic_limit_gb?: number
   /** 流量重置日 1～31 */

@@ -333,6 +333,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 25 | 节点增加国家 / 地区（手动选择）并显示国旗（flag-icons），不做 IP 地理识别 | 1.2.3、41.4.3 |
 | 24 | 登录增加自建滑动拼图验证码（服务端校验位置与拖动用时，一次性，可用 --no-login-captcha 关闭）；接口 /auth/captcha；错误码 captcha_failed | 17.4、19.1、43.4 |
 | 23 | Web 登录改为会话 Cookie + CSRF（8.2 与 17.1、17.4、19.0.2 统一，Web 不使用 Access / Refresh Token）；19.1 去掉 /auth/refresh，增加 /auth/password、/auth/reauth；错误码目录增加 password_change_required、reauth_required | 8.2、19.1、43.4 |
 | 22 | 24.7 脱敏示例与正文统一为“只保留前缀与末 4 位”（agt_…r5sx） | 24.7 |
@@ -8731,6 +8732,9 @@ App：Material 3 作为底层，ThemeData 全部由令牌生成，不使用默�
 统一使用一套线性图标（Web 与 App 同一套，如 Lucide），线宽 1.5
 图标只用于高频操作和状态，不为每个菜单项都配图标
 ```
+
+国旗：节点按“国家 / 地区”（ISO 3166-1 两位代码，新建 / 编辑时手动选择）显示国旗，图片来自 flag-icons（MIT），
+按需加载；名称使用浏览器内置的 Intl.DisplayNames。不按 IP 自动识别：调用外部地理服务会把节点 IP 交给第三方（设计 1.6）。
 
 ---
 

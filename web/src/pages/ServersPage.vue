@@ -3,6 +3,8 @@
 import { computed, ref } from 'vue'
 import type { ServerView } from '../api'
 import EmptyState from '../components/EmptyState.vue'
+import Flag from '../components/Flag.vue'
+import { countryName } from '../countries'
 import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
@@ -24,7 +26,8 @@ const matches = (s: ServerView) => {
   const q = query.value.trim().toLowerCase()
   if (group.value && s.group !== group.value) return false
   if (!q) return true
-  return [s.name, s.hostname, s.ipv4, s.ipv6, s.expected_ipv4, s.group, s.provider, s.region]
+  // 国家可按代码或中文名搜索，如 “jp”“日本”
+  return [s.name, s.hostname, s.ipv4, s.ipv6, s.expected_ipv4, s.group, s.provider, s.region, s.country, countryName(s.country)]
     .some((v) => v?.toLowerCase().includes(q))
 }
 
@@ -84,7 +87,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
         <div class="grid">
           <div v-for="s in pendingFiltered" :key="s.id" class="pending-card">
             <div class="row">
-              <strong class="name">{{ s.name }}</strong>
+              <strong class="name"><Flag :code="s.country" /> {{ s.name }}</strong>
               <StatusDot status="pending" />
             </div>
             <div class="muted small">{{ [s.region, s.provider, s.group].filter(Boolean).join(' · ') || '尚未在主机上安装 Agent' }}</div>
