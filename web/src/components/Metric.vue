@@ -22,7 +22,8 @@ defineProps<{
 <style scoped>
 .metric { min-width: 0; }
 .label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.value { white-space: nowrap; }
+/* 不自动换行；数值中的 \n 保留为换行（如网速的下行 / 上行分两行） */
+.value { white-space: pre; }
 .value.warn { color: var(--warn); }
 .value.bad { color: var(--bad); }
 </style>

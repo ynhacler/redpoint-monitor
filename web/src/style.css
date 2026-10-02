@@ -46,6 +46,18 @@ input, select, textarea {
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3); min-width: 0;
 }
+/* 下拉框：去掉系统默认外观，用两段渐变画箭头（颜色跟随文字，深浅色都正确），并给文字留出右侧空间 */
+select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: var(--space-7);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
 input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: -1px; border-color: var(--accent); }
 
 /* 按钮：主 / 次 / 文字 / 危险四种（设计 41.3）；同一页面最多一个主按钮（设计 41.2.1） */
