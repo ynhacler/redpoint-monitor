@@ -4,6 +4,7 @@ package collector
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -20,7 +21,8 @@ import (
 // 有状态：CPU 与网速依赖上一次采样，同一实例不可并发调用。
 type linux struct {
 	opts     Options
-	prevCPU  cpuTimes               // 上一次 /proc/stat 采样，用于计算 CPU 使用率
+	prevCPU  procStat               // 上一次 /proc/stat 采样，用于计算 CPU 使用率与各类占比
+	cpuModel string                 // /proc/cpuinfo 的型号，只在首次采集时读取
 	prevNet  map[string]netCounters // 上一次各网卡的累计字节数，用于计算网速
 	prevIO   map[string]ioCounters  // 上一次各磁盘的累计 IO，用于计算读写速率
 	prevTime time.Time              // prevNet / prevIO 的采样时间
@@ -63,10 +65,19 @@ func (c *linux) Collect() (protocol.Report, error) {
 		r.System.Uptime = uint64(up)
 	}
 
+	if c.cpuModel == "" {
+		c.cpuModel = parseCPUModel(readFile("/proc/cpuinfo"))
+	}
+	r.System.CPUModel = c.cpuModel
+
 	// CPU：/proc/stat 是开机以来的累计 jiffies，使用率取与上一次采样之间的忙碌占比（首次为 0）。
-	cur, cores := parseProcStat(readFile("/proc/stat"))
-	r.CPU.Usage = cpuUsage(c.prevCPU, cur)
-	r.CPU.Cores = cores
+	// 同时给出各类时间占比与每核使用率（设计 4.4）。
+	cur := parseProcStat(readFile("/proc/stat"))
+	r.CPU.Usage = cpuUsage(c.prevCPU.all, cur.all)
+	r.CPU.Cores = len(cur.cores)
+	r.CPU.Breakdown = cpuBreakdown(c.prevCPU.all, cur.all)
+	r.CPU.PerCore = perCoreUsage(c.prevCPU.cores, cur.cores)
+	r.CPU.TempC = readCPUTemp()
 	c.prevCPU = cur
 	if f := strings.Fields(readFile("/proc/loadavg")); len(f) >= 3 {
 		r.CPU.Load1, _ = strconv.ParseFloat(f[0], 64)
@@ -78,7 +89,14 @@ func (c *linux) Collect() (protocol.Report, error) {
 	// 页缓存可以回收，算作已用会让长期运行的 VPS 看起来接近 100%（设计 4.5）。
 	m := parseMeminfo(readFile("/proc/meminfo"))
 	total, avail := m["MemTotal"], m["MemAvailable"]
-	r.Memory = protocol.Memory{Total: total, Available: avail, Used: total - avail, Usage: pct(total-avail, total)}
+	r.Memory = protocol.Memory{Total: total, Available: avail, Used: total - avail, Usage: pct(total-avail, total),
+		Free: m["MemFree"], Buffers: m["Buffers"], Cached: m["Cached"] + m["SReclaimable"]}
+
+	// 进程数与套接字数（设计 4.9）
+	r.Processes = &protocol.Processes{Total: countProcesses(), Running: cur.running}
+	tcp4, udp4, tw := parseSockstat(readFile("/proc/net/sockstat"))
+	tcp6, udp6, _ := parseSockstat(readFile("/proc/net/sockstat6"))
+	r.Conns = &protocol.Conns{TCP: tcp4 + tcp6, UDP: udp4 + udp6, TimeWait: tw}
 	r.Swap = protocol.Swap{Total: m["SwapTotal"], Used: m["SwapTotal"] - m["SwapFree"]}
 
 	// 磁盘容量：本地块设备文件系统的每个挂载点（设计 4.6）
@@ -100,6 +118,7 @@ func (c *linux) Collect() (protocol.Report, error) {
 		if p, ok := c.prevIO[name]; ok && elapsedIO > 0 && cur.readBytes >= p.readBytes && cur.writeBytes >= p.writeBytes {
 			d.ReadSpeed = uint64(float64(cur.readBytes-p.readBytes) / elapsedIO)
 			d.WriteSpeed = uint64(float64(cur.writeBytes-p.writeBytes) / elapsedIO)
+			d.ReadIOPS, d.WriteIOPS, d.AwaitMs, d.Util, _ = ioRates(p, cur, elapsedIO)
 		}
 		r.DiskIO = append(r.DiskIO, d)
 	}
@@ -184,4 +203,44 @@ func (c *linux) selectIfaces(counters map[string]netCounters) []string {
 		}
 	}
 	return out
+}
+
+// countProcesses 统计 /proc 下的进程目录数（只读目录名，不读取任何进程的内容）。
+func countProcesses() int {
+	f, err := os.Open("/proc")
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	names, _ := f.Readdirnames(-1)
+	n := 0
+	for _, name := range names {
+		if name != "" && name[0] >= '0' && name[0] <= '9' {
+			n++
+		}
+	}
+	return n
+}
+
+// readCPUTemp 读取 hwmon 与 thermal_zone 中可信的 CPU 温度（设计 4.4）；都读不到时返回 0，不上报。
+// 【安全】只读 /sys，不需要任何权限。
+func readCPUTemp() float64 {
+	var rs []tempReading
+	hw, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	for _, d := range hw {
+		name := strings.TrimSpace(readFile(d + "/name"))
+		inputs, _ := filepath.Glob(d + "/temp*_input")
+		for _, in := range inputs {
+			if v, err := strconv.ParseInt(strings.TrimSpace(readFile(in)), 10, 64); err == nil {
+				rs = append(rs, tempReading{name, v})
+			}
+		}
+	}
+	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*")
+	for _, d := range zones {
+		if v, err := strconv.ParseInt(strings.TrimSpace(readFile(d+"/temp")), 10, 64); err == nil {
+			rs = append(rs, tempReading{strings.TrimSpace(readFile(d + "/type")), v})
+		}
+	}
+	return pickCPUTemp(rs)
 }

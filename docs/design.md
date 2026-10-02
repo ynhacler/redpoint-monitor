@@ -46,6 +46,7 @@
   - [4.6 磁盘指标](#46-磁盘指标)
   - [4.7 磁盘 IO](#47-磁盘-io)
   - [4.8 Agent 兼容性设计](#48-agent-兼容性设计)
+  - [4.9 进程与连接](#49-进程与连接)
 - [5. 网络流量设计](#5-网络流量设计)
   - [5.1 基础指标](#51-基础指标)
   - [5.2 实时网速](#52-实时网速)
@@ -334,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 28 | 参考同类 App 丰富指标与展示：CPU 时间占比 / 每核 / 温度 / 型号、内存缓存、磁盘 IOPS / 耗时 / 繁忙、进程与连接数（新增 4.9）；节点卡片改为环形图，详情页实时区块重排；Ring 组件与 series-2、series-3、track 令牌 | 4.4～4.9、11.1、41.3 |
 | 27 | 审计日志提前提供 Web 只读查询：“日志”页分登录日志 / 操作日志，接口 /audit-logs；管理员操作记录用户名；保留 1 年自动清理 | 19.12、24.8 |
 | 26 | 流量：19.8 增加校准与校准历史接口、daily / monthly 参数；第 32 章明确预测公式为“已用 + 日均 × 剩余天数”；统计系数范围 0.5～2 | 5.7、19.8、32 |
 | 25 | 节点增加国家 / 地区（手动选择）并显示国旗（flag-icons），不做 IP 地理识别 | 1.2.3、41.4.3 |
@@ -2813,6 +2815,17 @@ load_5
 load_15
 ```
 
+可选（旧版 Agent 不带，界面不显示对应区块）：
+
+```text
+breakdown    两次采样之间 user / nice / system / iowait / irq / softirq / steal / idle 的占比
+per_core     每核使用率（节点列表接口省略，只在详情中返回）
+temp_c       CPU 温度：只取 coretemp、k10temp、cpu_thermal 等可信传感器；acpitz 在 VPS 上常为假值，不采用
+cpu_model    /proc/cpuinfo 的 model name（ARM 取 Processor / Hardware）
+```
+
+使用率口径：iowait 计为空闲，steal 计为忙碌。steal 持续偏高说明宿主机超售，是 VPS 用户最需要看到的一项。
+
 Linux 可从：
 
 ```text
@@ -2837,6 +2850,9 @@ swap_total
 swap_used
 swap_usage_percent
 ```
+
+可选：`free`（MemFree）、`buffers`、`cached`（Cached + SReclaimable）。已用 = MemTotal − MemAvailable，
+缓存可回收，不计入已用；界面用分段环显示“已用 + 缓存”。
 
 Linux 可从：
 
@@ -2900,6 +2916,9 @@ read_ops
 write_ops
 io_time
 ```
+
+可选（两次采样之间的平均值）：`read_iops`、`write_iops`、`await_ms`（每次 IO 的平均耗时，含排队）、
+`util`（设备忙碌占比）。界面按挂载点的设备名前缀（/dev/vda1 → vda）把 IO 显示在对应磁盘下。
 
 数据源：
 
@@ -3023,6 +3042,21 @@ OS + Arch + Version
 匹配正确安装包，禁止跨架构升级。
 
 ---
+
+---
+
+## 4.9 进程与连接
+
+可选，均为无需特权的只读来源：
+
+```text
+processes.total     /proc 下的进程目录数（只读目录名，不读取进程内容）
+processes.running   /proc/stat 的 procs_running
+conns.tcp / udp     /proc/net/sockstat 与 sockstat6 的 inuse（IPv4 + IPv6）
+conns.time_wait     TCP 的 tw；大量 TIME_WAIT 通常意味着短连接过多
+```
+
+不采集进程列表、端口与连接明细：既增加 Agent 开销，也涉及隐私（设计 1.6.9）。
 
 # 5. 网络流量设计
 
@@ -3288,7 +3322,9 @@ Content-Type: application/json
     "cores": 2,
     "load1": 0.31,
     "load5": 0.28,
-    "load15": 0.21
+    "load15": 0.21,
+    "breakdown": { "user": 12.1, "nice": 0, "system": 4.2, "iowait": 0.8, "irq": 0, "softirq": 0.3, "steal": 1.2, "idle": 81.4 },
+    "per_core": [21.5, 15.7]
   },
 
   "memory": {
@@ -3791,6 +3827,17 @@ CPU 核数
 Agent 版本
 运行时间
 ```
+
+实时区块（在线时显示，离线时隐藏旧数值，设计 43.6），顺序与 App 一致：
+
+```text
+CPU    大号使用率；用户 / 系统 / IO 等待 / 窃取 / 中断占比与堆叠条；每核使用率；核心、空闲、负载、温度、运行时间、进程
+内存   已用 / 缓存 / 空闲 / 可用，分段环（已用 + 缓存）；Swap 条
+网络   下行 / 上行速率；开机以来累计；TCP / UDP / TIME_WAIT
+磁盘   每个挂载点的容量条；所在磁盘的读写速度、累计、IOPS、繁忙占比、平均耗时
+```
+
+详情页单独轮询 `GET /servers/{id}`（3 秒）以取得每核使用率；Agent 未上报的可选项不显示。
 
 ---
 
@@ -8706,7 +8753,8 @@ Web 与 App 使用同一套组件词汇，名称、外观、行为一致：
 | 组件 | 说明 |
 |---|---|
 | StatusDot | 8px 圆点 + 文字：在线 / 未知 / 离线 / 待安装 / 维护中 |
-| ServerCard | 名称、状态、系统；CPU / 内存 / 磁盘 / 网速四项指标；本周期流量条 |
+| ServerCard | 名称、状态、系统；温度 / 运行时间 / 负载；CPU / 内存 / 磁盘三个 Ring，网速与磁盘 IO；本周期流量条。卡片宽 ≥ 400px 时五列一行，否则环一行、网速与 IO 一行 |
+| Ring | 环形使用率，中间为百分比、下方一行说明；单值按 ok / warn / bad 着色（CPU 70 / 90、内存 75 / 90、磁盘 85 / 95），可分段（内存已用 + 缓存） |
 | Metric | 标签（font-xs，muted）+ 数值（等宽数字）+ 单位（muted） |
 | UsageBar | 6px 进度条；≥80% warn，≥95% bad |
 | TrafficCard | 已用 / 总量、剩余、距离重置、日均、预计（设计 1.5.8） |

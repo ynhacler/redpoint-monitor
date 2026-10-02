@@ -2,17 +2,16 @@
 // 节点详情（设计 11）。指标顺序与 App 一致：状态 → CPU → 内存 → 磁盘 → 网络 → 流量 → 资产（设计 41.6）。
 // 实时数据来自全局轮询；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ApiError, getHistory, UnauthorizedError, type HistoryRange, type HistoryView } from '../api'
+import { ApiError, getHistory, getServer, UnauthorizedError, type HistoryRange, type HistoryView, type ServerView } from '../api'
 import Chart, { type Series } from '../components/Chart.vue'
 import Flag from '../components/Flag.vue'
 import Icon from '../components/Icon.vue'
 import { countryName } from '../countries'
-import Metric from '../components/Metric.vue'
+import LivePanels from '../components/LivePanels.vue'
 import StatusDot from '../components/StatusDot.vue'
 import TrafficCard from '../components/TrafficCard.vue'
-import UsageBar from '../components/UsageBar.vue'
-import { DASH, fmtBytes, fmtDuration, fmtPct, fmtPrice, fmtTime, periodNames } from '../format'
-import { cpu, fullestDisk, isLive, issues, mem, rx, thresholds, tx } from '../metrics'
+import { DASH, fmtBytes, fmtPrice, fmtTime, periodNames } from '../format'
+import { isLive, issues } from '../metrics'
 import { logout, serverById, state } from '../store'
 
 const props = defineProps<{
@@ -25,6 +24,27 @@ const s = computed(() => serverById(sid.value))
 const live = computed(() => (s.value ? isLive(s.value) : false))
 const problems = computed(() => (s.value ? issues(s.value) : []))
 const sys = computed(() => s.value?.latest?.system)
+
+// ---- 实时详情 ----
+// 列表接口省略每核使用率等只在详情显示的字段，详情页单独轮询本节点（与全局列表同为 3 秒）
+const detail = ref<ServerView | null>(null)
+let liveTimer: number | undefined
+async function loadDetail() {
+  try {
+    detail.value = await getServer(sid.value)
+  } catch (e) {
+    if (e instanceof UnauthorizedError) logout()
+    // 其他错误忽略：实时区块退回使用全局列表中的数据
+  }
+}
+watch(sid, () => {
+  detail.value = null
+  loadDetail()
+  if (liveTimer) clearInterval(liveTimer)
+  liveTimer = window.setInterval(loadDetail, 3000)
+}, { immediate: true })
+onBeforeUnmount(() => liveTimer && clearInterval(liveTimer))
+const liveServer = computed(() => (detail.value?.id === sid.value && detail.value.latest ? detail.value : s.value))
 
 // ---- 历史曲线 ----
 const ranges: HistoryRange[] = ['1h', '6h', '24h', '7d', '30d']
@@ -91,8 +111,6 @@ const expireDays = computed(() => {
   if (!s.value?.expire_date) return null
   return Math.ceil((new Date(s.value.expire_date + 'T00:00:00').getTime() - Date.now()) / 86400000)
 })
-const level = (v: number | undefined, warn: number, bad = 101) =>
-  v == null ? undefined : v >= bad ? 'bad' : v >= warn ? 'warn' : undefined
 </script>
 
 <template>
@@ -125,17 +143,8 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
         <template v-if="s.status === 'offline' && s.last_seen_at">，最后上报 {{ fmtTime(s.last_seen_at) }}</template>
       </div>
 
-      <!-- CPU → 内存 → 磁盘 → 网络（实时） -->
-      <div v-if="live && s.latest" class="panel live">
-        <Metric label="CPU" :value="fmtPct(cpu(s))" :level="level(cpu(s), thresholds.cpu)"
-          :hint="`${s.latest.cpu.cores} 核`" />
-        <Metric label="负载" :value="[s.latest.cpu.load1, s.latest.cpu.load5, s.latest.cpu.load15].filter((v) => v != null).map((v) => v!.toFixed(2)).join(' / ')" />
-        <Metric label="内存" :value="`${fmtPct(mem(s))}  ${fmtBytes(s.latest.memory.used)} / ${fmtBytes(s.latest.memory.total)}`"
-          :level="level(mem(s), thresholds.mem)" />
-        <Metric label="磁盘" :value="fmtPct(fullestDisk(s)?.usage)" :level="level(fullestDisk(s)?.usage, thresholds.disk, thresholds.diskBad)" />
-        <Metric label="网络" :value="`↓${fmtBytes(rx(s), true)}  ↑${fmtBytes(tx(s), true)}`" />
-        <Metric label="运行时间" :value="fmtDuration(sys?.uptime)" />
-      </div>
+      <!-- CPU → 内存 → 网络 → 磁盘（实时）；离线时不显示旧数值（设计 43.6） -->
+      <LivePanels v-if="live && liveServer?.latest" :server="liveServer" />
 
       <!-- 历史曲线（设计 11.2、41.5） -->
       <section class="section">
@@ -157,21 +166,6 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
         <TrafficCard :server="s" @unauthorized="logout" />
       </section>
 
-      <!-- 磁盘（设计 4.6） -->
-      <section v-if="s.latest?.disk.length" class="section">
-        <h3>磁盘</h3>
-        <div class="panel disks">
-          <div v-for="d in s.latest.disk" :key="d.mount" class="disk">
-            <div class="disk-head">
-              <span class="mount">{{ d.mount }}</span>
-              <span class="muted small">{{ [d.fstype, d.device].filter(Boolean).join(' · ') }}</span>
-              <span class="num small disk-num">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} · {{ fmtPct(d.usage) }}</span>
-            </div>
-            <UsageBar :pct="d.usage" />
-          </div>
-        </div>
-      </section>
-
       <!-- 系统与资产 -->
       <section class="section info-grid">
         <div class="panel">
@@ -183,6 +177,7 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
             <dt>系统</dt><dd>{{ [sys?.os, sys?.os_version].filter(Boolean).join(' ') || DASH }}</dd>
             <dt>内核</dt><dd>{{ sys?.kernel || DASH }}</dd>
             <dt>架构 / CPU</dt><dd>{{ sys?.arch || DASH }}<template v-if="s.latest"> · {{ s.latest.cpu.cores }} 核</template></dd>
+            <dt>CPU 型号</dt><dd>{{ sys?.cpu_model || DASH }}</dd>
             <dt>Agent</dt><dd>{{ s.latest?.agent_version || DASH }}</dd>
             <dt>注册时间</dt><dd>{{ fmtTime(s.enrolled_at) }}</dd>
             <dt>最后上报</dt><dd>{{ fmtTime(s.last_seen_at) }}</dd>
@@ -218,14 +213,8 @@ const level = (v: number | undefined, warn: number, bad = 101) =>
 <style scoped>
 .back { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-3); }
 .title .row { gap: var(--space-3); }
-.live { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-4); }
-.live :deep(.value) { font-size: var(--font-lg); line-height: var(--line-lg); }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); gap: var(--space-3); flex-wrap: wrap; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--space-3); }
-.disks { display: flex; flex-direction: column; gap: var(--space-4); }
-.disk-head { display: flex; gap: var(--space-3); align-items: baseline; margin-bottom: var(--space-1); flex-wrap: wrap; }
-.mount { font-weight: var(--weight-strong); }
-.disk-num { margin-left: auto; }
 .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
 .kv dt { color: var(--text-muted); font-size: var(--font-sm); }

@@ -41,6 +41,9 @@
   --warn: #D97706;
   --bad: #DC2626;
   --muted-state: #9CA3AF;
+  --series-2: #7C3AED;
+  --series-3: #0891B2;
+  --track: #E5E7EB;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -57,6 +60,9 @@
     --warn: #F59E0B;
     --bad: #EF4444;
     --muted-state: #6B7280;
+    --series-2: #A78BFA;
+    --series-3: #22D3EE;
+    --track: #2A2F3A;
     color-scheme: dark;
   }
 }
@@ -73,5 +79,8 @@
   --warn: #F59E0B;
   --bad: #EF4444;
   --muted-state: #6B7280;
+  --series-2: #A78BFA;
+  --series-3: #22D3EE;
+  --track: #2A2F3A;
   color-scheme: dark;
 }

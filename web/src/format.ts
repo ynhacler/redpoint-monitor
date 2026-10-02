@@ -41,6 +41,22 @@ export function fmtTraffic(n: number | null | undefined, unit: 'decimal' | 'bina
 /** 字节 → GB / GiB 数值（表单回填用） */
 export const bytesToGB = (n: number, unit: 'decimal' | 'binary' = 'decimal') => n / (unit === 'binary' ? 2 ** 30 : 1e9)
 
+/**
+ * 紧凑字节：“746K”“2.6M”“1.1T”，用于卡片等空间紧张处（十进制，设计 5.8）。
+ * 最多一位小数，避免列宽跳动；需要完整单位时用 fmtBytes。
+ */
+export function fmtBytesShort(n: number | null | undefined, perSec = false): string {
+  if (n == null || Number.isNaN(n)) return DASH
+  const units = ['B', 'K', 'M', 'G', 'T', 'P']
+  let i = 0
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000
+    i++
+  }
+  const v = i === 0 || n >= 100 ? Math.round(n) : Math.round(n * 10) / 10
+  return `${v}${units[i]}${perSec ? '/s' : ''}`
+}
+
 /** 百分比取整，小于 1% 显示 “<1%”（设计 41.4.1） */
 export function fmtPct(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return DASH

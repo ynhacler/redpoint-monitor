@@ -1,8 +1,24 @@
 // 从节点数据派生展示用的指标与健康判断，总览、列表、详情共用，保证同一节点在各处的结论一致。
-import type { DiskInfo, ServerView } from './api'
+import type { DiskInfo, DiskIO, ServerView } from './api'
 
 /** 关注阈值：与告警默认值一致（设计 16.1），告警引擎完成后改为读取规则（TODO(A5)） */
 export const thresholds = { cpu: 90, mem: 90, disk: 85, diskBad: 95, traffic: 80, trafficBad: 95 }
+
+/**
+ * 环形图配色（设计 41.2）：低于 warn 为 ok（绿），达到 warn 为 warn（橙），达到 bad 为 bad（红）。
+ * bad 与“需要关注”的阈值一致；warn 提前一档，让接近阈值的节点在列表里一眼可见。
+ */
+export const gaugeThresholds = {
+  cpu: { warn: 70, bad: thresholds.cpu },
+  mem: { warn: 75, bad: thresholds.mem },
+  disk: { warn: thresholds.disk, bad: thresholds.diskBad },
+} as const
+
+export function gaugeLevel(v: number | undefined, kind: keyof typeof gaugeThresholds): 'ok' | 'warn' | 'bad' {
+  const t = gaugeThresholds[kind]
+  if (v == null) return 'ok'
+  return v >= t.bad ? 'bad' : v >= t.warn ? 'warn' : 'ok'
+}
 
 export const cpu = (s: ServerView) => s.latest?.cpu.usage
 export const mem = (s: ServerView) => s.latest?.memory.usage
@@ -46,4 +62,21 @@ export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[]
 export function daysToReset(s: ServerView, now = new Date()): number {
   const end = new Date(s.traffic.cycle_end + 'T00:00:00')
   return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86400000))
+}
+
+/** 磁盘 IO 合计（读、写速率之和），用于卡片 */
+export function ioTotal(s: ServerView): { read: number; write: number } | undefined {
+  const io = s.latest?.disk_io
+  if (!io?.length) return undefined
+  return io.reduce((a, d) => ({ read: a.read + d.read_speed, write: a.write + d.write_speed }), { read: 0, write: 0 })
+}
+
+/**
+ * 挂载点所在磁盘的 IO：/dev/vda1 → vda，/dev/nvme0n1p2 → nvme0n1，/dev/mapper/… 等找不到时返回 undefined。
+ * 取设备名前缀最长的一块，避免 sda 误匹配 sdaa1。
+ */
+export function ioForDisk(d: DiskInfo, io: DiskIO[] | undefined): DiskIO | undefined {
+  const name = d.device?.replace(/^\/dev\//, '')
+  if (!name || !io) return undefined
+  return io.filter((x) => name.startsWith(x.device)).sort((a, b) => b.device.length - a.device.length)[0]
 }
