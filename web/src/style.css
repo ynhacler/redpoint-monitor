@@ -8,6 +8,7 @@
   --warn: #d97706;
   --bad: #dc2626;
   --accent: #2563eb;
+  --code-bg: #f1f3f6;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,6 +18,7 @@
     --text: #e6e8ec;
     --muted: #8b93a1;
     --border: #262a33;
+    --code-bg: #12151b;
   }
 }
 * { box-sizing: border-box; }
@@ -38,8 +40,17 @@ code { font-size: 12px; background: var(--border); padding: 1px 5px; border-radi
 .token { max-width: 480px; margin-top: 24px; }
 .token label { display: block; margin-bottom: 8px; }
 .row { display: flex; gap: 8px; }
-input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); }
-button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+input, select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; font: inherit; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+button:disabled { opacity: .6; cursor: default; }
+
+.title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 16px; max-width: 860px; }
+.panel h2 { font-size: 17px; margin: 0 0 4px; }
+.pending-list h3 { font-size: 14px; color: var(--muted); margin: 24px 0 8px; font-weight: 600; }
+.card.pending { border-style: dashed; }
+.card.pending button { margin-top: 8px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
@@ -51,6 +62,7 @@ button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--acc
 .dot.online { background: var(--ok); }
 .dot.unknown { background: var(--warn); }
 .dot.offline { background: var(--bad); }
+.dot.pending { background: transparent; border: 2px solid var(--muted); }
 
 .metrics { display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: 4px 16px; margin: 12px 0; }
 .metrics div { min-width: 0; }

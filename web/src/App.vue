@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { fmtBytes, getToken, listServers, setToken, UnauthorizedError, type ServerView } from './api'
+import { fmtBytes, getToken, listServers, setToken, UnauthorizedError, type EnrollCodeView, type ServerView } from './api'
+import InstallCommand from './components/InstallCommand.vue'
+import NewServerForm from './components/NewServerForm.vue'
 
-// 节点列表页（设计 10）。目前只有这一个页面，状态直接用 ref；页面变多后再引入 Router / Pinia（设计 3.3）。
+// 节点列表页（设计 10），以及新建节点（设计 27.2）与安装命令页（设计 27.3.4）。
+// 页面还少，用一个 page 状态切换；TODO(B): 页面变多后引入 Vue Router / Pinia（设计 3.3，需先确认依赖）。
+type Page = { name: 'list' } | { name: 'new' } | { name: 'install'; id: number; initial?: EnrollCodeView }
+const page = ref<Page>({ name: 'list' })
 const servers = ref<ServerView[]>([])
 const needToken = ref(!getToken()) // 为 true 时显示 Token 输入框而不是列表
 const tokenInput = ref('')
@@ -12,15 +17,19 @@ let timer: number | undefined
 
 // 异常优先（设计 1.5.6）：离线 > 未知 > 在线，同级按名称排序。
 // 用户打开页面是为了找出哪里出了问题，所以问题必须排在最前面。
-const rank = { offline: 0, unknown: 1, online: 2 } as const
-const sorted = computed(() =>
-  [...servers.value].sort((a, b) => rank[a.status] - rank[b.status] || a.name.localeCompare(b.name)),
+// 待安装节点单独列在下方，不参与排序与异常统计（设计 27.7）。
+const rank = { offline: 0, unknown: 1, online: 2, pending: 3 } as const
+const installed = computed(() =>
+  servers.value
+    .filter((s) => s.status !== 'pending')
+    .sort((a, b) => rank[a.status] - rank[b.status] || a.name.localeCompare(b.name)),
 )
-// “异常”包含所有不在线的节点，也包括“未知”（上报已延迟）。
+const pending = computed(() => servers.value.filter((s) => s.status === 'pending'))
+// “异常”包含所有不在线的已安装节点，也包括“未知”（上报已延迟）。
 const counts = computed(() => ({
-  total: servers.value.length,
-  online: servers.value.filter((s) => s.status === 'online').length,
-  offline: servers.value.filter((s) => s.status !== 'online').length,
+  total: installed.value.length,
+  online: installed.value.filter((s) => s.status === 'online').length,
+  offline: installed.value.filter((s) => s.status !== 'online').length,
 }))
 
 async function refresh() {
@@ -55,6 +64,18 @@ function saveToken() {
   start()
 }
 
+// 子页面报告 Token 失效时回到输入框
+function onUnauthorized() {
+  page.value = { name: 'list' }
+  needToken.value = true
+  stop()
+}
+
+function showList() {
+  page.value = { name: 'list' }
+  refresh() // 立即刷新，让刚注册的节点马上显示
+}
+
 // 流量条宽度，上限 100%，超额节点不会撑破卡片。
 function trafficPct(s: ServerView) {
   return s.traffic.limit > 0 ? Math.min(100, (s.traffic.used / s.traffic.limit) * 100) : 0
@@ -74,13 +95,32 @@ onUnmounted(stop)
 <template>
   <main>
     <header>
-      <h1>VPS Monitor</h1>
-      <p v-if="!needToken" class="summary">
+      <div class="title">
+        <h1>VPS Monitor</h1>
+        <button v-if="!needToken && page.name === 'list'" type="button" @click="page = { name: 'new' }">+ 新建节点</button>
+      </div>
+      <p v-if="!needToken && page.name === 'list'" class="summary">
         共 {{ counts.total }} 台 · <span class="ok">在线 {{ counts.online }}</span> ·
         <span :class="{ bad: counts.offline }">异常 {{ counts.offline }}</span>
+        <template v-if="pending.length"> · 待安装 {{ pending.length }}</template>
         <span v-if="updatedAt" class="muted"> · 更新于 {{ updatedAt.toLocaleTimeString() }}</span>
       </p>
     </header>
+
+    <NewServerForm
+      v-if="!needToken && page.name === 'new'"
+      @created="(v) => (page = { name: 'install', id: v.server_id, initial: v })"
+      @cancel="showList"
+      @unauthorized="onUnauthorized"
+    />
+    <InstallCommand
+      v-if="!needToken && page.name === 'install'"
+      :key="page.id"
+      :server-id="page.id"
+      :initial="page.initial"
+      @back="showList"
+      @unauthorized="onUnauthorized"
+    />
 
     <form v-if="needToken" class="token" @submit.prevent="saveToken">
       <label for="tok">管理员 Token（运行 <code>make dev-init</code> 后见 <code>.dev/admin.token</code>）</label>
@@ -90,10 +130,10 @@ onUnmounted(stop)
       </div>
     </form>
 
-    <p v-if="error" class="banner">{{ error }}</p>
+    <p v-if="error && page.name === 'list'" class="banner">{{ error }}</p>
 
-    <section v-if="!needToken" class="grid">
-      <article v-for="s in sorted" :key="s.id" class="card" :class="s.status">
+    <section v-if="!needToken && page.name === 'list'" class="grid">
+      <article v-for="s in installed" :key="s.id" class="card" :class="s.status">
         <div class="head">
           <span class="dot" :class="s.status" :aria-label="s.status"></span>
           <h2>{{ s.name }}</h2>
@@ -126,7 +166,23 @@ onUnmounted(stop)
           </div>
         </div>
       </article>
-      <p v-if="!servers.length" class="muted">还没有服务器。运行 <code>make dev-init</code> 和 <code>make dev-agent</code>。</p>
+      <p v-if="!servers.length" class="muted">还没有节点。点击右上角“新建节点”添加第一台服务器。</p>
+    </section>
+
+    <!-- 待安装节点：单独显示，不触发离线告警，提供安装命令入口（设计 27.7） -->
+    <section v-if="!needToken && page.name === 'list' && pending.length" class="pending-list">
+      <h3>待安装</h3>
+      <div class="grid">
+        <article v-for="s in pending" :key="s.id" class="card pending">
+          <div class="head">
+            <span class="dot pending" aria-label="pending"></span>
+            <h2>{{ s.name }}</h2>
+            <span class="muted os">{{ [s.provider, s.region, s.group].filter(Boolean).join(' · ') }}</span>
+          </div>
+          <p class="muted">尚未在主机上安装 Agent。</p>
+          <button type="button" class="secondary" @click="page = { name: 'install', id: s.id }">查看安装命令</button>
+        </article>
+      </div>
     </section>
   </main>
 </template>

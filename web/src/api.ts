@@ -31,7 +31,12 @@ export interface Report {
 export interface ServerView {
   id: number
   name: string
-  status: 'online' | 'unknown' | 'offline'
+  /** pending 为待安装：已新建、尚未注册（设计 27.7） */
+  status: 'online' | 'unknown' | 'offline' | 'pending'
+  enroll_state: 'pending' | 'enrolled'
+  group: string
+  provider: string
+  region: string
   /** 最后一次上报时间，Unix 秒；0 表示从未上报 */
   last_seen_at: number
   /** 收到首次上报之前不存在 */
@@ -64,21 +69,135 @@ export function setToken(t: string) {
   }
 }
 
+/** 表单字段级错误（设计 43.4 details）。 */
+export interface FieldError {
+  field: string
+  message: string
+}
+
 /**
- * 收到 401 时抛出，让界面区分“Token 错误或失效”（重新输入）与“面板不可达”（继续轮询并提示）。
+ * 面板返回的统一错误（设计 43.4）。message 是中文提示，可直接展示；
+ * requestId 供用户复制，对照服务端日志（设计 43.6）。
  */
-export class UnauthorizedError extends Error {}
+export class ApiError extends Error {
+  constructor(
+    /** HTTP 状态码；网络错误时为 0 */
+    public status: number,
+    /** 稳定的错误码，如 validation_failed */
+    public code: string,
+    message: string,
+    public requestId = '',
+    public details: FieldError[] = [],
+  ) {
+    super(message)
+  }
+}
+
+/** 收到 401 时抛出，让界面区分“Token 错误或失效”（重新输入）与“面板不可达”（继续轮询并提示）。 */
+export class UnauthorizedError extends ApiError {}
+
+/**
+ * 统一请求封装（设计 43.6）：附带 Token，把错误响应转换为 ApiError / UnauthorizedError。
+ * 使用相对路径：开发时由 Vite 代理到 :8080；生产环境页面由面板内嵌提供，始终同源。
+ */
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch('/api/v1' + path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    throw new ApiError(0, 'network', '无法连接面板，请检查网络')
+  }
+  if (res.status === 204) return undefined as T
+  const data = await res.json().catch(() => null)
+  if (res.ok) return data as T
+  const e = data?.error ?? {}
+  const msg: string = e.message || `请求失败（HTTP ${res.status}）`
+  const args = [res.status, e.code ?? 'unknown', msg, e.request_id ?? '', e.details ?? []] as const
+  if (res.status === 401) throw new UnauthorizedError(...args)
+  throw new ApiError(...args)
+}
 
 /**
  * 获取节点列表。
- * 使用相对路径：开发时由 Vite 代理到 :8080；生产环境页面由面板内嵌提供，始终同源。
  * @throws UnauthorizedError Token 无效（401）
  */
-export async function listServers(): Promise<ServerView[]> {
-  const res = await fetch('/api/v1/servers', { headers: { Authorization: `Bearer ${getToken()}` } })
-  if (res.status === 401) throw new UnauthorizedError()
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
+export function listServers(): Promise<ServerView[]> {
+  return request('GET', '/servers')
+}
+
+/** 新建节点的表单（设计 27.2）；空字符串字段表示未填写。 */
+export interface CreateServerInput {
+  name: string
+  expected_hostname?: string
+  expected_ipv4?: string
+  expected_ipv6?: string
+  group?: string
+  note?: string
+  provider?: string
+  plan?: string
+  region?: string
+  /** 月流量额度，十进制 GB（设计 5.8）；0 或不填表示不限 */
+  traffic_limit_gb?: number
+  /** 流量重置日 1～31 */
+  traffic_reset_day?: number
+  traffic_count_mode?: 'sum' | 'rx' | 'tx' | 'max'
+  /** 续费价格 */
+  price?: number
+  /** ISO 4217 币种代码，如 USD */
+  currency?: string
+  billing_period?: string
+  /** 到期日 YYYY-MM-DD */
+  expire_date?: string
+  enroll_ttl?: '1h' | '24h' | '7d'
+  verify_mode?: 'warn' | 'strict'
+}
+
+/** 安装命令（设计 27.3）。没有已验签的官方版本时 mode 为 manual（设计 27.3.1）。 */
+export interface InstallCommand {
+  mode: 'default' | 'manual'
+  command: string
+  server: string
+  release: unknown | null
+}
+
+/** 注册码与安装命令。enroll_code 只在新建与重新生成时返回一次（设计 19.11）。 */
+export interface EnrollCodeView {
+  server_id: number
+  server_name: string
+  enroll_state: 'pending' | 'enrolled'
+  enroll_code?: string
+  enroll_code_hint: string
+  enroll_status: 'ACTIVE' | 'USED' | 'REVOKED' | 'EXPIRED' | 'NONE'
+  /** Unix 秒 */
+  enroll_expires_at: number
+  install: InstallCommand
+}
+
+/** 新建节点（状态：待安装），返回注册码与安装命令。 */
+export function createServer(input: CreateServerInput): Promise<EnrollCodeView> {
+  return request('POST', '/servers', input)
+}
+
+/** 查看安装命令；不含完整注册码。 */
+export function getInstallCommand(id: number): Promise<EnrollCodeView> {
+  return request('GET', `/servers/${id}/install-command`)
+}
+
+/** 重新生成注册码，旧码立即失效（设计 27.4）。 */
+export function regenerateEnrollCode(id: number, ttl: '1h' | '24h' | '7d' = '24h'): Promise<EnrollCodeView> {
+  return request('POST', `/servers/${id}/enroll-code`, { enroll_ttl: ttl })
+}
+
+/** 撤销注册码。 */
+export function revokeEnrollCode(id: number): Promise<void> {
+  return request('DELETE', `/servers/${id}/enroll-code`)
 }
 
 /**
