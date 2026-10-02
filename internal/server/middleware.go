@@ -168,8 +168,14 @@ func remoteHost(r *http.Request) string {
 }
 
 // audit 写一条审计记录，自动带上来源 IP 与 User-Agent。写入失败只记日志，不影响请求本身。
+// 管理员操作未指明主体 ID 时，取当前会话的用户名，操作日志据此显示“谁”做的。
 func (s *Server) audit(r *http.Request, e AuditEntry) {
 	e.ClientIP, e.UserAgent = clientIP(r), r.UserAgent()
+	if e.ActorType == "admin" && e.ActorID == "" {
+		if se := info(r).session; se != nil {
+			e.ActorID = se.User.Username
+		}
+	}
 	if err := s.store.Audit(e, time.Now()); err != nil {
 		s.log.Error("audit write failed", "component", "audit", "action", e.Action, "err", err)
 	}

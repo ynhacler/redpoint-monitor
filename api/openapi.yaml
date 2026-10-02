@@ -22,6 +22,8 @@ tags:
     description: Agent 上报与注册（设计 19.10、27.6）
   - name: servers
     description: 节点与安装（设计 19.5、19.11）
+  - name: audit
+    description: 登录日志与操作日志（设计 24.8）
   - name: traffic
     description: 流量统计、校准与预测（设计 5、19.8、32）
 
@@ -191,6 +193,45 @@ paths:
       responses:
         '204': { description: 已注销 }
         '401': { $ref: '#/components/responses/Error' }
+
+  /audit-logs:
+    get:
+      tags: [audit]
+      summary: 审计日志：登录日志与操作日志（设计 24.8），按时间倒序；只读，不提供修改或删除
+      parameters:
+        - { name: category, in: query, schema: { type: string, enum: [login, operation] }, description: 'login：登录、退出、二次验证；operation：其他操作；省略为全部' }
+        - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
+        - { name: cursor, in: query, schema: { type: string }, description: 上一页返回的 next_cursor }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 审计记录
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  next_cursor: { type: string, description: 空表示没有更多 }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        ts: { type: integer }
+                        actor_type: { type: string, enum: [admin, agent, cli, system] }
+                        actor_id: { type: string, description: 管理员用户名（登录失败时为填写的用户名）或节点 ID }
+                        action: { type: string, example: server.create }
+                        target_type: { type: string }
+                        target_id: { type: string }
+                        target_name: { type: string, description: 对象为节点且仍存在时的名称 }
+                        result: { type: string, enum: [success, failure] }
+                        client_ip: { type: string }
+                        user_agent: { type: string }
+                        details: { type: object, description: 已脱敏（设计 24.7） }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
   /servers:
     get:

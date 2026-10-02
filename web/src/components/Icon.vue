@@ -3,7 +3,7 @@
 // 只内置用到的少数几个，路径取自 Lucide（ISC 许可）；不引入图标库依赖。
 defineProps<{
   /** 图标名 */
-  name: 'plus' | 'edit' | 'terminal' | 'arrow-left' | 'sun' | 'moon' | 'monitor' | 'search' | 'logout'
+  name: 'plus' | 'edit' | 'terminal' | 'arrow-left' | 'sun' | 'moon' | 'monitor' | 'search' | 'logout' | 'user'
   /** 尺寸，px */
   size?: number
 }>()
@@ -18,6 +18,7 @@ const paths: Record<string, string> = {
   monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
   search: 'm21 21-4.3-4.3M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  user: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
 }
 </script>
 
