@@ -69,6 +69,17 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
 
+  /agent/unregister:
+    post:
+      tags: [agent]
+      summary: Agent 本地卸载时通知面板（设计 27.11）
+      description: 吊销该节点全部 Agent Token，节点回到「待安装」；历史数据与流量统计保留。
+      security:
+        - agentToken: []
+      responses:
+        '204': { description: 已注销 }
+        '401': { $ref: '#/components/responses/Error' }
+
   /servers:
     get:
       tags: [servers]

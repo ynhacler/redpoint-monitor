@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +132,23 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		res.Warnings = []string{}
 	}
 	writeJSON(w, enrollResponse{ServerID: res.ServerID, ServerName: res.ServerName, AgentToken: res.Token, Warnings: res.Warnings})
+}
+
+// handleUnregister：POST /api/v1/agent/unregister，Agent Token 认证（设计 19.10、27.11）。
+// 本地卸载时调用：吊销 Token，节点回到“待安装”，成功 204。
+func (s *Server) handleUnregister(w http.ResponseWriter, r *http.Request) {
+	sid := info(r).principalID
+	if err := s.store.Unregister(sid, time.Now()); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.mu.Lock()
+	delete(s.latest, sid) // 待安装节点不再显示旧的实时数据
+	s.mu.Unlock()
+	s.audit(r, AuditEntry{ActorType: "agent", ActorID: strconv.FormatInt(sid, 10), Action: "agent.unregister",
+		TargetType: "server", TargetID: sid, Success: true})
+	s.log.Info("node unregistered", "component", "enroll", "server_id", sid)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // verifyEnroll 对比新建节点时填写的信息与注册请求（设计 27.6.3）。

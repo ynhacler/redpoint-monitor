@@ -285,6 +285,22 @@ func TestEnrollRejections(t *testing.T) {
 	})
 }
 
+func TestUnregister(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, v, _ := createNode(t, h, admin, `{"name":"bye"}`)
+	_, res := enroll(h, v.EnrollCode, "bye", "m")
+	if rec := do(h, "POST", "/api/v1/agent/unregister", res.AgentToken, nil); rec.Code != 204 {
+		t.Fatalf("注销应返回 204：%d %s", rec.Code, rec.Body)
+	}
+	if n, _ := s.store.GetServer(v.ServerID); n.EnrollState != enrollPending {
+		t.Errorf("卸载后节点应回到待安装（设计 27.11）：%q", n.EnrollState)
+	}
+	if rec := do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(`{}`)); rec.Code != 401 {
+		t.Errorf("卸载后 Token 应被吊销：%d", rec.Code)
+	}
+}
+
 func TestEnrollRateLimit(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	l := newEnrollLimiter()
@@ -383,6 +399,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /healthz":                             accessPublic,
 		"POST /api/v1/agent/enroll":                accessEnroll,
 		"POST /api/v1/agent/report":                accessAgent,
+		"POST /api/v1/agent/unregister":            accessAgent,
 		"GET /api/v1/servers":                      accessAdmin,
 		"POST /api/v1/servers":                     accessAdmin,
 		"GET /api/v1/servers/{id}/metrics":         accessAdmin,
