@@ -31,10 +31,31 @@ func OpenStore(dataDir string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(4)
 	s := &Store{DB: db}
+	if err := s.enableIncrementalVacuum(); err != nil {
+		return nil, fmt.Errorf("auto_vacuum: %w", err)
+	}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return s, nil
+}
+
+// enableIncrementalVacuum 把数据库切换为 auto_vacuum = INCREMENTAL，使过期数据删除后
+// 可以用 PRAGMA incremental_vacuum 归还磁盘空间（设计 21）。
+// 新数据库在建表前设置即可；已有数据库需要一次 VACUUM 才能生效，只在首次升级时执行。
+func (s *Store) enableIncrementalVacuum() error {
+	var mode int
+	if err := s.DB.QueryRow(`PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+		return err
+	}
+	if mode == 2 {
+		return nil
+	}
+	if _, err := s.DB.Exec(`PRAGMA auto_vacuum = INCREMENTAL`); err != nil {
+		return err
+	}
+	_, err := s.DB.Exec(`VACUUM`)
+	return err
 }
 
 // Migrations are append-only. Never edit an existing entry; add a new one.
@@ -137,6 +158,54 @@ var migrations = []string{
 		details TEXT NOT NULL DEFAULT '{}'         -- JSON，写入前已脱敏（设计 24.7）
 	);
 	CREATE INDEX audit_logs_ts ON audit_logs(ts);`,
+
+	// 迁移 4：降采样聚合表与进度（设计 18.4、21）。列名与 metrics_raw 相同的为平均值，*_max / *_min 为极值。
+	`CREATE TABLE metrics_1m (
+		server_id INTEGER NOT NULL,
+		ts INTEGER NOT NULL,          -- 桶起点，Unix 秒
+		n INTEGER NOT NULL,           -- 聚合的原始点数，用于逐级加权平均
+		cpu REAL, cpu_max REAL, cpu_min REAL,
+		cpu_p95 REAL,                 -- 只在 1 分钟级由原始点计算，更粗粒度取 max 近似（设计 21）
+		load1 REAL, load1_max REAL,
+		mem_used INTEGER, mem_used_max INTEGER, mem_total INTEGER,
+		swap_used INTEGER, swap_used_max INTEGER,
+		disk_used INTEGER, disk_used_max INTEGER, disk_total INTEGER,
+		rx_speed INTEGER, rx_speed_max INTEGER, rx_speed_min INTEGER,
+		tx_speed INTEGER, tx_speed_max INTEGER, tx_speed_min INTEGER,
+		PRIMARY KEY (server_id, ts)
+	) WITHOUT ROWID;
+	CREATE TABLE metrics_5m (
+		server_id INTEGER NOT NULL,
+		ts INTEGER NOT NULL,          -- 桶起点，Unix 秒
+		n INTEGER NOT NULL,           -- 聚合的原始点数，用于逐级加权平均
+		cpu REAL, cpu_max REAL, cpu_min REAL,
+		cpu_p95 REAL,                 -- 只在 1 分钟级由原始点计算，更粗粒度取 max 近似（设计 21）
+		load1 REAL, load1_max REAL,
+		mem_used INTEGER, mem_used_max INTEGER, mem_total INTEGER,
+		swap_used INTEGER, swap_used_max INTEGER,
+		disk_used INTEGER, disk_used_max INTEGER, disk_total INTEGER,
+		rx_speed INTEGER, rx_speed_max INTEGER, rx_speed_min INTEGER,
+		tx_speed INTEGER, tx_speed_max INTEGER, tx_speed_min INTEGER,
+		PRIMARY KEY (server_id, ts)
+	) WITHOUT ROWID;
+	CREATE TABLE metrics_1h (
+		server_id INTEGER NOT NULL,
+		ts INTEGER NOT NULL,          -- 桶起点，Unix 秒
+		n INTEGER NOT NULL,           -- 聚合的原始点数，用于逐级加权平均
+		cpu REAL, cpu_max REAL, cpu_min REAL,
+		cpu_p95 REAL,                 -- 只在 1 分钟级由原始点计算，更粗粒度取 max 近似（设计 21）
+		load1 REAL, load1_max REAL,
+		mem_used INTEGER, mem_used_max INTEGER, mem_total INTEGER,
+		swap_used INTEGER, swap_used_max INTEGER,
+		disk_used INTEGER, disk_used_max INTEGER, disk_total INTEGER,
+		rx_speed INTEGER, rx_speed_max INTEGER, rx_speed_min INTEGER,
+		tx_speed INTEGER, tx_speed_max INTEGER, tx_speed_min INTEGER,
+		PRIMARY KEY (server_id, ts)
+	) WITHOUT ROWID;
+	CREATE TABLE downsample_state (
+		level TEXT PRIMARY KEY,       -- metrics_1m / metrics_5m / metrics_1h
+		done_until INTEGER NOT NULL   -- 此时间之前的桶已聚合完成，Unix 秒
+	);`,
 }
 
 func (s *Store) migrate() error {
@@ -304,9 +373,12 @@ func (s *Store) LoadCounters() (map[int64]map[string]*Counter, error) {
 	return out, rows.Err()
 }
 
+// MetricPoint 是历史曲线上的一个点（设计 19.7）。平均值字段与原始点同名，*_max 为桶内最大值；
+// 原始粒度时 *_max 与平均值相同。
 type MetricPoint struct {
-	TS        int64   `json:"ts"`
+	TS        int64   `json:"ts"` // 桶起点，Unix 秒
 	CPU       float64 `json:"cpu"`
+	CPUMax    float64 `json:"cpu_max"`
 	Load1     float64 `json:"load1"`
 	MemUsed   uint64  `json:"mem_used"`
 	MemTotal  uint64  `json:"mem_total"`
@@ -314,12 +386,18 @@ type MetricPoint struct {
 	DiskUsed  uint64  `json:"disk_used"`
 	DiskTotal uint64  `json:"disk_total"`
 	RxSpeed   uint64  `json:"rx_speed"`
+	RxMax     uint64  `json:"rx_speed_max"`
 	TxSpeed   uint64  `json:"tx_speed"`
+	TxMax     uint64  `json:"tx_speed_max"`
 }
 
-func (s *Store) Metrics(serverID int64, since time.Time) ([]MetricPoint, error) {
-	rows, err := s.DB.Query(`SELECT ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed
-		FROM metrics_raw WHERE server_id = ? AND ts >= ? ORDER BY ts`, serverID, since.Unix())
+// MetricsHistory 读取某一粒度表中 since 之后的点。table 只能是内部常量，不来自用户输入。
+func (s *Store) MetricsHistory(serverID int64, table string, since time.Time) ([]MetricPoint, error) {
+	cols := `ts, cpu, cpu_max, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed_max, tx_speed, tx_speed_max`
+	if table == "metrics_raw" {
+		cols = `ts, cpu, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed, tx_speed, tx_speed`
+	}
+	rows, err := s.DB.Query(`SELECT `+cols+` FROM `+table+` WHERE server_id = ? AND ts >= ? ORDER BY ts`, serverID, since.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -327,9 +405,15 @@ func (s *Store) Metrics(serverID int64, since time.Time) ([]MetricPoint, error) 
 	out := []MetricPoint{}
 	for rows.Next() {
 		var p MetricPoint
-		if err := rows.Scan(&p.TS, &p.CPU, &p.Load1, &p.MemUsed, &p.MemTotal, &p.SwapUsed, &p.DiskUsed, &p.DiskTotal, &p.RxSpeed, &p.TxSpeed); err != nil {
+		var cpu, cpuMax, load1 sql.NullFloat64
+		var mu, mt, su, du, dt, rx, rxm, tx, txm sql.NullInt64
+		if err := rows.Scan(&p.TS, &cpu, &cpuMax, &load1, &mu, &mt, &su, &du, &dt, &rx, &rxm, &tx, &txm); err != nil {
 			return nil, err
 		}
+		p.CPU, p.CPUMax, p.Load1 = cpu.Float64, cpuMax.Float64, load1.Float64
+		p.MemUsed, p.MemTotal, p.SwapUsed = uint64(mu.Int64), uint64(mt.Int64), uint64(su.Int64)
+		p.DiskUsed, p.DiskTotal = uint64(du.Int64), uint64(dt.Int64)
+		p.RxSpeed, p.RxMax, p.TxSpeed, p.TxMax = uint64(rx.Int64), uint64(rxm.Int64), uint64(tx.Int64), uint64(txm.Int64)
 		out = append(out, p)
 	}
 	return out, rows.Err()

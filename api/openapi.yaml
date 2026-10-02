@@ -203,26 +203,35 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
-  /servers/{id}/metrics:
+  /servers/{id}/metrics/history:
     get:
       tags: [servers]
-      summary: 节点历史指标（原始点，最长 24 小时）
+      summary: 节点历史指标（设计 19.7）
+      description: |
+        按范围自动选择粒度（设计 21）：1h / 6h → 10 秒原始点；24h → 1 分钟；7d → 5 分钟；30d → 1 小时。
+        平均值字段与原始点同名，*_max 为桶内最大值。
       parameters:
         - { $ref: '#/components/parameters/ServerID' }
         - name: range
           in: query
-          description: Go duration，如 1h、30m；非法时按 1h 处理
-          schema: { type: string, default: 1h }
+          schema: { type: string, enum: ['1h', '6h', '24h', '7d', '30d'], default: 1h }
       responses:
         '200':
-          description: 指标点
+          description: 历史曲线
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/MetricPoint' }
-        '400': { $ref: '#/components/responses/Error' }
+                type: object
+                required: [range, resolution, items]
+                properties:
+                  range: { type: string }
+                  resolution: { type: integer, description: 点的间隔，秒 }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MetricPoint' }
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
 components:
   securitySchemes:
@@ -424,8 +433,9 @@ components:
     MetricPoint:
       type: object
       properties:
-        ts: { type: integer }
+        ts: { type: integer, description: 桶起点，Unix 秒 }
         cpu: { type: number }
+        cpu_max: { type: number }
         load1: { type: number }
         mem_used: { type: integer }
         mem_total: { type: integer }
@@ -433,4 +443,6 @@ components:
         disk_used: { type: integer }
         disk_total: { type: integer }
         rx_speed: { type: integer }
+        rx_speed_max: { type: integer }
         tx_speed: { type: integer }
+        tx_speed_max: { type: integer }
