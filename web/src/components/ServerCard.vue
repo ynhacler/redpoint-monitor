@@ -2,11 +2,11 @@
 // 节点卡片（设计 41.3 ServerCard）：紧凑的一行五列，便于在一屏里扫过很多台节点。
 //   头部：国旗、名称、状态；右侧温度、运行时间、1 分钟负载
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
-//   底部：本周期流量（流量是本产品的核心，保留在卡片上）
+//   底部：周期流量（本计费周期；流量是本产品的核心，保留在卡片上）
 // 整张卡片可点击进入详情（设计 11）。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
-import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtPct, fmtTraffic } from '../format'
+import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
 import { cpu, fullestDisk, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
@@ -28,8 +28,8 @@ const offlineFor = computed(() =>
   s.value.last_seen_at ? `离线 ${fmtDuration(Date.now() / 1000 - s.value.last_seen_at)}` : '尚未上报',
 )
 const os = computed(() => [r.value?.system.os, r.value?.system.os_version].filter(Boolean).join(' '))
-// 运行时间只取最大单位，与列表的紧凑风格一致：“10天”“8小时”
-const uptime = computed(() => fmtDuration(r.value?.system.uptime).replace(' ', ''))
+// 开机时间：不足 1 天按小时，1～999 天按天，更长按年（见 fmtUptimeShort）
+const uptime = computed(() => fmtUptimeShort(r.value?.system.uptime))
 const load1 = computed(() => (r.value ? r.value.cpu.load1.toFixed(r.value.cpu.load1 < 10 ? 2 : 1) : DASH))
 const tempLv = computed(() => {
   const t = r.value?.cpu.temp_c ?? 0
@@ -68,7 +68,7 @@ const diskTip = computed(() =>
       </div>
       <div v-if="live && r" class="meta num">
         <span v-if="r.cpu.temp_c" :class="tempLv" title="CPU 温度"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
-        <span title="运行时间"><Icon name="power" :size="15" />{{ uptime }}</span>
+        <span title="开机时间"><Icon name="power" :size="15" />{{ uptime }}</span>
         <span title="1 分钟负载" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" />{{ load1 }}</span>
       </div>
       <span v-else class="meta" :class="s.status === 'offline' ? 'bad' : ''">{{ offlineFor }}</span>
@@ -112,8 +112,8 @@ const diskTip = computed(() =>
       </div>
     </div>
 
-    <div class="traffic num" :title="`本周期 ${s.traffic.cycle_start} 起`">
-      <span class="muted">本周期</span>
+    <div class="traffic num" :title="`本计费周期 ${s.traffic.cycle_start} 起`">
+      <span class="muted">周期流量</span>
       <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限' }}</span></span>
       <span v-if="traffic != null" class="tbar"><span :class="tlv" :style="{ width: `${Math.min(100, traffic)}%` }" /></span>
       <span v-if="traffic != null" :class="tlv">{{ fmtPct(traffic) }}</span>

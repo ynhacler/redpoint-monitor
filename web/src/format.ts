@@ -95,6 +95,21 @@ export function fmtDuration(seconds: number | null | undefined): string {
   return `${Math.floor(seconds / 86400)} 天`
 }
 
+/**
+ * 开机时间（紧凑）：不足 1 天按小时（“5小时”，不足 1 小时为“<1小时”）；1～999 天按天（“10天”）；
+ * 超过 999 天按年，保留一位小数（“2.8年”），避免列表中出现 4 位天数。
+ */
+export function fmtUptimeShort(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return DASH
+  const days = seconds / 86400
+  if (days < 1) {
+    const h = Math.floor(seconds / 3600)
+    return h < 1 ? '<1小时' : `${h}小时`
+  }
+  if (days <= 999) return `${Math.floor(days)}天`
+  return `${(days / 365).toFixed(1)}年`
+}
+
 /** 运行时间：取两级单位，“37 天 7 小时”“5 小时 12 分”“12 分”，用于详情页（列表用 fmtDuration） */
 export function fmtUptime(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH
