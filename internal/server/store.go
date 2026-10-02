@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,8 +90,10 @@ func (s *Store) migrate() error {
 	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS schema_version (v INTEGER NOT NULL)`); err != nil {
 		return err
 	}
-	var v int
-	_ = s.DB.QueryRow(`SELECT COALESCE(MAX(v),0) FROM schema_version`).Scan(&v)
+	v, err := s.SchemaVersion()
+	if err != nil {
+		return err
+	}
 	for i := v; i < len(migrations); i++ {
 		tx, err := s.DB.Begin()
 		if err != nil {
@@ -111,16 +114,25 @@ func (s *Store) migrate() error {
 	return nil
 }
 
+// SchemaVersion 返回已执行的迁移数，启动日志中记录（设计 24.6）。
+func (s *Store) SchemaVersion() (int, error) {
+	var v int
+	err := s.DB.QueryRow(`SELECT COALESCE(MAX(v),0) FROM schema_version`).Scan(&v)
+	return v, err
+}
+
 func (s *Store) CreateAdminToken() (string, error) {
 	tok := NewToken(PrefixAdmin)
 	_, err := s.DB.Exec(`INSERT INTO admin_tokens (token_hash, created_at) VALUES (?, ?)`, HashToken(tok), time.Now().Unix())
 	return tok, err
 }
 
-func (s *Store) ValidAdminToken(tok string) bool {
+// ValidAdminToken 判断开发用 admin token 是否有效。
+// 【安全】查询失败时返回 error 而不是 false，调用方据此返回 500，不把故障伪装成“Token 错误”（设计 43.1）。
+func (s *Store) ValidAdminToken(tok string) (bool, error) {
 	var n int
-	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ?`, HashToken(tok)).Scan(&n)
-	return n > 0
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM admin_tokens WHERE token_hash = ?`, HashToken(tok)).Scan(&n)
+	return n > 0, err
 }
 
 // CreateServer adds a node and returns a fresh agent token (shown once, never stored).
@@ -144,11 +156,18 @@ func (s *Store) CreateServer(name string, limitBytes int64, resetDay int) (int64
 	return id, tok, tx.Commit()
 }
 
-// AgentServerID resolves an agent token to its server, or 0.
-func (s *Store) AgentServerID(tok string) int64 {
+// AgentServerID 根据 Agent Token 查找所属节点；Token 不存在或已吊销时返回 0。
+// 【安全】查询失败时返回 error，调用方按失败处理（设计 43.1）。
+func (s *Store) AgentServerID(tok string) (int64, error) {
+	if tok == "" {
+		return 0, nil
+	}
 	var id int64
-	_ = s.DB.QueryRow(`SELECT server_id FROM agent_tokens WHERE token_hash = ? AND revoked_at IS NULL`, HashToken(tok)).Scan(&id)
-	return id
+	err := s.DB.QueryRow(`SELECT server_id FROM agent_tokens WHERE token_hash = ? AND revoked_at IS NULL`, HashToken(tok)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
 }
 
 type ServerRow struct {
