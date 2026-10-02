@@ -35,7 +35,8 @@ const trackColor = computed(() =>
 )
 
 const d = computed(() => props.size ?? 52)
-const stroke = computed(() => Math.max(4, Math.round(d.value / 10)))
+// tinted（列表卡片）用更粗的环，与淡色底轨形成对比
+const stroke = computed(() => Math.max(4, Math.round(d.value / (props.tinted ? 8.5 : 10))))
 const r = computed(() => (d.value - stroke.value) / 2)
 const circ = computed(() => 2 * Math.PI * r.value)
 const clamp = (v: number) => Math.max(0, Math.min(100, v))
@@ -71,7 +72,7 @@ const arcs = computed(() => {
 <style scoped>
 .ring { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-width: 0; }
 .ring svg { display: block; }
-.pct { fill: var(--text); font-family: var(--font-mono); font-weight: var(--weight-strong); }
+.pct { fill: var(--text); font-family: var(--font-family); font-variant-numeric: tabular-nums; font-weight: var(--weight-strong); }
 .pct.warn { fill: var(--warn); }
 .pct.bad { fill: var(--bad); }
 .pct.tinted.ok { fill: var(--ok); }
