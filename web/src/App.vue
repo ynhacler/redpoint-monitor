@@ -2,11 +2,15 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { fmtBytes, getToken, listServers, setToken, UnauthorizedError, type EnrollCodeView, type ServerView } from './api'
 import InstallCommand from './components/InstallCommand.vue'
-import NewServerForm from './components/NewServerForm.vue'
+import ServerForm from './components/ServerForm.vue'
 
 // 节点列表页（设计 10），以及新建节点（设计 27.2）与安装命令页（设计 27.3.4）。
 // 页面还少，用一个 page 状态切换；TODO(B): 页面变多后引入 Vue Router / Pinia（设计 3.3，需先确认依赖）。
-type Page = { name: 'list' } | { name: 'new' } | { name: 'install'; id: number; initial?: EnrollCodeView }
+type Page =
+  | { name: 'list' }
+  | { name: 'new' }
+  | { name: 'edit'; server: ServerView }
+  | { name: 'install'; id: number; initial?: EnrollCodeView }
 const page = ref<Page>({ name: 'list' })
 const servers = ref<ServerView[]>([])
 const needToken = ref(!getToken()) // 为 true 时显示 Token 输入框而不是列表
@@ -107,9 +111,17 @@ onUnmounted(stop)
       </p>
     </header>
 
-    <NewServerForm
+    <ServerForm
       v-if="!needToken && page.name === 'new'"
       @created="(v) => (page = { name: 'install', id: v.server_id, initial: v })"
+      @cancel="showList"
+      @unauthorized="onUnauthorized"
+    />
+    <ServerForm
+      v-if="!needToken && page.name === 'edit'"
+      :key="page.server.id"
+      :server="page.server"
+      @done="showList"
       @cancel="showList"
       @unauthorized="onUnauthorized"
     />
@@ -138,6 +150,7 @@ onUnmounted(stop)
           <span class="dot" :class="s.status" :aria-label="s.status"></span>
           <h2>{{ s.name }}</h2>
           <span class="muted os">{{ s.latest?.system.os }} {{ s.latest?.system.os_version }}</span>
+          <button type="button" class="link-btn" title="编辑" @click="page = { name: 'edit', server: s }">编辑</button>
         </div>
 
         <!-- 离线时隐藏旧指标：旧数值看起来像实时数据，会误导用户。 -->
@@ -180,7 +193,10 @@ onUnmounted(stop)
             <span class="muted os">{{ [s.provider, s.region, s.group].filter(Boolean).join(' · ') }}</span>
           </div>
           <p class="muted">尚未在主机上安装 Agent。</p>
-          <button type="button" class="secondary" @click="page = { name: 'install', id: s.id }">查看安装命令</button>
+          <div class="row">
+            <button type="button" class="secondary" @click="page = { name: 'install', id: s.id }">查看安装命令</button>
+            <button type="button" class="secondary" @click="page = { name: 'edit', server: s }">编辑</button>
+          </div>
         </article>
       </div>
     </section>

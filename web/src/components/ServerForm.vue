@@ -1,30 +1,47 @@
 <script setup lang="ts">
-// 新建节点表单（设计 27.2）：基本信息、VPS 信息、安装选项三组；VPS 信息可以以后再填。
-// 提交成功后由父组件跳到安装命令页；字段错误显示在对应输入框下（设计 43.6）。
-import { reactive, ref } from 'vue'
-import { ApiError, createServer, UnauthorizedError, type CreateServerInput, type EnrollCodeView } from '../api'
+// 节点表单（设计 27.2）：新建与编辑共用。基本信息、VPS 信息、安装选项三组；VPS 信息可以以后再填。
+// 新建成功后由父组件跳到安装命令页；字段错误显示在对应输入框下（设计 43.6）。
+// 编辑模式下提供删除（设计 19.5），需输入节点名称确认。
+import { computed, reactive, ref } from 'vue'
+import {
+  ApiError, createServer, deleteServer, updateServer, UnauthorizedError,
+  type CreateServerInput, type EnrollCodeView, type ServerView,
+} from '../api'
 
+const props = defineProps<{
+  /** 编辑的节点；为空时是新建 */
+  server?: ServerView
+}>()
 const emit = defineEmits<{
-  /** 创建成功，携带注册码与安装命令 */
+  /** 新建成功，携带注册码与安装命令 */
   created: [view: EnrollCodeView]
+  /** 编辑保存成功或已删除，返回列表 */
+  done: []
   /** 取消，返回列表 */
   cancel: []
   /** Token 失效，需要重新输入 */
   unauthorized: []
 }>()
+const editing = computed(() => !!props.server)
 
-// 表单状态全部用字符串保存，提交时再转换，空值不提交（表示未填写）
+// 表单状态全部用字符串保存，提交时再转换，空值不提交（表示未填写）。编辑时用节点当前值填充。
+const sv = props.server
 const f = reactive({
-  name: '', expected_hostname: '', expected_ipv4: '', expected_ipv6: '', group: '', note: '',
-  provider: '', plan: '', region: '',
-  traffic_limit_gb: '', traffic_reset_day: '1', traffic_count_mode: 'sum',
-  price: '', currency: 'USD', billing_period: '', expire_date: '',
-  enroll_ttl: '24h', verify_mode: 'warn',
+  name: sv?.name ?? '', expected_hostname: sv?.expected_hostname ?? '', expected_ipv4: sv?.expected_ipv4 ?? '',
+  expected_ipv6: sv?.expected_ipv6 ?? '', group: sv?.group ?? '', note: sv?.note ?? '',
+  provider: sv?.provider ?? '', plan: sv?.plan ?? '', region: sv?.region ?? '',
+  // 字节 → 十进制 GB（设计 5.8）；0 表示不限，显示为空
+  traffic_limit_gb: sv?.traffic_limit_bytes ? String(sv.traffic_limit_bytes / 1e9) : '',
+  traffic_reset_day: String(sv?.traffic_reset_day ?? 1), traffic_count_mode: sv?.traffic_count_mode ?? 'sum',
+  price: sv?.price_cents ? (sv.price_cents / 100).toFixed(2) : '', currency: sv?.currency || 'USD',
+  billing_period: sv?.billing_period ?? '', expire_date: sv?.expire_date ?? '',
+  enroll_ttl: '24h', verify_mode: sv?.verify_mode ?? 'warn',
 })
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const submitting = ref(false)
-const showVps = ref(false)
+// 编辑时如果已经填过 VPS 信息，默认展开
+const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
 
 // 选项文案（设计 1.2.4、1.2.5、27.2、27.6.3）
 const countModes = [
@@ -72,7 +89,12 @@ async function submit() {
   }
   submitting.value = true
   try {
-    emit('created', await createServer(buildInput()))
+    if (props.server) {
+      await updateServer(props.server.id, buildInput())
+      emit('done')
+    } else {
+      emit('created', await createServer(buildInput()))
+    }
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       emit('unauthorized')
@@ -89,12 +111,29 @@ async function submit() {
     submitting.value = false
   }
 }
+
+// 删除确认：输入节点名称，避免误删（设计 41.3 Dialog）。TODO(A2): 改为重新输入密码（设计 17.4）。
+const confirmName = ref('')
+const deleting = ref(false)
+async function remove() {
+  if (!props.server || confirmName.value !== props.server.name) return
+  deleting.value = true
+  try {
+    await deleteServer(props.server.id)
+    emit('done')
+  } catch (e) {
+    if (e instanceof UnauthorizedError) emit('unauthorized')
+    else if (e instanceof ApiError) formError.value = e.message
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
   <form class="panel" novalidate @submit.prevent="submit">
-    <h2>新建节点</h2>
-    <p class="muted">保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。</p>
+    <h2>{{ editing ? '编辑节点' : '新建节点' }}</h2>
+    <p v-if="!editing" class="muted">保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。</p>
 
     <fieldset>
       <legend>基本信息</legend>
@@ -173,7 +212,7 @@ async function submit() {
     <fieldset>
       <legend>安装选项</legend>
       <div class="fields">
-        <label>注册码有效期
+        <label v-if="!editing">注册码有效期
           <select v-model="f.enroll_ttl">
             <option value="1h">1 小时</option>
             <option value="24h">24 小时</option>
@@ -192,9 +231,22 @@ async function submit() {
 
     <p v-if="formError" class="banner">{{ formError }}</p>
     <div class="actions">
-      <button type="submit" :disabled="submitting">{{ submitting ? '保存中…' : '保存并生成安装命令' }}</button>
+      <button type="submit" :disabled="submitting">
+        {{ submitting ? '保存中…' : editing ? '保存' : '保存并生成安装命令' }}
+      </button>
       <button type="button" class="secondary" @click="emit('cancel')">取消</button>
     </div>
+
+    <fieldset v-if="server" class="danger">
+      <legend>删除节点</legend>
+      <p class="muted">删除后该节点的历史指标与流量统计一并删除，不可恢复；主机上的 Agent 将无法再上报。</p>
+      <div class="row">
+        <input v-model="confirmName" :placeholder="`输入 ${server.name} 以确认`" autocomplete="off" />
+        <button type="button" class="danger-btn" :disabled="confirmName !== server.name || deleting" @click="remove">
+          {{ deleting ? '删除中…' : '删除节点' }}
+        </button>
+      </div>
+    </fieldset>
   </form>
 </template>
 
@@ -211,4 +263,7 @@ small { font-size: 12px; }
 .err { color: var(--bad); }
 .link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
 .actions { display: flex; gap: 8px; margin-top: 24px; }
+.danger { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+.danger legend { color: var(--bad); }
+.danger-btn { background: var(--bad); }
 </style>

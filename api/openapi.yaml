@@ -115,6 +115,48 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}:
+    parameters: [{ $ref: '#/components/parameters/ServerID' }]
+    get:
+      tags: [servers]
+      summary: 单个节点（格式同列表中的一项）
+      responses:
+        '200':
+          description: 节点
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerView' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [servers]
+      summary: 修改节点信息（设计 19.5）
+      description: 整体替换可编辑信息，字段同新建（enroll_ttl 忽略）；未提供的可选字段视为清空。不改变注册状态。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServerRequest' }
+      responses:
+        '200':
+          description: 修改后的节点
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerView' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [servers]
+      summary: 删除节点及其全部历史数据，不可恢复
+      description: 该节点的 Agent Token 随之删除。TODO(A2)：需重新输入密码（设计 17.4）。
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/install-command:
     get:
       tags: [servers]

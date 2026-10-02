@@ -34,9 +34,28 @@ export interface ServerView {
   /** pending 为待安装：已新建、尚未注册（设计 27.7） */
   status: 'online' | 'unknown' | 'offline' | 'pending'
   enroll_state: 'pending' | 'enrolled'
+  expected_hostname: string
+  expected_ipv4: string
+  expected_ipv6: string
+  verify_mode: 'warn' | 'strict'
+  /** 注册时的实际值（设计 18.2） */
+  hostname: string
+  ipv4: string
+  ipv6: string
   group: string
+  note: string
   provider: string
+  plan: string
   region: string
+  /** 续费价格 × 100 */
+  price_cents: number
+  currency: string
+  billing_period: string
+  /** YYYY-MM-DD，空表示未填 */
+  expire_date: string
+  traffic_limit_bytes: number
+  traffic_reset_day: number
+  traffic_count_mode: 'sum' | 'rx' | 'tx' | 'max'
   /** 最后一次上报时间，Unix 秒；0 表示从未上报 */
   last_seen_at: number
   /** 收到首次上报之前不存在 */
@@ -183,6 +202,21 @@ export interface EnrollCodeView {
 /** 新建节点（状态：待安装），返回注册码与安装命令。 */
 export function createServer(input: CreateServerInput): Promise<EnrollCodeView> {
   return request('POST', '/servers', input)
+}
+
+/** 获取单个节点。 */
+export function getServer(id: number): Promise<ServerView> {
+  return request('GET', `/servers/${id}`)
+}
+
+/** 修改节点信息（整体替换，未提供的可选字段视为清空），返回最新节点。 */
+export function updateServer(id: number, input: CreateServerInput): Promise<ServerView> {
+  return request('PUT', `/servers/${id}`, input)
+}
+
+/** 删除节点及其全部历史数据，不可恢复。 */
+export function deleteServer(id: number): Promise<void> {
+  return request('DELETE', `/servers/${id}`)
 }
 
 /** 查看安装命令；不含完整注册码。 */

@@ -148,6 +148,9 @@ func (s *Server) routes() http.Handler {
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
+	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
+	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
+	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
 	handle("GET /api/v1/servers/{id}/metrics", accessAdmin, s.handleMetrics)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
@@ -372,33 +375,46 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	out := make([]serverView, 0, len(rows))
 	for _, row := range rows {
-		v := serverView{ServerRow: row, Status: "offline"}
-		if row.EnrollState == enrollPending {
-			v.Status = "pending" // 待安装：单独显示，不参与在线判断，不触发离线告警（设计 27.7）
+		v, err := s.viewOf(row, now)
+		if err != nil {
+			s.writeError(w, r, internalError(err))
+			return
 		}
-		s.mu.Lock()
-		if snap := s.latest[row.ID]; snap != nil {
-			rep := snap.Report
-			v.Latest = &rep
-			v.LastSeenAt = snap.ReceivedAt.Unix()
-		}
-		s.mu.Unlock()
-		if v.LastSeenAt > 0 && row.EnrollState != enrollPending {
-			age := now.Sub(time.Unix(v.LastSeenAt, 0))
-			switch {
-			case age <= onlineWithin:
-				v.Status = "online"
-			case age <= unknownWithin:
-				v.Status = "unknown"
-			}
-		}
-		start := CycleStart(now, row.ResetDay)
-		rx, tx, _ := s.store.TrafficSince(row.ID, start)
-		v.Traffic = trafficView{CycleStart: start.Format("2006-01-02"), Rx: rx, Tx: tx,
-			Used: CountedBytes(row.CountMode, rx, tx), Limit: row.LimitBytes}
 		out = append(out, v)
 	}
 	writeJSON(w, out)
+}
+
+// viewOf 组装一个节点的展示数据：持久化信息 + 内存中的实时状态 + 本周期流量。
+func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
+	v := serverView{ServerRow: row, Status: "offline"}
+	if row.EnrollState == enrollPending {
+		v.Status = "pending" // 待安装：单独显示，不参与在线判断，不触发离线告警（设计 27.7）
+	}
+	s.mu.Lock()
+	if snap := s.latest[row.ID]; snap != nil {
+		rep := snap.Report
+		v.Latest = &rep
+		v.LastSeenAt = snap.ReceivedAt.Unix()
+	}
+	s.mu.Unlock()
+	if v.LastSeenAt > 0 && row.EnrollState != enrollPending {
+		age := now.Sub(time.Unix(v.LastSeenAt, 0))
+		switch {
+		case age <= onlineWithin:
+			v.Status = "online"
+		case age <= unknownWithin:
+			v.Status = "unknown"
+		}
+	}
+	start := CycleStart(now, row.ResetDay)
+	rx, tx, err := s.store.TrafficSince(row.ID, start)
+	if err != nil {
+		return v, err
+	}
+	v.Traffic = trafficView{CycleStart: start.Format("2006-01-02"), Rx: rx, Tx: tx,
+		Used: CountedBytes(row.CountMode, rx, tx), Limit: row.LimitBytes}
+	return v, nil
 }
 
 // handleMetrics：GET /api/v1/servers/{id}/metrics?range=1h，admin 认证。range 非法时按 1 小时处理。
