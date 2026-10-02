@@ -1,61 +1,109 @@
-# Roadmap (Phase 1 / MVP)
+# 开发计划（MVP）
 
-Each item is sized for one vibe-coding session. Paste the **Prompt** line into Claude Code.
-Mark done with `[x]`. Design references point to `docs/design.md`.
+按设计 35.1 的顺序开发：**阶段 A 接口 + Agent → 阶段 B Web → 阶段 C App**。
+每一项大致对应一个 PR（设计 40.8.2）。完成后勾选 `[x]`，随提交同步。开始前先 `git pull`，确认另一台 Mac 没有在做。
 
-## M1 — Skeleton ✅
+代码中的 TODO 使用下面的里程碑编号，例如 `// TODO(A3): …（设计 21）`（设计 39.4）。
 
-- [x] Agent: Linux collector + fake collector, HTTPS-only reporter, SIGTERM final report
-- [x] Server: SQLite (WAL), batched writes, in-memory realtime state, traffic deltas with boot_id
-- [x] Web: server list with status, metrics, cycle traffic
-- [x] App: connect + server list
-- [x] Makefile, dev.sh, deploy.sh, systemd units
+| 编号 | 内容 |
+|---|---|
+| M1 | 骨架（已完成） |
+| A0～A7 | 阶段 A：接口 + Agent |
+| B | 阶段 B：Web |
+| C | 阶段 C：App 与 App 相关的服务端能力 |
+| N1 / N2 / P2 | MVP 之后第一批 / 第二批 / 第二阶段（设计 36.1、36.2、36.3） |
 
-## M2 — Data quality (agent + traffic)
+## M1 — 骨架 ✅
 
-- [ ] Downsampling into metrics_1m / 5m / 1h + retention (design 21, 18.4)
-  - Prompt: `Implement downsampling per design ch.21: tables metrics_1m/5m/1h with avg+max columns, an in-process job, batched deletes, and tests.`
-- [ ] Agent bounded retry buffer for failed reports (design 1.6.14)
-- [ ] Multiple disk mounts, disk IO (design 4.6, 4.7)
-- [ ] Traffic calibration + traffic_factor + decimal/binary unit (design 5.7, 5.8, 18.12)
-  - Prompt: `Implement traffic calibration per design 5.7 and table traffic_adjustments (18.12), with API endpoints and table tests.`
-- [ ] Traffic forecast (design ch.32)
-- [ ] Server detail page in Web with history charts (ECharts — confirm dependency first)
+- [x] Agent：Linux 真实采集 + 假数据采集，HTTPS 上报，SIGTERM 补报
+- [x] Server：SQLite（WAL）、批量写入、内存实时状态、基于 boot_id 的流量增量
+- [x] Web：服务器列表（状态、指标、本周期流量）
+- [x] App：连接 + 服务器列表
+- [x] Makefile、dev.sh、deploy.sh、install.sh、systemd 单元
+- [x] test-server（greenJp）：systemd + Caddy HTTPS；test-agent（jp-store）（设计 40.3、40.4）
 
-## M3 — Make it safe to expose
+## 阶段 A — 接口 + Agent
 
-- [ ] Web login: single admin, Argon2id, session cookie, CSRF, login rate limit (design 8.2, 23.4, 23.5); remove admin token from Web
-- [ ] Built-in HTTPS via ACME (`--domain`) (design 25)
-- [ ] Web: add/edit/delete servers, generate install command (manual verified + script) (design 27)
-- [ ] Agent token revoke / rotate
-- [ ] `vpsmon-server backup` / `restore` (design 25)
+完成标准（设计 35.1）：test-agent 按产品流程安装并稳定上报一周；接口测试全部通过；所有接口在契约中有定义。
 
-## M4 — App pairing (the core App experience)
+### A0 工程基础
 
-- [ ] AK create/list/revoke + QR in Web (design 8.4, 18.9, 19.2)
-  - Prompt: `Implement App AK per design 8.4/18.9/19.2: one-time, hashed, shown once, QR payload monitor://pair?... ; read-only scope + allow_low_risk_ops.`
-- [ ] `/api/v1/app/pair` → device access token (short) + refresh token (rotating) (design 12.3–12.5, 19.3)
-- [ ] Device list + revoke in Web; revocation kills REST/WS/refresh/push (design 1.6.5)
-- [ ] App: QR scan pairing, token refresh, multiple monitoring centers (design 12.x, 1.5.2)
-- [ ] App: server detail with realtime mode via WebSocket (design 1.5.9, ch.20)
-- [ ] App: biometric lock, privacy mode, offline cache (design 1.5.10–1.5.12)
+- [x] 设计文档 v1.2 与 `scripts/check_design_refs.py`（设计 40.9）
+- [ ] GitHub Actions CI：go vet/test、Web 类型检查与构建、设计文档校验、交叉编译全部架构（设计 40.8.3）
+- [ ] `api/openapi.yaml` 契约骨架，覆盖现有接口；服务端测试校验响应与契约一致（设计 19.0.1）
+- [ ] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
+- [ ] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
+- [ ] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）
+- [ ] `/healthz` 返回版本号（git describe）（设计 40.3.2）
+- [ ] 构建 amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4、35.2）
 
-## M5 — Alerts and push
+### A1 节点与注册（核心）
 
-- [ ] Alert engine: offline, CPU, mem, disk, traffic thresholds, expiry; states + events (design 16)
-- [ ] Mute / maintenance mode (design 1.5.14, 1.5.15)
-- [ ] Telegram / Webhook / ntfy channels (design 31)
-- [ ] E2E push: X25519 key at pairing, HPKE payloads, iOS NSE / Android data messages (design 30)
-- [ ] push-relay service (stateless, in-memory rate limit) (design 30.2)
-- [ ] UnifiedPush for Android (design 30.1)
+- [ ] 迁移：servers 增加 expected_* / verify_mode / enroll_state / machine_id_hash 等字段（设计 18.2）；enroll_codes 表（设计 18.13）
+- [ ] `POST /api/v1/servers` 新建节点（待安装）+ 注册码；重新生成 / 撤销注册码（设计 19.11、27.4）
+- [ ] `POST /api/v1/agent/enroll`：一次性注册码换 Agent Token、信息核对、10 分钟重试幂等、单独限流（设计 27.6）
+- [ ] `vpsmon-agent install / uninstall / status`，`POST /api/v1/agent/unregister`（设计 27.6.1、27.11）
+- [ ] `scripts/agent.sh.in` + `scripts/release-agent-sh.sh`：架构识别、内置 SHA256、试运行、`--download-only`（设计 27.5）
+- [ ] 审计日志精简版 `audit_logs` + `vpsmon-server audit`（设计 18.16、24.8）
+- [ ] Agent Token 吊销 / 轮换；重装时吊销旧 Token（设计 27.8）
 
-## M6 — Release
+### A2 Web 登录（替换开发用 admin token）
 
-- [ ] VPS asset fields: provider, price, expiry + reminders (design 1.2.3, 1.2.5)
-- [ ] `vpsmon-agent upgrade` (local, signed manifest, anti-downgrade, rollback) (design 29.7)
-- [ ] Release pipeline: reproducible builds, offline minisign signing, SHA256SUMS (design 27.1, 29.7)
-- [ ] Install script hosted on official domain (design 27.2)
-- [ ] Optional Docker image (`FROM scratch`)
+- [ ] 单管理员、Argon2id、会话 Cookie、CSRF、登录限流、`admin reset-password`（设计 8.2、17.4、23.4）——需要 `golang.org/x/crypto`，先确认依赖
+- [ ] 删除 `adm_` 开发 token 及其接口
 
-Phase 2 (remote upgrade + canary, widgets, multi-center aggregate view, probes, Docker monitoring,
-PostgreSQL) — see design ch.36.
+### A3 数据质量
+
+- [ ] 降采样 metrics_1m / 5m / 1h + 保留期清理（设计 21、18.4）
+- [ ] Agent 有上限的重试缓冲 + 指数退避；401 停止上报（设计 1.6.14、43.5）
+- [ ] 多挂载点磁盘、磁盘 IO（设计 4.6、4.7）
+
+### A4 流量
+
+- [ ] 计费模式、单位口径、按节点时区的计费日（设计 1.2.4、5.8）
+- [ ] 手动校准 traffic_adjustments（设计 5.7、18.12）
+- [ ] 流量预测（设计 32）
+
+### A5 告警与通知
+
+- [ ] 告警引擎：类型与默认值、三层规则、回差、状态机、降噪（设计 16.1～16.4、16.7）
+- [ ] 静音与维护模式（设计 16.6、18.14）
+- [ ] Telegram / Webhook，投递记录（设计 16.5、18.15、31）
+
+### A6 部署与运维
+
+- [ ] 内置 HTTPS（ACME，`--domain`）（设计 25）
+- [ ] `vpsmon-server backup / restore`、`diag`（设计 25、24.10）
+
+### A7 Agent 本地升级与发布
+
+- [ ] 发布流程：打标签 → Actions 生成草稿 Release → 离线 minisign 签名 → 手动发布（设计 40.8.4、29.7）
+- [ ] `vpsmon-agent upgrade`：签名清单、防降级、回滚（设计 29.7～29.12）
+
+## 阶段 B — Web
+
+完成标准（设计 35.1）：不使用命令行即可完成从新建节点到查看告警的全部操作；浅色 / 深色截图通过 41.7 检查。
+
+- [ ] 设计令牌 `design/tokens.json` → `web/src/styles/tokens.css`；自建组件（设计 41.2、41.3）
+- [ ] 请求类型由 OpenAPI 生成；统一错误处理（设计 19.0.1、43.6）
+- [ ] 登录页
+- [ ] 总览；节点列表；节点详情与历史曲线（ECharts，先确认依赖）（设计 9～11、41.5）
+- [ ] 新建节点 → 安装命令页，WebSocket 实时显示注册结果；待安装节点；重新生成注册码（设计 27.2、27.3.4）
+- [ ] 流量套餐配置与校准
+- [ ] 告警规则（全局默认 + 节点覆盖）、告警记录、静音
+- [ ] AK 与已连接设备管理
+- [ ] 系统设置（通知渠道、Relay 地址）
+
+## 阶段 C — App
+
+完成标准（设计 35.1）：真机扫码配对 test-server，收到端到端加密的离线告警推送。
+
+- [ ] AK 创建 / 吊销、配对接口、Device Token + Refresh Token、设备吊销（设计 8.4、12.3～12.7、19.2～19.4）
+- [ ] App：扫码配对、节点列表（异常优先）、节点详情、离线缓存（设计 12、13、14）
+- [ ] E2E 推送：配对时交换 X25519 公钥，HPKE 加密，iOS NSE / Android 数据消息（设计 30.3）
+- [ ] push-relay：无状态、实例签名校验、内存限流（设计 30.2）
+
+## MVP 之后
+
+见设计第 36 章：第一批（N1）被墙检测与三网延迟、到期提醒、多监控中心、App 增强、批量新建；
+第二批（N2）三网测速、UnifiedPush、审计完整版、远程升级与灰度；第二阶段（P2）服务探测、Docker、PostgreSQL 等。

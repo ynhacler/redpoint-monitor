@@ -1,8 +1,8 @@
 // VPS Monitor app — development skeleton.
 //
 // Current state: connects with server URL + dev admin token (read-only use).
-// TODO(M4): replace with AK QR pairing → Device Token + Refresh Token (design 12.3).
-// TODO(M5): E2E encrypted push (design ch. 30).
+// TODO(C): 改为 AK 扫码配对 → Device Token + Refresh Token（设计 12.3）。
+// TODO(C): 端到端加密推送（设计 30）。
 //
 // Dev server addresses:
 //   iOS simulator     http://127.0.0.1:8080

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Install binaries built on this machine (bin/, from `make build`) as systemd services.
-# The on-VPS counterpart of deploy.sh, for a checkout that builds from source:
+# 把本机构建的二进制（bin/，由 make build 生成）安装为 systemd 服务。
+# 是 deploy.sh 在 VPS 本机上的对应版本，用于在 VPS 上从源码构建的场景。
+# 仅限开发自测（设计 27、40.4.2）；正式安装走注册码流程（设计 27.3）。
 #
+# 用法：
 #   git pull && make build && sudo scripts/install.sh server
 #   sudo scripts/install.sh agent https://monitor.example.com ./jp-store.token
 #
-# Re-running upgrades the binary and keeps data and tokens.
+# 重复执行即升级二进制，保留数据与 Token。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,16 +17,18 @@ role=${1:?role: server|agent}
 case "$role" in
 server)
   test -x bin/vpsmon-server || { echo "bin/vpsmon-server missing; run 'make build' first"; exit 1; }
-  # Dedicated non-root user; the unit also sandboxes it (design 1.6.9).
+  # 1. 创建专用的非 root 用户；systemd 单元另有沙箱限制（设计 1.6.9、28.1）
   id vpsmon >/dev/null 2>&1 || useradd --system --home /var/lib/vpsmon --shell /usr/sbin/nologin vpsmon
   install -d -o vpsmon -g vpsmon -m 0750 /var/lib/vpsmon
+  # 2. 安装二进制与 systemd 单元
   install -m 0755 bin/vpsmon-server /usr/local/bin/vpsmon-server
   install -m 0644 deploy/systemd/vpsmon-server.service /etc/systemd/system/vpsmon-server.service
   if [ ! -f /var/lib/vpsmon/monitor.db ]; then
     echo "first install — admin token (save it, shown once):"
-    # Run as vpsmon so the DB files are owned by the service user.
+    # 3. 首次安装时初始化数据库；以 vpsmon 身份执行，数据库文件归服务用户所有
     sudo -u vpsmon /usr/local/bin/vpsmon-server init --data /var/lib/vpsmon
   fi
+  # 4. 启用并重启服务
   systemctl daemon-reload
   systemctl enable vpsmon-server >/dev/null
   systemctl restart vpsmon-server
@@ -38,11 +42,13 @@ agent)
   server=${2:?server URL}
   tokfile=${3:?token file}
   test -x bin/vpsmon-agent || { echo "bin/vpsmon-agent missing; run 'make build' first"; exit 1; }
+  # 1. 创建专用的非 root 用户（设计 1.6.9）
   id vpsmon-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpsmon-agent
   install -d -m 0750 -g vpsmon-agent /etc/vpsmon-agent
-  # Token readable by the agent's group only; never passed on the command line (visible in ps).
+  # 2. 【安全】Token 只允许 vpsmon-agent 组读取；不通过命令行传递，否则会出现在 ps 中（设计 27.1）
   install -m 0640 -g vpsmon-agent "$tokfile" /etc/vpsmon-agent/token
   echo "VPSMON_SERVER=$server" > /etc/vpsmon-agent/env
+  # 3. 安装二进制与 systemd 单元，启用并重启服务
   install -m 0755 bin/vpsmon-agent /usr/local/bin/vpsmon-agent
   install -m 0644 deploy/systemd/vpsmon-agent.service /etc/systemd/system/vpsmon-agent.service
   systemctl daemon-reload

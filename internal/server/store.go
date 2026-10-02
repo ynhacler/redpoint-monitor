@@ -13,7 +13,7 @@ import (
 
 // Store wraps SQLite. Writes go through a single connection-limited pool in batches
 // (see Server.flushLoop); reads use the same handle (WAL allows concurrent readers).
-// TODO(M6): optional PostgreSQL backend behind an interface (design 3.5).
+// TODO(P2): 通过接口支持可选的 PostgreSQL 后端（设计 3.5、36.3）。
 type Store struct {
 	DB *sql.DB
 }

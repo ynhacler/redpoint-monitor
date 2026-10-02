@@ -1,8 +1,9 @@
 # VPS Monitor — guide for AI-assisted development
 
 App-first, self-hosted, lightweight monitoring for people who run many VPSes.
-Full design: `docs/design.md` (v1.1). Milestones and next tasks: `TODO.md`.
+Full design: `docs/design.md` (v1.2). Milestones and next tasks: `TODO.md`.
 When a task touches a feature, read the relevant design chapter first.
+Development order is **A (API + Agent) → B (Web) → C (App)** (design 35.1); do not start App work early.
 
 ## Commands
 
@@ -10,13 +11,16 @@ When a task touches a feature, read the relevant design chapter first.
 make dev          # server + fake agent + Vite → http://localhost:5173 (token in .dev/admin.token)
 make test         # Go tests — run after every Go change
 make lint         # go vet + vue-tsc
+python3 scripts/check_design_refs.py          # design numbering / references (add --write after editing design.md)
 make build-linux  # cross-compile linux amd64/arm64 into dist/
 make vm-agent     # real Linux collector in an OrbStack VM
 make app-run      # Flutter app
-make deploy VPS=user@host
+make deploy VPS=user@host                      # dev-only SSH deploy (design 27)
+make install-server / install-agent            # on a VPS checkout, after `make build`
 ```
 
-Before saying a task is done: `make test && make lint` pass, and for UI changes, look at it in the browser.
+Before saying a task is done: `make test && make lint` pass, `check_design_refs.py` passes, and for UI
+changes, look at it in the browser.
 
 ## Layout
 
@@ -36,8 +40,11 @@ internal/server/
 web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed
 app/                   Flutter app (iOS/Android); run `make app-setup` once
 deploy/systemd/        hardened unit files
-scripts/               setup-mac.sh, dev.sh, deploy.sh
+scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design_refs.py
+docs/design.md         the design; numbering rules in design 40.9
 ```
+
+Planned (design 19.0, 41.2, 27.5): `api/openapi.yaml`, `design/tokens.json`, `scripts/agent.sh.in`.
 
 ## Security invariants — never violate, even if asked casually
 
@@ -48,43 +55,65 @@ These are the product's core promise. If a request conflicts with one, stop and 
 2. **No signing key in the server.** Agent releases are signed offline by the developer. The server may
    sync/select official signed releases; it must never sign, upload or serve unsigned binaries.
    Agent/updater verify with embedded public keys and refuse downgrades.
-3. **Three separate credentials.** Web admin, App device token, Agent token are never interchangeable.
-   Agent tokens can only report for their own server. Prefixes: `adm_`, `agt_`, future `dev_`/`rt_`/`ak_`.
-4. **Store hashes, show once.** Tokens/AKs are shown once at creation; only SHA-256 hashes are stored.
-   Never log tokens, Authorization headers, or full AKs.
+3. **Separate credentials.** Web admin, App device token, Agent token, enroll code are never
+   interchangeable (design 17.1). Agent tokens can only report for their own server; an enroll code can
+   only claim its own node. Prefixes: `adm_`, `agt_`, `ENR-`, future `dev_`/`rt_`/`MNT-`.
+4. **Store hashes, show once.** Tokens, AKs and enroll codes are shown once; only SHA-256 hashes are
+   stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).
 5. **App is read-only** (+ mute / maintenance mode). No App credential may change config or trigger upgrades.
 6. **HTTPS only** outside loopback / explicit dev flags. Never disable certificate verification.
 7. **No telemetry, no analytics SDKs, no developer-side storage of user data.** Push payloads are
    end-to-end encrypted before leaving the server (design ch. 30).
 8. **Agent runs as non-root.** New collectors must work from /proc and /sys; if a capability is needed
    (e.g. CAP_NET_RAW for ICMP), make it optional.
+9. **Install = download → verify → execute.** Never generate or document `curl … | sh`. Install scripts
+   are versioned, and their hash comes from the server's signature-verified sync (design 27.3, 27.5.5).
+   Long-lived credentials never appear on a command line (design 27.1).
 
 ## Conventions
 
-- Go: stdlib first (`net/http` ServeMux patterns, `database/sql`). Ask before adding a dependency.
-  SQLite driver is `github.com/ncruces/go-sqlite3` (pure Go via wasm, no CGO) so `CGO_ENABLED=0`
-  cross-compiles work. Keep the server a single static binary.
+- **Comments in Chinese** (design ch. 39): identifiers stay English; cite sections as `（设计 5.5）`;
+  mark security code with `【安全】`; TODOs carry a TODO.md milestone, e.g. `// TODO(A3): …`.
+  Existing English comments are converted when that code is next modified, not in bulk.
+- Go: stdlib first (`net/http` ServeMux patterns, `database/sql`, `log/slog`). Ask before adding a
+  dependency. SQLite driver is `github.com/ncruces/go-sqlite3` (pure Go via wasm, no CGO) so
+  `CGO_ENABLED=0` cross-compiles work. Keep the server a single static binary.
+- API: contract first — change `api/openapi.yaml`, then the code (design 19.0.1). JSON snake_case,
+  times in Unix seconds, list responses `{"items", "next_cursor"}`.
+- Errors to clients: `{"error": {"code", "message", "request_id", "details"}}` with stable codes from
+  design 43.4 and Chinese messages; internals (SQL, paths, stacks) only in server logs. Security checks
+  fail closed (design 43.1).
+- Auth: every route declares which principal may call it; default deny, checked in one middleware,
+  covered by the permission-matrix test (design 17.5).
 - DB: add a new entry to `migrations` in store.go; never edit an existing one. Writes go through the
   batched flush; realtime reads come from memory (`Server.latest`), not the DB.
 - Protocol: only add optional fields. Old agents must keep working with new servers.
 - Traffic logic lives in pure functions with table tests (see traffic_test.go). Keep it that way —
   traffic accuracy is a core selling point.
-- Web: Vue 3 `<script setup lang="ts">`, no UI framework yet (Element Plus/ECharts planned, ask first).
-  Decimal units for bytes (design 5.8). Abnormal-first sorting.
-- App: Flutter, Material 3. Credentials only in flutter_secure_storage.
-- Errors to clients are generic JSON `{"error": "..."}`; details go to server logs (without secrets).
-- Comments explain *why*, and reference design sections like `(design 5.5)`.
-- Commit small, working steps. Do not commit `.dev/`, `*.token`, `dist/`, `bin/`.
+- Web: Vue 3 `<script setup lang="ts">`, self-built components on design tokens (design 41); no full UI
+  framework. ECharts for charts (confirm before adding). Decimal units for bytes (design 5.8).
+  Abnormal-first sorting.
+- App: Flutter, Material 3 themed from tokens. Credentials only in flutter_secure_storage.
 
-## Current state (M1 done)
+## Git workflow (design 40.2, 40.8)
+
+- Work on `feature/<name>` or `fix/<name>`; open a PR to `main`, squash merge after CI passes.
+  One PR per TODO.md item, PR description cites design sections. Do not push to `main` directly.
+- Commit small, working steps. Never commit `.dev/`, `*.token`, `dist/`, `bin/`, `node_modules/`.
+- Deploy only committed code; the version is `git describe` (design 40.3.2).
+
+## Current state (M1 done, phase A starting)
 
 Working: agent (Linux real + fake) → server ingest → SQLite → `/api/v1/servers` → Web list and Flutter list.
-Traffic deltas with boot_id reset detection and billing cycles. Dev admin token auth (temporary).
-Not yet: login, AK pairing, alerts, push, downsampling, calibration, HTTPS. See TODO.md.
+Traffic deltas with boot_id reset detection and billing cycles. Dev admin token auth (temporary, replaced in A2).
+Not yet: enroll codes / install flow, login, structured errors, alerts, push, downsampling, calibration,
+built-in HTTPS. See TODO.md.
 
-## Dev environment notes
+## Dev environment notes (design 40)
 
 - Mac dev server: `127.0.0.1:8080`. iOS simulator uses 127.0.0.1, Android emulator uses 10.0.2.2.
-- Remote VPS server listens on loopback; reach it via `ssh -N -L 8080:127.0.0.1:8080 user@vps`.
-- Agents on other VPSes need HTTPS to the server: until M3 (built-in ACME), put Caddy in front
-  (`monitor.example.com { reverse_proxy 127.0.0.1:8080 }`).
+- test-server (greenJp): `vpsmon-server` via systemd on loopback, Caddy in front for public HTTPS
+  (UDP 443 is taken by another service there, so Caddy runs with `protocols h1 h2`).
+- test-agent (jp-store): installed with the dev scripts until the enroll flow (A1) exists; after that,
+  always through the product install command (design 40.4.2).
+- Building on a VPS needs Go ≥ 1.24 and Node ≥ 20.19 (Ubuntu's apt versions are too old).

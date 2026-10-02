@@ -1,9 +1,11 @@
-// vpsmon-agent: collects metrics and pushes them to vpsmon-server.
+// vpsmon-agent：采集本机指标并上报到 vpsmon-server。
 //
-// Security invariants (docs/design.md 1.6.8, CLAUDE.md):
-//   - only collect and report; never execute commands received from the server
-//   - HTTPS only, except loopback or explicit --allow-http for local development
-//   - runs as non-root
+// 【安全】边界（设计 1.6.8、1.6.9）：
+//   - 只采集与上报，不执行面板下发的任何命令
+//   - 只走 HTTPS；仅回环地址或显式 --allow-http（本地开发）允许明文
+//   - 以非 root 用户运行
+//
+// 不负责：注册与安装（TODO(A1)：vpsmon-agent install，设计 27.6）、升级（设计 29）。
 package main
 
 import (
@@ -26,7 +28,7 @@ import (
 	"vpsmon/internal/protocol"
 )
 
-var version = "0.1.0-dev" // overridden via -ldflags "-X main.version=..."
+var version = "0.1.0-dev" // 构建时通过 -ldflags "-X main.version=..." 覆盖为 git describe
 
 func main() {
 	server := flag.String("server", "", "server base URL, e.g. https://monitor.example.com")
@@ -44,8 +46,7 @@ func main() {
 		return
 	}
 
-	// Fail fast on bad config: an agent that starts but silently never reports is worse
-	// than one systemd shows as failed.
+	// 配置错误立即退出（设计 43.5）：启动后静默不上报，比让 systemd 显示失败更难发现。
 	tok, err := loadToken(*token, *tokenFile)
 	if err != nil {
 		log.Fatal(err)
@@ -54,8 +55,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// --fake forces synthetic data even on Linux; on macOS collector.New already falls back
-	// to fake metrics, so the dev loop works without a VM.
+	// --fake 在 Linux 上也强制使用假数据；macOS 上 collector.New 会自动退回假数据，不需要虚拟机即可联调。
 	var col collector.Collector
 	if *fake {
 		col = collector.NewFake()
@@ -70,32 +70,30 @@ func main() {
 	r := &reporter{
 		endpoint: strings.TrimRight(*server, "/") + "/api/v1/agent/report",
 		token:    tok,
-		// Default transport: system CA pool, certificate verification always on (design 23.1).
-		// The timeout keeps a hung server from stalling the ticker loop.
+		// 【安全】使用默认 Transport：系统 CA、始终校验证书（设计 23.1）。
+		// 10 秒超时：面板卡住时不让上报循环一直阻塞。
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
-	// Never log the token, only where we report to (design 1.6.16).
+	// 【安全】只记录上报地址，不记录 Token（设计 24.7）。
 	log.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
 
-	// CPU usage and net speed are deltas between two samples (design 5.2). Take a throwaway
-	// sample now so the first real report has speeds instead of zeros.
+	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
 	_, _ = col.Collect()
 
-	// systemd stop sends SIGTERM; Ctrl-C sends SIGINT. Both trigger the final report below.
+	// systemctl stop 发送 SIGTERM，Ctrl-C 发送 SIGINT，两者都触发下面的补报。
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	tick := time.NewTicker(*interval)
 	defer tick.Stop()
 
-	// Reports are sent synchronously on the tick: a slow server delays the next report rather
-	// than piling up concurrent requests (http.Client timeout bounds the delay).
+	// 上报在定时器内同步执行：面板变慢时推迟下一次上报，而不是堆积并发请求（延迟受 http.Client 超时约束）。
 	for {
 		select {
 		case <-tick.C:
 			r.send(context.Background(), col, false)
 		case <-sig:
-			// Final report so traffic between the last tick and shutdown is not lost (design 5.5).
-			// Short timeout: systemd will SIGKILL us if shutdown takes too long.
+			// 退出前补报，避免最后一个周期到停止之间的流量丢失（设计 5.5）。
+			// 2 秒超时：停止过久会被 systemd 强制 SIGKILL（单元中 TimeoutStopSec=5）。
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			r.send(ctx, col, true)
 			cancel()
@@ -105,9 +103,10 @@ func main() {
 	}
 }
 
-// loadToken picks the agent token: --token, then --token-file, then $MONITOR_AGENT_TOKEN.
-// --token is visible in `ps` output to every local user, so the systemd unit uses
-// --token-file (readable only by the vpsmon-agent group) instead; the flag exists for quick manual tests.
+// loadToken 按优先级读取 Agent Token：--token、--token-file、环境变量 MONITOR_AGENT_TOKEN。
+//
+// 【安全】--token 会出现在 ps 输出中，本机所有用户都能看到，因此 systemd 单元使用
+// --token-file（仅 vpsmon-agent 组可读）；--token 只用于临时手动测试（设计 27.1）。
 func loadToken(flagTok, file string) (string, error) {
 	switch {
 	case flagTok != "":
@@ -117,7 +116,7 @@ func loadToken(flagTok, file string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Token files are usually written with `> file` or an editor, so strip the trailing newline.
+		// Token 文件通常由 “> file” 或编辑器写入，末尾带换行，需要去掉。
 		return strings.TrimSpace(string(b)), nil
 	case os.Getenv("MONITOR_AGENT_TOKEN") != "":
 		return os.Getenv("MONITOR_AGENT_TOKEN"), nil
@@ -125,9 +124,10 @@ func loadToken(flagTok, file string) (string, error) {
 	return "", errors.New("no agent token: use --token-file or MONITOR_AGENT_TOKEN")
 }
 
-// checkServerURL enforces HTTPS (security invariant 6). The bearer token travels in every
-// request, so plain HTTP over the internet would leak it; loopback is safe because the
-// traffic never leaves the machine.
+// checkServerURL 校验面板地址，强制 HTTPS。
+//
+// 【安全】每个请求都携带 Bearer Token，公网明文 HTTP 会泄露 Token（设计 23.1）；
+// 回环地址的流量不离开本机，因此允许 HTTP。
 func checkServerURL(raw string, allowHTTP bool) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
@@ -146,16 +146,16 @@ func checkServerURL(raw string, allowHTTP bool) error {
 	return fmt.Errorf("unsupported scheme %q", u.Scheme)
 }
 
-// reporter pushes reports to the server. It is push-only: the response body is ignored, so
-// nothing the server returns can make the agent do anything (design 1.6.8).
+// reporter 负责向面板推送上报。
+//
+// 【安全】只推不拉：忽略响应体，面板返回的任何内容都不能让 Agent 执行动作（设计 1.6.8）。
 type reporter struct {
 	endpoint string
 	token    string
 	client   *http.Client
 }
 
-// send collects one sample and posts it. Errors are logged, never fatal: a server outage
-// must not kill the agent, it simply reports again on the next tick.
+// send 采集一次并上报。错误只记录不退出：面板故障不能导致 Agent 退出，下个周期照常上报。
 func (r *reporter) send(ctx context.Context, col collector.Collector, final bool) {
 	rep, err := col.Collect()
 	if err != nil {
@@ -166,12 +166,13 @@ func (r *reporter) send(ctx context.Context, col collector.Collector, final bool
 	rep.AgentVersion = version
 	rep.Final = final
 	if err := r.post(ctx, rep); err != nil {
-		// TODO(M2): bounded in-memory retry buffer (design 1.6.14). Counters are cumulative,
-		// so traffic is not lost on network outages, only metric points.
+		// TODO(A3): 有上限的内存重试缓冲 + 指数退避（设计 1.6.14、43.5）。
+		// 网卡计数是累计值，断网期间流量不会丢，丢的只是这段时间的指标点。
 		log.Printf("report: %v", err)
 	}
 }
 
+// post 发送一次上报，非 2xx 状态视为失败。
 func (r *reporter) post(ctx context.Context, rep protocol.Report) error {
 	body, _ := json.Marshal(rep)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
@@ -185,8 +186,8 @@ func (r *reporter) post(ctx context.Context, rep protocol.Report) error {
 		return err
 	}
 	defer resp.Body.Close()
-	// Only the status matters. 401 means the token was revoked or mistyped; we keep retrying
-	// rather than exiting so a fixed token file is picked up after a restart without a crash loop.
+	// 只看状态码。目前 401（Token 被吊销或填错）也会在下个周期继续重试；
+	// TODO(A3): 按设计 43.5，401 时停止上报并每小时记录一次 ERROR。
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("server returned %s", resp.Status)
 	}

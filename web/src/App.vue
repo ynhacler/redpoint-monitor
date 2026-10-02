@@ -2,21 +2,21 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { fmtBytes, getToken, listServers, setToken, UnauthorizedError, type ServerView } from './api'
 
-// Single-page server list. State is plain refs; no router/store until there is more than one view.
+// 节点列表页（设计 10）。目前只有这一个页面，状态直接用 ref；页面变多后再引入 Router / Pinia（设计 3.3）。
 const servers = ref<ServerView[]>([])
-const needToken = ref(!getToken()) // show the token form instead of the list
+const needToken = ref(!getToken()) // 为 true 时显示 Token 输入框而不是列表
 const tokenInput = ref('')
-const error = ref('') // connection banner; the last good list stays visible underneath
+const error = ref('') // 连接错误提示；上一次成功的列表继续显示在下方（设计 43.6）
 const updatedAt = ref<Date | null>(null)
 let timer: number | undefined
 
-// Abnormal first (design 1.5.6): offline > unknown > online, then by name.
-// The user opens the page to find what is broken, so problems must be at the top.
+// 异常优先（设计 1.5.6）：离线 > 未知 > 在线，同级按名称排序。
+// 用户打开页面是为了找出哪里出了问题，所以问题必须排在最前面。
 const rank = { offline: 0, unknown: 1, online: 2 } as const
 const sorted = computed(() =>
   [...servers.value].sort((a, b) => rank[a.status] - rank[b.status] || a.name.localeCompare(b.name)),
 )
-// "异常" counts everything not online, including "unknown" (report is late).
+// “异常”包含所有不在线的节点，也包括“未知”（上报已延迟）。
 const counts = computed(() => ({
   total: servers.value.length,
   online: servers.value.filter((s) => s.status === 'online').length,
@@ -29,8 +29,8 @@ async function refresh() {
     updatedAt.value = new Date()
     error.value = ''
   } catch (e) {
-    // 401: stop polling, otherwise we would hammer the server with a bad token every 3s.
-    // Network errors: keep polling so the page recovers by itself when the server is back.
+    // 401：停止轮询，否则会每 3 秒用错误的 Token 请求一次面板。
+    // 网络错误：继续轮询，面板恢复后页面自动恢复（设计 43.6）。
     if (e instanceof UnauthorizedError) {
       needToken.value = true
       stop()
@@ -40,11 +40,10 @@ async function refresh() {
   }
 }
 
-// Polling every 3s matches the dev agent interval; the server answers from memory
-// (Server.latest), so this does not touch SQLite.
+// 每 3 秒轮询一次，与开发用 Agent 的上报间隔一致；面板从内存（Server.latest）返回，不读 SQLite。
 function start() {
   refresh()
-  timer = window.setInterval(refresh, 3000) // TODO: switch to WebSocket push
+  timer = window.setInterval(refresh, 3000) // TODO(B): 改为 WebSocket 推送（设计 20）
 }
 function stop() {
   if (timer) window.clearInterval(timer)
@@ -56,14 +55,14 @@ function saveToken() {
   start()
 }
 
-// Traffic bar fill, capped at 100% so an over-quota server does not overflow the card.
+// 流量条宽度，上限 100%，超额节点不会撑破卡片。
 function trafficPct(s: ServerView) {
   return s.traffic.limit > 0 ? Math.min(100, (s.traffic.used / s.traffic.limit) * 100) : 0
 }
-// Card shows one total speed: sum over the interfaces the agent counted (default-route NICs).
+// 卡片只显示一个总网速：Agent 统计的网卡（默认路由网卡）之和。
 const rx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.rx_speed, 0) ?? 0
 const tx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.tx_speed, 0) ?? 0
-// Root filesystem only on the card; other mounts will go on the detail page.
+// 卡片只显示根分区；其他挂载点放在详情页。
 const disk = (s: ServerView) => s.latest?.disk.find((d) => d.mount === '/')?.usage ?? 0
 
 onMounted(() => {
@@ -101,7 +100,7 @@ onUnmounted(stop)
           <span class="muted os">{{ s.latest?.system.os }} {{ s.latest?.system.os_version }}</span>
         </div>
 
-        <!-- Hide stale metrics when offline: old numbers would look live and mislead. -->
+        <!-- 离线时隐藏旧指标：旧数值看起来像实时数据，会误导用户。 -->
         <template v-if="s.latest && s.status !== 'offline'">
           <dl class="metrics">
             <div><dt>CPU</dt><dd>{{ s.latest.cpu.usage.toFixed(0) }}%</dd></div>
@@ -121,7 +120,7 @@ onUnmounted(stop)
               <template v-else> · 不限</template>
             </span>
           </div>
-          <!-- Quota bar turns amber at 80%, red at 95%. -->
+          <!-- 流量条 ≥80% 变黄，≥95% 变红（设计 41.3 UsageBar）。 -->
           <div v-if="s.traffic.limit" class="bar">
             <div class="fill" :class="{ warn: trafficPct(s) >= 80, crit: trafficPct(s) >= 95 }" :style="{ width: trafficPct(s) + '%' }"></div>
           </div>
