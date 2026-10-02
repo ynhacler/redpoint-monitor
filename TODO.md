@@ -32,10 +32,11 @@
 - [x] GitHub Actions CI：go vet/test、Web 类型检查与构建、设计文档校验、shellcheck、交叉编译全部架构（设计 40.8.3）
 - [ ] CI 补充注释检查：revive exported 规则、eslint-plugin-jsdoc（设计 39.7）
 - [ ] `api/openapi.yaml` 契约骨架，覆盖现有接口；服务端测试校验响应与契约一致（设计 19.0.1）
-- [ ] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
-- [ ] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
+- [ ] 列表接口改为 `{"items", "next_cursor"}`，Web 与 App 同步修改（设计 19.0.2）
+- [x] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
+- [x] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
 - [ ] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）
-- [ ] `/healthz` 返回版本号（git describe）（设计 40.3.2）
+- [x] `/healthz` 返回版本号（git describe）（设计 40.3.2）
 - [x] 构建 amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4、35.2）
 
 ### A1 节点与注册（核心）
@@ -74,6 +75,7 @@
 ### A6 部署与运维
 
 - [ ] 内置 HTTPS（ACME，`--domain`）（设计 25）
+- [ ] 请求日志记录真实客户端 IP：只信任回环代理的 X-Forwarded-For（设计 24.6、26）
 - [ ] `vpsmon-server backup / restore`、`diag`（设计 25、24.10）
 
 ### A7 Agent 本地升级与发布
