@@ -130,6 +130,9 @@ export interface ServerView {
   latest?: Report
   /** 活动告警（由面板的告警引擎判定，严重在前；节点离线时只有离线告警，设计 16） */
   alerts: AlertBrief[]
+  /** 生效中的维护（不产生告警）与节点级静音（节点、分组或全部），设计 16.6 */
+  maintenance?: Silence
+  muted?: Silence
   traffic: TrafficView
 }
 
@@ -145,6 +148,34 @@ export interface AlertBrief {
   /** 当前值：百分比、离线秒数或负载倍数 */
   value: number
   fired_at: number
+  /** 已静音：照常记录，不通知，不计入“需要关注” */
+  silenced: boolean
+}
+
+/** 静音或维护（设计 16.6、18.14） */
+export interface Silence {
+  id: number
+  scope_type: 'server' | 'group' | 'rule' | 'global'
+  scope_id: string
+  kind: 'mute' | 'maintenance'
+  reason: string
+  starts_at: number
+  /** null 表示直到手动结束 */
+  ends_at: number | null
+  created_by: string
+}
+
+export async function listSilences(): Promise<Silence[]> {
+  return (await request<{ items: Silence[] }>('GET', '/silences')).items
+}
+
+/** duration 为 1h / 8h / 24h，留空表示直到手动结束；维护只能针对单个节点 */
+export function createSilence(v: { kind: Silence['kind']; scope_type: Silence['scope_type']; scope_id?: string; duration?: '' | '1h' | '8h' | '24h'; reason?: string }): Promise<Silence> {
+  return request('POST', '/silences', v)
+}
+
+export function endSilence(id: number): Promise<void> {
+  return request('DELETE', `/silences/${id}`)
 }
 
 /** 一条告警事件（设计 18.8） */

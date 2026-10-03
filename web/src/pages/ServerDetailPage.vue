@@ -11,6 +11,7 @@ import { countryName } from '../countries'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
+import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
 import { DASH, fmtBandwidth, fmtBytes, fmtPrice, fmtTime, periodNames } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
@@ -183,6 +184,9 @@ const expireDays = computed(() => {
         <template v-if="s.status === 'offline' && s.last_seen_at">，最后上报 {{ fmtTime(s.last_seen_at) }}</template>
       </div>
 
+      <!-- 静音与维护（设计 16.6） -->
+      <SilenceControls v-if="s.status !== 'pending'" :server="s" class="section-tight" @unauthorized="logout" />
+
       <!-- 概况（设计 11.1） -->
       <ServerSummary :server="liveServer ?? s" :live="live" />
 
@@ -203,7 +207,7 @@ const expireDays = computed(() => {
 
       <!-- 告警记录（设计 16） -->
       <section v-if="s.status !== 'pending'" class="section">
-        <AlertHistory :server-id="s.id" @unauthorized="logout" />
+        <AlertHistory :server-id="s.id" :version="`${s.alerts.map((a) => a.event_id).join(',')}|${s.maintenance?.id ?? ''}`" @unauthorized="logout" />
       </section>
 
       <!-- 历史曲线（设计 11.2、41.5） -->
@@ -264,6 +268,7 @@ const expireDays = computed(() => {
 </template>
 
 <style scoped>
+.section-tight { margin-bottom: var(--space-3); }
 .nav-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .actions-row { display: flex; gap: var(--space-2); }
 .back { display: inline-flex; align-items: center; gap: var(--space-1); }

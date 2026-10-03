@@ -5,12 +5,12 @@ import { computed } from 'vue'
 
 const props = defineProps<{
   /** 节点状态 */
-  status: 'online' | 'unknown' | 'offline' | 'pending'
+  status: 'online' | 'unknown' | 'offline' | 'pending' | 'maintenance'
   /** 为 true 时只显示圆点（文字放在 title 中，用于空间很小的位置） */
   dotOnly?: boolean
 }>()
 
-const labels = { online: '在线', unknown: '未知', offline: '离线', pending: '待安装' } as const
+const labels = { online: '在线', unknown: '未知', offline: '离线', pending: '待安装', maintenance: '维护中' } as const
 const label = computed(() => labels[props.status])
 </script>
 
@@ -28,6 +28,8 @@ const label = computed(() => labels[props.status])
 .unknown .dot { background: var(--warn); }
 .offline .dot { background: var(--bad); }
 .pending .dot { background: transparent; border: 2px solid var(--muted-state); }
+.maintenance .dot { background: var(--muted-state); }
+.maintenance { color: var(--text-muted); }
 .online .label { color: var(--ok); }
 .unknown .label { color: var(--warn); }
 .offline .label { color: var(--bad); }

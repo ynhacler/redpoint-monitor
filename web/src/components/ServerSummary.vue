@@ -6,6 +6,7 @@ import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtTraffic, fmtUptime } from '../format'
 import Flag from './Flag.vue'
 import StatusDot from './StatusDot.vue'
+import { displayStatus } from '../metrics'
 
 const props = defineProps<{
   /** 节点（latest 可能不存在：尚未上报或离线很久） */
@@ -58,7 +59,7 @@ const tiles = computed(() => [
           <p v-if="subtitle" class="muted small sub">{{ subtitle }}</p>
         </div>
       </div>
-      <span class="badge" :class="s.status"><StatusDot :status="s.status" /></span>
+      <span class="badge" :class="displayStatus(s)"><StatusDot :status="displayStatus(s)" /></span>
     </div>
 
     <div class="grid">

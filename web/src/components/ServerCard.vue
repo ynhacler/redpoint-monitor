@@ -7,7 +7,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
-import { cpu, fullestDisk, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
+import { cpu, displayStatus, fullestDisk, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
 import Ring from './Ring.vue'
@@ -64,7 +64,9 @@ const diskTip = computed(() =>
       <div class="title">
         <Flag :code="s.country" />
         <h2 class="name" :title="[s.name, os, s.provider, s.region].filter(Boolean).join(' · ')">{{ s.name }}</h2>
-        <StatusDot :status="s.status" dot-only />
+        <StatusDot :status="displayStatus(s)" dot-only />
+        <span v-if="s.maintenance" class="tag muted small">维护中</span>
+        <span v-else-if="s.muted" class="tag muted small" title="告警已静音">已静音</span>
       </div>
       <div v-if="live && r" class="meta num">
         <span v-if="r.cpu.temp_c" :class="tempLv" title="CPU 温度"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
@@ -140,6 +142,7 @@ const diskTip = computed(() =>
   padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
 .title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 18px; }
 .meta { display: flex; align-items: center; gap: var(--space-3); color: var(--text-muted); font-size: var(--font-md); line-height: var(--line-md); white-space: nowrap; flex: none; }
 .meta span { display: inline-flex; align-items: center; gap: 3px; }
 /* 窄卡片（网格最小列宽 320px）：右侧信息缩小一档，把空间留给名称 */
