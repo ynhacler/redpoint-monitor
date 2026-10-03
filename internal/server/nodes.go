@@ -247,9 +247,16 @@ func (s *Server) installCommand(r *http.Request, code string) installView {
 	v.Command = v.ManualCommand
 	if rel := s.latestStable(); rel != nil {
 		v.Mode, v.Release = "default", rel
-		v.Command = "curl -fsSLo agent.sh " + strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile +
+		// 已镜像时脚本与构建都从本面板下载（设计 27.5.3）；哈希仍来自已验签的清单
+		script := strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile
+		mirror := ""
+		if rel.Mirrored && s.mirrorRoot != "" {
+			script = url + "/releases/v" + rel.Version + "/" + rel.InstallerFile
+			mirror = " --mirror " + url + "/releases"
+		}
+		v.Command = "curl -fsSLo agent.sh " + script +
 			" && echo \"" + rel.InstallerSHA256 + "  agent.sh\" | sha256sum -c -" +
-			" && sudo sh agent.sh --server " + url + " --enroll " + code
+			" && sudo sh agent.sh --server " + url + " --enroll " + code + mirror
 	}
 	return v
 }

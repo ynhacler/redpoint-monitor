@@ -12,6 +12,7 @@ import { logout, state } from '../store'
 import { compareVersions } from '../versions'
 
 const latest = ref<AgentRelease | null>(null)
+const mirrorOn = ref(false)
 const tasks = ref<UpgradeTask[]>([])
 const error = ref('')
 const notice = ref('')
@@ -35,6 +36,7 @@ async function load() {
   try {
     const [rels, list] = await Promise.all([listReleases(), listUpgradeTasks()])
     latest.value = rels.items.find((r) => r.channel === 'stable') ?? null
+    mirrorOn.value = rels.mirror
     tasks.value = list.items
   } catch (e) {
     handle(e)
@@ -145,6 +147,8 @@ function name(id: number) {
     <p class="muted small">
       <template v-if="latest">官方最新稳定版 <b class="num">{{ latest.version }}</b>（签名公钥 {{ latest.key_id }}，同步于 {{ fmtDateTime(latest.synced_at) }}）。</template>
       <template v-else>尚未同步到官方版本，点击“同步官方版本”。</template>
+      <template v-if="latest?.mirrored">已镜像到本面板，节点从本面板下载。</template>
+      <template v-else-if="latest && mirrorOn">镜像已开启，同步时会一并下载全部构建。</template>
       只能升级到官方签名的更高版本；节点需启用远程升级（新安装默认启用，已安装的执行
       <code>sudo vpsmon-agent enable-remote-upgrade</code>）。
     </p>

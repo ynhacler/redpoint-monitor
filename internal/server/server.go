@@ -33,6 +33,9 @@ type Options struct {
 	NoLoginCaptcha bool
 	// NoReleaseSync 关闭自动同步官方 Agent 版本（离线 / 内网环境；仍可在 Web 中手动同步，设计 29.1）
 	NoReleaseSync bool
+	// 面板镜像（设计 27.5.3）：MirrorDir 为镜像目录（数据目录下的 releases/）；ReleaseMirror 为真时同步官方版本后一并镜像全部文件
+	MirrorDir     string
+	ReleaseMirror bool
 }
 
 type Server struct {
@@ -52,6 +55,10 @@ type Server struct {
 	releaseKeys   []release.PublicKey
 	releaseHTTP   *http.Client
 	noReleaseSync bool
+	mirrorRoot    string       // 镜像目录；为空表示不提供镜像
+	releaseMirror bool         // 同步后自动镜像
+	mirrorHTTP    *http.Client // 下载构建用，超时更长
+	mirrorCache   mirrorCache
 	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
@@ -91,7 +98,9 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		return nil, err
 	}
 	return &Server{alerts: alerts, releaseBase: OfficialReleases, releaseKeys: release.TrustedKeys(),
-		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync, store: store, web: web, log: opts.Logger, version: opts.Version,
+		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync,
+		mirrorRoot: opts.MirrorDir, releaseMirror: opts.ReleaseMirror && opts.MirrorDir != "", mirrorHTTP: &http.Client{Timeout: 10 * time.Minute},
+		store: store, web: web, log: opts.Logger, version: opts.Version,
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
@@ -174,6 +183,8 @@ func (s *Server) routes() http.Handler {
 	}
 
 	handle("GET /healthz", accessPublic, s.handleHealthz)
+	// 面板镜像：主机下载安装脚本与构建（设计 27.5.3）。内容为官方签名的公开发布文件，无需凭证
+	handle("GET /releases/{version}/{file}", accessPublic, s.handleMirror)
 
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)

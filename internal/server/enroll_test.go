@@ -411,6 +411,7 @@ func TestPermissionMatrix(t *testing.T) {
 	// 新增路由时必须同时在这里登记，否则测试失败——防止误把管理接口声明为公开。
 	want := map[string]access{
 		"GET /healthz":                                 accessPublic,
+		"GET /releases/{version}/{file}":               accessPublic,
 		"POST /api/v1/auth/login":                      accessPublic,
 		"GET /api/v1/auth/captcha":                     accessPublic,
 		"GET /api/v1/auth/me":                          accessAdmin,

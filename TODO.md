@@ -108,7 +108,7 @@
 - [x] 开发者生成正式 minisign 密钥（current D576EB518998C46F + next 9A28D500E214987E），公钥已填入 internal/release/keys.go
 - [x] v0.2.0：首个签名发布（2026-10-03）
 - [x] 面板同步并验签官方发布，安装命令改为默认命令（下载 → 校验 → 执行）（设计 27.3.1、29.1）
-- [ ] 面板镜像与离线导入（设计 27.5.3、29.1）
+- [x] 面板镜像与离线导入：--release-mirror、release import、/releases 下载（设计 27.5.3、29.1）
 - [x] 远程升级：升级任务、Agent 轮询 /agent/upgrade、特权 updater（systemd path unit）、状态上报、节点详情升级按钮（设计 29.13、29.14）
 - [x] 远程升级批量界面：“Agent 升级”页，按分组 / 全选批量升级、最近任务（设计 29.1、29.14）
 - [ ] v0.3.0 发布后在 jp-store 实测：已安装节点先 `sudo vpsmon-agent enable-remote-upgrade`，再从面板升级（设计 40.4.2）

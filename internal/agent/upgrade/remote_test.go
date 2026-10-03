@@ -21,6 +21,7 @@ type fakePanel struct {
 	mu       sync.Mutex
 	task     map[string]any // GET 的响应；nil 表示没有任务
 	statuses []string
+	mirror   map[string][]byte // 面板镜像 /releases/... 提供的文件
 	srv      *httptest.Server
 }
 
@@ -29,6 +30,10 @@ func newFakePanel(t *testing.T) *fakePanel {
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
+		if b, ok := p.mirror[r.URL.Path]; ok { // 镜像无需凭证
+			w.Write(b)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer agt_test" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -129,6 +134,30 @@ func TestRemoteUpgradeFlow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(o.StageDir, "result.json")); err == nil {
 		t.Error("结果送达后应删除 result.json")
+	}
+}
+
+// 面板已镜像：从 Agent 配置的面板地址 + mirror_path 下载；指向其他主机的路径被忽略（设计 27.5.3）。
+func TestRemoteUpgradeFromMirror(t *testing.T) {
+	f, panel, o := remoteFixture(t)
+	name := "vpsmon-agent-" + runtime.GOOS + "-" + ArchLabel()
+	panel.mirror = map[string][]byte{"/releases/v0.3.0/" + name: f.files["/v0.3.0/"+name]}
+	panel.task["mirror_path"] = "/releases"
+	o.Downloads = "http://127.0.0.1:1" // 官方地址不可达：必须从镜像下载
+	if err := CheckRemote(context.Background(), o); err != nil {
+		t.Fatalf("应从面板镜像下载：%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(o.StageDir, name)); err != nil {
+		t.Error("应暂存从镜像下载的构建")
+	}
+
+	// 协议相对路径（//evil.example）不被当作镜像，仍走官方地址（此处不可达而失败）
+	f2, panel2, o2 := remoteFixture(t)
+	_ = f2
+	panel2.task["mirror_path"] = "//evil.example/releases"
+	o2.Downloads = "http://127.0.0.1:1"
+	if err := CheckRemote(context.Background(), o2); err == nil {
+		t.Error("指向其他主机的镜像路径应被忽略")
 	}
 }
 

@@ -73,6 +73,7 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 		Version   string `json:"version"`
 		Manifest  []byte `json:"manifest"`
 		Signature string `json:"manifest_signature"`
+		Mirror    string `json:"mirror_path"` // 可选：面板镜像路径，如 /releases（设计 27.5.3）
 	}
 	if err := o.api(ctx, http.MethodGet, "/api/v1/agent/upgrade?current_version="+o.Current+"&os="+runtime.GOOS+"&arch="+ArchLabel(), nil, &task); err != nil {
 		return err
@@ -86,7 +87,7 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 	if r, ok := readResult(o.StageDir); ok && r.TaskID == task.TaskID {
 		return nil // updater 已执行，结果尚未送达面板，下一轮重试上报
 	}
-	if err := o.stage(ctx, task.TaskID, task.Version, task.Manifest, []byte(task.Signature)); err != nil {
+	if err := o.stage(ctx, task.TaskID, task.Version, task.Manifest, []byte(task.Signature), task.Mirror); err != nil {
 		o.Log("upgrade task %d failed: %v", task.TaskID, err)
 		o.status(ctx, task.TaskID, "failed", err.Error())
 		return err
@@ -97,7 +98,7 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 }
 
 // stage 校验清单并下载本机构建，全部通过后写入 request.json（最后一步，原子替换）。
-func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string, manifest, sig []byte) error {
+func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string, manifest, sig []byte, mirror string) error {
 	m, err := release.VerifyManifest(o.Keys, manifest, sig)
 	if err != nil {
 		return err
@@ -120,6 +121,11 @@ func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string,
 	dl := &Options{HTTP: o.HTTP, Out: io.Discard}
 	part := filepath.Join(o.StageDir, art.File+".part")
 	url := strings.TrimRight(o.Downloads, "/") + "/download/v" + m.Version + "/" + art.File
+	// 面板已镜像时从本面板下载：只接受以 / 开头的路径，拼在 Agent 自己配置的面板地址后面，
+	// 不会被引导到其他主机；下载内容仍按签名清单校验
+	if strings.HasPrefix(mirror, "/") && !strings.HasPrefix(mirror, "//") {
+		url = strings.TrimRight(o.Server, "/") + mirror + "/v" + m.Version + "/" + art.File
+	}
 	if err := dl.download(ctx, url, part, art.Size); err != nil {
 		os.Remove(part)
 		return err

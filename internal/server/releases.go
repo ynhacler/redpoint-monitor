@@ -38,6 +38,7 @@ type agentRelease struct {
 	SyncedAt        int64              `json:"synced_at"`
 	Notes           string             `json:"notes,omitempty"`
 	Artifacts       []release.Artifact `json:"artifacts"`
+	Mirrored        bool               `json:"mirrored"` // 全部文件已校验并保存在本面板（设计 27.5.3）
 }
 
 // SaveRelease 记录一个已验签的版本；已存在时更新同步时间（清单内容相同才会验签通过）。
@@ -52,7 +53,7 @@ func (s *Store) SaveRelease(m *release.Manifest, manifest, sig []byte, keyID str
 // ListReleases 返回已同步的版本，最新在前（按语义化版本排序）。
 // 每次读取时重新验签清单原文：数据库被改动的版本不会被使用。
 func (s *Store) ListReleases(keys []release.PublicKey) ([]agentRelease, error) {
-	rows, err := s.DB.Query(`SELECT manifest, signature, key_id, synced_at FROM agent_releases`)
+	rows, err := s.DB.Query(`SELECT manifest, signature, key_id, synced_at, mirrored_at FROM agent_releases`)
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +62,8 @@ func (s *Store) ListReleases(keys []release.PublicKey) ([]agentRelease, error) {
 	for rows.Next() {
 		var data []byte
 		var sig, keyID string
-		var synced int64
-		if err := rows.Scan(&data, &sig, &keyID, &synced); err != nil {
+		var synced, mirrored int64
+		if err := rows.Scan(&data, &sig, &keyID, &synced, &mirrored); err != nil {
 			return nil, err
 		}
 		m, err := release.VerifyManifest(keys, data, []byte(sig))
@@ -71,7 +72,7 @@ func (s *Store) ListReleases(keys []release.PublicKey) ([]agentRelease, error) {
 		}
 		out = append(out, agentRelease{Version: m.Version, Channel: m.Channel, KeyID: keyID,
 			InstallerFile: m.Installer.File, InstallerSHA256: m.Installer.SHA256, ReleasedAt: m.ReleasedAt,
-			SyncedAt: synced, Notes: m.Notes, Artifacts: m.Artifacts})
+			SyncedAt: synced, Notes: m.Notes, Artifacts: m.Artifacts, Mirrored: mirrored > 0})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -124,15 +125,14 @@ func (s *Server) syncReleases(ctx context.Context) (*release.Manifest, error) {
 		// 【安全】验签失败的版本不会被记录，也不会出现在安装命令中（设计 27.5.5）
 		return nil, fmt.Errorf("官方版本验签失败：%w", err)
 	}
-	parsed, _ := release.ParseSignature(sig)
-	keyID := ""
-	for _, k := range s.releaseKeys {
-		if k.ID == parsed.KeyID {
-			keyID = k.IDHex()
-		}
-	}
-	if err := s.store.SaveRelease(m, data, sig, keyID, time.Now()); err != nil {
+	if err := s.store.SaveRelease(m, data, sig, keyIDOf(s.releaseKeys, sig), time.Now()); err != nil {
 		return nil, err
+	}
+	// --release-mirror：同时把该版本的全部文件镜像到本面板（设计 27.5.3）
+	if s.releaseMirror {
+		if err := s.mirrorRelease(ctx, m, data, sig); err != nil {
+			return m, fmt.Errorf("已同步 %s，但镜像失败：%w", m.Version, err)
+		}
 	}
 	return m, nil
 }
@@ -185,7 +185,7 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": list, "auto_sync": !s.noReleaseSync, "source": s.releaseBase})
+	writeJSON(w, map[string]any{"items": list, "auto_sync": !s.noReleaseSync, "source": s.releaseBase, "mirror": s.releaseMirror})
 }
 
 // handleSyncReleases：POST /api/v1/agent-releases/sync，admin。立即从官方地址同步并验签（设计 29.20）。
