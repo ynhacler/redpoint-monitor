@@ -33,6 +33,11 @@ const (
 	backoffMax = time.Minute
 	// authRetry：401 后停止上报，每小时用最新一份上报试探一次（凭证可能被管理员恢复）
 	authRetry = time.Hour
+	// 重启前最后一份计数（设计 1.6.14、5.5）：面板不可达期间主机重启时，旧启动的网卡计数一旦丢失，
+	// 从最后一次成功上报到重启之间的流量就再也补不回来。每个旧启动保留最后一份，不受 MaxAge 限制，
+	// 最多保留最近 3 次启动、7 天以内。
+	maxCarryBoots = 3
+	maxCarryAge   = 7 * 24 * time.Hour
 )
 
 // Status 是供 vpsmon-agent status 显示的上报状态（设计 24.5）。
@@ -51,6 +56,8 @@ type Reporter struct {
 	Client   *http.Client
 	Logf     func(format string, args ...any) // 为空时用标准 log
 	Now      func() time.Time                 // 测试中可替换
+	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
+	StatePath string
 
 	mu          sync.Mutex // 保护以下字段；发送请求时不持有锁以外的资源
 	queue       []protocol.Report
@@ -59,6 +66,8 @@ type Reporter struct {
 	authFailed  bool
 	status      Status
 	errLog      dedup
+	savedAt     time.Time // 最近一次落盘时间
+	onDisk      bool      // 落盘文件存在，队列清空后需要删除
 }
 
 func (r *Reporter) now() time.Time {
@@ -84,15 +93,46 @@ func (r *Reporter) Enqueue(rep protocol.Report) {
 		r.queue = []protocol.Report{rep}
 		return
 	}
-	r.queue = append(r.queue, rep)
-	cutoff := r.now().Add(-MaxAge).Unix()
-	drop := 0
-	for drop < len(r.queue) && (len(r.queue)-drop > MaxQueue || r.queue[drop].Timestamp < cutoff) {
-		drop++
+	r.queue = trimQueue(append(r.queue, rep), r.now())
+}
+
+// trimQueue 按缓存上限裁剪队列（设计 1.6.14），保持时间顺序：
+//
+//	普通上报      最近 MaxAge 内、最新的 MaxQueue 份
+//	旧启动的计数  当前启动（队尾一份的 boot_id）之前的每次启动保留最后一份，最多 maxCarryBoots 次、maxCarryAge 以内，
+//	              不受 MaxAge 限制：它是补齐重启前流量的唯一依据
+func trimQueue(q []protocol.Report, now time.Time) []protocol.Report {
+	if len(q) == 0 {
+		return q
 	}
-	if drop > 0 {
-		r.queue = append([]protocol.Report(nil), r.queue[drop:]...)
+	keep := make([]bool, len(q))
+	cutoff := now.Add(-MaxAge).Unix()
+	for i, n := len(q)-1, 0; i >= 0 && n < MaxQueue; i-- {
+		if q[i].Timestamp >= cutoff {
+			keep[i] = true
+			n++
+		}
 	}
+	seen := map[string]bool{q[len(q)-1].System.BootID: true}
+	carryCutoff := now.Add(-maxCarryAge).Unix()
+	for i, boots := len(q)-1, 0; i >= 0 && boots < maxCarryBoots; i-- {
+		b := q[i].System.BootID
+		if b == "" || seen[b] {
+			continue
+		}
+		seen[b] = true
+		if q[i].Timestamp >= carryCutoff {
+			keep[i] = true
+			boots++
+		}
+	}
+	out := q[:0:0]
+	for i, k := range keep {
+		if k {
+			out = append(out, q[i])
+		}
+	}
+	return out
 }
 
 // NextAttempt 返回下一次允许发送的时间；队列为空时返回零值。

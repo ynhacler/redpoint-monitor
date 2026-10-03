@@ -283,6 +283,15 @@ func run() {
 		// 10 秒超时：面板卡住时不让上报循环一直阻塞。
 		Client: &http.Client{Timeout: 10 * time.Second},
 	}
+	// 断网缓冲落盘：Agent 重启后继续补发，主机重启前的最后一份计数不丢（设计 1.6.14、5.5）
+	if *stateDir != "" {
+		r.StatePath = filepath.Join(*stateDir, "queue.json")
+		if err := r.Load(); err != nil {
+			log.Printf("discarded unreadable report queue: %v", err)
+		} else if q := r.Status().Queued; q > 0 {
+			log.Printf("restored %d unsent reports from the previous run", q)
+		}
+	}
 	// 【安全】只记录上报地址，不记录 Token（设计 24.7）。
 	log.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
 
@@ -307,9 +316,23 @@ func run() {
 		setup.WriteStatus(*stateDir, setup.Status{Version: version, Server: *server, LastAttempt: st.LastAttempt,
 			LastSuccess: st.LastSuccess, LastError: st.LastError, Queued: st.Queued})
 	}
+	// save 按需落盘；写入失败（状态目录不可写）只在原因变化时记录一次，避免刷屏
+	var saveErr string
+	save := func(force bool) {
+		err := r.Save(force)
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		}
+		if msg != "" && msg != saveErr {
+			log.Printf("save report queue: %s", msg)
+		}
+		saveErr = msg
+	}
 	// flush 发送缓存的上报，并按需要安排下一次重试
 	flush := func(ctx context.Context, force bool) {
 		r.Flush(ctx, force)
+		save(false)
 		writeStatus() // 供 vpsmon-agent status 显示最近一次上报（设计 24.5）
 		if next := r.NextAttempt(); !next.IsZero() {
 			retry.Reset(time.Until(next))
@@ -335,7 +358,10 @@ func run() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			flush(ctx, true)
 			cancel()
-			if q := r.Status().Queued; q > 0 {
+			save(true) // 未送达的（含本次补报）落盘，下次启动继续补发
+			if q := r.Status().Queued; q > 0 && r.StatePath != "" && saveErr == "" {
+				log.Printf("stopped with %d unsent reports (saved, will be sent after restart)", q)
+			} else if q > 0 {
 				log.Printf("stopped with %d unsent reports (traffic counters are cumulative and will catch up)", q)
 			} else {
 				log.Println("stopped")
