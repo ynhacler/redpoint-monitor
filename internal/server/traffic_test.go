@@ -131,3 +131,62 @@ func TestGBToBytes(t *testing.T) {
 		t.Error("单位换算错误（设计 5.8）")
 	}
 }
+
+func TestAdjustmentNow(t *testing.T) {
+	i64 := func(v int64) *int64 { return &v }
+	// 校准时：rx 600、tx 400，系数 1，sum 模式，服务商显示 1030 → 偏差 30
+	a := Adjustment{Reported: 1030, Adjustment: 30, RawRx: i64(600), RawTx: i64(400)}
+	cases := []struct {
+		name   string
+		a      Adjustment
+		mode   string
+		factor float64
+		want   int64
+	}{
+		{"设置未变", a, ModeSum, 1, 30},
+		{"之后设置系数 1.03：偏差归零，不重复修正", a, ModeSum, 1.03, 0},
+		{"之后改为仅 TX：校准时的 TX 为 400，偏差 630", a, ModeTx, 1, 630},
+		{"旧记录没有原始字节：沿用固定偏差", Adjustment{Reported: 1030, Adjustment: 30}, ModeSum, 1.03, 30},
+	}
+	for _, c := range cases {
+		if got := AdjustmentNow(c.a, c.mode, c.factor); got != c.want {
+			t.Errorf("%s：%d，应为 %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestSuggestFactor(t *testing.T) {
+	t0 := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	gb := uint64(1e9)
+	at := func(days int) time.Time { return t0.AddDate(0, 0, days) }
+	s := func(days int, raw uint64, pct int64) FactorSample {
+		return FactorSample{At: at(days), Raw: raw, Reported: int64(raw) * pct / 1000}
+	}
+	cases := []struct {
+		name    string
+		samples []FactorSample
+		current float64
+		want    float64
+		ok      bool
+	}{
+		{"稳定偏低 3%：建议 1.03", []FactorSample{s(0, 100*gb, 1030), s(5, 200*gb, 1031), s(10, 300*gb, 1029)}, 1, 1.03, true},
+		{"样本不足 3 个", []FactorSample{s(0, 100*gb, 1030), s(10, 300*gb, 1030)}, 1, 0, false},
+		{"跨度不足 7 天", []FactorSample{s(0, 100*gb, 1030), s(2, 200*gb, 1030), s(4, 300*gb, 1030)}, 1, 0, false},
+		{"同一天多次校准只算一次", []FactorSample{s(0, 100*gb, 1030), s(0, 110*gb, 1030), s(10, 300*gb, 1030)}, 1, 0, false},
+		{"比例不稳定（极差 2%）", []FactorSample{s(0, 100*gb, 1020), s(5, 200*gb, 1040), s(10, 300*gb, 1030)}, 1, 0, false},
+		{"固定差额而非比例：比例逐渐变小，不提示", []FactorSample{
+			{At: at(0), Raw: 50 * gb, Reported: 60e9}, {At: at(5), Raw: 200 * gb, Reported: 210e9}, {At: at(10), Raw: 400 * gb, Reported: 410e9}}, 1, 0, false},
+		{"统计值不足 1 GB 的样本忽略", []FactorSample{s(0, gb/2, 1500), s(1, 100*gb, 1030), s(5, 200*gb, 1030), s(10, 300*gb, 1030)}, 1, 1.03, true},
+		{"已设置相同系数：不提示", []FactorSample{s(0, 100*gb, 1030), s(5, 200*gb, 1030), s(10, 300*gb, 1030)}, 1.03, 0, false},
+		{"只看最近 5 个：早期口径不同的样本被挤出", []FactorSample{s(0, 100*gb, 1100), s(1, 100*gb, 1100),
+			s(2, 100*gb, 980), s(4, 100*gb, 980), s(6, 100*gb, 980), s(8, 100*gb, 980), s(10, 100*gb, 980)}, 1, 0.98, true},
+		{"建议值超出 0.5～2 不提示", []FactorSample{s(0, 100*gb, 2500), s(5, 200*gb, 2500), s(10, 300*gb, 2500)}, 1, 0, false},
+		{"顺序无关", []FactorSample{s(10, 300*gb, 1030), s(0, 100*gb, 1030), s(5, 200*gb, 1030)}, 1, 1.03, true},
+	}
+	for _, c := range cases {
+		got, ok := SuggestFactor(c.samples, c.current)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s：(%v, %v)，应为 (%v, %v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
