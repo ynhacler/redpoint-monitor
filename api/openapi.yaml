@@ -185,6 +185,23 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
 
+  /releases/{version}/{file}:
+    servers: [{ url: / }]
+    get:
+      tags: [agent]
+      summary: 面板镜像：下载官方发布文件（设计 27.5.3），无需凭证
+      description: |
+        只提供已完整镜像（--release-mirror 同步或 release import 导入）且仍能验签的版本中，清单列出的构建与安装脚本，
+        以及 manifest.json(.minisig)、签名的 SHA256SUMS(.minisig)、脚本的 .minisig。构建与脚本发出前核对清单中的 SHA256；
+        不一致或不在清单中的文件返回 404。注意此路径不在 /api/v1 之下。
+      security: []
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string, example: v0.3.0 } }
+        - { name: file, in: path, required: true, schema: { type: string, example: vpsmon-agent-linux-amd64 } }
+      responses:
+        '200': { description: 文件内容, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '404': { description: 版本未镜像、文件不在清单中或校验不通过 }
+
   /agent/upgrade:
     get:
       tags: [agent]
@@ -209,6 +226,7 @@ paths:
                   version: { type: string }
                   manifest: { type: string, format: byte, description: 签名清单原文（base64） }
                   manifest_signature: { type: string, description: manifest.json.minisig 原文 }
+                  mirror_path: { type: string, example: /releases, description: 可选：目标版本已镜像时，Agent 从“自己配置的面板地址 + 此路径”下载构建（设计 27.5.3） }
         '401': { $ref: '#/components/responses/Error' }
 
   /agent/upgrade/status:
@@ -378,7 +396,7 @@ paths:
       responses:
         '200':
           description: 版本列表
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string } } } } }
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string }, mirror: { type: boolean, description: 是否开启 --release-mirror } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
   /agent-releases/sync:
@@ -969,6 +987,7 @@ components:
         synced_at: { type: integer }
         notes: { type: string }
         artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
+        mirrored: { type: boolean, description: 全部文件已校验并保存在本面板（设计 27.5.3） }
 
     UpgradeTask:
       type: object

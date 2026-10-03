@@ -371,6 +371,8 @@ export interface AgentRelease {
   released_at: string
   synced_at: number
   notes?: string
+  /** 全部文件已校验并保存在本面板，安装与升级从本面板下载（设计 27.5.3） */
+  mirrored: boolean
 }
 
 /** 立即从官方地址同步并验签最新版本 */
@@ -379,7 +381,7 @@ export function syncReleases(): Promise<{ version: string; channel: string }> {
 }
 
 /** 已同步并验签的官方版本，最新在前 */
-export function listReleases(): Promise<{ items: AgentRelease[] }> {
+export function listReleases(): Promise<{ items: AgentRelease[]; auto_sync: boolean; mirror: boolean }> {
   return request('GET', '/agent-releases')
 }
 

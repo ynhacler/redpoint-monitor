@@ -119,6 +119,8 @@ onUnmounted(stop)
       <p v-if="view.install.mode === 'default' && view.install.release" class="muted small">
         在主机上以 root 执行。命令会先校验安装脚本的 SHA256（来自官方签名的 v{{ view.install.release.version }} 发布清单，
         公钥 {{ view.install.release.key_id }}，{{ fmtTime(view.install.release.synced_at) }} 同步），不一致时不会执行。
+        <template v-if="view.install.release.mirrored">脚本与程序从<b>本面板镜像</b>下载，适合访问 GitHub 不稳定的主机。</template>
+        <template v-else>脚本与程序从 GitHub 官方发布下载。</template>
       </p>
       <!-- 没有已验签的官方版本时只能手动安装（设计 27.3.3） -->
       <div v-else class="note">

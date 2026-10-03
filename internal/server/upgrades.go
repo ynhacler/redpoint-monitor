@@ -149,7 +149,8 @@ var (
 func (s *Server) releaseByVersion(version string) (*agentRelease, []byte, []byte, error) {
 	var data []byte
 	var sig string
-	err := s.store.DB.QueryRow(`SELECT manifest, signature FROM agent_releases WHERE version = ?`, version).Scan(&data, &sig)
+	var mirrored int64
+	err := s.store.DB.QueryRow(`SELECT manifest, signature, mirrored_at FROM agent_releases WHERE version = ?`, version).Scan(&data, &sig, &mirrored)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, nil, errReleaseUnknown
 	} else if err != nil {
@@ -159,7 +160,7 @@ func (s *Server) releaseByVersion(version string) (*agentRelease, []byte, []byte
 	if err != nil {
 		return nil, nil, nil, errReleaseUnknown
 	}
-	return &agentRelease{Version: m.Version, Channel: m.Channel}, data, []byte(sig), nil
+	return &agentRelease{Version: m.Version, Channel: m.Channel, Mirrored: mirrored > 0 && s.mirrorRoot != ""}, data, []byte(sig), nil
 }
 
 // currentAgentVersion 返回节点最新上报的 Agent 版本；没有上报时为空。
@@ -290,7 +291,7 @@ func (s *Server) handleAgentUpgrade(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"upgrade": false})
 		return
 	}
-	_, data, sig, err := s.releaseByVersion(t.TargetVersion)
+	rel, data, sig, err := s.releaseByVersion(t.TargetVersion)
 	if err != nil {
 		// 版本已不可用（数据库被改动或公钥轮换）：任务失败，不下发任何内容
 		s.store.SetUpgradeStatus(t.ID, sid, UpgradeFailed, "目标版本的签名清单已不可用", time.Now())
@@ -300,8 +301,13 @@ func (s *Server) handleAgentUpgrade(w http.ResponseWriter, r *http.Request) {
 	if t.Status == UpgradePending {
 		s.store.SetUpgradeStatus(t.ID, sid, UpgradeDelivered, "", time.Now())
 	}
-	writeJSON(w, map[string]any{"upgrade": true, "task_id": t.ID, "version": t.TargetVersion,
-		"manifest": data, "manifest_signature": string(sig)})
+	resp := map[string]any{"upgrade": true, "task_id": t.ID, "version": t.TargetVersion,
+		"manifest": data, "manifest_signature": string(sig)}
+	// 已镜像时让 Agent 从本面板下载（路径相对于 Agent 配置的面板地址；完整性由签名清单保证，设计 27.5.3）
+	if rel.Mirrored {
+		resp["mirror_path"] = "/releases"
+	}
+	writeJSON(w, resp)
 }
 
 // handleAgentUpgradeStatus：POST /api/v1/agent/upgrade/status，Agent Token（设计 29.12、29.20）。

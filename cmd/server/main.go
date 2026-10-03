@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -37,7 +38,8 @@ usage:
   vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
-                           [--public-url https://monitor.example.com]
+                           [--public-url https://monitor.example.com] [--release-mirror] [--no-release-sync]
+  vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
   vpsmon-server version
 `, version)
 	os.Exit(2)
@@ -74,6 +76,23 @@ func main() {
 		_ = fsx.Parse(args[1:])
 		setPassword(open(*data), *username, "password reset; all sessions of this account were signed out")
 
+	case "release":
+		// 离线导入官方发布包（设计 29.1）：验签并逐个校验后保存到镜像目录，面板运行中也可以执行
+		if len(args) == 0 || args[0] != "import" {
+			usage()
+		}
+		_ = fsx.Parse(args[1:])
+		if fsx.NArg() != 1 {
+			usage()
+		}
+		st := open(*data)
+		m, err := server.ImportRelease(context.Background(), st, filepath.Join(*data, "releases"), fsx.Arg(0), time.Now())
+		if err != nil {
+			log.Fatal("import failed: ", err)
+		}
+		fmt.Printf("imported vpsmon-agent %s (%s): signature OK, %d builds verified and mirrored\n", m.Version, m.Channel, len(m.Artifacts))
+		fmt.Println("start or keep the panel running; install commands now download from this panel")
+
 	case "add-server":
 		name := fsx.String("name", "", "server name")
 		limitGB := fsx.Int64("limit-gb", 0, "monthly traffic limit in GB (decimal), 0 = unlimited")
@@ -96,6 +115,7 @@ func main() {
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
 		noCaptcha := fsx.Bool("no-login-captcha", false, "disable the login slider captcha (design 17.4); login rate limiting stays on")
 		noReleaseSync := fsx.Bool("no-release-sync", false, "do not sync official agent releases from GitHub automatically (offline panels; manual sync in the Web UI still works)")
+		releaseMirror := fsx.Bool("release-mirror", false, "also mirror every file of synced official releases into DATA/releases and serve them at /releases (hosts that cannot reach GitHub)")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
 		_ = fsx.Parse(args)
 		level, err := logging.ParseLevel(*logLevel)
@@ -126,7 +146,8 @@ func main() {
 			log.Fatal("--public-url must start with https://")
 		}
 		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL,
-			NoLoginCaptcha: *noCaptcha, NoReleaseSync: *noReleaseSync})
+			NoLoginCaptcha: *noCaptcha, NoReleaseSync: *noReleaseSync,
+			MirrorDir: filepath.Join(*data, "releases"), ReleaseMirror: *releaseMirror})
 		if err != nil {
 			log.Fatal(err)
 		}

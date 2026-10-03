@@ -369,6 +369,9 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL
 	);
 	CREATE INDEX upgrade_tasks_server ON upgrade_tasks(server_id, id);`,
+
+	// 迁移 14：面板镜像（设计 27.5.3）。mirrored_at 非 0 表示该版本的全部文件已校验并保存在数据目录的 releases/ 下。
+	`ALTER TABLE agent_releases ADD COLUMN mirrored_at INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
