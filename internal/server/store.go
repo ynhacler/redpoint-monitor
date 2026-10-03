@@ -270,6 +270,63 @@ var migrations = []string{
 
 	// 迁移 9：服务商标称带宽（设计 27.2）。Agent 采集不到端口速率，只能手动填写
 	`ALTER TABLE servers ADD COLUMN bandwidth_mbps INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 10：告警规则与告警事件（设计 16、18.7、18.8），写入 16.1 的全局默认规则。
+	// rule_key 是同一条规则在全局 / 分组 / 节点三层中的标识，下层按 rule_key 覆盖上层（设计 16.2）。
+	`CREATE TABLE alert_rules (
+		id INTEGER PRIMARY KEY,
+		rule_key TEXT NOT NULL,
+		scope_type TEXT NOT NULL DEFAULT 'global',  -- global / group / server
+		scope_id TEXT NOT NULL DEFAULT '',          -- 分组名或节点 ID；global 时为空
+		type TEXT NOT NULL,
+		operator TEXT NOT NULL DEFAULT '>',         -- > / >=
+		threshold REAL NOT NULL,
+		recover_threshold REAL NOT NULL,            -- 低于此值恢复（回差）
+		duration_s INTEGER NOT NULL DEFAULT 0,
+		recover_duration_s INTEGER NOT NULL DEFAULT 0,
+		severity TEXT NOT NULL,                     -- info / warning / critical
+		channels TEXT NOT NULL DEFAULT '[]',        -- 空表示按级别使用默认渠道（设计 16.5）
+		repeat_interval_s INTEGER NOT NULL DEFAULT 0,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		UNIQUE (scope_type, scope_id, rule_key)
+	);
+	CREATE TABLE alert_events (
+		id INTEGER PRIMARY KEY,
+		rule_id INTEGER NOT NULL,
+		rule_key TEXT NOT NULL,
+		server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+		type TEXT NOT NULL,
+		severity TEXT NOT NULL,
+		state TEXT NOT NULL,                        -- firing / resolved（pending 只在内存中，设计 16.3）
+		value REAL NOT NULL,                        -- 触发时的值
+		threshold REAL NOT NULL,
+		message TEXT NOT NULL,
+		started_at INTEGER NOT NULL,                -- 进入 pending 的时间
+		fired_at INTEGER NOT NULL,
+		resolved_at INTEGER NOT NULL DEFAULT 0,
+		resolved_value REAL,
+		last_notified_at INTEGER NOT NULL DEFAULT 0,
+		notify_count INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX alert_events_server ON alert_events(server_id, id);
+	CREATE INDEX alert_events_state ON alert_events(state, id);
+	CREATE INDEX alert_events_fired ON alert_events(fired_at);
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('offline',          'offline',          '>',  120, 30,  0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
+		('cpu',              'cpu',              '>',  90,  80,  300, 120, 'warning',  0,    1, unixepoch(), unixepoch()),
+		('memory',           'memory',           '>',  90,  85,  300, 120, 'warning',  0,    1, unixepoch(), unixepoch()),
+		('disk',             'disk',             '>',  85,  80,  0,   0,   'warning',  0,    1, unixepoch(), unixepoch()),
+		('disk_critical',    'disk',             '>',  95,  90,  0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
+		('swap',             'swap',             '>',  50,  40,  600, 0,   'warning',  0,    0, unixepoch(), unixepoch()),
+		('load',             'load',             '>',  2,   1,   600, 0,   'warning',  0,    0, unixepoch(), unixepoch()),
+		('traffic_80',       'traffic',          '>=', 80,  80,  0,   0,   'info',     0,    1, unixepoch(), unixepoch()),
+		('traffic_90',       'traffic',          '>=', 90,  90,  0,   0,   'info',     0,    1, unixepoch(), unixepoch()),
+		('traffic_95',       'traffic',          '>=', 95,  95,  0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
+		('traffic_100',      'traffic',          '>=', 100, 100, 0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
+		('traffic_forecast', 'traffic_forecast', '>',  100, 100, 0,   0,   'info',     0,    1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

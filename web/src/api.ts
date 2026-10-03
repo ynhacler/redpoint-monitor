@@ -128,7 +128,41 @@ export interface ServerView {
   last_seen_at: number
   /** 收到首次上报之前不存在 */
   latest?: Report
+  /** 活动告警（由面板的告警引擎判定，严重在前；节点离线时只有离线告警，设计 16） */
+  alerts: AlertBrief[]
   traffic: TrafficView
+}
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+/** 节点当前的一条活动告警 */
+export interface AlertBrief {
+  event_id: number
+  rule_key: string
+  type: string
+  severity: AlertSeverity
+  message: string
+  /** 当前值：百分比、离线秒数或负载倍数 */
+  value: number
+  fired_at: number
+}
+
+/** 一条告警事件（设计 18.8） */
+export interface AlertEvent {
+  id: number
+  rule_key: string
+  server_id: number
+  server_name: string
+  type: string
+  severity: AlertSeverity
+  state: 'firing' | 'resolved'
+  value: number
+  threshold: number
+  message: string
+  started_at: number
+  fired_at: number
+  resolved_at?: number
+  resolved_value?: number
 }
 
 /** decimal：1 GB = 10⁹ 字节；binary：1 GiB = 2³⁰ 字节（设计 5.8） */
@@ -361,6 +395,13 @@ export async function getTrafficDaily(id: number, days = 30): Promise<TrafficDay
 /** 手动校准本周期已用流量（设计 5.7）：usedGB 按节点的单位口径，返回校准后的本周期流量 */
 export function calibrateTraffic(id: number, usedGB: number, note = ''): Promise<TrafficView> {
   return request('POST', `/servers/${id}/traffic/calibrate`, { used_gb: usedGB, note })
+}
+
+/** 告警事件，按时间倒序（设计 19.9）；state 默认 active（正在告警） */
+export function listAlerts(q: { state?: 'active' | 'resolved' | 'all'; server_id?: number; cursor?: string; limit?: number }): Promise<{ items: AlertEvent[]; next_cursor: string }> {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') qs.set(k, String(v))
+  return request('GET', `/alerts?${qs}`)
 }
 
 /** 一条审计记录（设计 24.8）；details 已脱敏 */

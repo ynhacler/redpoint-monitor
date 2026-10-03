@@ -42,6 +42,7 @@ type Server struct {
 	enrollLimit *enrollLimiter
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
+	alerts      *alertEngine   // 告警引擎（设计 16.7）
 	routeTable  []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
@@ -76,7 +77,11 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	return &Server{store: store, web: web, log: opts.Logger, version: opts.Version,
+	alerts, err := newAlertEngine(store, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return &Server{alerts: alerts, store: store, web: web, log: opts.Logger, version: opts.Version,
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
@@ -87,6 +92,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 func (s *Server) Run(ctx context.Context, listen string) error {
 	go s.flushLoop(ctx)
 	go s.runTask(ctx, "maintenance", s.maintenance)
+	go s.runTask(ctx, "alerts", s.alertLoop)
 
 	srv := &http.Server{
 		Addr:              listen,
@@ -171,6 +177,8 @@ func (s *Server) routes() http.Handler {
 
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
+	handle("GET /api/v1/alerts", accessAdmin, s.handleAlerts)
+	handle("GET /api/v1/alert-rules", accessAdmin, s.handleAlertRules)
 	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
 	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
@@ -442,6 +450,11 @@ func (s *Server) maintenance(ctx context.Context) {
 			if err := s.store.PruneSessions(now); err != nil {
 				s.log.Error("session prune failed", "component", "auth", "err", err)
 			}
+			if n, err := s.store.PruneAlertEvents(now); err != nil {
+				s.log.Error("alert prune failed", "component", "alert", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired alert events deleted", "component", "alert", "rows", n)
+			}
 			if n, err := s.store.PruneAudit(now); err != nil {
 				s.log.Error("audit prune failed", "component", "audit", "err", err)
 			} else if n > 0 {
@@ -471,6 +484,7 @@ type serverView struct {
 	Status  string           `json:"status"` // online / unknown / offline / pending（设计 22、27.7）
 	Latest  *protocol.Report `json:"latest,omitempty"`
 	Traffic trafficView      `json:"traffic"`
+	Alerts  []alertBrief     `json:"alerts"` // 活动告警，严重在前；“需要关注”据此判断（设计 9、16）
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
@@ -527,6 +541,7 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 		return v, err
 	}
 	v.Traffic = t
+	v.Alerts = s.alerts.firingFor(row.ID)
 	return v, nil
 }
 

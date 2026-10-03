@@ -1,7 +1,7 @@
 // 从节点数据派生展示用的指标与健康判断，总览、列表、详情共用，保证同一节点在各处的结论一致。
-import type { DiskInfo, DiskIO, ServerView } from './api'
+import type { AlertBrief, DiskInfo, DiskIO, ServerView } from './api'
 
-/** 关注阈值：与告警默认值一致（设计 16.1），告警引擎完成后改为读取规则（TODO(A5)） */
+/** 环形图配色用的阈值，与告警默认值一致（设计 16.1）；“需要关注”以服务端告警为准（见 issues） */
 export const thresholds = { cpu: 90, mem: 90, disk: 85, diskBad: 95, traffic: 80, trafficBad: 95 }
 
 /**
@@ -36,24 +36,33 @@ export const trafficPct = (s: ServerView) =>
 /** 离线或未知时不展示实时指标：旧数值看起来像实时数据，会误导（设计 43.6） */
 export const isLive = (s: ServerView) => !!s.latest && (s.status === 'online' || s.status === 'unknown')
 
-/** 需要关注的原因，按严重程度排序；空数组表示正常（设计 9 “需要关注”） */
+/** 告警类型的简短名称，用于卡片与列表上的标签 */
+function alertLabel(a: AlertBrief): string {
+  const pct = `${Math.round(a.value)}%`
+  switch (a.type) {
+    case 'cpu': return `CPU ${pct}`
+    case 'memory': return `内存 ${pct}`
+    case 'disk': return `磁盘 ${pct}`
+    case 'swap': return `Swap ${pct}`
+    case 'load': return `负载 ${a.value.toFixed(1)}×`
+    case 'traffic': return `流量 ${pct}`
+    case 'traffic_forecast': return '流量预计超额'
+    default: return a.message
+  }
+}
+
+/**
+ * 需要关注的原因，严重在前；空数组表示正常（设计 9 “需要关注”）。
+ * 资源与流量问题来自面板的告警引擎（阈值、持续时间、回差都在服务端，设计 16），Web 与 App 结论一致；
+ * 离线、上报延迟按在线状态即时显示，不等离线告警的 120 秒。
+ */
 export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[] {
   const out: { level: 'bad' | 'warn'; text: string }[] = []
   if (s.status === 'offline') out.push({ level: 'bad', text: s.last_seen_at ? '离线' : '尚未上报' })
   if (s.status === 'unknown') out.push({ level: 'warn', text: '上报延迟' })
-  if (isLive(s)) {
-    const c = cpu(s) ?? 0
-    const m = mem(s) ?? 0
-    const d = fullestDisk(s)
-    if (c >= thresholds.cpu) out.push({ level: 'warn', text: `CPU ${Math.round(c)}%` })
-    if (m >= thresholds.mem) out.push({ level: 'warn', text: `内存 ${Math.round(m)}%` })
-    if (d && d.usage >= thresholds.disk) {
-      out.push({ level: d.usage >= thresholds.diskBad ? 'bad' : 'warn', text: `磁盘 ${d.mount} ${Math.round(d.usage)}%` })
-    }
-  }
-  const t = trafficPct(s)
-  if (t != null && t >= thresholds.traffic) {
-    out.push({ level: t >= thresholds.trafficBad ? 'bad' : 'warn', text: `流量 ${Math.round(t)}%` })
+  for (const a of s.alerts ?? []) {
+    if (a.type === 'offline') continue // 已由在线状态表示
+    out.push({ level: a.severity === 'critical' ? 'bad' : 'warn', text: alertLabel(a) })
   }
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'bad' ? -1 : 1))
 }
