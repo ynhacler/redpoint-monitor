@@ -78,7 +78,8 @@ const icons = {
         <div><b>{{ r.conns?.udp ?? '—' }}</b><span><i style="background: var(--series-2)" />UDP</span></div>
         <div><b>{{ r.processes?.total ?? '—' }}</b><span><i style="background: var(--ok)" />进程</span></div>
       </div>
-      <div v-if="r.conns || r.processes" class="muted small num foot">
+      <div v-if="!r.conns && !r.processes" class="muted small foot">升级 Agent 后显示</div>
+      <div v-else class="muted small num foot">
         <template v-if="r.conns">TIME_WAIT {{ r.conns.time_wait }}</template>
         <template v-if="r.conns && r.processes"> · </template>
         <template v-if="r.processes">运行 {{ r.processes.running }}</template>
