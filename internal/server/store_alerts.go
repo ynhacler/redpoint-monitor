@@ -151,3 +151,63 @@ func cursorOf(id int64) string {
 	}
 	return strconv.FormatInt(id, 10)
 }
+
+// errNoRule 表示规则不存在。
+var errNoRule = errorf(CodeNotFound, "规则不存在或已删除")
+
+// errRuleExists 表示同一层级、同一对象已有同名覆盖规则。
+var errRuleExists = errorf(CodeConflict, "该分组或节点已有这条规则的覆盖，请直接修改")
+
+// GetAlertRule 按 ID 读取规则。
+func (s *Store) GetAlertRule(id int64) (*AlertRule, error) {
+	var r AlertRule
+	err := s.DB.QueryRow(`SELECT `+alertRuleColumns+` FROM alert_rules WHERE id = ?`, id).Scan(&r.ID, &r.RuleKey,
+		&r.ScopeType, &r.ScopeID, &r.Type, &r.Operator, &r.Threshold, &r.RecoverThreshold, &r.DurationS,
+		&r.RecoverDurationS, &r.Severity, &r.RepeatIntervalS, &r.Enabled)
+	if err == sql.ErrNoRows {
+		return nil, errNoRule
+	}
+	return &r, err
+}
+
+// UpdateAlertRule 修改规则的可编辑字段；类型、rule_key、层级不可改。
+func (s *Store) UpdateAlertRule(r AlertRule, now time.Time) error {
+	res, err := s.DB.Exec(`UPDATE alert_rules SET threshold = ?, recover_threshold = ?, duration_s = ?, recover_duration_s = ?,
+		severity = ?, repeat_interval_s = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+		r.Threshold, r.RecoverThreshold, r.DurationS, r.RecoverDurationS, r.Severity, r.RepeatIntervalS, r.Enabled, now.Unix(), r.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errNoRule
+	}
+	return nil
+}
+
+// CreateAlertRule 新增分组或节点层的覆盖规则，返回 ID。
+func (s *Store) CreateAlertRule(r AlertRule, now time.Time) (int64, error) {
+	res, err := s.DB.Exec(`INSERT INTO alert_rules (rule_key, scope_type, scope_id, type, operator, threshold, recover_threshold,
+		duration_s, recover_duration_s, severity, repeat_interval_s, enabled, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		r.RuleKey, r.ScopeType, r.ScopeID, r.Type, r.Operator, r.Threshold, r.RecoverThreshold, r.DurationS,
+		r.RecoverDurationS, r.Severity, r.RepeatIntervalS, r.Enabled, now.Unix(), now.Unix())
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return 0, errRuleExists
+		}
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// DeleteAlertRule 删除覆盖规则；全局规则不能删除（只能关闭）。
+func (s *Store) DeleteAlertRule(id int64) error {
+	res, err := s.DB.Exec(`DELETE FROM alert_rules WHERE id = ? AND scope_type <> 'global'`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errNoRule
+	}
+	return nil
+}
