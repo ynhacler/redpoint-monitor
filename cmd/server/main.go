@@ -95,6 +95,7 @@ func main() {
 		logFormat := fsx.String("log-format", "json", "log format: json or text (design 24.3)")
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
 		noCaptcha := fsx.Bool("no-login-captcha", false, "disable the login slider captcha (design 17.4); login rate limiting stays on")
+		noReleaseSync := fsx.Bool("no-release-sync", false, "do not sync official agent releases from GitHub automatically (offline panels; manual sync in the Web UI still works)")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
 		_ = fsx.Parse(args)
 		level, err := logging.ParseLevel(*logLevel)
@@ -125,7 +126,7 @@ func main() {
 			log.Fatal("--public-url must start with https://")
 		}
 		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL,
-			NoLoginCaptcha: *noCaptcha})
+			NoLoginCaptcha: *noCaptcha, NoReleaseSync: *noReleaseSync})
 		if err != nil {
 			log.Fatal(err)
 		}

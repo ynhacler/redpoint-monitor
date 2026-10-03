@@ -427,6 +427,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/alert-rules/preview":             accessAdmin,
 		"PUT /api/v1/alert-rules/{id}":                 accessAdmin,
 		"DELETE /api/v1/alert-rules/{id}":              accessAdmin,
+		"GET /api/v1/agent-releases":                   accessAdmin,
+		"POST /api/v1/agent-releases/sync":             accessAdmin,
 		"GET /api/v1/silences":                         accessAdmin,
 		"POST /api/v1/silences":                        accessAdmin,
 		"DELETE /api/v1/silences/{id}":                 accessAdmin,

@@ -342,9 +342,31 @@ export interface CreateServerInput {
 /** 安装命令（设计 27.3）。没有已验签的官方版本时 mode 为 manual（设计 27.3.1）。 */
 export interface InstallCommand {
   mode: 'default' | 'manual'
+  /** default：下载 → 按已验签的哈希校验 → 执行；manual：二进制已在主机上时的注册命令 */
   command: string
+  /** 手动方式（设计 27.3.3），两种模式都提供 */
+  manual_command: string
   server: string
-  release: unknown | null
+  /** 生成默认命令所用的已验签官方版本；未同步时为 null */
+  release: AgentRelease | null
+}
+
+/** 已同步并验签的官方 Agent 版本（设计 29.1） */
+export interface AgentRelease {
+  version: string
+  channel: 'stable' | 'beta'
+  /** 签名所用官方公钥的 ID */
+  key_id: string
+  installer_file: string
+  installer_sha256: string
+  released_at: string
+  synced_at: number
+  notes?: string
+}
+
+/** 立即从官方地址同步并验签最新版本 */
+export function syncReleases(): Promise<{ version: string; channel: string }> {
+  return request('POST', '/agent-releases/sync')
 }
 
 /** 注册码与安装命令。enroll_code 只在新建与重新生成时返回一次（设计 19.11）。 */

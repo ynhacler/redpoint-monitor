@@ -321,6 +321,25 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /agent-releases:
+    get:
+      tags: [servers]
+      summary: 已同步并验签的官方 Agent 版本，最新在前（设计 29.1、29.20）
+      responses:
+        '200':
+          description: 版本列表
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /agent-releases/sync:
+    post:
+      tags: [servers]
+      summary: 立即从官方发布地址同步最新版本并验签；验签失败的版本不会被记录
+      responses:
+        '200': { description: 同步到的版本, content: { application/json: { schema: { type: object, properties: { version: { type: string }, channel: { type: string } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+
   /silences:
     get:
       tags: [alerts]
@@ -827,11 +846,26 @@ components:
           type: string
           enum: [default, manual]
           description: 面板尚未同步并验签任何官方版本时只有 manual（设计 27.3.1）
-        command: { type: string, description: '不使用管道执行（设计 27.3）' }
+        command: { type: string, description: 'default：下载按版本固定的脚本 → 按已验签清单中的 SHA256 校验 → 执行；不使用管道（设计 27.3.1）' }
+        manual_command: { type: string, description: 程序已在主机上时的注册命令（设计 27.3.3），两种模式都提供 }
         server: { type: string, description: 写进命令的面板对外地址 }
         release:
-          type: ['object', 'null']
-          description: 已验签的官方版本；TODO(A7)
+          oneOf: [{ $ref: '#/components/schemas/AgentRelease' }, { type: 'null' }]
+          description: 生成默认命令所用的已验签官方正式版
+
+    AgentRelease:
+      type: object
+      description: 已同步并验签的官方 Agent 版本（设计 29.1）；每次读取都重新验签清单原文
+      properties:
+        version: { type: string }
+        channel: { type: string, enum: [stable, beta] }
+        key_id: { type: string, description: 签名所用官方公钥的 ID }
+        installer_file: { type: string }
+        installer_sha256: { type: string }
+        released_at: { type: string }
+        synced_at: { type: integer }
+        notes: { type: string }
+        artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
 
     EnrollCodeView:
       type: object

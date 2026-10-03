@@ -200,9 +200,11 @@ type installView struct {
 	// 面板尚未同步并验签任何官方版本时只提供 manual（设计 27.3.1）。
 	Mode    string `json:"mode"`
 	Command string `json:"command"`
-	// Release 是已验签的官方版本信息；未同步时为 null。TODO(A7): 版本同步与验签后填写（设计 29.1）。
-	Release *struct{} `json:"release"`
-	Server  string    `json:"server"` // 写进命令的面板地址
+	// ManualCommand 是手动方式的最后一步（二进制已在主机上时，设计 27.3.3）；两种模式都提供
+	ManualCommand string `json:"manual_command"`
+	// Release 是生成默认命令所用的已验签官方版本；未同步时为 null（设计 29.1）
+	Release *agentRelease `json:"release"`
+	Server  string        `json:"server"` // 写进命令的面板地址
 }
 
 // enrollCodeView 是注册码与安装命令的响应（新建节点、重新生成时返回明文，其余时候只返回提示）。
@@ -233,14 +235,23 @@ func (s *Server) panelURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// installCommand 生成安装命令。code 为明文注册码或脱敏提示。
+// installCommand 生成安装命令（设计 27.3.1）。code 为明文注册码或脱敏提示。
 //
-// 目前没有已验签的官方版本，按设计 27.3.1 只提供手动方式的最后一步（27.3.3）：
-// 二进制需已安装在主机上。【安全】不生成 curl | sh，也不由面板分发二进制（设计 27.3、CLAUDE.md 约束 2、9）。
+// 有已验签的官方正式版时生成默认命令：下载按版本固定的安装脚本 → 按已验签清单中的 SHA256 校验 → 执行。
+// 哈希不一致时 sha256sum -c 失败，后面的命令不会执行。没有已验签版本时只提供手动方式（设计 27.3.3）。
+// 【安全】不生成 curl | sh，也不由面板分发二进制（设计 27.3、CLAUDE.md 约束 2、9）。
 func (s *Server) installCommand(r *http.Request, code string) installView {
 	url := s.panelURL(r)
-	return installView{Mode: "manual", Server: url,
-		Command: "sudo vpsmon-agent install --server " + url + " --enroll " + code}
+	v := installView{Mode: "manual", Server: url,
+		ManualCommand: "sudo vpsmon-agent install --server " + url + " --enroll " + code}
+	v.Command = v.ManualCommand
+	if rel := s.latestStable(); rel != nil {
+		v.Mode, v.Release = "default", rel
+		v.Command = "curl -fsSLo agent.sh " + strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile +
+			" && echo \"" + rel.InstallerSHA256 + "  agent.sh\" | sha256sum -c -" +
+			" && sudo sh agent.sh --server " + url + " --enroll " + code
+	}
+	return v
 }
 
 // handleCreateServer：POST /api/v1/servers，admin。新建“待安装”节点并生成注册码（设计 19.11、27.2）。

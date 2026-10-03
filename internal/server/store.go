@@ -341,6 +341,20 @@ var migrations = []string{
 		created_at INTEGER NOT NULL
 	);
 	CREATE INDEX silences_ends ON silences(ends_at);`,
+
+	// 迁移 12：已同步并验签的官方 Agent 版本（设计 29.1）。只保存验签通过的清单原文与签名，
+	// 安装命令中的脚本哈希、可下载的构建都来自这里；面板不能修改清单内容（签名覆盖原始字节）。
+	`CREATE TABLE agent_releases (
+		version TEXT PRIMARY KEY,           -- 不带 v，如 0.2.0
+		channel TEXT NOT NULL,              -- stable / beta
+		manifest BLOB NOT NULL,             -- 清单原文（已验签）
+		signature TEXT NOT NULL,            -- manifest.json.minisig
+		key_id TEXT NOT NULL,               -- 签名所用官方公钥的 ID
+		installer_file TEXT NOT NULL,
+		installer_sha256 TEXT NOT NULL,
+		released_at TEXT NOT NULL,
+		synced_at INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {
