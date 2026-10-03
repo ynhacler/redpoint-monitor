@@ -32,6 +32,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -227,6 +228,9 @@ func cmdUninstall() int {
 	return 0
 }
 
+// agentMemoryLimit 是 Go 运行时的软内存上限（只约束堆与运行时内存，不含程序代码段）。
+const agentMemoryLimit = 20 << 20
+
 // run 前台运行：定时采集并上报，直到收到 SIGTERM / SIGINT。
 func run() {
 	server := flag.String("server", "", "server base URL, e.g. https://monitor.example.com")
@@ -243,6 +247,12 @@ func run() {
 	if *showVersion {
 		fmt.Println(version)
 		return
+	}
+
+	// 软内存上限（设计 4.2：常驻 10～30 MB）。平时堆只有几 MB；断网积压后补发等短时高峰过后，
+	// 接近上限时 GC 会更积极地回收并归还内存，常驻内存不会停在高峰值。可用 GOMEMLIMIT 环境变量覆盖。
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(agentMemoryLimit)
 	}
 
 	// 配置错误立即退出（设计 43.5）：启动后静默不上报，比让 systemd 显示失败更难发现。
