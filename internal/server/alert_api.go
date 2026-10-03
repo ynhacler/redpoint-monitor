@@ -346,6 +346,7 @@ func (s *Server) handlePreviewAlertRule(w http.ResponseWriter, r *http.Request) 
 		}
 		var eff *AlertRule
 		for _, er := range EffectiveRules(rules, row.ID, row.Group) {
+			er = ruleForInterval(er, reportInterval(row))
 			if er.RuleKey == cand.RuleKey {
 				e := er
 				eff = &e

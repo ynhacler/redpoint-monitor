@@ -41,6 +41,7 @@ type createServerBody struct {
 	Region           string   `json:"region"`
 	Country          string   `json:"country"`           // ISO 3166-1 两位代码，大小写不敏感
 	BandwidthMbps    *int     `json:"bandwidth_mbps"`    // 标称带宽 Mbps；空或 0 表示未填
+	ReportIntervalS  *int     `json:"report_interval_s"` // 采样间隔秒数：5 / 10 / 15 / 30 / 60；空或 0 表示默认 10 秒
 	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 按 traffic_unit 口径的 GB / GiB；空或 0 表示不限
 	TrafficUnit      string   `json:"traffic_unit"`      // decimal（默认）/ binary（设计 5.8）
 	TrafficFactor    *float64 `json:"traffic_factor"`    // 统计系数 0.5～2，默认 1（设计 5.7）
@@ -140,6 +141,13 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		in.Factor = *b.TrafficFactor
 		if in.Factor < 0.5 || in.Factor > 2 || math.IsNaN(in.Factor) {
 			bad("traffic_factor", "统计系数应在 0.5～2 之间")
+		}
+	}
+	if b.ReportIntervalS != nil && *b.ReportIntervalS != 0 {
+		if !ValidReportInterval(*b.ReportIntervalS) {
+			bad("report_interval_s", "采样间隔只能是 5、10、15、30 或 60 秒")
+		} else {
+			in.ReportIntervalS = *b.ReportIntervalS
 		}
 	}
 	in.ResetDay = 1
@@ -356,6 +364,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	s.forgetInterval(id) // 写库之后再清缓存：采样间隔可能已修改，下一份上报重新读取
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.update", TargetType: "server", TargetID: id,
 		Success: true, Details: map[string]any{"name": in.Name}})
 	s.handleGetServer(w, r)
@@ -374,6 +383,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	s.forgetInterval(id)
 	name, err := s.store.DeleteServer(id)
 	if errors.Is(err, errNoServer) {
 		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))

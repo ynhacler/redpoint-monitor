@@ -129,9 +129,9 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 const pts = computed(() => history.value?.items ?? [])
 const coarse = computed(() => (history.value?.resolution ?? 10) > 10) // 聚合数据才有“峰值”
 // 相邻两点间隔超过 3 个粒度视为没有数据（面板或 Agent 停机），插入 null 断开曲线，
-// 否则图表会用直线把缺口连起来，看起来像真实数据
+// 否则图表会用直线把缺口连起来，看起来像真实数据。原始粒度按节点的采样间隔计（设计 4.2）
 const line = (name: string, f: (p: (typeof pts.value)[number]) => number | null): Series => {
-  const res = history.value?.resolution ?? 10
+  const res = Math.max(history.value?.resolution ?? 10, s.value?.report_interval_s || 10)
   const data: Series['data'] = []
   pts.value.forEach((p, i) => {
     const prev = pts.value[i - 1]

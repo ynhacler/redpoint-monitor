@@ -210,6 +210,7 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 		in := s.alertInputFor(row, snaps, now)
 
 		for _, r := range EffectiveRules(rules, row.ID, row.Group) {
+			r = ruleForInterval(r, reportInterval(row))
 			k := alertKey{row.ID, r.RuleKey}
 			seen[k] = true
 			if r.Type == AlertOffline && !hasSnap && now.Sub(e.startedAt) < alertStartupGrace {
@@ -270,7 +271,7 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		last = time.Unix(row.EnrolledAt, 0) // 注册后从未上报：从注册时间算起
 	}
 	in := alertInput{OfflineFor: now.Sub(last)}
-	if hasSnap && in.OfflineFor <= unknownWithin {
+	if _, unknown := statusWindows(reportInterval(row)); hasSnap && in.OfflineFor <= unknown {
 		rep := sn.Report
 		in.Report = &rep
 		in.ClockSkew = sn.ClockSkew

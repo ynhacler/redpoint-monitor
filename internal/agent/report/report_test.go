@@ -24,6 +24,7 @@ type fakePanel struct {
 	headers  map[int]string   // 状态码 → Retry-After
 	date     func() time.Time // 响应的 Date 头；与 Reporter 使用同一个假时钟，避免误报时钟偏差
 	sentAt   []int64
+	interval string // X-Report-Interval 响应头
 	gzip     string // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
 	encoded  []string
 }
@@ -45,6 +46,9 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.encoded = append(p.encoded, enc)
 	if p.gzip == "accept" {
 		w.Header().Set("Accept-Encoding", "gzip")
+	}
+	if p.interval != "" {
+		w.Header().Set("X-Report-Interval", p.interval)
 	}
 	if enc == "gzip" && p.gzip != "accept" {
 		w.WriteHeader(http.StatusUnsupportedMediaType)
@@ -310,6 +314,36 @@ func TestAcceptsGzip(t *testing.T) {
 	for v, want := range map[string]bool{"gzip": true, "br, GZIP;q=0.5": true, "identity": false, "": false, "x-gzip2": false} {
 		if got := acceptsGzip([]string{v}); got != want {
 			t.Errorf("acceptsGzip(%q) = %v", v, got)
+		}
+	}
+}
+
+// 面板按节点下发采样间隔（设计 4.2、6.1）：只接受 5～60 秒，范围外或格式错误时保持当前值（设计 1.6.8 受限配置）。
+func TestPanelInterval(t *testing.T) {
+	p := &fakePanel{}
+	r, _, _ := newReporter(t, p)
+	send := func(h string) time.Duration {
+		p.interval = h
+		r.Enqueue(rep(0))
+		r.Flush(context.Background(), false)
+		return r.Interval()
+	}
+	if got := send(""); got != 0 {
+		t.Errorf("旧版面板不下发：%s", got)
+	}
+	for _, c := range []struct {
+		h    string
+		want time.Duration
+	}{
+		{"30", 30 * time.Second},
+		{"5", 5 * time.Second},
+		{"1", 5 * time.Second},   // 低于下限：忽略
+		{"300", 5 * time.Second}, // 高于上限（超过 watchdog 的一半）：忽略
+		{"abc", 5 * time.Second}, // 格式错误：忽略
+		{"60", 60 * time.Second},
+	} {
+		if got := send(c.h); got != c.want {
+			t.Errorf("X-Report-Interval: %s → %s，应为 %s", c.h, got, c.want)
 		}
 	}
 }

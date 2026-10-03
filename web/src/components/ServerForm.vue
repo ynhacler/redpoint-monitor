@@ -45,6 +45,7 @@ const f = reactive({
   price: sv?.price_cents ? (sv.price_cents / 100).toFixed(2) : '', currency: sv?.currency || 'USD',
   billing_period: sv?.billing_period ?? '', expire_date: sv?.expire_date ?? '',
   enroll_ttl: '24h', verify_mode: sv?.verify_mode ?? 'warn',
+  report_interval_s: String(sv?.report_interval_s || 10),
 })
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
@@ -101,6 +102,7 @@ function buildInput(): CreateServerInput {
     region: text(f.region),
     country: f.country || undefined,
     bandwidth_mbps: num(f.bandwidth_mbps),
+    report_interval_s: num(f.report_interval_s),
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_unit: f.traffic_unit as TrafficUnit,
@@ -227,6 +229,14 @@ async function remove() {
         <label>分组
           <input v-model="f.group" placeholder="如 香港、落地" />
           <small v-if="fieldErrors.group" class="err">{{ fieldErrors.group }}</small>
+        </label>
+        <!-- 采样间隔（设计 4.2、6.1）：随上报响应下发，Agent 下一轮即生效；间隔越长，Agent 自身的流量与 CPU 越少 -->
+        <label>采样间隔
+          <select v-model="f.report_interval_s">
+            <option v-for="s in [5, 10, 15, 30, 60]" :key="s" :value="String(s)">{{ s }} 秒{{ s === 10 ? '（默认）' : '' }}</option>
+          </select>
+          <small v-if="fieldErrors.report_interval_s" class="err">{{ fieldErrors.report_interval_s }}</small>
+          <small v-else class="muted">间隔越长越省流量；离线判定随之放宽</small>
         </label>
         <label class="wide">备注
           <input v-model="f.note" />

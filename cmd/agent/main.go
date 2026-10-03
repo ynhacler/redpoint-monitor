@@ -391,6 +391,16 @@ func run() {
 		}
 	}
 
+	// 采样间隔：启动时用 --interval，之后以面板按节点下发的为准（设计 4.2、6.1）
+	current := *interval
+	applyInterval := func() {
+		if iv := r.Interval(); iv > 0 && iv != current {
+			log.Printf("report interval changed by the panel: %s → %s", current, iv)
+			current = iv
+			tick.Reset(iv)
+		}
+	}
+
 	// 上报同步执行：面板变慢时推迟下一次，而不是堆积并发请求（延迟受 http.Client 超时约束）。
 	for {
 		select {
@@ -399,6 +409,7 @@ func run() {
 				r.Enqueue(rep)
 			}
 			flush(context.Background(), false)
+			applyInterval()
 			alive()
 		case <-retry.C:
 			flush(context.Background(), false)

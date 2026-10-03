@@ -75,9 +75,10 @@ type Reporter struct {
 	gzipOK       bool
 	gzw          *gzip.Writer
 	gzBuf        bytes.Buffer
-	savedAt      time.Time // 最近一次落盘时间
-	skewLoggedAt time.Time // 最近一次记录时钟偏差 WARN 的时间
-	onDisk       bool      // 落盘文件存在，队列清空后需要删除
+	interval     time.Duration // 面板下发的采样间隔（X-Report-Interval）；0 表示面板未指定
+	savedAt      time.Time     // 最近一次落盘时间
+	skewLoggedAt time.Time     // 最近一次记录时钟偏差 WARN 的时间
+	onDisk       bool          // 落盘文件存在，队列清空后需要删除
 }
 
 func (r *Reporter) now() time.Time {
@@ -306,6 +307,9 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // 读完响应体以复用连接；内容不使用
 	r.checkClock(resp.Header.Get("Date"))
+	if resp.StatusCode/100 == 2 {
+		r.setInterval(resp.Header.Get("X-Report-Interval"))
+	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {
 		r.mu.Lock()
 		if !r.gzipOK {
@@ -319,6 +323,35 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		ra = time.Duration(secs) * time.Second
 	}
 	return resp.StatusCode, ra, nil
+}
+
+// 面板可下发的采样间隔范围（设计 1.6.8 受限配置）：Agent 端的硬性限制，面板给出范围外的值时忽略。
+// 上限不超过 systemd WatchdogSec（120 秒）的一半，否则主循环喂狗不及时会被误判为卡死。
+const (
+	MinInterval = 5 * time.Second
+	MaxInterval = 60 * time.Second
+)
+
+// setInterval 记录面板下发的采样间隔（秒）；格式错误或超出范围时忽略，保持当前值。
+func (r *Reporter) setInterval(v string) {
+	if v == "" {
+		return
+	}
+	secs, err := strconv.Atoi(v)
+	iv := time.Duration(secs) * time.Second
+	if err != nil || iv < MinInterval || iv > MaxInterval {
+		return
+	}
+	r.mu.Lock()
+	r.interval = iv
+	r.mu.Unlock()
+}
+
+// Interval 返回面板下发的采样间隔；面板未指定（旧版面板）时返回 0。
+func (r *Reporter) Interval() time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.interval
 }
 
 // acceptsGzip 判断 Accept-Encoding 响应头是否包含 gzip（RFC 7694）。

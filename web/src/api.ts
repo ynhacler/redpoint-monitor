@@ -122,6 +122,8 @@ export interface ServerView {
   country: string
   /** 服务商标称带宽（端口速率），Mbps；0 表示未填。Agent 采集不到，只能手动填写 */
   bandwidth_mbps: number
+  /** 采样间隔，秒；0 表示默认 10 秒（设计 4.2、6.1） */
+  report_interval_s: number
   /** 续费价格 × 100 */
   price_cents: number
   currency: string
@@ -333,6 +335,8 @@ export interface CreateServerInput {
   country?: string
   /** 标称带宽，Mbps */
   bandwidth_mbps?: number
+  /** 采样间隔：5 / 10 / 15 / 30 / 60 秒 */
+  report_interval_s?: number
   /** 月流量额度，按 traffic_unit 口径的 GB / GiB（设计 5.8）；0 或不填表示不限 */
   traffic_limit_gb?: number
   traffic_unit?: TrafficUnit
