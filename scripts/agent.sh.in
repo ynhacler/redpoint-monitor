@@ -46,7 +46,7 @@ case "$M" in
   armv6*) ARCH=armv6 ;;
   i386|i486|i586|i686|x86) ARCH=386 ;;
   riscv64) ARCH=riscv64 ;;
-  *) die "暂不支持的 CPU 架构：$M（支持 amd64 / arm64 / armv7 / armv6 / 386 / riscv64）" ;;
+  *) die "暂不支持的 CPU 架构：${M}（支持 amd64 / arm64 / armv7 / armv6 / 386 / riscv64）" ;;
 esac
 if [ -d /run/systemd/system ]; then INIT=systemd; elif command -v openrc-run >/dev/null 2>&1; then INIT=openrc; else INIT=other; fi
 # /etc/os-release 是主机上的系统文件，只读取 ID 与 VERSION_ID 用于显示
@@ -84,7 +84,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 say "下载 $BASE/$FILE"
 fetch "$BASE/$FILE" "$TMP/vpsmon-agent" || die "下载失败：$BASE/$FILE"
 GOT="$(sha256 "$TMP/vpsmon-agent")"
-[ "$GOT" = "$WANT" ] || die "SHA256 校验失败，已中止安装（期望 $WANT，实际 $GOT）"
+[ "$GOT" = "$WANT" ] || die "SHA256 校验失败，已中止安装（期望 ${WANT}，实际 ${GOT}）"
 say "✓ SHA256 校验通过"
 
 if command -v minisign >/dev/null 2>&1 && [ -n "$PUBKEY" ]; then
@@ -98,7 +98,7 @@ if command -v minisign >/dev/null 2>&1 && [ -n "$PUBKEY" ]; then
 fi
 
 chmod 0755 "$TMP/vpsmon-agent"
-RUN_VER="$("$TMP/vpsmon-agent" version 2>/dev/null)" || die "下载的程序无法在本机运行（架构不匹配？uname -m: $M）"
+RUN_VER="$("$TMP/vpsmon-agent" version 2>/dev/null)" || die "下载的程序无法在本机运行（架构不匹配？uname -m: ${M}）"
 say "✓ vpsmon-agent $RUN_VER 可以在本机运行"
 
 if [ "$DOWNLOAD_ONLY" -eq 1 ]; then
