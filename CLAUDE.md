@@ -41,6 +41,9 @@ internal/server/
   nodes.go             create node / install command; enroll.go: enroll codes, /agent/enroll, rate limit
   store_nodes.go       nodes, enroll codes, audit log persistence
 internal/logging/      slog setup + credential redaction (design 24.7)
+internal/release/      minisign verification, signed release manifest, versions, official public keys (design 29.7)
+internal/agent/upgrade/ local `vpsmon-agent upgrade`: verify → anti-downgrade → atomic swap → health check → rollback
+cmd/vpsmon-release/    CI tool: agent-x.y.z.sh + manifest.json + SHA256SUMS (never signs; signing is offline)
 api/openapi.yaml       API contract — change it before the code (design 19.0.1)
 web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed
   src/pages/           Overview, Servers, ServerDetail, ServerEdit, Install (routes in src/router.ts)
@@ -52,7 +55,8 @@ scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design
 docs/design.md         the design; numbering rules in design 40.9
 ```
 
-Planned (design 27.5): `scripts/agent.sh.in`.
+Release flow (design 40.8.4): tag vX.Y.Z → `.github/workflows/release.yml` draft → `scripts/sign-release.sh` offline → publish.
+Install script template: `scripts/agent.sh.in` (POSIX sh, rendered per version).
 
 ## Security invariants — never violate, even if asked casually
 

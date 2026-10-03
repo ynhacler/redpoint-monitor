@@ -72,5 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # runner 自带 shellcheck；检查所有脚本（安装脚本 agent.sh.in 建立后同样纳入，设计 27.5）
+      # runner 自带 shellcheck；检查所有脚本，包括安装脚本模板 agent.sh.in（POSIX sh，设计 27.5）
       - run: shellcheck scripts/*.sh
+      - run: shellcheck -s sh scripts/agent.sh.in

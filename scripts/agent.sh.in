@@ -1,0 +1,116 @@
+#!/bin/sh
+# vpsmon-agent 安装脚本 v@VERSION@（设计 27.5）。由 cmd/vpsmon-release 在发布时生成，发布后内容不再变化。
+#
+# 用法（面板生成的安装命令会先校验本脚本的 SHA256，再执行；不使用 curl | sh）：
+#   sudo sh agent-@VERSION@.sh --server https://monitor.example.com --enroll ENR-XXXX-XXXX-XXXX-XXXX
+#   sh agent-@VERSION@.sh --download-only            只下载、校验、试运行，不安装
+#   --mirror https://monitor.example.com/releases     从面板镜像下载（仍按内置 SHA256 校验）
+#
+# 步骤：识别系统与架构 → 下载对应构建 → 按内置 SHA256 校验 → （装有 minisign 时）校验官方签名
+#       → 试运行 → 安装到 /usr/local/bin/vpsmon-agent → exec vpsmon-agent install（注册与服务安装）
+# 只依赖 uname、awk、curl 或 wget、sha256sum / shasum / openssl 之一；兼容 bash、dash、busybox ash。
+set -eu
+
+VERSION="@VERSION@"
+REPO_URL="https://github.com/ynhacler/redpoint-monitor/releases/download/v$VERSION"
+# 官方发布公钥（minisign）；主机装有 minisign 时额外校验 SHA256SUMS 的签名
+PUBKEY="@PUBKEY@"
+# 本版本每个构建的 SHA256（发布时写入；脚本本身的哈希由安装命令在执行前校验）
+HASHES='
+@HASHES@
+'
+
+say() { printf '%s\n' "$*"; }
+die() { printf '✗ %s\n' "$*" >&2; exit 1; }
+
+MIRROR=""
+DOWNLOAD_ONLY=0
+PASS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mirror) [ $# -ge 2 ] || die "--mirror 需要地址"; MIRROR="${2%/}"; shift 2 ;;
+    --mirror=*) MIRROR="${1#--mirror=}"; MIRROR="${MIRROR%/}"; shift ;;
+    --download-only) DOWNLOAD_ONLY=1; shift ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) PASS="$PASS $(printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")")"; shift ;;
+  esac
+done
+
+# ---- 系统与架构（设计 27.5.4） ----
+[ "$(uname -s)" = "Linux" ] || die "暂不支持的操作系统：$(uname -s)（只支持 Linux）"
+M="$(uname -m)"
+case "$M" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  armv7*|armhf|armv8l) ARCH=armv7 ;;
+  armv6*) ARCH=armv6 ;;
+  i386|i486|i586|i686|x86) ARCH=386 ;;
+  riscv64) ARCH=riscv64 ;;
+  *) die "暂不支持的 CPU 架构：$M（支持 amd64 / arm64 / armv7 / armv6 / 386 / riscv64）" ;;
+esac
+if [ -d /run/systemd/system ]; then INIT=systemd; elif command -v openrc-run >/dev/null 2>&1; then INIT=openrc; else INIT=other; fi
+# /etc/os-release 是主机上的系统文件，只读取 ID 与 VERSION_ID 用于显示
+# shellcheck source=/dev/null
+OS_NAME="$( (. /etc/os-release 2>/dev/null && printf '%s %s' "${ID:-linux}" "${VERSION_ID:-}") || echo linux)"
+say "✓ 系统 $OS_NAME · linux/$ARCH · init: $INIT"
+
+if [ "$DOWNLOAD_ONLY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
+  die "需要 root 权限：请用 sudo sh $0 ..."
+fi
+
+# ---- 工具 ----
+fetch() { # fetch URL 输出文件
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+  else die "需要 curl 或 wget"; fi
+}
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | awk '{print $NF}'
+  else die "需要 sha256sum、shasum 或 openssl 之一"; fi
+}
+
+FILE="vpsmon-agent-linux-$ARCH"
+WANT="$(printf '%s\n' "$HASHES" | awk -v f="$FILE" '$2 == f {print $1}')"
+[ -n "$WANT" ] || die "本版本没有 linux/$ARCH 的构建"
+BASE="$REPO_URL"
+[ -n "$MIRROR" ] && BASE="$MIRROR/v$VERSION"
+
+TMP="$(mktemp -d 2>/dev/null || mktemp -d -t vpsmon)"
+trap 'rm -rf "$TMP"' EXIT INT TERM
+
+# ---- 下载与校验 ----
+say "下载 $BASE/$FILE"
+fetch "$BASE/$FILE" "$TMP/vpsmon-agent" || die "下载失败：$BASE/$FILE"
+GOT="$(sha256 "$TMP/vpsmon-agent")"
+[ "$GOT" = "$WANT" ] || die "SHA256 校验失败，已中止安装（期望 $WANT，实际 $GOT）"
+say "✓ SHA256 校验通过"
+
+if command -v minisign >/dev/null 2>&1 && [ -n "$PUBKEY" ]; then
+  if fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" && fetch "$BASE/SHA256SUMS.minisig" "$TMP/SHA256SUMS.minisig"; then
+    minisign -Vm "$TMP/SHA256SUMS" -P "$PUBKEY" >/dev/null 2>&1 || die "官方签名校验失败，已中止安装"
+    grep -q "^$WANT  $FILE\$" "$TMP/SHA256SUMS" || die "签名的 SHA256SUMS 与本脚本不一致，已中止安装"
+    say "✓ 官方签名校验通过"
+  else
+    say "· 未能下载签名文件，跳过签名校验（已按内置 SHA256 校验）"
+  fi
+fi
+
+chmod 0755 "$TMP/vpsmon-agent"
+RUN_VER="$("$TMP/vpsmon-agent" version 2>/dev/null)" || die "下载的程序无法在本机运行（架构不匹配？uname -m: $M）"
+say "✓ vpsmon-agent $RUN_VER 可以在本机运行"
+
+if [ "$DOWNLOAD_ONLY" -eq 1 ]; then
+  cp "$TMP/vpsmon-agent" ./vpsmon-agent
+  say "✓ 已下载到 ./vpsmon-agent（--download-only，未安装）"
+  exit 0
+fi
+
+# ---- 安装并交给 vpsmon-agent install（注册、配置、服务管理不在脚本中，设计 27.5.1） ----
+install -m 0755 "$TMP/vpsmon-agent" /usr/local/bin/vpsmon-agent.new
+mv -f /usr/local/bin/vpsmon-agent.new /usr/local/bin/vpsmon-agent
+say "✓ 已安装 /usr/local/bin/vpsmon-agent"
+rm -rf "$TMP"
+trap - EXIT INT TERM
+eval "exec /usr/local/bin/vpsmon-agent install $PASS"

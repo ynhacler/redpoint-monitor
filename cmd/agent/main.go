@@ -23,7 +23,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -32,7 +34,9 @@ import (
 	"vpsmon/internal/agent/collector"
 	"vpsmon/internal/agent/report"
 	"vpsmon/internal/agent/setup"
+	"vpsmon/internal/agent/upgrade"
 	"vpsmon/internal/protocol"
+	"vpsmon/internal/release"
 )
 
 var version = "0.1.0-dev" // 构建时通过 -ldflags "-X main.version=..." 覆盖为 git describe
@@ -49,6 +53,8 @@ func main() {
 			return
 		case "uninstall":
 			os.Exit(cmdUninstall())
+		case "upgrade":
+			os.Exit(cmdUpgrade(os.Args[2:]))
 		case "version":
 			fmt.Println(version)
 			return
@@ -75,6 +81,42 @@ func cmdInstall(args []string) int {
 	err := setup.Install(context.Background(), setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
 		Version: version, Self: self, Out: os.Stdout})
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// cmdUpgrade 执行 vpsmon-agent upgrade（设计 29，本机升级）：只安装官方签名、版本更高的 vpsmon-agent。
+func cmdUpgrade(args []string) int {
+	fs := flag.NewFlagSet("upgrade", flag.ExitOnError)
+	target := fs.String("version", "", "target version, e.g. v0.3.0 (default: latest stable release)")
+	allowDowngrade := fs.Bool("allow-downgrade", false, "allow installing an older signed version (local only, design 29.7.4)")
+	mirror := fs.String("mirror", "", "download from a panel mirror instead of GitHub, e.g. https://monitor.example.com/releases")
+	_ = fs.Parse(args)
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "✗ upgrade 只支持 Linux")
+		return 1
+	}
+	if os.Geteuid() != 0 {
+		fmt.Fprintln(os.Stderr, "✗ 需要 root 权限：sudo vpsmon-agent upgrade")
+		return 1
+	}
+	p := setup.DefaultPaths
+	o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
+		Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, Out: os.Stdout,
+		ReadStatus: func() (string, int64, error) {
+			st, err := setup.ReadStatus(filepath.Join(p.StateDir, "status.json"))
+			if err != nil {
+				return "", 0, err
+			}
+			return st.Version, st.LastSuccess, nil
+		}}
+	// 只有安装了 systemd 服务时才重启并做健康检查；否则替换后由使用者自行重启
+	if _, err := os.Stat(p.Unit); err == nil {
+		o.Restart = func() error { return exec.Command("systemctl", "restart", "vpsmon-agent").Run() }
+	}
+	if err := upgrade.Run(context.Background(), o); err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1
 	}
