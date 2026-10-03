@@ -26,6 +26,8 @@ type linux struct {
 	prevNet  map[string]netCounters // 上一次各网卡的累计字节数，用于计算网速
 	prevIO   map[string]ioCounters  // 上一次各磁盘的累计 IO，用于计算读写速率
 	prevTime time.Time              // prevNet / prevIO 的采样时间
+	ports    []protocol.ListenPort  // 上次采集的监听端口
+	portsAt  time.Time              // ports 的采集时间：监听端口变化少，每分钟刷新一次（设计 4.9.1）
 }
 
 // New 返回真实的 Linux 采集器。未指定排除列表时使用 DefaultExclude，
@@ -45,6 +47,20 @@ func readFile(p string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// collectListenPorts 读取 IPv4 / IPv6 的 TCP 与 UDP 表（设计 4.9.1）。按流读取：TCP 读到第一条已建立连接即停止。
+func collectListenPorts() []protocol.ListenPort {
+	var socks []listenSocket
+	for _, proto := range []string{"tcp", "tcp6", "udp", "udp6"} {
+		f, err := os.Open("/proc/net/" + proto)
+		if err != nil {
+			continue // 未启用 IPv6 等
+		}
+		socks = append(socks, parseListenSockets(f, proto)...)
+		f.Close()
+	}
+	return mergeListenPorts(socks)
 }
 
 // Collect 采集一次完整上报（不含 Timestamp / AgentVersion，由上报方填写）。
@@ -97,6 +113,10 @@ func (c *linux) Collect() (protocol.Report, error) {
 	tcp4, udp4, tw := parseSockstat(readFile("/proc/net/sockstat"))
 	tcp6, udp6, _ := parseSockstat(readFile("/proc/net/sockstat6"))
 	r.Conns = &protocol.Conns{TCP: tcp4 + tcp6, UDP: udp4 + udp6, TimeWait: tw}
+	if now.Sub(c.portsAt) >= time.Minute {
+		c.ports, c.portsAt = collectListenPorts(), now
+	}
+	r.Ports = c.ports
 	r.Swap = protocol.Swap{Total: m["SwapTotal"], Used: m["SwapTotal"] - m["SwapFree"]}
 
 	// 磁盘容量：本地块设备文件系统的每个挂载点（设计 4.6）

@@ -34,7 +34,7 @@ App（Flutter）在阶段 C。开发顺序 A（API + Agent）→ B（Web）→ C
 2. 面板镜像与离线导入（设计 27.5.3、29.1）
 3. A5 剩余：Telegram / Webhook 通知与投递记录；重复提醒、批量离线合并、抖动检测、面板自检
 
-其他待办：在 jp-store 上核对新指标（对照 top、free、iostat -x、ss -s）；A6 内置 HTTPS / 备份。
+其他待办：在 jp-store 上核对新指标（对照 top、free、iostat -x、ss -s；监听端口对照 ss -tulnH）；A6 内置 HTTPS / 备份。
 
 ## 工作方式（用户偏好）
 

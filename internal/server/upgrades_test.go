@@ -32,7 +32,9 @@ func TestUpgradeTasks(t *testing.T) {
 	}
 
 	// 只能选择已同步并验签的版本
-	body := func(ids string, ver string) []byte { return []byte(`{"server_ids":[` + ids + `],"version":"` + ver + `"}`) }
+	body := func(ids string, ver string) []byte {
+		return []byte(`{"server_ids":[` + ids + `],"version":"` + ver + `"}`)
+	}
 	if rec := do(h, "POST", "/api/v1/upgrade-tasks", admin, body(itoa(v.ServerID), "9.9.9")); rec.Code != 422 {
 		t.Errorf("未同步的版本应拒绝：%d %s", rec.Code, rec.Body)
 	}

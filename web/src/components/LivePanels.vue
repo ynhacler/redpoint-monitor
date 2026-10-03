@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 节点详情的实时指标块（设计 11.1、41.6，参考 ServerCat）：CPU → 内存 → 网络 → 磁盘，顺序与 App 一致。
-// 磁盘可能有多块，网络放在磁盘之前，避免被挤到页面底部。
+// 节点详情的实时指标块（设计 11.1、41.6，参考 ServerCat）：CPU → 内存 → 网络 → 端口 → 磁盘，顺序与 App 一致。
+// 磁盘可能有多块，网络与端口放在磁盘之前，避免被挤到页面底部。每块左上角为图标 + 指标名。
 // 版式规则：标签全大写、次要色、小号（界面字体）；数值用等宽字体（与参考一致），单位缩小一档并用次要色（Qty）；
 // 每块“左侧数值、右侧图形”，图形表达占比（环）或分布（每核分段条、竖向容量条）。
 // CPU 时间占比、每核、内存缓存、IOPS 等为可选字段（设计 4.4～4.9），旧版 Agent 不上报时对应部分不显示。
@@ -8,6 +8,8 @@ import { computed } from 'vue'
 import type { DiskInfo, ServerView } from '../api'
 import { DASH, fmtBytesShort, fmtPct, uptimeParts } from '../format'
 import { cpu, gaugeLevel, ioForDisk, mem, rx, tx } from '../metrics'
+import { exposure, exposureNames, isRisky, serviceName, sortPorts } from '../ports'
+import Icon from './Icon.vue'
 import Qty from './Qty.vue'
 import Ring, { type RingSegment } from './Ring.vue'
 
@@ -94,8 +96,31 @@ const netSegments = computed<RingSegment[]>(() => {
   ]
 })
 
-// 磁盘：竖向容量条 + 所在磁盘的 IO
+// 磁盘：竖向容量条 + 所在磁盘的 IO。IO 按整块磁盘统计，同一块盘的多个分区只在第一个分区显示 IO 表，
+// 其余分区注明与哪个挂载点共用，避免同样的数字重复出现
 const io = (d: DiskInfo) => ioForDisk(d, r.value.disk_io)
+const ioOwner = computed(() => {
+  const owner = new Map<string, string>()
+  for (const d of r.value.disk) {
+    const x = io(d)
+    if (x && !owner.has(x.device)) owner.set(x.device, d.mount)
+  }
+  return owner
+})
+const sharedWith = (d: DiskInfo) => {
+  const x = io(d)
+  const o = x ? ioOwner.value.get(x.device) : undefined
+  return o && o !== d.mount ? o : ''
+}
+
+// 监听端口（设计 4.9.1）：高风险与公网开放的排在前面
+const ports = computed(() => (r.value.ports ? sortPorts(r.value.ports) : null))
+const portCounts = computed(() => {
+  const c = { public: 0, private: 0, local: 0 }
+  for (const p of ports.value ?? []) c[exposure(p)]++
+  return c
+})
+const addrText = (addrs: string[]) => addrs.map((a) => (a === '0.0.0.0' || a === '::' ? `${a}（全部）` : a)).join('、')
 const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Math.round(v)) : v.toFixed(1))
 </script>
 
@@ -106,6 +131,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     </p>
     <!-- CPU -->
     <section class="block cpu">
+      <h4 class="title"><span class="ico"><Icon name="cpu" :size="15" /></span>CPU</h4>
       <div class="cpu-top">
         <div class="hero-col">
           <div class="hero" :class="cpuLv"><Qty :v="Math.round(cpu(server) ?? 0)" u="%" /></div>
@@ -155,6 +181,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 内存 -->
     <section class="block row-block">
+      <h4 class="title"><span class="ico"><Icon name="memory" :size="15" /></span>Mem</h4>
       <dl class="cols">
         <div><dt><i style="background: var(--track)" />FREE</dt><dd><Qty :text="m.free != null ? fmtBytesShort(m.free) : DASH" /></dd></div>
         <div><dt><i :style="{ background: `var(--${memLv})` }" />USED</dt><dd><Qty :text="fmtBytesShort(m.used)" /></dd></div>
@@ -169,6 +196,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 网络 -->
     <section class="block row-block net">
+      <h4 class="title"><span class="ico"><Icon name="network" :size="15" /></span>Net</h4>
       <dl class="cols speeds">
         <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
         <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
@@ -185,8 +213,31 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       </p>
     </section>
 
+    <!-- 监听端口（设计 4.9.1） -->
+    <section class="block ports">
+      <h4 class="title">
+        <span class="ico"><Icon name="plug" :size="15" /></span>Ports
+        <span v-if="ports?.length" class="title-extra">
+          <span v-if="portCounts.public">公网 <b>{{ portCounts.public }}</b></span>
+          <span v-if="portCounts.private">内网 <b>{{ portCounts.private }}</b></span>
+          <span v-if="portCounts.local">本机 <b>{{ portCounts.local }}</b></span>
+        </span>
+      </h4>
+      <p v-if="!ports" class="muted small empty">当前 Agent 未上报监听端口，升级 Agent 后显示。</p>
+      <p v-else-if="!ports.length" class="muted small empty">没有监听中的端口。</p>
+      <ul v-else class="port-list">
+        <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }"
+          :title="`${p.proto.toUpperCase()} ${p.port} 监听于 ${addrText(p.addrs)}${isRisky(p) ? '\n此类端口通常不应对公网开放，建议改为只监听 127.0.0.1 或用防火墙限制来源' : ''}`">
+          <span class="port">{{ p.port }}<span class="proto">{{ p.proto.toUpperCase() }}</span></span>
+          <span class="svc">{{ serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
+          <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? '公网 · 风险' : exposureNames[exposure(p)] }}</span>
+        </li>
+      </ul>
+    </section>
+
     <!-- 磁盘（设计 4.6、4.7）：每个挂载点一块 -->
     <section v-for="d in r.disk" :key="d.mount" class="block disk">
+      <h4 class="title"><span class="ico"><Icon name="hard-drive" :size="15" /></span>Disk</h4>
       <div class="disk-head">
         <div class="disk-name">
           <div class="mount">{{ d.mount }}</div>
@@ -198,7 +249,8 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
         </div>
         <span class="pill" :title="fmtPct(d.usage)"><span :class="gaugeLevel(d.usage, 'disk')" :style="{ height: `${Math.max(4, d.usage)}%` }" /></span>
       </div>
-      <table v-if="io(d)" class="io">
+      <p v-if="sharedWith(d)" class="muted shared">与 <span class="mono">{{ sharedWith(d) }}</span> 同在 {{ io(d)!.device }}，IO 见该分区</p>
+      <table v-else-if="io(d)" class="io">
         <thead><tr><th /><th>SPEED</th><th>BYTES</th><th>IOPS</th><th title="每次 IO 的平均耗时（含排队）">WAIT</th></tr></thead>
         <tbody>
           <tr>
@@ -216,7 +268,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           </tr>
         </tbody>
       </table>
-      <p v-if="io(d)?.util != null" class="muted util">{{ io(d)!.device }} · 繁忙 {{ fmtPct(io(d)!.util) }}</p>
+      <p v-if="io(d)?.util != null && !sharedWith(d)" class="muted util">{{ io(d)!.device }} · 繁忙 {{ fmtPct(io(d)!.util) }}</p>
     </section>
   </div>
 </template>
@@ -235,6 +287,14 @@ dt i { width: 5px; height: 11px; border-radius: 3px; display: inline-block; flex
 dd { font-size: 22px; line-height: 28px; white-space: nowrap; font-family: var(--font-mono); letter-spacing: -0.02em; }
 dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 
+
+/* 块标题：左上角图标 + 指标名 */
+.title { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); flex-basis: 100%;
+  font-size: var(--font-md); line-height: var(--line-md); font-weight: var(--weight-strong); color: var(--text); }
+.ico { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.title-extra { margin-left: auto; display: flex; gap: var(--space-3); font-size: var(--font-sm); font-weight: var(--weight-regular); color: var(--text-muted); }
+.title-extra b { color: var(--text); font-family: var(--font-mono); font-weight: var(--weight-regular); }
 
 .old-agent { grid-column: 1 / -1; margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
   background: var(--surface-2); color: var(--text-muted); }
@@ -296,6 +356,27 @@ dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(
 .io .wait { vertical-align: middle; }
 .util { margin: var(--space-2) 0 0; text-align: right; font-size: var(--font-sm); }
 
+.shared { margin: var(--space-4) 0 0; padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--font-sm); }
+.mono { font-family: var(--font-mono); color: var(--text); }
+
+/* 端口：整行宽度，端口以小块排列 */
+.ports { grid-column: 1 / -1; }
+.empty { margin: 0; }
+.port-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-2); }
+.port-list li { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); border-radius: 10px; background: var(--surface-2); }
+.port { font-family: var(--font-mono); font-size: var(--font-lg); line-height: var(--line-lg); display: flex; flex-direction: column; }
+.proto { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); letter-spacing: .04em; font-family: var(--font-family); }
+.svc { font-size: var(--font-sm); min-width: 0; display: flex; flex-direction: column; }
+.svc, .svc small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc small { font-size: var(--font-xs); color: var(--text-muted); font-family: var(--font-mono); }
+.exp { font-size: var(--font-xs); padding: 1px var(--space-2); border-radius: 99px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
+.exp.public { color: var(--accent); }
+.exp.private { color: var(--ok); }
+.exp.bad { color: var(--bad); font-weight: var(--weight-strong); }
+.risky { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 45%, transparent); }
+.risky .port { color: var(--bad); }
+
 /* 网络 */
 .totals { display: flex; flex-direction: column; gap: var(--space-1); }
 .totals div { display: flex; align-items: center; gap: var(--space-2); }
@@ -324,5 +405,6 @@ dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(
   .load-rings { width: 40px; height: 40px; }
   .io th, .io td { padding-left: var(--space-2); }
   .io td { font-size: var(--font-md); }
+  .port-list { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

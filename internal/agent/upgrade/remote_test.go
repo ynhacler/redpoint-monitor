@@ -207,7 +207,7 @@ func TestUpdaterDisabledAndStageSymlink(t *testing.T) {
 // 面板转交的清单签名无效、版本不一致或不是升级时，Agent 不暂存，并上报失败。
 func TestCheckRemoteRejects(t *testing.T) {
 	cases := map[string]func(task map[string]any, o *RemoteOptions){
-		"签名无效": func(task map[string]any, _ *RemoteOptions) { task["manifest_signature"] = "bad" },
+		"签名无效":  func(task map[string]any, _ *RemoteOptions) { task["manifest_signature"] = "bad" },
 		"版本不一致": func(task map[string]any, _ *RemoteOptions) { task["version"] = "0.4.0" },
 		"不是升级":  func(_ map[string]any, o *RemoteOptions) { o.Current = "0.3.0" },
 	}
