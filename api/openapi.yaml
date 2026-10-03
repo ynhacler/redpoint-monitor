@@ -24,6 +24,8 @@ tags:
     description: 节点与安装（设计 19.5、19.11）
   - name: audit
     description: 登录日志与操作日志（设计 24.8）
+  - name: alerts
+    description: 告警（设计 16、19.9）
   - name: traffic
     description: 流量统计、校准与预测（设计 5、19.8、32）
 
@@ -192,6 +194,45 @@ paths:
         - agentToken: []
       responses:
         '204': { description: 已注销 }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /alerts:
+    get:
+      tags: [alerts]
+      summary: 告警事件，按时间倒序（设计 19.9）
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [active, resolved, all], default: active }, description: active 为正在告警（firing） }
+        - { name: server_id, in: query, schema: { type: integer } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 告警事件
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  next_cursor: { type: string }
+                  items: { type: array, items: { $ref: '#/components/schemas/AlertEvent' } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /alert-rules:
+    get:
+      tags: [alerts]
+      summary: 全部告警规则（全局 / 分组 / 节点三层，设计 16.2）；修改随 A5 后续提供
+      responses:
+        '200':
+          description: 规则
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AlertRule' } }
         '401': { $ref: '#/components/responses/Error' }
 
   /audit-logs:
@@ -713,6 +754,55 @@ components:
         traffic_unit: { type: string, enum: [decimal, binary] }
         traffic_factor: { type: number }
         traffic: { $ref: '#/components/schemas/TrafficView' }
+        alerts:
+          type: array
+          description: 活动告警（firing），严重在前；同一类型只保留最严重的一条；节点离线时只有离线告警（设计 16.4）
+          items:
+            type: object
+            properties:
+              event_id: { type: integer }
+              rule_key: { type: string }
+              type: { type: string }
+              severity: { type: string, enum: [info, warning, critical] }
+              message: { type: string }
+              value: { type: number, description: 当前值：百分比、离线秒数或负载倍数 }
+              fired_at: { type: integer }
+
+    AlertRule:
+      type: object
+      properties:
+        id: { type: integer }
+        rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
+        scope_type: { type: string, enum: [global, group, server] }
+        scope_id: { type: string }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast] }
+        operator: { type: string, enum: ['>', '>='] }
+        threshold: { type: number }
+        recover_threshold: { type: number, description: 低于此值恢复（回差） }
+        duration_s: { type: integer }
+        recover_duration_s: { type: integer }
+        severity: { type: string, enum: [info, warning, critical] }
+        repeat_interval_s: { type: integer }
+        enabled: { type: boolean }
+
+    AlertEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        rule_id: { type: integer }
+        rule_key: { type: string }
+        server_id: { type: integer }
+        server_name: { type: string }
+        type: { type: string }
+        severity: { type: string, enum: [info, warning, critical] }
+        state: { type: string, enum: [firing, resolved] }
+        value: { type: number, description: 触发时的值 }
+        threshold: { type: number }
+        message: { type: string }
+        started_at: { type: integer, description: 开始满足条件（pending）的时间 }
+        fired_at: { type: integer }
+        resolved_at: { type: integer }
+        resolved_value: { type: number }
 
     TrafficView:
       type: object

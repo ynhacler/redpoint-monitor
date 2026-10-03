@@ -421,6 +421,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/agent/report":                    accessAgent,
 		"POST /api/v1/agent/unregister":                accessAgent,
 		"GET /api/v1/audit-logs":                       accessAdmin,
+		"GET /api/v1/alerts":                           accessAdmin,
+		"GET /api/v1/alert-rules":                      accessAdmin,
 		"GET /api/v1/servers":                          accessAdmin,
 		"POST /api/v1/servers":                         accessAdmin,
 		"GET /api/v1/servers/{id}":                     accessAdmin,

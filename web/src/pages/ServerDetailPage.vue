@@ -3,6 +3,7 @@
 // 指标顺序与 App 一致（设计 41.6）。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, getHistory, getServer, UnauthorizedError, type HistoryRange, type HistoryView, type ServerView } from '../api'
+import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import Flag from '../components/Flag.vue'
 import Icon from '../components/Icon.vue'
@@ -198,6 +199,11 @@ const expireDays = computed(() => {
       <!-- 流量 -->
       <section class="section">
         <TrafficCard :server="s" @unauthorized="logout" />
+      </section>
+
+      <!-- 告警记录（设计 16） -->
+      <section v-if="s.status !== 'pending'" class="section">
+        <AlertHistory :server-id="s.id" @unauthorized="logout" />
       </section>
 
       <!-- 历史曲线（设计 11.2、41.5） -->

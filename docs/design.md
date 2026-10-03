@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 32 | A5 告警引擎第一步：alert_rules 增加 rule_key（三层覆盖的标识）；pending 不持久化；面板启动宽限期；节点摘要依赖抑制；/alerts 参数；“需要关注”改由服务端告警判定 | 16.7、18.7、18.8、19.9 |
 | 31 | 详情页指标块进一步贴近 ServerCat：数值改用等宽字体；CPU 占比一行、底部 CORES / IDLE / UPTIME / LOAD 一行；内存 FREE / USED / PAGE CACHE 一行；网络移到磁盘之前（41.6 顺序同步） | 11.1、41.6 |
 | 30 | Web 总览与节点列表合并为首页 `/`：统计行兼作状态筛选（全部 / 在线 / 离线 / 需要关注 / 流量 ≥ 80%），去掉 Top N 与单独的“需要关注”列表；/servers 跳转到 / | 9、10、41.6 |
 | 29 | 节点表单按字段来源重组：只收集 Agent 采集不到的信息；主机名 / IP 移入可选的“注册核对”；新增带宽（bandwidth_mbps，迁移 9）；“地区”改为“城市 / 机房”；编辑时只读列出 Agent 自动采集的信息 | 27.2 |
@@ -4526,6 +4527,18 @@ App 可执行静音与维护（低风险操作，设计 8.4.1）
 告警事件保留 180 天，在事件中心展示
 ```
 
+实现要点（A5 第一步）：
+
+```text
+默认规则在迁移中写入 alert_rules（全局层），rule_key：offline、cpu、memory、disk、disk_critical、swap、load、
+  traffic_80 / 90 / 95 / 100、traffic_forecast；负载的阈值按核数归一（2 表示 load1 为核数 2 倍）
+流量类规则每分钟评估一次（需要汇总数据库），其余每 10 秒
+面板启动后的 130 秒内，内存中还没有上报的节点不评估离线，避免重启面板即对全部节点告警
+节点离线时：资源规则暂停评估（NODATA），节点的告警摘要只显示离线（依赖抑制）
+同一节点同一类型同时满足多条规则（磁盘 85% 与 95%）：都记录，摘要只显示最严重的一条
+节点列表随节点返回 alerts（活动告警摘要），Web 与 App 的“需要关注”以它为准
+```
+
 数据表见 18.7、18.8、18.14、18.15。
 
 ---
@@ -4775,8 +4788,9 @@ traffic_limit_bytes
 
 ```sql
 id
+rule_key            -- 同一规则在三层中的标识，如 cpu、disk_critical、traffic_80；下层按 rule_key 覆盖上层
 scope_type          -- global / group / server
-scope_id            -- 分组或节点 ID；global 时为空
+scope_id            -- 分组名或节点 ID；global 时为空
 type                -- offline / cpu / memory / disk / swap / load / traffic / traffic_forecast /
                     -- cn_unreachable / cn_latency / expiry / agent / panel
 operator            -- > / >= / < / <=
@@ -4805,7 +4819,8 @@ server_id
 type
 severity
 
-state               -- pending / firing / resolved / silenced / flapping
+state               -- firing / resolved（pending 只在内存中：重启后重新计时，宁可晚一点也不误报）；
+                    -- silenced / flapping 随静音与降噪加入
 value               -- 触发时的值
 threshold
 message
@@ -4817,7 +4832,7 @@ last_notified_at
 notify_count
 ```
 
-活动告警（pending / firing / silenced / flapping）在面板重启后据此恢复（设计 16.7）。
+活动告警（firing）在面板重启后据此恢复（设计 16.7）。另有 rule_key、resolved_value（恢复时的值）两列。
 
 ---
 
@@ -5302,7 +5317,7 @@ GET  /api/v1/servers/{id}/traffic/adjustments    校准历史
 ## 19.9 告警
 
 ```http
-GET    /api/v1/alerts
+GET    /api/v1/alerts?state=active|resolved|all&server_id=&cursor=&limit=
 GET    /api/v1/alert-rules
 POST   /api/v1/alert-rules
 PUT    /api/v1/alert-rules/{id}
