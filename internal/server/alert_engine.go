@@ -18,8 +18,7 @@ import (
 //   - 维护中的节点不评估（活动告警随之结束）；静音照常评估与记录，只标记为已静音（设计 16.6）
 //
 //   - 进入 firing、恢复、仍未恢复到达重复间隔时发送通知（notify.go）；已静音的只记录不发送
-//
-// 抖动检测、批量离线合并、面板自检随 A5 降噪加入（TODO(A5)）。
+//   - 通知先经过降噪：抖动、批量离线合并；全部节点同时停止上报时判定为面板异常，暂停离线规则（alert_noise.go）
 
 const (
 	alertInterval        = 10 * time.Second
@@ -181,6 +180,9 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 	e.setSilences(silences)
 	snaps := s.snapshots()
 
+	// 面板自检：全部节点同时停止上报时暂停离线规则（设计 16.4）
+	panelDown := s.checkPanel(rows, snaps, now)
+
 	refreshTraffic := now.Sub(e.trafficAt) >= alertTrafficInterval
 	if refreshTraffic {
 		e.trafficAt = now
@@ -213,6 +215,9 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 			if r.Type == AlertOffline && !hasSnap && now.Sub(e.startedAt) < alertStartupGrace {
 				continue
 			}
+			if r.Type == AlertOffline && panelDown {
+				continue // 疑似面板一侧异常：离线告警既不触发也不恢复
+			}
 			v, detail, ok := alertValue(r.Type, in)
 			if !ok {
 				continue // 没有数据：保持现状（离线期间资源告警既不触发也不恢复）
@@ -239,6 +244,7 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 		}
 	}
 	e.mu.Unlock()
+	s.tickNoise(now)
 	return nil
 }
 
@@ -296,7 +302,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 		next.EventID = id
 		next.NotifiedAt = now
 		if !s.muted(row, r, now) {
-			s.notify.dispatch(s.alertNotice(NotifyFiring, row, r, next, v, detail, now))
+			s.emit(k, s.alertNotice(NotifyFiring, row, r, next, v, detail, now), now)
 		}
 		s.log.Info("alert firing", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey,
 			"severity", r.Severity, "value", v)
@@ -305,7 +311,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 			s.log.Error("alert event resolve failed", "component", "alert", "event_id", st.EventID, "err", err)
 		}
 		if !s.muted(row, r, now) {
-			s.notify.dispatch(s.alertNotice(NotifyResolved, row, r, st, v, detail, now))
+			s.emit(k, s.alertNotice(NotifyResolved, row, r, st, v, detail, now), now)
 		}
 		s.log.Info("alert resolved", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey, "value", v)
 	case alertNone:
@@ -318,7 +324,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 			if now.Sub(last) >= time.Duration(r.RepeatIntervalS)*time.Second {
 				next.NotifiedAt = now
 				if !s.muted(row, r, now) {
-					s.notify.dispatch(s.alertNotice(NotifyRepeat, row, r, next, v, detail, now))
+					s.emit(k, s.alertNotice(NotifyRepeat, row, r, next, v, detail, now), now)
 				}
 			}
 		}
@@ -365,6 +371,7 @@ func (s *Server) endAlert(k alertKey, now time.Time) {
 	delete(e.active, k)
 	delete(e.meta, k)
 	e.mu.Unlock()
+	s.noise.forget(k)
 	if st != nil && st.State == StateFiring && st.EventID > 0 {
 		if err := s.store.ResolveAlertEvent(st.EventID, now, st.Value); err != nil {
 			s.log.Error("alert event resolve failed", "component", "alert", "event_id", st.EventID, "err", err)

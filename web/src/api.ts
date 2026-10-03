@@ -697,7 +697,7 @@ export interface Delivery {
   channel_type: ChannelType
   event_id: number
   server_name: string
-  kind: 'firing' | 'resolved' | 'repeat' | 'test'
+  kind: 'firing' | 'resolved' | 'repeat' | 'test' | 'flapping' | 'still_firing' | 'panel_down' | 'panel_up'
   title: string
   status: 'sent' | 'failed' | 'retrying'
   attempts: number
