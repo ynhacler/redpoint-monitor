@@ -1125,7 +1125,7 @@ components:
         channel_type: { type: string, enum: [telegram, webhook] }
         event_id: { type: integer, description: 测试通知为 0 }
         server_name: { type: string }
-        kind: { type: string, enum: [firing, resolved, repeat, test] }
+        kind: { type: string, enum: [firing, resolved, repeat, test, flapping, still_firing, panel_down, panel_up], description: 'flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）' }
         title: { type: string }
         status: { type: string, enum: [sent, failed, retrying] }
         attempts: { type: integer }

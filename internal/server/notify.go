@@ -40,6 +40,11 @@ const (
 	NotifyResolved = "resolved"
 	NotifyRepeat   = "repeat"
 	NotifyTest     = "test"
+	// 降噪（设计 16.3、16.4，alert_noise.go）
+	NotifyFlapping    = "flapping"     // 状态频繁变化：之后暂停该告警的通知
+	NotifyStillFiring = "still_firing" // 抖动结束时仍在告警
+	NotifyPanelDown   = "panel_down"   // 全部节点同时停止上报，疑似面板一侧异常
+	NotifyPanelUp     = "panel_up"
 )
 
 // 投递状态
@@ -338,18 +343,33 @@ type notifyMessage struct {
 	Message    string // 如“磁盘 / 使用率 96%（阈值 95%）”
 	StartedAt  time.Time
 	ResolvedAt time.Time
-	Link       string // 节点详情地址；未配置 --public-url 时为空
+	Link       string   // 节点详情地址；未配置 --public-url 时为空
+	Servers    []string // 合并通知包含的节点（批量离线）
+	Count      int      // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数
 }
 
 var severityIcons = map[string]string{"critical": "🔴", "warning": "🟠", "info": "🔵"}
 
 // title 是一行摘要，用于投递记录与 Telegram 第一行。
 func (m notifyMessage) title() string {
+	if len(m.Servers) > 0 { // 批量离线（设计 16.4）
+		if m.Kind == NotifyResolved {
+			return fmt.Sprintf("✅ %d 台节点恢复上报：%s", m.Count, namesBrief(m.Servers))
+		}
+		return fmt.Sprintf("%s %d 台节点同时离线：%s", severityIcons[m.Severity], m.Count, namesBrief(m.Servers))
+	}
 	switch m.Kind {
 	case NotifyResolved:
 		return "✅ " + m.ServerName + " 已恢复：" + m.Message
 	case NotifyRepeat:
 		return severityIcons[m.Severity] + " 仍未恢复 · " + m.ServerName + " " + m.Message
+	case NotifyFlapping:
+		return "〰️ " + m.ServerName + " 状态频繁变化：" + m.Message
+	case NotifyStillFiring:
+		return severityIcons[m.Severity] + " 状态已稳定，仍在告警 · " + m.ServerName + " " + m.Message
+	case NotifyPanelDown, NotifyPanelUp:
+		t, _ := panelText(m)
+		return t
 	case NotifyTest:
 		return "🔔 测试通知"
 	}
@@ -359,8 +379,22 @@ func (m notifyMessage) title() string {
 // text 是完整的纯文本（设计 16.5 的模板）。
 func (m notifyMessage) text(now time.Time) string {
 	lines := []string{m.title()}
+	if len(m.Servers) > 0 {
+		if m.Kind == NotifyFiring {
+			lines = append(lines, "可能是面板网络或同一服务商故障")
+		}
+		if len(m.Servers) > 3 {
+			lines = append(lines, "全部："+strings.Join(m.Servers, "、"))
+		}
+		return strings.Join(lines, "\n")
+	}
 	switch m.Kind {
-	case NotifyFiring, NotifyRepeat:
+	case NotifyFlapping:
+		lines = append(lines, fmt.Sprintf("30 分钟内触发 %d 次，暂停这条告警的通知；稳定 30 分钟后恢复。", m.Count))
+	case NotifyPanelDown:
+		_, d := panelText(m)
+		lines = append(lines, d)
+	case NotifyFiring, NotifyRepeat, NotifyStillFiring:
 		// 刚触发时持续时间不足 1 分钟（离线等规则的时长已写在 Message 里），不显示“已持续”
 		if d := now.Sub(m.StartedAt); d >= time.Minute {
 			lines = append(lines, "已持续 "+fmtSpan(d))
@@ -397,7 +431,11 @@ func fmtSpan(d time.Duration) string {
 // webhookPayload 是 Webhook 的请求体（version 1，只增加字段）。
 func (m notifyMessage) webhookPayload(now time.Time) []byte {
 	p := map[string]any{"version": 1, "kind": m.Kind, "text": m.text(now), "title": m.title(), "sent_at": now.Unix()}
-	if m.Kind != NotifyTest {
+	if len(m.Servers) > 0 {
+		p["type"], p["severity"], p["count"], p["servers"] = m.Type, m.Severity, m.Count, m.Servers
+	} else if m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp {
+		p["severity"], p["count"] = m.Severity, m.Count
+	} else if m.Kind != NotifyTest {
 		p["event_id"] = m.EventID
 		p["server"] = map[string]any{"id": m.ServerID, "name": m.ServerName}
 		p["rule_key"], p["type"], p["severity"] = m.RuleKey, m.Type, m.Severity
@@ -419,8 +457,8 @@ func (c NotifyChannel) wants(m notifyMessage) bool {
 	if !c.Enabled {
 		return false
 	}
-	if m.Kind == NotifyTest {
-		return true
+	if m.Kind == NotifyTest || m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp {
+		return true // 面板自检影响全部节点，所有渠道都发
 	}
 	if m.Kind == NotifyResolved && !c.NotifyResolved {
 		return false
