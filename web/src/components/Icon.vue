@@ -5,6 +5,7 @@ defineProps<{
   /** 图标名 */
   name: 'plus' | 'edit' | 'terminal' | 'arrow-left' | 'sun' | 'moon' | 'monitor' | 'search' | 'logout' | 'user'
     | 'thermometer' | 'power' | 'activity' | 'arrow-up' | 'arrow-down'
+    | 'cpu' | 'memory' | 'network' | 'hard-drive' | 'plug'
   /** 尺寸，px */
   size?: number
 }>()
@@ -25,6 +26,11 @@ const paths: Record<string, string> = {
   activity: 'M3 3h18v18H3zM7 14l2.5-3 3 4 2.5-5 2 4',
   'arrow-up': 'M12 19V5M5 12l7-7 7 7',
   'arrow-down': 'M12 5v14M19 12l-7 7-7-7',
+  cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9 9h6v6H9zM15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2',
+  memory: 'M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M16 11V9M12 11V9M2 15h20M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.84V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.84Z',
+  network: 'm3 16 4 4 4-4M7 20V4M21 8l-4-4-4 4M17 4v16',
+  'hard-drive': 'M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11ZM6 16h.01M10 16h.01',
+  plug: 'M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z',
 }
 </script>
 

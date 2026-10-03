@@ -6,24 +6,33 @@ package protocol
 // Report is sent by the agent every report interval via POST /api/v1/agent/report.
 // The server identifies the node from the Agent Token, never from fields in the body.
 type Report struct {
-	Timestamp    int64      `json:"timestamp"` // unix seconds, agent clock
-	AgentVersion string     `json:"agent_version"`
-	Final        bool       `json:"final,omitempty"` // last report sent on SIGTERM
-	System       System     `json:"system"`
-	CPU          CPU        `json:"cpu"`
-	Memory       Memory     `json:"memory"`
-	Swap         Swap       `json:"swap"`
-	Disk         []Disk     `json:"disk"`
-	Network      []NetIface `json:"network"`
-	DiskIO       []DiskIO   `json:"disk_io,omitempty"`   // 可选：旧版 Agent 不带（设计 4.7）
-	Processes    *Processes `json:"processes,omitempty"` // 可选（设计 4.9）
-	Conns        *Conns     `json:"conns,omitempty"`     // 可选（设计 4.9）
+	Timestamp    int64        `json:"timestamp"` // unix seconds, agent clock
+	AgentVersion string       `json:"agent_version"`
+	Final        bool         `json:"final,omitempty"` // last report sent on SIGTERM
+	System       System       `json:"system"`
+	CPU          CPU          `json:"cpu"`
+	Memory       Memory       `json:"memory"`
+	Swap         Swap         `json:"swap"`
+	Disk         []Disk       `json:"disk"`
+	Network      []NetIface   `json:"network"`
+	DiskIO       []DiskIO     `json:"disk_io,omitempty"`   // 可选：旧版 Agent 不带（设计 4.7）
+	Processes    *Processes   `json:"processes,omitempty"` // 可选（设计 4.9）
+	Conns        *Conns       `json:"conns,omitempty"`     // 可选（设计 4.9）
+	Ports        []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
 }
 
 // Processes 是进程数（设计 4.9）：/proc 下的进程目录数与 /proc/stat 的 procs_running。
 type Processes struct {
 	Total   int `json:"total"`
 	Running int `json:"running"`
+}
+
+// ListenPort 是一个监听端口（设计 4.9.1）。同一协议与端口的多个监听地址合并为一项。
+// 只有本机监听的端口，不含连接明细、对端地址与进程信息。
+type ListenPort struct {
+	Proto string   `json:"proto"` // tcp / udp
+	Port  int      `json:"port"`
+	Addrs []string `json:"addrs"` // 监听地址，如 0.0.0.0、::、127.0.0.1
 }
 
 // Conns 是套接字数（设计 4.9），取自 /proc/net/sockstat 与 sockstat6 的 inuse（IPv4 + IPv6）。

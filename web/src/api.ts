@@ -11,6 +11,13 @@ export interface NetIface {
 }
 
 /** 一个挂载点的容量（设计 4.6）。字节；usage 为 0～100，口径与 df 的 Use% 一致。 */
+/** 一个监听端口，同一协议与端口的多个地址已合并（设计 4.9.1） */
+export interface ListenPort {
+  proto: 'tcp' | 'udp'
+  port: number
+  addrs: string[]
+}
+
 export interface DiskInfo {
   mount: string
   total: number
@@ -51,6 +58,8 @@ export interface Report {
   /** 进程数、套接字数（设计 4.9）；旧版 Agent 不上报 */
   processes?: { total: number; running: number }
   conns?: { tcp: number; udp: number; time_wait: number }
+  /** 本机监听端口（设计 4.9.1）；旧版 Agent 不上报，节点列表接口也省略 */
+  ports?: ListenPort[]
 }
 
 /** 两次采样之间各类 CPU 时间的占比，0～100 */

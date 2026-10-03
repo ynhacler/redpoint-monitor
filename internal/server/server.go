@@ -538,10 +538,11 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, r, internalError(err))
 			return
 		}
-		// 列表每 3 秒轮询一次：每核使用率只在详情页显示，列表中省略以减小响应（多核节点每台可达数百字节）
-		if v.Latest != nil && v.Latest.CPU.PerCore != nil {
+		// 列表每 3 秒轮询一次：每核使用率与监听端口只在详情页显示，列表中省略以减小响应（多核节点每台可达数百字节）
+		if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil) {
 			rep := *v.Latest
 			rep.CPU.PerCore = nil
+			rep.Ports = nil
 			v.Latest = &rep
 		}
 		out = append(out, v)

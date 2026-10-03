@@ -1185,6 +1185,17 @@ components:
             tcp: { type: integer }
             udp: { type: integer }
             time_wait: { type: integer }
+        ports:
+          type: array
+          maxItems: 64
+          description: 可选（设计 4.9.1）：本机监听端口，按协议与端口合并；不含连接明细与进程信息。节点列表接口省略此字段
+          items:
+            type: object
+            required: [proto, port, addrs]
+            properties:
+              proto: { type: string, enum: [tcp, udp] }
+              port: { type: integer }
+              addrs: { type: array, items: { type: string }, description: 监听地址，如 0.0.0.0、::、127.0.0.1 }
         disk:
           type: array
           description: 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次
