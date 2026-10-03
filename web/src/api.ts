@@ -472,6 +472,13 @@ export interface MetricPoint {
   disk_read_max: number | null
   disk_write: number | null
   disk_write_max: number | null
+  /** CPU steal / iowait 占比 0～100 与 TCP 连接数（设计 4.4、4.9）；旧版 Agent 的时段为 null */
+  steal: number | null
+  steal_max: number | null
+  iowait: number | null
+  iowait_max: number | null
+  tcp: number | null
+  tcp_max: number | null
 }
 
 /** 可选的历史时间范围（设计 19.7、41.5） */

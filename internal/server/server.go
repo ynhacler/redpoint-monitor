@@ -450,12 +450,20 @@ func (s *Server) flush() {
 				}
 				ioR, ioW = ioRead, ioWrite
 			}
+			// steal / iowait 与 TCP 连接数：旧版 Agent 不上报（或首次采样没有占比）时写入 NULL（设计 4.4、4.9）
+			var steal, iowait, tcp any
+			if b := rep.CPU.Breakdown; b != nil {
+				steal, iowait = b.Steal, b.IOWait
+			}
+			if rep.Conns != nil {
+				tcp = rep.Conns.TCP
+			}
 			if _, err := tx.Exec(`INSERT OR REPLACE INTO metrics_raw
 				(server_id, ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed,
-				disk_read, disk_write)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				disk_read, disk_write, steal, iowait, tcp)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				p.serverID, p.at.Unix(), rep.CPU.Usage, rep.CPU.Load1, rep.Memory.Used, rep.Memory.Total,
-				rep.Swap.Used, diskUsed, diskTotal, rxs, txs, ioR, ioW); err != nil {
+				rep.Swap.Used, diskUsed, diskTotal, rxs, txs, ioR, ioW, steal, iowait, tcp); err != nil {
 				s.log.Error("flush metrics failed", "component", "store", "err", err)
 				return
 			}

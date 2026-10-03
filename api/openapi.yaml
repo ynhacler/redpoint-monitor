@@ -1465,3 +1465,9 @@ components:
         disk_read_max: { type: ['integer', 'null'] }
         disk_write: { type: ['integer', 'null'] }
         disk_write_max: { type: ['integer', 'null'] }
+        steal: { type: ['number', 'null'], description: CPU steal 占比 0～100；旧版 Agent 时段为 null（设计 4.4） }
+        steal_max: { type: ['number', 'null'] }
+        iowait: { type: ['number', 'null'], description: CPU iowait 占比 0～100；旧版 Agent 时段为 null（设计 4.4） }
+        iowait_max: { type: ['number', 'null'] }
+        tcp: { type: ['integer', 'null'], description: TCP 连接数（不含 TIME_WAIT）；旧版 Agent 时段为 null（设计 4.9） }
+        tcp_max: { type: ['integer', 'null'] }

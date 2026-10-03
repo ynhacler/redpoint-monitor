@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -241,5 +242,61 @@ func TestDiskIOAggregation(t *testing.T) {
 	}
 	if pts[0].DiskRead != nil || pts[5].DiskRead == nil || *pts[5].DiskWrite != 2000 {
 		t.Errorf("历史接口：无数据时段应为 null，有数据时段有值")
+	}
+}
+
+// steal / iowait 与 TCP 连接数：入库、降采样只用有值的点，历史接口无数据时段为 null（设计 4.4、4.9、21）。
+func TestStealIOWaitTCPHistory(t *testing.T) {
+	s, h, _ := testServer(t)
+	st := s.store
+	_, tok, _ := st.CreateServer("hist", 0, 1)
+	now := time.Now().Unix()
+	for _, body := range []string{
+		`{"timestamp":%d,"system":{"boot_id":"b"},"cpu":{"usage":5,"breakdown":{"steal":7.5,"iowait":2.5}},"conns":{"tcp":42,"udp":1,"time_wait":3}}`,
+		`{"timestamp":%d,"system":{"boot_id":"b"},"cpu":{"usage":5}}`, // 旧版 Agent / 首次采样：没有占比与连接数
+	} {
+		if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(fmt.Sprintf(body, now))); rec.Code != 204 {
+			t.Fatalf("上报失败：%d", rec.Code)
+		}
+		s.flush()
+		now++
+	}
+	var steal, iowait sql.NullFloat64
+	var tcp sql.NullInt64
+	st.DB.QueryRow(`SELECT steal, iowait, tcp FROM metrics_raw WHERE server_id = 1 ORDER BY ts LIMIT 1`).Scan(&steal, &iowait, &tcp)
+	if steal.Float64 != 7.5 || iowait.Float64 != 2.5 || tcp.Int64 != 42 {
+		t.Errorf("新字段应入库：steal=%v iowait=%v tcp=%v", steal, iowait, tcp)
+	}
+	st.DB.QueryRow(`SELECT steal, tcp FROM metrics_raw WHERE server_id = 1 ORDER BY ts DESC LIMIT 1`).Scan(&steal, &tcp)
+	if steal.Valid || tcp.Valid {
+		t.Errorf("没有上报时应为 NULL 而不是 0：steal=%v tcp=%v", steal, tcp)
+	}
+
+	base := int64(1_790_000_000) - int64(1_790_000_000)%3600
+	for ts := base; ts < base+600; ts += 10 {
+		insertRaw(t, st, 9, ts, 1, 1)
+		if ts >= base+300 { // 后 5 分钟升级为新版 Agent
+			k := (ts - base) % 60 / 10 // 0～5
+			st.DB.Exec(`UPDATE metrics_raw SET steal = ?, iowait = 1, tcp = ? WHERE server_id = 9 AND ts = ?`, k, 100+k*10, ts)
+		}
+	}
+	st.Downsample(time.Unix(base+3600+120, 0))
+	var avg, mx sql.NullFloat64
+	var tAvg, tMax sql.NullInt64
+	st.DB.QueryRow(`SELECT steal, steal_max, tcp, tcp_max FROM metrics_1m WHERE server_id = 9 AND ts = ?`, base+300).Scan(&avg, &mx, &tAvg, &tMax)
+	if avg.Float64 != 2.5 || mx.Float64 != 5 || tAvg.Int64 != 125 || tMax.Int64 != 150 {
+		t.Errorf("1 分钟聚合：steal %v/%v，tcp %v/%v；应为 2.5/5、125/150", avg, mx, tAvg, tMax)
+	}
+	st.DB.QueryRow(`SELECT steal FROM metrics_1m WHERE server_id = 9 AND ts = ?`, base).Scan(&avg)
+	if avg.Valid {
+		t.Errorf("旧版 Agent 时段应为 NULL：%v", avg)
+	}
+	st.DB.QueryRow(`SELECT steal, iowait FROM metrics_5m WHERE server_id = 9 AND ts = ?`, base+300).Scan(&avg, &mx)
+	if avg.Float64 != 2.5 || mx.Float64 != 1 {
+		t.Errorf("5 分钟聚合只用有值的点加权：steal=%v iowait=%v", avg, mx)
+	}
+	pts, err := st.MetricsHistory(9, "metrics_1m", time.Unix(base, 0))
+	if err != nil || len(pts) < 10 || pts[0].Steal != nil || pts[5].Steal == nil || *pts[5].TCPMax != 150 {
+		t.Errorf("历史接口：无数据时段为 null，有数据时段有值：%v", err)
 	}
 }
