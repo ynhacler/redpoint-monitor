@@ -7,7 +7,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
-import { cpu, displayStatus, fullestDisk, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
+import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
 import Ring from './Ring.vue'
@@ -21,7 +21,7 @@ const props = defineProps<{
 const s = computed(() => props.server)
 const r = computed(() => s.value.latest)
 const live = computed(() => isLive(s.value))
-const disk = computed(() => fullestDisk(s.value))
+const disk = computed(() => diskSummary(s.value))
 const traffic = computed(() => trafficPct(s.value))
 const problems = computed(() => issues(s.value))
 const offlineFor = computed(() =>
@@ -53,9 +53,13 @@ const io = computed(() => {
   )
 })
 const tlv = computed(() => (traffic.value == null ? 'ok' : traffic.value >= 95 ? 'bad' : traffic.value >= 80 ? 'warn' : ''))
-const diskTip = computed(() =>
-  (r.value?.disk ?? []).map((d) => `${d.mount}  ${fmtPct(d.usage)}  ${fmtBytes(d.used)} / ${fmtBytes(d.total)}`).join('\n'),
-)
+// 卡片显示全部磁盘的合计，悬停列出每个挂载点
+const diskTip = computed(() => {
+  const d = disk.value
+  if (!d) return ''
+  const head = `合计 ${fmtPct(d.usage)}  ${fmtBytes(d.used)} / ${fmtBytes(d.total)}（${d.count} 块）`
+  return [head, ...(r.value?.disk ?? []).map((x) => `${x.mount}  ${fmtPct(x.usage)}  ${fmtBytes(x.used)} / ${fmtBytes(x.total)}`)].join('\n')
+})
 </script>
 
 <template>
@@ -90,8 +94,8 @@ const diskTip = computed(() =>
       </div>
       <div class="col" :title="diskTip">
         <span class="label">Disk</span>
-        <Ring :pct="disk?.usage" :level="gaugeLevel(disk?.usage, 'disk')" :size="52" tinted label="磁盘" />
-        <span class="cap" :title="disk?.mount">{{ fmtBytesShort(disk?.total) }}</span>
+        <Ring :pct="disk?.usage" :level="disk?.level ?? 'ok'" :size="52" tinted label="磁盘" />
+        <span class="cap">{{ fmtBytesShort(disk?.total) }}</span>
       </div>
       <div class="col" :title="`上行 ${fmtBytes(tx(s), true)}，开机以来 ${fmtBytes(netTotal.tx)}\n下行 ${fmtBytes(rx(s), true)}，开机以来 ${fmtBytes(netTotal.rx)}`">
         <span class="label">Net</span>

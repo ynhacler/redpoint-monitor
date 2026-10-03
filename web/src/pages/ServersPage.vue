@@ -11,7 +11,7 @@ import { countryName } from '../countries'
 import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
-import { cpu, fullestDisk, issues, mem, trafficPct } from '../metrics'
+import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { installed, pending, state, statusRank } from '../store'
 
 const route = useRoute()
@@ -66,7 +66,7 @@ const sorted = computed(() => {
       statusRank[a.status] - statusRank[b.status] || issues(b).length - issues(a).length || byName(a, b),
     cpu: desc(cpu),
     mem: desc(mem),
-    disk: desc((s) => fullestDisk(s)?.usage),
+    disk: desc((s) => diskSummary(s)?.usage),
     traffic: desc(trafficPct),
     name: byName,
   }
