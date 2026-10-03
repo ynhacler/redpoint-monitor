@@ -662,3 +662,65 @@ export function revokeAgentToken(id: number): Promise<void> {
 export function reauth(password: string): Promise<void> {
   return request('POST', '/auth/reauth', { password })
 }
+
+// ---- 告警通知（设计 16.5、18.15） ----
+
+export type ChannelType = 'telegram' | 'webhook'
+
+/** 通知渠道。凭证已脱敏：bot_token 只显示 ID 与末 4 位，Webhook 地址只显示主机，签名密钥只说明是否已设置 */
+export interface NotifyChannel {
+  id: number
+  type: ChannelType
+  name: string
+  enabled: boolean
+  min_severity: AlertSeverity
+  notify_resolved: boolean
+  config: { bot_token?: string; chat_id?: string; url?: string; has_secret?: boolean }
+  created_at: number
+  updated_at: number
+}
+
+/** 创建 / 修改渠道；修改时凭证字段留空表示保持原值 */
+export interface NotifyChannelInput {
+  type?: ChannelType
+  name: string
+  enabled?: boolean
+  min_severity?: AlertSeverity
+  notify_resolved?: boolean
+  config: { bot_token?: string; chat_id?: string; url?: string; secret?: string; clear_secret?: boolean }
+}
+
+export interface Delivery {
+  id: number
+  channel_id: number
+  channel_name: string
+  channel_type: ChannelType
+  event_id: number
+  server_name: string
+  kind: 'firing' | 'resolved' | 'repeat' | 'test'
+  title: string
+  status: 'sent' | 'failed' | 'retrying'
+  attempts: number
+  last_error: string
+  created_at: number
+  sent_at: number
+}
+
+export function listChannels(): Promise<{ items: NotifyChannel[] }> {
+  return request('GET', '/notification-channels')
+}
+export function createChannel(v: NotifyChannelInput): Promise<NotifyChannel> {
+  return request('POST', '/notification-channels', v)
+}
+export function updateChannel(id: number, v: NotifyChannelInput): Promise<NotifyChannel> {
+  return request('PUT', `/notification-channels/${id}`, v)
+}
+export function deleteChannel(id: number): Promise<void> {
+  return request('DELETE', `/notification-channels/${id}`)
+}
+export function testChannel(id: number): Promise<{ ok: boolean; error?: string }> {
+  return request('POST', `/notification-channels/${id}/test`)
+}
+export function listDeliveries(limit = 30): Promise<{ items: Delivery[] }> {
+  return request('GET', `/notification-deliveries?limit=${limit}`)
+}

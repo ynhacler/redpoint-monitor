@@ -17,7 +17,9 @@ import (
 //
 //   - 维护中的节点不评估（活动告警随之结束）；静音照常评估与记录，只标记为已静音（设计 16.6）
 //
-// 通知（Telegram / Webhook / 推送）、抖动检测、批量合并随 A5 后续加入（TODO(A5)）。
+//   - 进入 firing、恢复、仍未恢复到达重复间隔时发送通知（notify.go）；已静音的只记录不发送
+//
+// 抖动检测、批量离线合并、面板自检随 A5 降噪加入（TODO(A5)）。
 
 const (
 	alertInterval        = 10 * time.Second
@@ -292,13 +294,34 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 			return
 		}
 		next.EventID = id
+		next.NotifiedAt = now
+		if !s.muted(row, r, now) {
+			s.notify.dispatch(s.alertNotice(NotifyFiring, row, r, next, v, detail, now))
+		}
 		s.log.Info("alert firing", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey,
 			"severity", r.Severity, "value", v)
 	case alertResolved:
 		if err := s.store.ResolveAlertEvent(st.EventID, now, v); err != nil {
 			s.log.Error("alert event resolve failed", "component", "alert", "event_id", st.EventID, "err", err)
 		}
+		if !s.muted(row, r, now) {
+			s.notify.dispatch(s.alertNotice(NotifyResolved, row, r, st, v, detail, now))
+		}
 		s.log.Info("alert resolved", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey, "value", v)
+	case alertNone:
+		// 仍在 firing：到达重复间隔时再提醒一次（设计 16.4）。静音期间跳过但照样推进计时
+		if next != nil && next.State == StateFiring && r.RepeatIntervalS > 0 {
+			last := next.NotifiedAt
+			if last.IsZero() {
+				last = next.FiredAt
+			}
+			if now.Sub(last) >= time.Duration(r.RepeatIntervalS)*time.Second {
+				next.NotifiedAt = now
+				if !s.muted(row, r, now) {
+					s.notify.dispatch(s.alertNotice(NotifyRepeat, row, r, next, v, detail, now))
+				}
+			}
+		}
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -308,6 +331,30 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 		return
 	}
 	e.active[k], e.meta[k] = next, r
+}
+
+// muted 判断这条告警当前是否被静音（设计 16.6）：静音照常评估与记录，只是不发送通知。
+func (s *Server) muted(row ServerRow, r AlertRule, now time.Time) bool {
+	return s.alerts.silenceFor(row, SilenceMute, r.RuleKey, now) != nil
+}
+
+// alertNotice 组装一条告警通知。st 为告警状态（firing 时为新状态，恢复时为恢复前的状态）。
+func (s *Server) alertNotice(kind string, row ServerRow, r AlertRule, st *alertState, v float64, detail string, now time.Time) notifyMessage {
+	m := notifyMessage{Kind: kind, ServerID: row.ID, ServerName: row.Name, RuleKey: r.RuleKey, Type: r.Type,
+		Severity: r.Severity, Value: v, Threshold: r.Threshold, Message: alertMessage(r, v, detail)}
+	if st != nil {
+		m.EventID, m.StartedAt = st.EventID, st.StartedAt
+	}
+	if kind == NotifyResolved {
+		m.ResolvedAt = now
+		if r.Type == AlertOffline {
+			m.Message = "节点恢复上报" // 离线的“当前值”是距上次上报的秒数，恢复时没有意义
+		}
+	}
+	if s.publicURL != "" {
+		m.Link = s.publicURL + "/servers/" + itoa64(row.ID)
+	}
+	return m
 }
 
 // endAlert 在规则失效时结束活动告警（不是因为指标恢复，因此不记录恢复时的值以外的信息）。

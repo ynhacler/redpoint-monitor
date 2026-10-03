@@ -11,12 +11,13 @@ import {
 import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
+import NotificationChannels from '../components/NotificationChannels.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
 import { installed, logout } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const tab = computed(() => (route.query.tab === 'rules' || route.query.tab === 'silences' ? route.query.tab : 'alerts'))
+const tab = computed(() => (route.query.tab === 'rules' || route.query.tab === 'silences' || route.query.tab === 'notify' ? route.query.tab : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
@@ -126,7 +127,7 @@ const silenceScope = (x: Silence) =>
   x.scope_type === 'global' ? '全部节点' : x.scope_type === 'group' ? `分组 ${x.scope_id}`
     : x.scope_type === 'rule' ? `规则 ${ruleNames[x.scope_id] ?? x.scope_id}` : `节点 ${serverName(x.scope_id)}`
 
-watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : loadEvents()), { immediate: true })
+watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' ? undefined : loadEvents()), { immediate: true })
 </script>
 
 <template>
@@ -137,6 +138,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
         <button type="button" role="tab" :class="{ active: tab === 'alerts' }" @click="setQuery({ tab: undefined })">告警</button>
         <button type="button" role="tab" :class="{ active: tab === 'rules' }" @click="setQuery({ tab: 'rules' })">规则</button>
         <button type="button" role="tab" :class="{ active: tab === 'silences' }" @click="setQuery({ tab: 'silences' })">静音</button>
+        <button type="button" role="tab" :class="{ active: tab === 'notify' }" @click="setQuery({ tab: 'notify' })">通知</button>
       </div>
     </div>
 
@@ -147,7 +149,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
           <button type="button" :class="{ active: stateFilter === 'active' }" @click="setQuery({ state: undefined })">进行中</button>
           <button type="button" :class="{ active: stateFilter === 'all' }" @click="setQuery({ state: 'all' })">全部</button>
         </div>
-        <span class="muted small">告警事件保留 180 天；通知（Telegram / Webhook）随后提供</span>
+        <span class="muted small">告警事件保留 180 天；通知渠道见“通知”标签</span>
       </div>
       <p v-if="eventsError" class="banner">{{ eventsError }}</p>
       <EmptyState v-else-if="!loadingEvents && !events.length" :text="stateFilter === 'active' ? '没有进行中的告警，全部节点运行正常。' : '还没有告警。'" />
@@ -167,6 +169,9 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
       </ul>
       <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loadingEvents" @click="loadEvents(true)">加载更多</button></div>
     </template>
+
+    <!-- 通知渠道（设计 16.5） -->
+    <NotificationChannels v-else-if="tab === 'notify'" @unauthorized="logout" />
 
     <!-- 静音与维护 -->
     <template v-else-if="tab === 'silences'">

@@ -185,6 +185,7 @@ type alertState struct {
 	RecoverSince time.Time // 满足恢复条件的起点；零值表示当前不满足
 	Value        float64
 	Detail       string
+	NotifiedAt   time.Time // 最近一次发出（或因静音跳过）firing / 重复提醒的时间，用于重复提醒间隔（设计 16.4）
 }
 
 // alertTransition 是一次评估带来的变化，由调用方据此持久化与通知。

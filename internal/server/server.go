@@ -59,6 +59,7 @@ type Server struct {
 	releaseMirror bool         // 同步后自动镜像
 	mirrorHTTP    *http.Client // 下载构建用，超时更长
 	mirrorCache   mirrorCache
+	notify        *notifier   // 告警通知（设计 16.5）
 	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
@@ -97,14 +98,16 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{alerts: alerts, releaseBase: OfficialReleases, releaseKeys: release.TrustedKeys(),
+	s := &Server{alerts: alerts, releaseBase: OfficialReleases, releaseKeys: release.TrustedKeys(),
 		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync,
 		mirrorRoot: opts.MirrorDir, releaseMirror: opts.ReleaseMirror && opts.MirrorDir != "", mirrorHTTP: &http.Client{Timeout: 10 * time.Minute},
 		store: store, web: web, log: opts.Logger, version: opts.Version,
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, captcha: captchaFor(opts)}, nil
+		latest: map[int64]*snapshot{}, counters: c, captcha: captchaFor(opts)}
+	s.notify = newNotifier(s)
+	return s, nil
 }
 
 // Run starts background loops and the HTTP server; blocks until ctx is cancelled.
@@ -214,6 +217,12 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/upgrade-tasks", accessAdmin, s.handleCreateUpgradeTasks)
 	handle("POST /api/v1/upgrade-tasks/{id}/cancel", accessAdmin, s.handleCancelUpgradeTask)
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
+	handle("GET /api/v1/notification-channels", accessAdmin, s.handleChannels)
+	handle("POST /api/v1/notification-channels", accessAdmin, s.handleCreateChannel)
+	handle("PUT /api/v1/notification-channels/{id}", accessAdmin, s.handleUpdateChannel)
+	handle("DELETE /api/v1/notification-channels/{id}", accessAdmin, s.handleDeleteChannel)
+	handle("POST /api/v1/notification-channels/{id}/test", accessAdmin, s.handleTestChannel)
+	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
 	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
 	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
 	handle("DELETE /api/v1/silences/{id}", accessAdmin, s.handleEndSilence)
@@ -498,6 +507,11 @@ func (s *Server) maintenance(ctx context.Context) {
 				s.log.Error("alert prune failed", "component", "alert", "err", err)
 			} else if n > 0 {
 				s.log.Info("expired alert events deleted", "component", "alert", "rows", n)
+			}
+			if n, err := s.store.PruneDeliveries(now); err != nil {
+				s.log.Error("delivery prune failed", "component", "notify", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired notification deliveries deleted", "component", "notify", "rows", n)
 			}
 			if n, err := s.store.PruneAudit(now); err != nil {
 				s.log.Error("audit prune failed", "component", "audit", "err", err)
