@@ -61,6 +61,7 @@ type Server struct {
 	mirrorCache   mirrorCache
 	notify        *notifier   // 告警通知（设计 16.5）
 	noise         *alertNoise // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
+	quiet         *quietState // 免打扰时段（设计 16.5）
 	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
@@ -108,6 +109,9 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, captcha: captchaFor(opts)}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
+	if s.quiet, err = newQuietState(store); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -218,6 +222,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/upgrade-tasks", accessAdmin, s.handleCreateUpgradeTasks)
 	handle("POST /api/v1/upgrade-tasks/{id}/cancel", accessAdmin, s.handleCancelUpgradeTask)
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
+	handle("GET /api/v1/settings/quiet-hours", accessAdmin, s.handleGetQuietHours)
+	handle("PUT /api/v1/settings/quiet-hours", accessAdmin, s.handlePutQuietHours)
 	handle("GET /api/v1/notification-channels", accessAdmin, s.handleChannels)
 	handle("POST /api/v1/notification-channels", accessAdmin, s.handleCreateChannel)
 	handle("PUT /api/v1/notification-channels/{id}", accessAdmin, s.handleUpdateChannel)

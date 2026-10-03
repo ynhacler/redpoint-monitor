@@ -45,6 +45,8 @@ const (
 	NotifyStillFiring = "still_firing" // 抖动结束时仍在告警
 	NotifyPanelDown   = "panel_down"   // 全部节点同时停止上报，疑似面板一侧异常
 	NotifyPanelUp     = "panel_up"
+	// 免打扰结束后的汇总（设计 16.5，quiet.go）
+	NotifyQuietSummary = "quiet_summary"
 )
 
 // 投递状态
@@ -343,9 +345,10 @@ type notifyMessage struct {
 	Message    string // 如“磁盘 / 使用率 96%（阈值 95%）”
 	StartedAt  time.Time
 	ResolvedAt time.Time
-	Link       string   // 节点详情地址；未配置 --public-url 时为空
-	Servers    []string // 合并通知包含的节点（批量离线）
-	Count      int      // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数
+	Link       string          // 节点详情地址；未配置 --public-url 时为空
+	Servers    []string        // 合并通知包含的节点（批量离线）
+	Count      int             // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数 / 汇总条数
+	Items      []notifyMessage // 免打扰汇总包含的通知
 }
 
 var severityIcons = map[string]string{"critical": "🔴", "warning": "🟠", "info": "🔵"}
@@ -359,6 +362,8 @@ func (m notifyMessage) title() string {
 		return fmt.Sprintf("%s %d 台节点同时离线：%s", severityIcons[m.Severity], m.Count, namesBrief(m.Servers))
 	}
 	switch m.Kind {
+	case NotifyQuietSummary:
+		return fmt.Sprintf("🌙 免打扰期间 %d 条告警通知", m.Count)
 	case NotifyResolved:
 		return "✅ " + m.ServerName + " 已恢复：" + m.Message
 	case NotifyRepeat:
@@ -379,6 +384,13 @@ func (m notifyMessage) title() string {
 // text 是完整的纯文本（设计 16.5 的模板）。
 func (m notifyMessage) text(now time.Time) string {
 	lines := []string{m.title()}
+	if m.Kind == NotifyQuietSummary {
+		lines = append(lines, m.quietText()...)
+		if m.Link != "" {
+			lines = append(lines, m.Link)
+		}
+		return strings.Join(lines, "\n")
+	}
 	if len(m.Servers) > 0 {
 		if m.Kind == NotifyFiring {
 			lines = append(lines, "可能是面板网络或同一服务商故障")
@@ -431,7 +443,15 @@ func fmtSpan(d time.Duration) string {
 // webhookPayload 是 Webhook 的请求体（version 1，只增加字段）。
 func (m notifyMessage) webhookPayload(now time.Time) []byte {
 	p := map[string]any{"version": 1, "kind": m.Kind, "text": m.text(now), "title": m.title(), "sent_at": now.Unix()}
-	if len(m.Servers) > 0 {
+	if m.Kind == NotifyQuietSummary {
+		items := []map[string]any{}
+		for _, x := range m.Items {
+			items = append(items, map[string]any{"kind": x.Kind, "title": x.title(), "severity": x.Severity, "server": x.ServerName,
+				"event_id": x.EventID})
+		}
+		p["severity"], p["count"], p["items"] = m.Severity, m.Count, items
+		p["started_at"], p["ended_at"] = m.StartedAt.Unix(), m.ResolvedAt.Unix()
+	} else if len(m.Servers) > 0 {
 		p["type"], p["severity"], p["count"], p["servers"] = m.Type, m.Severity, m.Count, m.Servers
 	} else if m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp {
 		p["severity"], p["count"] = m.Severity, m.Count
@@ -494,16 +514,23 @@ func (n *notifier) dispatch(m notifyMessage) {
 		return
 	}
 	for _, c := range channels {
-		if !c.wants(m) {
+		cm := m
+		if m.Kind == NotifyQuietSummary {
+			// 汇总按渠道的最低级别裁剪（设计 16.5）
+			var ok bool
+			if cm, ok = m.forChannel(c); !ok || !c.Enabled {
+				continue
+			}
+		} else if !c.wants(m) {
 			continue
 		}
 		n.wg.Add(1)
-		go func(c NotifyChannel) {
+		go func(c NotifyChannel, m notifyMessage) {
 			defer n.wg.Done()
 			n.sem <- struct{}{}
 			defer func() { <-n.sem }()
 			n.deliver(context.Background(), c, m, n.backoff)
-		}(c)
+		}(c, cm)
 	}
 }
 

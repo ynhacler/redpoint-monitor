@@ -403,6 +403,13 @@ var migrations = []string{
 	);
 	CREATE INDEX notification_deliveries_event ON notification_deliveries(event_id);
 	CREATE INDEX notification_deliveries_created ON notification_deliveries(created_at);`,
+
+	// 迁移 16：系统设置（设计 16.5 免打扰时段等）。value 为 JSON，按 key 读写。
+	`CREATE TABLE settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {

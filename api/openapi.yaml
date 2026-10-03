@@ -461,6 +461,28 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
+  /settings/quiet-hours:
+    get:
+      tags: [alerts]
+      summary: 免打扰时段（设计 16.5）
+      responses:
+        '200': { description: 当前设置, content: { application/json: { schema: { $ref: '#/components/schemas/QuietHoursView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [alerts]
+      summary: 修改免打扰时段（记入操作日志 setting.update）
+      description: |
+        免打扰期间：严重告警按 critical 设置（notify 仍然通知 / summary 与警告一起汇总）；警告暂存，结束后汇总为一条，
+        按渠道的最低级别裁剪；提示不发送。面板自检与测试通知不受影响。暂存在内存中，面板重启会丢失尚未汇总的通知。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/QuietHours' } } }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/QuietHoursView' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /notification-channels:
     get:
       tags: [alerts]
@@ -1077,6 +1099,25 @@ components:
         artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
         mirrored: { type: boolean, description: 全部文件已校验并保存在本面板（设计 27.5.3） }
 
+    QuietHours:
+      type: object
+      required: [enabled, start, end, critical]
+      properties:
+        enabled: { type: boolean }
+        start: { type: string, example: '23:00', description: HH:MM；晚于 end 表示跨午夜 }
+        end: { type: string, example: '08:00' }
+        timezone: { type: string, example: Asia/Shanghai, description: IANA 时区名；空为面板本地时区 }
+        critical: { type: string, enum: [notify, summary] }
+
+    QuietHoursView:
+      allOf:
+        - { $ref: '#/components/schemas/QuietHours' }
+        - type: object
+          properties:
+            active: { type: boolean, description: 当前是否处于免打扰 }
+            effective_timezone: { type: string }
+            held: { type: integer, description: 已暂存、等待汇总的通知数 }
+
     NotifyChannel:
       type: object
       description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥只返回是否已设置
@@ -1125,7 +1166,7 @@ components:
         channel_type: { type: string, enum: [telegram, webhook] }
         event_id: { type: integer, description: 测试通知为 0 }
         server_name: { type: string }
-        kind: { type: string, enum: [firing, resolved, repeat, test, flapping, still_firing, panel_down, panel_up], description: 'flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）' }
+        kind: { type: string, enum: [firing, resolved, repeat, test, flapping, still_firing, panel_down, panel_up, quiet_summary], description: 'quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）' }
         title: { type: string }
         status: { type: string, enum: [sent, failed, retrying] }
         attempts: { type: integer }
