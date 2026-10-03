@@ -3,18 +3,15 @@
 // 指标顺序与 App 一致（设计 41.6）。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, getHistory, getServer, UnauthorizedError, type HistoryRange, type HistoryView, type ServerView } from '../api'
-import AgentUpgrade from '../components/AgentUpgrade.vue'
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
-import Flag from '../components/Flag.vue'
 import Icon from '../components/Icon.vue'
-import { countryName } from '../countries'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
-import { DASH, fmtBandwidth, fmtBytes, fmtPrice, fmtTime, periodNames } from '../format'
+import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
 import { logout, serverById, state } from '../store'
 
@@ -156,11 +153,6 @@ const charts = computed(() => [
     series: [line('Load1', (p) => p.load1)],
   },
 ])
-
-const expireDays = computed(() => {
-  if (!s.value?.expire_date) return null
-  return Math.ceil((new Date(s.value.expire_date + 'T00:00:00').getTime() - Date.now()) / 86400000)
-})
 </script>
 
 <template>
@@ -189,7 +181,7 @@ const expireDays = computed(() => {
       <SilenceControls v-if="s.status !== 'pending'" :server="s" class="section-tight" @unauthorized="logout" />
 
       <!-- 概况（设计 11.1） -->
-      <ServerSummary :server="liveServer ?? s" :live="live" />
+      <ServerSummary :server="liveServer ?? s" :live="live" @unauthorized="logout" />
 
       <!-- 实时：速览 → CPU → 内存 → 磁盘 → 网络；离线时不显示旧数值（设计 43.6） -->
       <template v-if="live && liveServer?.latest">
@@ -226,48 +218,6 @@ const expireDays = computed(() => {
         </div>
       </section>
 
-      <!-- 系统与资产 -->
-      <section class="section info-grid">
-        <div class="panel">
-          <h3>系统</h3>
-          <dl class="kv">
-            <dt>主机名</dt><dd>{{ sys?.hostname || s.hostname || DASH }}</dd>
-            <dt>IPv4</dt><dd class="num">{{ s.ipv4 || s.expected_ipv4 || DASH }}</dd>
-            <dt>IPv6</dt><dd class="num">{{ s.ipv6 || s.expected_ipv6 || DASH }}</dd>
-            <dt>内核</dt><dd>{{ sys?.kernel || DASH }}</dd>
-            <dt>Agent</dt>
-            <dd>
-              <AgentUpgrade v-if="s.status !== 'pending'" :server-id="s.id" :current="s.latest?.agent_version" @unauthorized="logout" />
-              <template v-else>{{ DASH }}</template>
-            </dd>
-            <dt>注册时间</dt><dd>{{ fmtTime(s.enrolled_at) }}</dd>
-            <dt>最后上报</dt><dd>{{ fmtTime(s.last_seen_at) }}</dd>
-          </dl>
-        </div>
-        <div class="panel">
-          <h3>资产</h3>
-          <dl class="kv">
-            <dt>供应商</dt><dd>{{ s.provider || DASH }}</dd>
-            <dt>套餐</dt><dd>{{ s.plan || DASH }}</dd>
-            <dt>带宽</dt><dd>{{ fmtBandwidth(s.bandwidth_mbps) }}</dd>
-            <dt>国家 / 地区</dt><dd>
-              <template v-if="s.country"><Flag :code="s.country" /> {{ countryName(s.country) }}</template>
-              <template v-else>{{ DASH }}</template>
-            </dd>
-            <dt>城市 / 机房</dt><dd>{{ s.region || DASH }}</dd>
-            <dt>分组</dt><dd>{{ s.group || DASH }}</dd>
-            <dt>续费</dt><dd>{{ fmtPrice(s.price_cents, s.currency) }}<template v-if="s.billing_period"> / {{ periodNames[s.billing_period] }}</template></dd>
-            <dt>到期</dt>
-            <dd>
-              {{ s.expire_date || DASH }}
-              <span v-if="expireDays != null" :class="{ bad: expireDays <= 3, warn: expireDays > 3 && expireDays <= 14 }">
-                （{{ expireDays >= 0 ? `${expireDays} 天后` : `已过期 ${-expireDays} 天` }}）
-              </span>
-            </dd>
-            <dt>备注</dt><dd>{{ s.note || DASH }}</dd>
-          </dl>
-        </div>
-      </section>
     </template>
   </main>
 </template>
@@ -280,10 +230,6 @@ const expireDays = computed(() => {
 .title .row { gap: var(--space-3); }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); gap: var(--space-3); flex-wrap: wrap; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--space-3); }
-.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3); }
-.kv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
-.kv dt { color: var(--text-muted); font-size: var(--font-sm); }
-.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .charts { grid-template-columns: 1fr; }
 }
