@@ -1,21 +1,22 @@
 <script setup lang="ts">
-// 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）。
+// 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
+// “静音”列出生效中的静音与维护，并可静音分组、规则或全部（设计 16.6）。
 // 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, deleteAlertRule, listAlertRules, listAlerts, UnauthorizedError, updateAlertRule,
-  type AlertEvent, type AlertRule,
+  ApiError, createSilence, deleteAlertRule, endSilence, listAlertRules, listAlerts, listSilences, UnauthorizedError, updateAlertRule,
+  type AlertEvent, type AlertRule, type Silence,
 } from '../api'
 import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
-import { fmtDateTime, fmtDuration } from '../format'
+import { fmtDateTime, fmtDuration, fmtTime } from '../format'
 import { installed, logout } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const tab = computed(() => (route.query.tab === 'rules' ? 'rules' : 'alerts'))
+const tab = computed(() => (route.query.tab === 'rules' || route.query.tab === 'silences' ? route.query.tab : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
@@ -91,7 +92,41 @@ const addTaken = computed(() =>
   overrides.value.some((r) => r.rule_key === add.value.ruleKey && r.scope_type === add.value.scopeType && r.scope_id === add.value.scopeId),
 )
 
-watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : loadEvents()), { immediate: true })
+// ---- 静音 ----
+const silences = ref<Silence[]>([])
+const silencesError = ref('')
+const sil = ref({ scopeType: 'global' as Silence['scope_type'], scopeId: '', reason: '' })
+async function loadSilences() {
+  try {
+    silences.value = await listSilences()
+    if (!rules.value.length) rules.value = await listAlertRules() // 规则静音需要规则列表
+    silencesError.value = ''
+  } catch (e) {
+    fail(e, (m) => (silencesError.value = m))
+  }
+}
+async function addSilence(duration: '' | '1h' | '8h' | '24h') {
+  try {
+    await createSilence({ kind: 'mute', scope_type: sil.value.scopeType, scope_id: sil.value.scopeId, duration, reason: sil.value.reason.trim() })
+    sil.value.reason = ''
+    await loadSilences()
+  } catch (e) {
+    fail(e, (m) => (silencesError.value = e instanceof ApiError ? e.details[0]?.message ?? m : m))
+  }
+}
+async function stopSilence(x: Silence) {
+  try {
+    await endSilence(x.id)
+    await loadSilences()
+  } catch (e) {
+    fail(e, (m) => (silencesError.value = m))
+  }
+}
+const silenceScope = (x: Silence) =>
+  x.scope_type === 'global' ? '全部节点' : x.scope_type === 'group' ? `分组 ${x.scope_id}`
+    : x.scope_type === 'rule' ? `规则 ${ruleNames[x.scope_id] ?? x.scope_id}` : `节点 ${serverName(x.scope_id)}`
+
+watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : loadEvents()), { immediate: true })
 </script>
 
 <template>
@@ -101,6 +136,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : loadEvent
       <div class="segmented" role="tablist">
         <button type="button" role="tab" :class="{ active: tab === 'alerts' }" @click="setQuery({ tab: undefined })">告警</button>
         <button type="button" role="tab" :class="{ active: tab === 'rules' }" @click="setQuery({ tab: 'rules' })">规则</button>
+        <button type="button" role="tab" :class="{ active: tab === 'silences' }" @click="setQuery({ tab: 'silences' })">静音</button>
       </div>
     </div>
 
@@ -130,6 +166,54 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : loadEvent
         </li>
       </ul>
       <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loadingEvents" @click="loadEvents(true)">加载更多</button></div>
+    </template>
+
+    <!-- 静音与维护 -->
+    <template v-else-if="tab === 'silences'">
+      <p class="muted small intro">静音期间照常记录告警，但不发送通知、不计入“需要关注”；单个节点的静音与维护在节点详情页设置。</p>
+      <p v-if="silencesError" class="banner">{{ silencesError }}</p>
+      <div class="panel add">
+        <div class="add-fields">
+          <label>静音对象
+            <select v-model="sil.scopeType" @change="sil.scopeId = ''">
+              <option value="global">全部节点</option>
+              <option value="group">分组</option>
+              <option value="rule">规则</option>
+            </select>
+          </label>
+          <label v-if="sil.scopeType === 'group'">分组
+            <select v-model="sil.scopeId">
+              <option value="" disabled>请选择</option>
+              <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
+            </select>
+          </label>
+          <label v-if="sil.scopeType === 'rule'">规则
+            <select v-model="sil.scopeId">
+              <option value="" disabled>请选择</option>
+              <option v-for="g in globals" :key="g.rule_key" :value="g.rule_key">{{ ruleNames[g.rule_key] ?? g.rule_key }}</option>
+            </select>
+          </label>
+          <label>原因<input v-model="sil.reason" maxlength="200" placeholder="可选" /></label>
+        </div>
+        <div class="choices">
+          <span class="muted small">静音</span>
+          <button v-for="d in ([['1h', '1 小时'], ['8h', '8 小时'], ['24h', '24 小时'], ['', '直到手动恢复']] as const)" :key="d[0]" type="button" class="secondary"
+            :disabled="sil.scopeType !== 'global' && !sil.scopeId" @click="addSilence(d[0])">{{ d[1] }}</button>
+        </div>
+      </div>
+      <EmptyState v-if="!silences.length" text="没有生效中的静音或维护。" />
+      <ul v-else class="panel rules">
+        <li v-for="x in silences" :key="x.id">
+          <div class="rule">
+            <span class="sev small">{{ x.kind === 'maintenance' ? '维护' : '静音' }}</span>
+            <div class="rule-main">
+              <div class="rule-name">{{ silenceScope(x) }}</div>
+              <div class="muted small">{{ x.ends_at ? `至 ${fmtTime(x.ends_at)}` : '直到手动恢复' }}<template v-if="x.reason"> · {{ x.reason }}</template></div>
+            </div>
+            <button type="button" class="text" @click="stopSilence(x)">{{ x.kind === 'maintenance' ? '结束维护' : '取消静音' }}</button>
+          </div>
+        </li>
+      </ul>
     </template>
 
     <!-- 规则 -->
@@ -248,6 +332,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : loadEvent
 .add-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); }
 .add-fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .add-cancel { margin-top: var(--space-3); }
+.choices { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
 .warn-text { color: var(--warn); }
 .danger-text { color: var(--bad); }
 @media (max-width: 600px) {

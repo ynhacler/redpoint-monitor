@@ -321,6 +321,47 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /silences:
+    get:
+      tags: [alerts]
+      summary: 生效中的静音与维护（设计 16.6），最新在前
+      responses:
+        '200':
+          description: 静音与维护
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Silence' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [alerts]
+      summary: 新增静音或维护；同一对象同一类型已有生效记录时以新设置为准
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, scope_type]
+              properties:
+                kind: { type: string, enum: [mute, maintenance], description: 维护只能针对单个节点 }
+                scope_type: { type: string, enum: [server, group, rule, global] }
+                scope_id: { type: string, description: 节点 ID、分组名或 rule_key；global 时省略 }
+                duration: { type: string, enum: ['', '1h', '8h', '24h'], description: 空表示直到手动结束 }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '201': { description: 新增的记录, content: { application/json: { schema: { $ref: '#/components/schemas/Silence' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /silences/{id}:
+    delete:
+      tags: [alerts]
+      summary: 立即结束静音或维护（保留记录）
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '204': { description: 已结束 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /audit-logs:
     get:
       tags: [audit]
@@ -853,6 +894,21 @@ components:
               message: { type: string }
               value: { type: number, description: 当前值：百分比、离线秒数或负载倍数 }
               fired_at: { type: integer }
+              silenced: { type: boolean, description: 已静音：照常记录，不通知，不计入需要关注 }
+        maintenance: { $ref: '#/components/schemas/Silence' }
+        muted: { $ref: '#/components/schemas/Silence' }
+
+    Silence:
+      type: object
+      properties:
+        id: { type: integer }
+        scope_type: { type: string, enum: [server, group, rule, global] }
+        scope_id: { type: string }
+        kind: { type: string, enum: [mute, maintenance] }
+        reason: { type: string }
+        starts_at: { type: integer }
+        ends_at: { type: ['integer', 'null'], description: null 表示直到手动结束 }
+        created_by: { type: string }
 
     AlertRule:
       type: object

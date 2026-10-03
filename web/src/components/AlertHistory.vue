@@ -8,6 +8,8 @@ import { fmtDateTime, fmtDuration } from '../format'
 const props = defineProps<{
   /** 节点 ID */
   serverId: number
+  /** 节点活动告警与维护状态的摘要；变化时立即刷新（告警触发 / 恢复、开始维护后不必等 1 分钟） */
+  version?: string
 }>()
 const emit = defineEmits<{ unauthorized: [] }>()
 
@@ -32,6 +34,7 @@ watch(() => props.serverId, () => {
   if (timer) clearInterval(timer)
   timer = window.setInterval(load, 60_000)
 }, { immediate: true })
+watch(() => props.version, (v, old) => old !== undefined && load())
 onBeforeUnmount(() => timer && clearInterval(timer))
 
 // 进行中的在前，其余按触发时间倒序（接口已按 ID 倒序）

@@ -327,6 +327,20 @@ var migrations = []string{
 		('traffic_95',       'traffic',          '>=', 95,  95,  0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
 		('traffic_100',      'traffic',          '>=', 100, 100, 0,   0,   'critical', 7200, 1, unixepoch(), unixepoch()),
 		('traffic_forecast', 'traffic_forecast', '>',  100, 100, 0,   0,   'info',     0,    1, unixepoch(), unixepoch());`,
+
+	// 迁移 11：静音与维护（设计 16.6、18.14）。到期自动失效；手动结束时把 ends_at 设为结束时间，保留记录。
+	`CREATE TABLE silences (
+		id INTEGER PRIMARY KEY,
+		scope_type TEXT NOT NULL,          -- server / group / rule / global
+		scope_id TEXT NOT NULL DEFAULT '', -- 节点 ID、分组名或 rule_key；global 时为空
+		kind TEXT NOT NULL,                -- mute（照常评估、不通知）/ maintenance（节点级，不产生告警）
+		reason TEXT NOT NULL DEFAULT '',
+		starts_at INTEGER NOT NULL,
+		ends_at INTEGER,                   -- 为空表示直到手动结束
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX silences_ends ON silences(ends_at);`,
 }
 
 func (s *Store) migrate() error {

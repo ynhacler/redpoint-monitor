@@ -15,7 +15,9 @@ import (
 //   - firing 写入 alert_events，面板重启后据此恢复，不会重复记录；pending 只在内存中
 //   - 待安装节点不产生告警；离线节点的资源规则暂停评估，只保留“节点离线”（设计 16.3 NODATA）
 //
-// 通知（Telegram / Webhook / 推送）、静音与维护、抖动检测、批量合并随 A5 后续加入（TODO(A5)）。
+//   - 维护中的节点不评估（活动告警随之结束）；静音照常评估与记录，只标记为已静音（设计 16.6）
+//
+// 通知（Telegram / Webhook / 推送）、抖动检测、批量合并随 A5 后续加入（TODO(A5)）。
 
 const (
 	alertInterval        = 10 * time.Second
@@ -35,6 +37,7 @@ type alertEngine struct {
 	active    map[alertKey]*alertState // pending 与 firing
 	meta      map[alertKey]AlertRule   // 活动告警对应的规则（级别、类型），供列表展示
 	traffic   map[int64]*trafficView   // 各节点最近一次计算的本周期流量
+	silences  []Silence                // 生效中的静音与维护（每轮评估与每次修改后刷新）
 	trafficAt time.Time
 	startedAt time.Time
 }
@@ -45,6 +48,9 @@ func newAlertEngine(store *Store, now time.Time) (*alertEngine, error) {
 		traffic: map[int64]*trafficView{}, startedAt: now}
 	firing, err := store.FiringAlertEvents()
 	if err != nil {
+		return nil, err
+	}
+	if e.silences, err = store.ActiveSilences(now); err != nil {
 		return nil, err
 	}
 	for _, ev := range firing {
@@ -65,14 +71,40 @@ type alertBrief struct {
 	Message  string  `json:"message"`
 	Value    float64 `json:"value"` // 当前值（每次评估更新）
 	FiredAt  int64   `json:"fired_at"`
+	Silenced bool    `json:"silenced"` // 已静音：照常记录，不通知，不计入“需要关注”
+}
+
+// setSilences 替换生效中的静音与维护。
+func (e *alertEngine) setSilences(list []Silence) {
+	e.mu.Lock()
+	e.silences = list
+	e.mu.Unlock()
+}
+
+// silenceFor 返回作用于节点（或节点的某条规则）的生效记录；ruleKey 为空时只看节点整体的。
+func (e *alertEngine) silenceFor(row ServerRow, kind, ruleKey string, now time.Time) *Silence {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.silenceForLocked(row, kind, ruleKey, now)
+}
+
+func (e *alertEngine) silenceForLocked(row ServerRow, kind, ruleKey string, now time.Time) *Silence {
+	for i := range e.silences {
+		x := e.silences[i]
+		if x.Kind == kind && x.activeAt(now) && x.appliesTo(row.ID, row.Group, ruleKey) {
+			return &x
+		}
+	}
+	return nil
 }
 
 // firingFor 返回节点的活动告警，严重在前；同一类型只保留最严重的一条
 // （例如磁盘 96% 同时满足 85% 与 95% 两条规则，只显示严重那条）。
 // 依赖抑制（设计 16.4）：节点离线时只返回离线告警，资源告警仍保留记录，重新上报后照常显示。
-func (e *alertEngine) firingFor(serverID int64) []alertBrief {
+func (e *alertEngine) firingFor(row ServerRow) []alertBrief {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	serverID, now := row.ID, time.Now()
 	best := map[string]alertBrief{}
 	for k, st := range e.active {
 		if k.serverID != serverID || st.State != StateFiring {
@@ -80,7 +112,8 @@ func (e *alertEngine) firingFor(serverID int64) []alertBrief {
 		}
 		r := e.meta[k]
 		b := alertBrief{EventID: st.EventID, RuleKey: k.ruleKey, Type: r.Type, Severity: r.Severity,
-			Message: alertMessage(r, st.Value, st.Detail), Value: st.Value, FiredAt: st.FiredAt.Unix()}
+			Message: alertMessage(r, st.Value, st.Detail), Value: st.Value, FiredAt: st.FiredAt.Unix(),
+			Silenced: e.silenceForLocked(row, SilenceMute, k.ruleKey, now) != nil}
 		if cur, ok := best[r.Type]; !ok || severityRank(b.Severity) > severityRank(cur.Severity) ||
 			(b.Severity == cur.Severity && r.Threshold > e.meta[alertKey{serverID, cur.RuleKey}].Threshold) {
 			best[r.Type] = b
@@ -139,6 +172,11 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 	if err != nil {
 		return err
 	}
+	silences, err := s.store.ActiveSilences(now)
+	if err != nil {
+		return err
+	}
+	e.setSilences(silences)
 	snaps := s.snapshots()
 
 	refreshTraffic := now.Sub(e.trafficAt) >= alertTrafficInterval
@@ -152,6 +190,9 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 			continue // 待安装节点不产生告警（设计 27.7）
 		}
 		seenServers[row.ID] = true
+		if e.silenceFor(row, SilenceMaintenance, "", now) != nil {
+			continue // 维护中：不评估，活动告警在下面作为“规则失效”结束（设计 1.5.15）
+		}
 		_, hasSnap := snaps[row.ID]
 		if refreshTraffic {
 			if tv, err := s.trafficOf(row, now); err == nil {

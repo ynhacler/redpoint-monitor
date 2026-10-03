@@ -58,10 +58,11 @@ function alertLabel(a: AlertBrief): string {
  */
 export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[] {
   const out: { level: 'bad' | 'warn'; text: string }[] = []
+  if (s.maintenance) return out // 维护中：不产生告警，也不算需要关注（设计 1.5.15）
   if (s.status === 'offline') out.push({ level: 'bad', text: s.last_seen_at ? '离线' : '尚未上报' })
   if (s.status === 'unknown') out.push({ level: 'warn', text: '上报延迟' })
   for (const a of s.alerts ?? []) {
-    if (a.type === 'offline') continue // 已由在线状态表示
+    if (a.type === 'offline' || a.silenced) continue // 离线已由在线状态表示；已静音的不计入
     out.push({ level: a.severity === 'critical' ? 'bad' : 'warn', text: alertLabel(a) })
   }
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'bad' ? -1 : 1))
@@ -100,3 +101,10 @@ export interface LiveSample {
   tx: number | null
   tcp?: number
 }
+
+/** 展示用状态：维护中优先于在线状态（设计 41.3 StatusDot） */
+export const displayStatus = (s: ServerView) => (s.maintenance ? 'maintenance' : s.status)
+
+/** 进行中且未静音的告警条数（导航角标） */
+export const activeAlertCount = (list: ServerView[]) =>
+  list.reduce((n, s) => n + (s.maintenance ? 0 : s.alerts?.filter((a) => !a.silenced).length ?? 0), 0)

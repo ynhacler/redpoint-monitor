@@ -183,6 +183,9 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/alert-rules/preview", accessAdmin, s.handlePreviewAlertRule)
 	handle("PUT /api/v1/alert-rules/{id}", accessAdmin, s.handleUpdateAlertRule)
 	handle("DELETE /api/v1/alert-rules/{id}", accessAdmin, s.handleDeleteAlertRule)
+	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
+	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
+	handle("DELETE /api/v1/silences/{id}", accessAdmin, s.handleEndSilence)
 	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
 	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
@@ -489,6 +492,9 @@ type serverView struct {
 	Latest  *protocol.Report `json:"latest,omitempty"`
 	Traffic trafficView      `json:"traffic"`
 	Alerts  []alertBrief     `json:"alerts"` // 活动告警，严重在前；“需要关注”据此判断（设计 9、16）
+	// 生效中的维护与节点级静音（节点、分组或全部）；没有时省略（设计 16.6）
+	Maintenance *Silence `json:"maintenance,omitempty"`
+	Muted       *Silence `json:"muted,omitempty"`
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
@@ -545,7 +551,9 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 		return v, err
 	}
 	v.Traffic = t
-	v.Alerts = s.alerts.firingFor(row.ID)
+	v.Alerts = s.alerts.firingFor(row)
+	v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
+	v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
 	return v, nil
 }
 

@@ -4,6 +4,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from './components/Icon.vue'
+import { activeAlertCount } from './metrics'
 import { logout, state, stopPolling } from './store'
 import { applyTheme, cycleTheme, themeMode } from './theme'
 
@@ -11,7 +12,7 @@ const route = useRoute()
 const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } as const
 // 使用初始密码时只显示账号页，不显示导航（设计 17.4）
 // 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
-const alertCount = computed(() => state.servers.reduce((n, s) => n + (s.alerts?.length ?? 0), 0))
+const alertCount = computed(() => activeAlertCount(state.servers))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
 
 onMounted(() => applyTheme(themeMode.value))

@@ -44,7 +44,7 @@ func TestAlertEngine(t *testing.T) {
 		}
 		return items
 	}
-	firing := func() []alertBrief { return s.alerts.firingFor(id) }
+	firing := func() []alertBrief { return s.alerts.firingFor(ServerRow{ID: id}) }
 
 	// CPU 95% 持续 5 分钟才触发
 	report(0, 95, 40)
@@ -178,11 +178,11 @@ func TestAlertStartupGrace(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.evaluateAlerts(start.Add(30 * time.Second))
-	if len(s.alerts.firingFor(v.ServerID)) != 0 {
+	if len(s.alerts.firingFor(ServerRow{ID: v.ServerID})) != 0 {
 		t.Fatal("启动宽限期内不应发离线告警")
 	}
 	s.evaluateAlerts(start.Add(alertStartupGrace + time.Second))
-	if f := s.alerts.firingFor(v.ServerID); len(f) != 1 || f[0].Type != AlertOffline {
+	if f := s.alerts.firingFor(ServerRow{ID: v.ServerID}); len(f) != 1 || f[0].Type != AlertOffline {
 		t.Fatalf("宽限期过后仍未上报应触发离线告警：%+v", f)
 	}
 }
