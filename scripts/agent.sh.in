@@ -49,6 +49,8 @@ case "$M" in
   *) die "暂不支持的 CPU 架构：$M（支持 amd64 / arm64 / armv7 / armv6 / 386 / riscv64）" ;;
 esac
 if [ -d /run/systemd/system ]; then INIT=systemd; elif command -v openrc-run >/dev/null 2>&1; then INIT=openrc; else INIT=other; fi
+# /etc/os-release 是主机上的系统文件，只读取 ID 与 VERSION_ID 用于显示
+# shellcheck source=/dev/null
 OS_NAME="$( (. /etc/os-release 2>/dev/null && printf '%s %s' "${ID:-linux}" "${VERSION_ID:-}") || echo linux)"
 say "✓ 系统 $OS_NAME · linux/$ARCH · init: $INIT"
 
