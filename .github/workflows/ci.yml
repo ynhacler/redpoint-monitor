@@ -59,6 +59,16 @@ jobs:
       - name: 交叉编译（Agent 6 种架构 + 面板 amd64/arm64）
         run: make build-linux
 
+      # 真实 Linux 采集器：与 /proc、statfs 对照，并输出每轮采集的耗时与内存分配（设计 4、4.2）
+      - name: Agent 采集器（真实 Linux）
+        run: |
+          go test -v -run TestLinuxCollect ./internal/agent/collector
+          go test -run '^$' -bench LinuxCollect -benchmem -benchtime 200x ./internal/agent/collector
+
+      # 用真实采集器运行 Agent 60 秒：报告常驻内存与 CPU，超过设计 4.2 的目标时失败
+      - name: Agent 资源占用（设计 4.2）
+        run: scripts/agent-footprint.sh dist/vpsmon-agent-linux-amd64
+
   design-doc:
     name: 设计文档校验
     runs-on: ubuntu-latest

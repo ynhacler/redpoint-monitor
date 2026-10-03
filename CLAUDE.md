@@ -14,6 +14,7 @@ make lint         # go vet + vue-tsc
 make check-design # design numbering / references (run scripts/check_design_refs.py --write after editing design.md)
 make build-linux  # agent for 6 linux arches + server amd64/arm64 into dist/
 make vm-agent     # real Linux collector in an OrbStack VM
+make agent-footprint # on Linux: run the real agent 60s, report RSS / CPU vs design 4.2 (also in CI)
 make app-run      # Flutter app
 make deploy VPS=user@host                      # dev-only SSH deploy (design 27)
 make install-server / install-agent            # on a VPS checkout, after `make build`

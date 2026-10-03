@@ -101,6 +101,9 @@ installer: build-linux ## Release files for VERSION=x.y.z: agent-x.y.z.sh, manif
 
 # ---------- Linux VM on your Mac (OrbStack) for real agent metrics ----------
 
+agent-footprint: build-linux ## On Linux: run the real agent 60s and report RSS / CPU against design 4.2
+	@scripts/agent-footprint.sh
+
 vm-create: ## Create an Ubuntu VM in OrbStack for testing the real Linux collector
 	orb create ubuntu $(VM)
 
