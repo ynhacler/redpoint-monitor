@@ -49,6 +49,8 @@ const actionNames: Record<string, string> = {
   'server.create': '新建节点', 'server.update': '修改节点', 'server.delete': '删除节点',
   'enroll_code.regenerate': '重新生成注册码', 'enroll_code.revoke': '撤销注册码',
   'agent.enroll': 'Agent 注册', 'agent.unregister': 'Agent 卸载', 'traffic.calibrate': '校准流量',
+  'release.sync': '同步官方版本', 'upgrade_task.create': '创建升级任务', 'upgrade_task.cancel': '取消升级任务',
+  'upgrade_task.result': 'Agent 升级结果',
 }
 const reasonNames: Record<string, string> = {
   captcha: '验证码未通过', unknown_user: '用户名不存在', bad_password: '密码错误', password_too_long: '密码过长',

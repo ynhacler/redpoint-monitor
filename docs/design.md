@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 38 | Web “Agent 升级”页（/upgrades）：官方最新版本与同步、各节点版本（可升级排在前面）、按分组筛选与全选批量升级、最近任务与取消；日志页增加升级与同步操作的名称 | 29.1、29.14 |
 | 37 | A7 第三步：远程升级。迁移 13 upgrade_tasks；管理员接口 /upgrade-tasks（创建 / 列表 / 取消），Agent 接口 /agent/upgrade 与 /agent/upgrade/status（转交官方签名清单原文）；Agent 校验并暂存，systemd path 单元触发 root updater（独立副本、不联网、os.Root 操作暂存目录、复验与防降级、健康检查与回滚）；安装时默认启用，--no-remote-upgrade / enable-remote-upgrade / no-remote-upgrade 文件控制；节点详情显示升级按钮与进度 | 19、27.11、29.13、29.14、29.20 |
 | 36 | A7 第二步：面板同步并验签官方版本（迁移 12 agent_releases，每次读取重新验签）；安装命令改为默认命令（下载 → 校验 → 执行），另提供 manual_command；--no-release-sync | 27.3.1、29.1、29.20 |
 | 35 | A7 第一步：签名发布链路（minisign、清单含 installer、cmd/vpsmon-release、草稿 Release + 离线签名脚本、官方地址为公开 GitHub Releases）；安装脚本 scripts/agent.sh.in；本地 vpsmon-agent upgrade（验签、防降级、健康检查与回滚） | 27.5、29、29.7.2、40.8.4 |
@@ -7189,7 +7190,8 @@ updater（root）
 status（pending → delivered → staged → success / failed / rolled_back，或 cancelled）、reason、created_by、
 created_at、updated_at。每个节点同时只有一个进行中的任务；超过 1 小时未结束判为失败；pending / delivered 可取消。
 目标版本只能是已同步并验签的官方版本，不高于节点当前版本的节点被跳过。Web 在节点详情的 Agent 一栏显示
-“升级到 vX”与任务进度。按分组 / 标签 / 全部批量创建见下表（接口已支持多个 server_id，界面后续提供）。
+“升级到 vX”与任务进度；“Agent 升级”页（/upgrades，首页右上角进入）列出各节点当前版本，可按分组筛选、
+全选可升级的节点批量创建任务，并显示最近任务与取消。按标签批量随标签功能提供。
 
 完整设计的升级任务数据：
 
