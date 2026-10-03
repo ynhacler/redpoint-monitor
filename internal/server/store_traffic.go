@@ -16,15 +16,26 @@ type Adjustment struct {
 	Measured   int64  `json:"measured_bytes"`
 	Reported   int64  `json:"reported_bytes"`
 	Adjustment int64  `json:"adjustment_bytes"`
-	Note       string `json:"note"`
-	CreatedAt  int64  `json:"created_at"`
+	// 校准时本周期的原始收发字节（未乘系数）；迁移 17 之前的记录没有（设计 5.7）
+	RawRx     *int64 `json:"raw_rx,omitempty"`
+	RawTx     *int64 `json:"raw_tx,omitempty"`
+	Note      string `json:"note"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+const adjustmentColumns = `id, cycle_start, measured_bytes, reported_bytes, adjustment_bytes, raw_rx, raw_tx, note, created_at`
+
+func scanAdjustment(sc interface{ Scan(...any) error }) (Adjustment, error) {
+	var a Adjustment
+	err := sc.Scan(&a.ID, &a.CycleStart, &a.Measured, &a.Reported, &a.Adjustment, &a.RawRx, &a.RawTx, &a.Note, &a.CreatedAt)
+	return a, err
 }
 
 // AddAdjustment 写入一条校准记录。
 func (s *Store) AddAdjustment(serverID int64, a Adjustment) (int64, error) {
 	res, err := s.DB.Exec(`INSERT INTO traffic_adjustments (server_id, cycle_start, measured_bytes, reported_bytes,
-		adjustment_bytes, note, created_at) VALUES (?,?,?,?,?,?,?)`,
-		serverID, a.CycleStart, a.Measured, a.Reported, a.Adjustment, a.Note, a.CreatedAt)
+		adjustment_bytes, raw_rx, raw_tx, note, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+		serverID, a.CycleStart, a.Measured, a.Reported, a.Adjustment, a.RawRx, a.RawTx, a.Note, a.CreatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -32,12 +43,10 @@ func (s *Store) AddAdjustment(serverID int64, a Adjustment) (int64, error) {
 }
 
 // LatestAdjustment 返回某计费周期最近一次校准；没有时返回 nil。
-// 每次校准都相对当时的统计值重新计算偏差，因此只需最近一条，不累加（设计 5.7）。
+// 每次校准都以服务商数值为准重新锚定，因此只需最近一条，不累加（设计 5.7）。
 func (s *Store) LatestAdjustment(serverID int64, cycleStart string) (*Adjustment, error) {
-	var a Adjustment
-	err := s.DB.QueryRow(`SELECT id, cycle_start, measured_bytes, reported_bytes, adjustment_bytes, note, created_at
-		FROM traffic_adjustments WHERE server_id = ? AND cycle_start = ? ORDER BY id DESC LIMIT 1`, serverID, cycleStart).
-		Scan(&a.ID, &a.CycleStart, &a.Measured, &a.Reported, &a.Adjustment, &a.Note, &a.CreatedAt)
+	a, err := scanAdjustment(s.DB.QueryRow(`SELECT `+adjustmentColumns+`
+		FROM traffic_adjustments WHERE server_id = ? AND cycle_start = ? ORDER BY id DESC LIMIT 1`, serverID, cycleStart))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -46,7 +55,7 @@ func (s *Store) LatestAdjustment(serverID int64, cycleStart string) (*Adjustment
 
 // ListAdjustments 返回节点的校准历史，最新在前（设计 5.7：可查看历史）。
 func (s *Store) ListAdjustments(serverID int64, limit int) ([]Adjustment, error) {
-	rows, err := s.DB.Query(`SELECT id, cycle_start, measured_bytes, reported_bytes, adjustment_bytes, note, created_at
+	rows, err := s.DB.Query(`SELECT `+adjustmentColumns+`
 		FROM traffic_adjustments WHERE server_id = ? ORDER BY id DESC LIMIT ?`, serverID, limit)
 	if err != nil {
 		return nil, err
@@ -54,8 +63,8 @@ func (s *Store) ListAdjustments(serverID int64, limit int) ([]Adjustment, error)
 	defer rows.Close()
 	out := []Adjustment{}
 	for rows.Next() {
-		var a Adjustment
-		if err := rows.Scan(&a.ID, &a.CycleStart, &a.Measured, &a.Reported, &a.Adjustment, &a.Note, &a.CreatedAt); err != nil {
+		a, err := scanAdjustment(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, a)

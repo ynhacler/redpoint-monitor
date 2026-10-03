@@ -26,6 +26,14 @@ const calibratedOn = computed(() => {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 
+// 系数建议（设计 5.7）：多次校准的比例稳定时，提示统计值相对服务商偏低 / 偏高多少
+const suggestion = computed(() => {
+  const f = t.value.factor_suggestion
+  if (!f) return null
+  const diff = Math.round((f / (t.value.factor || 1) - 1) * 100)
+  return { factor: f, text: diff > 0 ? `偏低约 ${diff}%` : `偏高约 ${-diff}%` }
+})
+
 // 最近 30 天每日流量（设计 19.8）
 const days = ref<TrafficDay[]>([])
 const dailyError = ref('')
@@ -99,12 +107,17 @@ async function saveCalibrate() {
       <button v-if="!calibrating" type="button" class="text" @click="openCalibrate">校准已用流量</button>
     </div>
 
+    <p v-if="suggestion" class="hint small">
+      多次校准显示统计值比服务商{{ suggestion.text }}，建议把统计系数设为 {{ suggestion.factor }}。
+      <RouterLink :to="`/servers/${server.id}/edit`">去设置</RouterLink>
+    </p>
+
     <form v-if="calibrating" class="cal-form" novalidate @submit.prevent="saveCalibrate">
       <label>服务商面板显示已用（{{ unitName }}）
         <input v-model="usedInput" type="number" min="0" step="any" autofocus :placeholder="(t.used / (t.unit === 'binary' ? 2 ** 30 : 1e9)).toFixed(2)" />
       </label>
       <label>备注<input v-model="note" maxlength="200" placeholder="可选" /></label>
-      <p class="muted small">只影响本计费周期，周期重置后清零；再次校准会覆盖本次。</p>
+      <p class="muted small">只影响本计费周期，周期重置后清零；再次校准会覆盖本次。之后修改系数或计费模式，已用量仍以本次填写值为准。</p>
       <p v-if="calError" class="err small">{{ calError }}</p>
       <div class="actions">
         <button type="submit" :disabled="saving">保存</button>
@@ -140,6 +153,7 @@ async function saveCalibrate() {
 .cal-form p, .cal-form .actions { grid-column: 1 / -1; margin: 0; }
 .actions { display: flex; gap: var(--space-2); }
 .err { color: var(--bad); }
+.hint { margin: var(--space-2) 0 0; padding: var(--space-2) var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-3); margin: var(--space-4) 0 0; }
 .facts dt { font-size: var(--font-xs); color: var(--text-muted); }
 .facts dd { margin: 0; }

@@ -882,7 +882,7 @@ paths:
     post:
       tags: [traffic]
       summary: 手动校准本周期已用流量（设计 5.7）
-      description: 偏差 = 填写值 − 当前统计值，只作用于当前周期；再次校准覆盖之前的偏差，不累加。
+      description: 偏差 = 填写值 − 当前统计值，只作用于当前周期；再次校准覆盖之前的偏差，不累加。同时记录原始收发字节，之后修改系数或计费模式时按新设置重算偏差（设计 5.7）。
       parameters: [{ $ref: '#/components/parameters/ServerID' }]
       requestBody:
         required: true
@@ -929,6 +929,8 @@ paths:
                         measured_bytes: { type: integer, description: 校准时的统计值（已乘系数） }
                         reported_bytes: { type: integer, description: 用户填写值 }
                         adjustment_bytes: { type: integer }
+                        raw_rx: { type: integer, description: 校准时本周期的原始接收字节（未乘系数）；旧记录省略 }
+                        raw_tx: { type: integer, description: 校准时本周期的原始发送字节（未乘系数）；旧记录省略 }
                         note: { type: string }
                         created_at: { type: integer }
         '401': { $ref: '#/components/responses/Error' }
@@ -1311,7 +1313,7 @@ components:
         rx: { type: integer }
         tx: { type: integer }
         measured: { type: integer, description: 统计值：按计费模式取值 × 系数，不含校准 }
-        adjustment: { type: integer, description: 本周期最近一次校准的偏差，可为负 }
+        adjustment: { type: integer, description: 本周期最近一次校准在当前系数与计费模式下的偏差，可为负（设计 5.7） }
         calibrated_at: { type: integer, description: 最近一次校准时间，Unix 秒；未校准时省略 }
         used: { type: integer, description: 展示值 = 统计值 + 校准偏差 }
         limit: { type: integer, description: 字节，0 表示不限 }
@@ -1324,6 +1326,7 @@ components:
             daily: { type: integer, description: 采用的日均 }
             total: { type: integer }
             over: { type: boolean, description: 预计超过额度 }
+        factor_suggestion: { type: number, description: 多次校准显示稳定的比例偏差时建议设置的统计系数；没有建议时省略（设计 5.7） }
 
     Report:
       type: object

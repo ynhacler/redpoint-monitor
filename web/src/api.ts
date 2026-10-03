@@ -218,7 +218,7 @@ export interface TrafficView {
   tx: number
   /** 统计值：按计费模式取值 × 系数，不含校准 */
   measured: number
-  /** 本周期最近一次校准的偏差，可为负 */
+  /** 本周期最近一次校准在当前系数与计费模式下的偏差，可为负（设计 5.7） */
   adjustment: number
   /** 最近一次校准时间，Unix 秒；未校准时没有 */
   calibrated_at?: number
@@ -230,6 +230,8 @@ export interface TrafficView {
   factor: number
   /** 周期开始不足 3 天时没有（设计 32） */
   forecast?: { daily: number; total: number; over: boolean }
+  /** 多次校准显示稳定的比例偏差时建议设置的统计系数；没有建议时没有（设计 5.7） */
+  factor_suggestion?: number
 }
 
 /** 一天的流量；used 按计费模式取值 × 系数，不含校准 */

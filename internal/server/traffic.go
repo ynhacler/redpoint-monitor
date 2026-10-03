@@ -2,6 +2,7 @@ package server
 
 import (
 	"math"
+	"slices"
 	"time"
 )
 
@@ -99,6 +100,86 @@ func EffectiveUsed(measured uint64, factor float64, adjustment int64) uint64 {
 		return 0
 	}
 	return uint64(v + 0.5)
+}
+
+// AdjustmentNow 返回一次校准在当前系数与计费模式下的偏差（设计 5.7）。
+//
+// 校准的含义是“校准那一刻，服务商面板显示 reported”。记录里保存了当时的原始收发字节，
+// 偏差 = reported − 原始字节按当前模式取值 × 当前系数；这样校准后再修改系数或计费模式，
+// 校准那一刻的已用量仍等于服务商数值，不会把系数与偏差重复叠加。
+// 迁移 17 之前的记录没有原始字节，沿用当时算好的固定偏差。
+func AdjustmentNow(a Adjustment, mode string, factor float64) int64 {
+	if a.RawRx == nil || a.RawTx == nil || *a.RawRx < 0 || *a.RawTx < 0 {
+		return a.Adjustment
+	}
+	return a.Reported - int64(EffectiveUsed(CountedBytes(mode, uint64(*a.RawRx), uint64(*a.RawTx)), factor, 0))
+}
+
+// FactorSample 是一次校准中可用于估算系数的样本。
+type FactorSample struct {
+	At       time.Time // 校准时间
+	Raw      uint64    // 校准时本周期按当前计费模式取值的原始字节（未乘系数）
+	Reported int64     // 服务商面板显示的已用量
+}
+
+// 系数建议的条件（设计 5.7）。
+const (
+	factorWindow     = 5                  // 只看最近 5 个样本，反映近期口径
+	minFactorSamples = 3                  // 至少 3 次校准
+	minFactorSpan    = 7 * 24 * time.Hour // 最早与最近样本至少相隔 7 天，同一天反复校准不算“长期”
+	minFactorRaw     = 1_000_000_000      // 统计值不足 1 GB 时比例噪声太大，不作为样本
+	maxFactorSpread  = 0.01               // 各样本比例的极差不超过 1 个百分点才算“稳定”
+	minFactorChange  = 0.01               // 与当前系数相差不足 1% 时不提示
+)
+
+// SuggestFactor 根据多次校准判断统计值与服务商数值是否存在稳定的比例偏差，是则返回建议系数（设计 5.7）。
+//
+//	每个样本的比例 = 服务商数值 ÷ 原始统计值；同一天多次校准只取最后一次
+//	最近 5 个样本中至少 3 个、跨度至少 7 天，且比例极差 ≤ 1 个百分点 → 建议系数 = 比例中位数，保留两位小数
+//	建议值超出 0.5～2，或与当前系数相差不足 1% 时不提示
+//
+// 比例稳定才提示：首个周期从中途开始监控时，服务商多算的是一个固定量而不是比例，
+// 各次校准的比例会随用量增长逐渐变小，不满足极差条件，因此不会误导用户设置系数。
+func SuggestFactor(samples []FactorSample, current float64) (float64, bool) {
+	if current <= 0 {
+		current = 1
+	}
+	sorted := slices.Clone(samples)
+	slices.SortStableFunc(sorted, func(a, b FactorSample) int { return a.At.Compare(b.At) })
+	var picked []FactorSample // 按时间升序，每天只保留最后一次
+	for _, s := range sorted {
+		if s.Raw < minFactorRaw || s.Reported <= 0 {
+			continue
+		}
+		if n := len(picked); n > 0 && picked[n-1].At.Format("2006-01-02") == s.At.Format("2006-01-02") {
+			picked[n-1] = s
+			continue
+		}
+		picked = append(picked, s)
+	}
+	if len(picked) > factorWindow {
+		picked = picked[len(picked)-factorWindow:]
+	}
+	if len(picked) < minFactorSamples || picked[len(picked)-1].At.Sub(picked[0].At) < minFactorSpan {
+		return 0, false
+	}
+	ratios := make([]float64, len(picked))
+	for i, s := range picked {
+		ratios[i] = float64(s.Reported) / float64(s.Raw)
+	}
+	slices.Sort(ratios)
+	if ratios[len(ratios)-1]-ratios[0] > maxFactorSpread {
+		return 0, false
+	}
+	median := ratios[len(ratios)/2]
+	if len(ratios)%2 == 0 {
+		median = (ratios[len(ratios)/2-1] + median) / 2
+	}
+	f := math.Round(median*100) / 100
+	if f < 0.5 || f > 2 || math.Abs(f-current) < minFactorChange-1e-9 {
+		return 0, false
+	}
+	return f, true
 }
 
 // Forecast 是周期结束时的预计用量（设计 32）。

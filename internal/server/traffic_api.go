@@ -20,13 +20,15 @@ type trafficView struct {
 	Rx           uint64        `json:"rx"`
 	Tx           uint64        `json:"tx"`
 	Measured     uint64        `json:"measured"`   // 统计值：按计费模式取值后乘以系数，未含校准
-	Adjustment   int64         `json:"adjustment"` // 本周期最近一次校准的偏差，可为负
+	Adjustment   int64         `json:"adjustment"` // 本周期最近一次校准在当前系数与模式下的偏差，可为负
 	CalibratedAt int64         `json:"calibrated_at,omitempty"`
 	Used         uint64        `json:"used"`  // 展示值 = 统计值 + 校准偏差
 	Limit        int64         `json:"limit"` // 0 = 不限
 	Unit         string        `json:"unit"`
 	Factor       float64       `json:"factor"`
 	Forecast     *forecastView `json:"forecast,omitempty"` // 周期开始不足 3 天时不返回（设计 32）
+	// 多次校准显示稳定的比例偏差时，建议设置的统计系数；没有建议时不返回（设计 5.7）
+	FactorSuggestion float64 `json:"factor_suggestion,omitempty"`
 }
 
 type forecastView struct {
@@ -51,9 +53,12 @@ func (s *Server) trafficOf(row ServerRow, now time.Time) (trafficView, error) {
 		Measured: EffectiveUsed(CountedBytes(row.CountMode, rx, tx), row.TrafficFactor, 0),
 		Limit:    row.LimitBytes, Unit: row.TrafficUnit, Factor: row.TrafficFactor}
 	if adj != nil {
-		v.Adjustment, v.CalibratedAt = adj.Adjustment, adj.CreatedAt
+		v.Adjustment, v.CalibratedAt = AdjustmentNow(*adj, row.CountMode, row.TrafficFactor), adj.CreatedAt
 	}
 	v.Used = EffectiveUsed(CountedBytes(row.CountMode, rx, tx), row.TrafficFactor, v.Adjustment)
+	if v.FactorSuggestion, err = s.factorSuggestion(row); err != nil {
+		return trafficView{}, err
+	}
 
 	// 最近 7 个完整天（不含今天），用于周期过半后的日均（设计 32）
 	today := dayStart(now)
@@ -70,6 +75,27 @@ func (s *Server) trafficOf(row ServerRow, now time.Time) (trafficView, error) {
 		v.Forecast = &forecastView{Daily: f.Daily, Total: f.Total, Over: f.Over}
 	}
 	return v, nil
+}
+
+// factorSuggestion 用最近的校准记录判断是否建议设置统计系数（设计 5.7）；没有建议时返回 0。
+func (s *Server) factorSuggestion(row ServerRow) (float64, error) {
+	list, err := s.store.ListAdjustments(row.ID, 20)
+	if err != nil || len(list) == 0 {
+		return 0, err
+	}
+	samples := make([]FactorSample, 0, len(list))
+	for _, a := range list {
+		if a.RawRx == nil || a.RawTx == nil || *a.RawRx < 0 || *a.RawTx < 0 {
+			continue // 迁移 17 之前的记录没有原始字节，算不出比例
+		}
+		samples = append(samples, FactorSample{At: time.Unix(a.CreatedAt, 0),
+			Raw: CountedBytes(row.CountMode, uint64(*a.RawRx), uint64(*a.RawTx)), Reported: a.Reported})
+	}
+	f, ok := SuggestFactor(samples, row.TrafficFactor)
+	if !ok {
+		return 0, nil
+	}
+	return f, nil
 }
 
 func dayStart(t time.Time) time.Time {
@@ -188,7 +214,7 @@ func (s *Server) handleTrafficMonthly(w http.ResponseWriter, r *http.Request) {
 		}
 		it := cycleItem{CycleStart: key, CycleEnd: end.Format("2006-01-02"), Rx: rx, Tx: tx, Limit: row.LimitBytes}
 		if adj != nil {
-			it.Adjustment = adj.Adjustment
+			it.Adjustment = AdjustmentNow(*adj, row.CountMode, row.TrafficFactor)
 		}
 		it.Used = EffectiveUsed(CountedBytes(row.CountMode, rx, tx), row.TrafficFactor, it.Adjustment)
 		items = append(items, it)
@@ -235,9 +261,11 @@ func (s *Server) handleCalibrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reported := GBToBytes(*body.UsedGB, row.TrafficUnit)
-	// 每次校准都相对当前统计值重新计算，覆盖本周期之前的校准，而不是累加（设计 5.7）
+	// 每次校准都相对当前统计值重新锚定，覆盖本周期之前的校准，而不是累加；
+	// 同时记下原始收发字节，之后修改系数或计费模式时按新设置重算偏差（设计 5.7）
+	rawRx, rawTx := int64(cur.Rx), int64(cur.Tx)
 	a := Adjustment{CycleStart: cur.CycleStart, Measured: int64(cur.Measured), Reported: reported,
-		Adjustment: reported - int64(cur.Measured), Note: body.Note, CreatedAt: now.Unix()}
+		Adjustment: reported - int64(cur.Measured), RawRx: &rawRx, RawTx: &rawTx, Note: body.Note, CreatedAt: now.Unix()}
 	if _, err := s.store.AddAdjustment(row.ID, a); err != nil {
 		s.writeError(w, r, internalError(err))
 		return

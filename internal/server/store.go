@@ -410,6 +410,11 @@ var migrations = []string{
 		value TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	);`,
+
+	// 迁移 17：校准记录保存当时的原始收发字节（未乘系数、未按计费模式取值）。
+	// 展示时按当前系数与计费模式重算偏差，校准后修改系数或模式不会重复修正（设计 5.7）。旧记录为 NULL，沿用固定偏差。
+	`ALTER TABLE traffic_adjustments ADD COLUMN raw_rx INTEGER;
+	ALTER TABLE traffic_adjustments ADD COLUMN raw_tx INTEGER;`,
 }
 
 func (s *Store) migrate() error {
