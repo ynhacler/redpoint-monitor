@@ -87,6 +87,19 @@ func TestNotificationChannelsAPI(t *testing.T) {
 	if tg.Config["bot_token"] != "123456789:AA…sawQ" || tg.MinSeverity != "critical" || !tg.Enabled || !tg.NotifyResolved {
 		t.Errorf("创建结果：%+v", tg)
 	}
+	// 三个级别都可以选；其他值拒绝
+	for sev, code := range map[string]int{"info": 201, "warning": 201, "bogus": 422} {
+		rec := do(h, "POST", "/api/v1/notification-channels", admin,
+			[]byte(`{"type":"webhook","name":"lvl-`+sev+`","min_severity":"`+sev+`","config":{"url":"https://example.com/x"}}`))
+		if rec.Code != code {
+			t.Errorf("min_severity=%s：%d %s", sev, rec.Code, rec.Body)
+		}
+		var v channelView
+		json.Unmarshal(rec.Body.Bytes(), &v)
+		if v.ID > 0 {
+			do(h, "DELETE", "/api/v1/notification-channels/"+itoa(v.ID), admin, nil)
+		}
+	}
 
 	rec = do(h, "POST", "/api/v1/notification-channels", admin,
 		[]byte(`{"type":"webhook","name":"hook","config":{"url":"https://hooks.example.com/T000/B000/secretpath","secret":"s3cret"}}`))
@@ -127,7 +140,7 @@ func TestNotificationChannelsAPI(t *testing.T) {
 		t.Errorf("重复删除应 404：%d", rec.Code)
 	}
 	logs, _, _ := s.store.ListAudit(AuditQuery{Action: "notification_channel.", Limit: 10})
-	if len(logs) != 5 || strings.Contains(string(logs[0].Details), "s3cret") {
+	if len(logs) != 9 || strings.Contains(string(logs[0].Details), "s3cret") { // 含上面级别用例的 2 次创建与 2 次删除
 		t.Errorf("渠道修改应记入审计（不含凭证）：%d", len(logs))
 	}
 }

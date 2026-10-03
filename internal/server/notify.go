@@ -124,7 +124,9 @@ func (c *NotifyChannel) validate() []FieldError {
 	if c.Name == "" || len([]rune(c.Name)) > 40 {
 		errs = append(errs, FieldError{Field: "name", Message: "名称为 1～40 个字符"})
 	}
-	if severityRank(c.MinSeverity) == 0 {
+	switch c.MinSeverity {
+	case SeverityCritical, SeverityWarning, SeverityInfo:
+	default:
 		errs = append(errs, FieldError{Field: "min_severity", Message: "级别无效"})
 	}
 	switch c.Type {
