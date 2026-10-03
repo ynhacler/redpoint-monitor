@@ -10,6 +10,8 @@ import { applyTheme, cycleTheme, themeMode } from './theme'
 const route = useRoute()
 const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } as const
 // 使用初始密码时只显示账号页，不显示导航（设计 17.4）
+// 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
+const alertCount = computed(() => state.servers.reduce((n, s) => n + (s.alerts?.length ?? 0), 0))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
 
 onMounted(() => applyTheme(themeMode.value))
@@ -23,6 +25,7 @@ onUnmounted(stopPolling)
       <nav v-if="signedIn">
         <!-- 节点详情、编辑、安装命令也属于“节点” -->
         <RouterLink to="/" :class="{ active: route.path === '/' || route.path.startsWith('/servers') }">节点</RouterLink>
+        <RouterLink to="/alerts" active-class="active" class="with-badge">告警<span v-if="alertCount" class="badge num">{{ alertCount }}</span></RouterLink>
         <RouterLink to="/logs" active-class="active">日志</RouterLink>
       </nav>
       <div class="tools">
@@ -55,6 +58,9 @@ nav { display: flex; gap: var(--space-1); }
 nav a { white-space: nowrap; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
 nav a:hover { color: var(--text); text-decoration: none; }
 nav a.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
+.with-badge { display: inline-flex; align-items: center; gap: 4px; }
+.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-full); background: var(--bad); color: var(--on-accent);
+  font-size: 10px; line-height: 16px; text-align: center; font-weight: var(--weight-strong); }
 .tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
 .tools button { padding: var(--space-1); }
 .user { color: var(--text-muted); display: flex; align-items: center; gap: var(--space-1); }
