@@ -48,7 +48,7 @@ const actionNames: Record<string, string> = {
   'auth.login': '登录', 'auth.logout': '退出登录', 'auth.reauth': '二次验证密码', 'auth.password_change': '修改密码',
   'server.create': '新建节点', 'server.update': '修改节点', 'server.delete': '删除节点',
   'enroll_code.regenerate': '重新生成注册码', 'enroll_code.revoke': '撤销注册码',
-  'agent.enroll': 'Agent 注册', 'agent.unregister': 'Agent 卸载', 'traffic.calibrate': '校准流量',
+  'agent.enroll': 'Agent 注册', 'agent.unregister': 'Agent 卸载', 'agent_token.revoke': '吊销 Agent Token', 'traffic.calibrate': '校准流量',
   'release.sync': '同步官方版本', 'upgrade_task.create': '创建升级任务', 'upgrade_task.cancel': '取消升级任务',
   'upgrade_task.result': 'Agent 升级结果',
 }

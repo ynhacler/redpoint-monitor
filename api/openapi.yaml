@@ -161,7 +161,7 @@ paths:
               schema: { $ref: '#/components/schemas/EnrollResponse' }
         '400': { $ref: '#/components/responses/Error' }
         '403':
-          description: 节点为严格核对模式且主机信息不一致（设计 27.6.3）；注册码保持可用
+          description: 节点为严格核对模式且主机信息不一致（设计 27.6.3），或 server_id 与注册码所属节点不符；注册码保持可用
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -634,6 +634,21 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/revoke-agent-token:
+    post:
+      tags: [servers]
+      summary: 立即吊销节点的全部 Agent Token（设计 17.2、23.2）
+      description: |
+        Token 泄露时使用。节点回到“待安装”，历史数据与流量统计保留。恢复上报需新注册码：主机上执行
+        `sudo vpsmon-agent rotate-token --enroll …`（或卸载后重新安装）。敏感操作：需 10 分钟内重新验证过密码。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: 已吊销 }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/enroll-code:
     post:
       tags: [servers]
@@ -916,6 +931,7 @@ components:
         os_version: { type: string, example: '24.04' }
         arch: { type: string, example: amd64 }
         agent_version: { type: string }
+        server_id: { type: integer, description: 可选：更换 Token（rotate-token）时本机当前所属的节点；注册码属于其他节点时返回 403 且不做任何修改（设计 17.2） }
 
     EnrollResponse:
       type: object
@@ -969,6 +985,7 @@ components:
           description: 面板尚未同步并验签任何官方版本时只有 manual（设计 27.3.1）
         command: { type: string, description: 'default：下载按版本固定的脚本 → 按已验签清单中的 SHA256 校验 → 执行；不使用管道（设计 27.3.1）' }
         manual_command: { type: string, description: 程序已在主机上时的注册命令（设计 27.3.3），两种模式都提供 }
+        rotate_command: { type: string, description: 主机上已安装 Agent（如 Token 已吊销）时，凭新注册码就地更换 Token（设计 17.2） }
         server: { type: string, description: 写进命令的面板对外地址 }
         release:
           oneOf: [{ $ref: '#/components/schemas/AgentRelease' }, { type: 'null' }]

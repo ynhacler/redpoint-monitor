@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 43 | Agent Token 吊销与更换：Web 吊销（重新验证密码，节点回到待安装、历史保留）；vpsmon-agent rotate-token 凭新注册码就地更换，注册请求可带 server_id，注册码属于其他节点时拒绝；不提供凭旧 Token 自助轮换。vpsmon-server audit 命令行查看审计日志（可按类别、结果、操作前缀筛选，--json） | 17.2、23.2、24.8、27.6.2、27.11 |
 | 42 | 面板镜像与离线导入：--release-mirror 同步时镜像全部文件，release import 导入官方发布包（验签 + 逐个校验，迁移 14 mirrored_at）；/releases/v{版本}/{文件} 只提供清单列出的文件并在发出前核对 SHA256；已镜像时安装命令与远程升级从本面板下载 | 19、27.5.3、29.1 |
 | 41 | 节点详情：系统与资产信息并入顶部概况卡片（系统信息有值才显示；资产字段——供应商、套餐、带宽、国家 / 地区、城市 / 机房、分组、续费、到期、备注——始终显示，未填写为“—”；IP 可点击复制，到期按剩余天数着色），去掉底部“系统”“资产”两个面板 | 11.1 |
 | 40 | Agent 新增可选字段 ports（监听端口，4.9.1），4.9 不再排除端口：只采集本机监听端口，不含连接明细与进程；详情页新增 Ports 卡片（暴露范围、常见服务名、公网高风险端口提示）；各指标块左上角加图标与名称（CPU / Mem / Net / Ports / Disk）；同一块盘的多个分区只在第一个分区显示 IO | 4.7、4.9、4.9.1、11.1 |
@@ -5565,6 +5566,17 @@ US-DMIT  → Token C
 
 Token 泄露时只吊销对应服务器。
 
+吊销与更换（实现）：
+
+```text
+吊销    Web 编辑节点页“吊销 Agent Token”（需重新验证密码）：POST /api/v1/servers/{id}/revoke-agent-token，
+        立即吊销该节点全部 Token，节点回到“待安装”，历史数据与流量统计保留，记入操作日志 agent_token.revoke
+更换    在安装命令页生成新注册码，主机上执行 sudo vpsmon-agent rotate-token --enroll ENR-…：
+        用本机信息与当前所属节点（server_id）注册，换得新 Token 并原子替换 /etc/vpsmon-agent/token，重启服务；
+        面板签发新 Token 的同时吊销该节点之前的全部 Token。注册码属于其他节点时拒绝且不做修改
+不提供  凭旧 Token 自助轮换：Token 泄露时持有旧 Token 的一方可以抢先轮换，因此更换必须凭管理员新生成的一次性注册码
+```
+
 数据库中不保存明文 Token：
 
 ```text
@@ -6540,9 +6552,12 @@ monitor-agent status            # 服务状态、所属面板、节点名、最�
 monitor-agent doctor            # 兼容性与连通性诊断
 sudo monitor-agent uninstall    # 停止服务、删除文件和用户，并通知面板（节点回到“待安装”）
 sudo monitor-agent re-enroll --enroll ENR-...   # 换绑到同一面板的其他节点或新面板
+sudo monitor-agent rotate-token --enroll ENR-... # 同一节点就地更换 Token（Token 被吊销或怀疑泄露时，设计 23.2）
+sudo monitor-agent upgrade / enable-remote-upgrade # 本机升级、为已安装节点启用远程升级（设计 29.13）
 ```
 
-MVP 提供 `status` 与 `uninstall`；`doctor` 与 `re-enroll` 在 MVP 之后第一批提供（设计 36.1）。
+已提供 `status`、`uninstall`、`rotate-token`、`upgrade`、`enable-remote-upgrade`；`doctor` 与 `re-enroll` 在 MVP 之后第一批提供（设计 36.1）。
+`rotate-token` 只能更换本节点的 Token：请求中带上当前所属节点，注册码属于其他节点时面板拒绝；换绑节点用 `re-enroll`。
 
 `uninstall` 通知面板时使用 Agent Token，面板将节点置为“待安装”并吊销该 Token；网络不可达时仍完成本地卸载。
 

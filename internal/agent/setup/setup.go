@@ -342,6 +342,68 @@ func RefreshUpdater(o Options) error {
 	return copyFile(o.Paths.Bin, o.Paths.Updater, 0o755)
 }
 
+// RotateToken 执行 vpsmon-agent rotate-token --enroll ENR-…（设计 17.2）：已安装的主机用新的一次性注册码换取新 Token，
+// 不需要卸载重装。面板签发新 Token 的同时吊销该节点之前的全部 Token。
+//
+// 【安全】更换必须凭管理员在 Web 上新生成的注册码，不能凭旧 Token 自助轮换：Token 泄露时，持有旧 Token 的一方
+// 无法抢先换到新 Token。请求中带上本机当前所属的节点，注册码属于其他节点时面板拒绝且不做修改。
+func RotateToken(ctx context.Context, o Options) error {
+	o.defaults()
+	p := o.Paths
+	say := func(format string, a ...any) { fmt.Fprintf(o.Out, format+"\n", a...) }
+	if !o.Sys.IsRoot() {
+		return errors.New("需要 root 权限，请使用 sudo 执行")
+	}
+	if _, err := os.Stat(p.tokenFile()); err != nil {
+		return errors.New("本机尚未安装 Agent，请使用面板中的安装命令")
+	}
+	env := readEnv(p.envFile())
+	server := env["VPSMON_SERVER"]
+	if server == "" {
+		return fmt.Errorf("无法从 %s 读取面板地址", p.envFile())
+	}
+	if err := ValidateServerURL(server, o.AllowHTTP); err != nil {
+		return err
+	}
+	code := strings.ToUpper(strings.TrimSpace(o.EnrollCode))
+	if !enrollCodePattern.MatchString(code) {
+		return errors.New("注册码格式不正确，应为 ENR-XXXX-XXXX-XXXX-XXXX，请从面板复制完整命令")
+	}
+	var sid int64
+	fmt.Sscan(env["VPSMON_SERVER_ID"], &sid)
+
+	host := readHostInfo(o.HostInfoRoot)
+	res, err := enroll(ctx, o.HTTP, server, enrollRequest{EnrollCode: code, Hostname: host.Hostname,
+		MachineIDHash: host.MachineIDHash, OS: host.OS, OSVersion: host.OSVersion, Arch: host.Arch,
+		AgentVersion: o.Version, ServerID: sid})
+	if err != nil {
+		return err
+	}
+	if sid != 0 && res.ServerID != sid {
+		// 旧版面板不检查 server_id：此时新 Token 属于其他节点，不写入，提示在面板中处理
+		return fmt.Errorf("注册码属于其他节点（%s），未更换本机 Token；请在面板中检查该节点", res.ServerName)
+	}
+	_, gid, err := o.Sys.IDs(userName)
+	if err != nil {
+		return err
+	}
+	// 【安全】与安装相同：root:vpsmon-agent 0640，原子替换（设计 27.10）
+	if err := writeFile(o.Sys, p.tokenFile(), res.AgentToken+"\n", 0o640, gid); err != nil {
+		return err
+	}
+	say("✓ 已从 %s 获取新 Token，节点：%s（旧 Token 已吊销）", server, res.ServerName)
+	started := time.Now()
+	if out, err := o.Sys.Run("systemctl", "restart", serviceName); err != nil {
+		return fmt.Errorf("重启服务失败：%v %s", err, out)
+	}
+	if _, ok := waitFirstReport(p.statusFile(), started, o.WaitFirst); ok {
+		say("✓ 服务已重启，使用新 Token 上报成功")
+	} else {
+		say("! 服务已重启，尚未确认上报；稍后用 vpsmon-agent status 查看")
+	}
+	return nil
+}
+
 // shellSafe 去掉换行等字符，节点名写入 env 文件时不能破坏格式（systemd EnvironmentFile 按行解析）。
 func shellSafe(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -440,6 +502,7 @@ type enrollRequest struct {
 	OSVersion     string `json:"os_version"`
 	Arch          string `json:"arch"`
 	AgentVersion  string `json:"agent_version"`
+	ServerID      int64  `json:"server_id,omitempty"` // 更换 Token 时本机当前所属的节点
 }
 
 type enrollResponse struct {

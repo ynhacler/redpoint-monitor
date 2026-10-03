@@ -35,6 +35,7 @@ type AuditLog struct {
 type AuditQuery struct {
 	Category string // login / operation / 空表示全部
 	Result   string // success / failure / 空
+	Action   string // 操作：精确匹配；以 “.” 结尾时按前缀匹配（如 upgrade_task.）；空表示全部
 	Before   int64  // 游标：只返回 id 小于它的记录；0 表示从最新开始
 	Limit    int
 }
@@ -59,6 +60,16 @@ func (s *Store) ListAudit(q AuditQuery) ([]AuditLog, int64, error) {
 	if q.Result != "" {
 		where = append(where, "a.result = ?")
 		args = append(args, q.Result)
+	}
+	if q.Action != "" {
+		if strings.HasSuffix(q.Action, ".") {
+			// 前缀匹配：转义 LIKE 通配符，操作名本身不含 % 与 _ 以外的特殊字符
+			where = append(where, `a.action LIKE ? ESCAPE '\'`)
+			args = append(args, strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(q.Action)+"%")
+		} else {
+			where = append(where, "a.action = ?")
+			args = append(args, q.Action)
+		}
 	}
 	if q.Before > 0 {
 		where = append(where, "a.id < ?")

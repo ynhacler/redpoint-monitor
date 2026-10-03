@@ -202,6 +202,8 @@ type installView struct {
 	Command string `json:"command"`
 	// ManualCommand 是手动方式的最后一步（二进制已在主机上时，设计 27.3.3）；两种模式都提供
 	ManualCommand string `json:"manual_command"`
+	// RotateCommand 用于主机上已安装 Agent 的情况（如 Token 已吊销）：凭新注册码就地更换 Token（设计 17.2）
+	RotateCommand string `json:"rotate_command"`
 	// Release 是生成默认命令所用的已验签官方版本；未同步时为 null（设计 29.1）
 	Release *agentRelease `json:"release"`
 	Server  string        `json:"server"` // 写进命令的面板地址
@@ -243,7 +245,8 @@ func (s *Server) panelURL(r *http.Request) string {
 func (s *Server) installCommand(r *http.Request, code string) installView {
 	url := s.panelURL(r)
 	v := installView{Mode: "manual", Server: url,
-		ManualCommand: "sudo vpsmon-agent install --server " + url + " --enroll " + code}
+		ManualCommand: "sudo vpsmon-agent install --server " + url + " --enroll " + code,
+		RotateCommand: "sudo vpsmon-agent rotate-token --enroll " + code}
 	v.Command = v.ManualCommand
 	if rel := s.latestStable(); rel != nil {
 		v.Mode, v.Release = "default", rel
@@ -395,6 +398,39 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.delete", TargetType: "server", TargetID: id,
 		Success: true, Details: map[string]any{"name": name}})
 	s.log.Info("server deleted", "component", "servers", "server_id", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRevokeAgentToken：POST /api/v1/servers/{id}/revoke-agent-token，admin（设计 17.2、23.2）。
+// 立即吊销该节点的全部 Agent Token：Token 泄露时切断其上报能力。节点回到“待安装”，历史数据与流量统计保留；
+// 恢复上报需新的注册码：主机上执行 sudo vpsmon-agent rotate-token --enroll …（或卸载后重新安装）。成功 204。
+// 【安全】敏感操作：需在 10 分钟内重新输入过密码（设计 17.4）。
+func (s *Server) handleRevokeAgentToken(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := requireReauth(r); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	row, err := s.store.GetServer(id)
+	if errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	if err := s.store.Unregister(id, time.Now()); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "agent_token.revoke", TargetType: "server", TargetID: id,
+		Success: true, Details: map[string]any{"name": row.Name}})
+	s.log.Info("agent tokens revoked", "component", "servers", "server_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 

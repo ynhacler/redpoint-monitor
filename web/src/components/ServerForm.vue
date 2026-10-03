@@ -4,7 +4,7 @@
 // 编辑模式下提供删除（设计 19.5），需输入节点名称确认。
 import { computed, reactive, ref } from 'vue'
 import {
-  ApiError, createServer, deleteServer, reauth, updateServer, UnauthorizedError,
+  ApiError, createServer, deleteServer, reauth, revokeAgentToken, updateServer, UnauthorizedError,
   type CreateServerInput, type EnrollCodeView, type ServerView, type TrafficUnit,
 } from '../api'
 import { countryOptions } from '../countries'
@@ -146,6 +146,28 @@ async function submit() {
     }
   } finally {
     submitting.value = false
+  }
+}
+
+// 吊销 Agent Token：Token 泄露时立即切断上报（设计 17.2）。敏感操作，重新输入密码确认。
+const revokePassword = ref('')
+const revokeError = ref('')
+const revokeDone = ref(false)
+const revoking = ref(false)
+async function revoke() {
+  if (!props.server || !revokePassword.value) return
+  revoking.value = true
+  revokeError.value = ''
+  try {
+    await reauth(revokePassword.value)
+    await revokeAgentToken(props.server.id)
+    revokeDone.value = true
+  } catch (e) {
+    if (e instanceof UnauthorizedError) emit('unauthorized')
+    else if (e instanceof ApiError) revokeError.value = e.details[0]?.message ?? e.message
+  } finally {
+    revokePassword.value = ''
+    revoking.value = false
   }
 }
 
@@ -332,6 +354,26 @@ async function remove() {
       </button>
       <button type="button" class="secondary" @click="emit('cancel')">取消</button>
     </div>
+
+    <fieldset v-if="server && server.status !== 'pending'" class="danger">
+      <legend>吊销 Agent Token</legend>
+      <template v-if="revokeDone">
+        <p>已吊销，主机上的 Agent 无法再上报，节点回到“待安装”，历史数据保留。</p>
+        <p class="muted">恢复上报：在<RouterLink :to="`/servers/${server.id}/install`">安装命令页</RouterLink>生成注册码，
+          在主机上执行“更换 Token”命令（<code>sudo vpsmon-agent rotate-token --enroll …</code>）。</p>
+      </template>
+      <template v-else>
+        <p class="muted">怀疑 Token 泄露时使用：立即使该节点的 Token 失效，历史数据保留。之后凭新的注册码在主机上更换 Token 即可恢复。</p>
+        <div class="row">
+          <input v-model="revokePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
+            @keydown.enter.prevent="revoke" />
+          <button type="button" class="danger-btn" :disabled="!revokePassword || revoking" @click="revoke">
+            {{ revoking ? '吊销中…' : '吊销 Token' }}
+          </button>
+        </div>
+        <small v-if="revokeError" class="err">{{ revokeError }}</small>
+      </template>
+    </fieldset>
 
     <fieldset v-if="server" class="danger">
       <legend>删除节点</legend>

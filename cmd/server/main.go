@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -21,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"vpsmon/internal/logging"
@@ -40,6 +42,8 @@ usage:
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
                            [--public-url https://monitor.example.com] [--release-mirror] [--no-release-sync]
   vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
+  vpsmon-server audit      --data DIR [--category login|operation] [--result success|failure] [--action NAME|PREFIX.]
+                           [--limit 50] [--json]   view the audit log (newest first)
   vpsmon-server version
 `, version)
 	os.Exit(2)
@@ -92,6 +96,19 @@ func main() {
 		}
 		fmt.Printf("imported vpsmon-agent %s (%s): signature OK, %d builds verified and mirrored\n", m.Version, m.Channel, len(m.Artifacts))
 		fmt.Println("start or keep the panel running; install commands now download from this panel")
+
+	case "audit":
+		// 在面板主机上查看审计日志（设计 24.8）：与 Web“日志”页同一数据，只读
+		category := fsx.String("category", "", "login or operation (default: all)")
+		result := fsx.String("result", "", "success or failure (default: all)")
+		action := fsx.String("action", "", "exact action, or a prefix ending with '.', e.g. upgrade_task.")
+		limit := fsx.Int("limit", 50, "number of records (max 1000)")
+		asJSON := fsx.Bool("json", false, "print one JSON object per line")
+		_ = fsx.Parse(args)
+		if *limit < 1 || *limit > 1000 {
+			log.Fatal("--limit must be 1..1000")
+		}
+		printAudit(open(*data), server.AuditQuery{Category: *category, Result: *result, Action: *action, Limit: *limit}, *asJSON)
 
 	case "add-server":
 		name := fsx.String("name", "", "server name")
@@ -204,4 +221,45 @@ func warnIfPublic(logger *slog.Logger, listen string) {
 	}
 	logger.Warn("listening on a non-loopback address without TLS; keep the server on 127.0.0.1 behind Caddy or an SSH tunnel",
 		"component", "server", "listen", listen)
+}
+
+// printAudit 按时间倒序打印审计记录。详情在写入时已脱敏（设计 24.7）。
+func printAudit(st *server.Store, q server.AuditQuery, asJSON bool) {
+	list, _, err := st.ListAudit(q)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		for _, l := range list {
+			_ = enc.Encode(l)
+		}
+		return
+	}
+	if len(list) == 0 {
+		fmt.Println("no records")
+		return
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "TIME\tRESULT\tACTOR\tACTION\tTARGET\tIP\tDETAILS")
+	for _, l := range list {
+		actor := l.ActorType
+		if l.ActorID != "" {
+			actor += ":" + l.ActorID
+		}
+		target := ""
+		if l.TargetType != "" {
+			target = l.TargetType + ":" + l.TargetID
+			if l.TargetName != "" {
+				target += "(" + l.TargetName + ")"
+			}
+		}
+		details := string(l.Details)
+		if details == "{}" || details == "null" {
+			details = ""
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", time.Unix(l.TS, 0).Format("2006-01-02 15:04:05"),
+			l.Result, actor, l.Action, target, l.ClientIP, details)
+	}
+	_ = tw.Flush()
 }

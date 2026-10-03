@@ -288,3 +288,57 @@ func TestInstallWithoutRemoteUpgrade(t *testing.T) {
 		t.Error("启用后应安装 updater")
 	}
 }
+
+// rotate-token：凭新注册码换 Token，带上本机所属节点，原子替换 Token 文件并重启服务（设计 17.2）。
+func TestRotateToken(t *testing.T) {
+	p, dir := testPaths(t)
+	panel, got, _ := fakePanel(t, 200, okBody)
+	sys := &fakeSystem{root: true, systemd: true, users: map[string]bool{}}
+	sys.onEnable = func() { WriteStatus(p.StateDir, Status{LastSuccess: time.Now().Unix() + 1}) }
+	if err := Install(context.Background(), Options{Server: panel.URL, EnrollCode: "ENR-AAAA-AAAA-AAAA-AAAA",
+		Self: filepath.Join(dir, "downloaded-agent"), Paths: p, Sys: sys, WaitFirst: time.Second,
+		HostInfoRoot: filepath.Join(dir, "host")}); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(p.tokenFile(), []byte("agt_old\n"), 0o640)
+	sys.cmds = nil
+
+	var out bytes.Buffer
+	o := Options{EnrollCode: "enr-bbbb-bbbb-bbbb-bbbb", Paths: p, Sys: sys, Out: &out, WaitFirst: 100 * time.Millisecond,
+		HostInfoRoot: filepath.Join(dir, "host")}
+	if err := RotateToken(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if got.ServerID != 7 || got.EnrollCode != "ENR-BBBB-BBBB-BBBB-BBBB" {
+		t.Errorf("应带上本机所属节点与规范化的注册码：%+v", *got)
+	}
+	if b, _ := os.ReadFile(p.tokenFile()); strings.TrimSpace(string(b)) != "agt_abcdefghijklmnop" {
+		t.Errorf("应写入新 Token：%q", b)
+	}
+	if fi, _ := os.Stat(p.tokenFile()); fi.Mode().Perm() != 0o640 {
+		t.Errorf("【安全】Token 文件权限应为 0640：%v", fi.Mode().Perm())
+	}
+	if strings.Join(sys.cmds, "\n") != "systemctl restart vpsmon-agent" {
+		t.Errorf("应重启服务：%v", sys.cmds)
+	}
+	if strings.Contains(out.String(), "agt_") {
+		t.Error("【安全】输出中不得出现 Token")
+	}
+
+	// 面板返回其他节点（旧版面板不检查 server_id）：不写入
+	os.WriteFile(p.tokenFile(), []byte("agt_keep\n"), 0o640)
+	other, _, _ := fakePanel(t, 200, `{"server_id":8,"server_name":"other","agent_token":"agt_other_node_token"}`)
+	writeFile(sys, p.envFile(), "VPSMON_SERVER="+other.URL+"\nVPSMON_SERVER_ID=7\n", 0o640, 0)
+	if err := RotateToken(context.Background(), o); err == nil || !strings.Contains(err.Error(), "其他节点") {
+		t.Errorf("注册码属于其他节点时应拒绝：%v", err)
+	}
+	if b, _ := os.ReadFile(p.tokenFile()); strings.TrimSpace(string(b)) != "agt_keep" {
+		t.Error("拒绝时不得替换 Token 文件")
+	}
+
+	// 未安装时拒绝
+	os.Remove(p.tokenFile())
+	if err := RotateToken(context.Background(), o); err == nil {
+		t.Error("未安装时应拒绝")
+	}
+}

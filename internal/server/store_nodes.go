@@ -227,6 +227,8 @@ type EnrollRequest struct {
 	Arch          string
 	AgentVersion  string
 	SourceIP      string
+	// ExpectServerID 非 0 时，注册码必须属于该节点（更换 Token 时由 Agent 提供），否则拒绝且不做任何修改
+	ExpectServerID int64
 }
 
 // EnrollResult 是注册成功的结果；Token 明文只在此返回一次。
@@ -279,6 +281,9 @@ func (s *Store) Enroll(req EnrollRequest, verify verifyFunc, now time.Time) (*En
 		return nil, errEnrollInvalid
 	}
 
+	if req.ExpectServerID != 0 && req.ExpectServerID != serverID {
+		return nil, errorf(CodeForbidden, "注册码属于其他节点，请在本节点的“重新安装”页生成注册码")
+	}
 	node, err := getServerTx(tx, serverID)
 	if err != nil {
 		return nil, err
