@@ -8,6 +8,7 @@ import {
 } from '../api'
 import { severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
+import QuietHoursSettings from './QuietHoursSettings.vue'
 
 const emit = defineEmits<{ unauthorized: [] }>()
 
@@ -115,7 +116,7 @@ async function test(c: NotifyChannel) {
 
 const kindNames: Record<Delivery['kind'], string> = {
   firing: '告警', resolved: '恢复', repeat: '重复提醒', test: '测试',
-  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复',
+  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总',
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
 const typeNames: Record<ChannelType, string> = { telegram: 'Telegram', webhook: 'Webhook' }
@@ -129,6 +130,8 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
       同时有 5 台以上节点离线会合并为一条；状态频繁变化的告警只提醒一次；全部节点同时停止上报时发面板告警。渠道由本面板直接发送，凭证只保存在本面板。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
+
+    <QuietHoursSettings @unauthorized="emit('unauthorized')" />
 
     <div class="actions">
       <button type="button" @click="openNew('telegram')">添加 Telegram</button>

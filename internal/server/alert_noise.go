@@ -67,7 +67,7 @@ func (s *Server) emit(k alertKey, m notifyMessage, now time.Time) {
 	}
 	n.mu.Unlock()
 	for _, x := range send {
-		s.notify.dispatch(x)
+		s.send(x, now)
 	}
 }
 
@@ -142,8 +142,9 @@ func (s *Server) tickNoise(now time.Time) {
 	}
 	n.mu.Unlock()
 	for _, m := range send {
-		s.notify.dispatch(m)
+		s.send(m, now)
 	}
+	s.flushQuiet(now) // 免打扰结束：发出汇总（设计 16.5）
 }
 
 // forget 删除已结束告警的抖动记录（规则失效、节点删除时）。

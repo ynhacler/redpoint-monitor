@@ -697,7 +697,7 @@ export interface Delivery {
   channel_type: ChannelType
   event_id: number
   server_name: string
-  kind: 'firing' | 'resolved' | 'repeat' | 'test' | 'flapping' | 'still_firing' | 'panel_down' | 'panel_up'
+  kind: 'firing' | 'resolved' | 'repeat' | 'test' | 'flapping' | 'still_firing' | 'panel_down' | 'panel_up' | 'quiet_summary'
   title: string
   status: 'sent' | 'failed' | 'retrying'
   attempts: number
@@ -723,4 +723,27 @@ export function testChannel(id: number): Promise<{ ok: boolean; error?: string }
 }
 export function listDeliveries(limit = 30): Promise<{ items: Delivery[] }> {
   return request('GET', `/notification-deliveries?limit=${limit}`)
+}
+
+/** 免打扰时段（设计 16.5） */
+export interface QuietHours {
+  enabled: boolean
+  /** HH:MM；晚于 end 表示跨午夜 */
+  start: string
+  end: string
+  /** IANA 时区；空为面板本地时区 */
+  timezone: string
+  /** notify：严重告警仍然通知；summary：与警告一起汇总 */
+  critical: 'notify' | 'summary'
+}
+export interface QuietHoursView extends QuietHours {
+  active: boolean
+  effective_timezone: string
+  held: number
+}
+export function getQuietHours(): Promise<QuietHoursView> {
+  return request('GET', '/settings/quiet-hours')
+}
+export function saveQuietHours(v: QuietHours): Promise<QuietHoursView> {
+  return request('PUT', '/settings/quiet-hours', v)
 }

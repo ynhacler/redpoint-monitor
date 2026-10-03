@@ -435,6 +435,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/upgrade-tasks":                   accessAdmin,
 		"POST /api/v1/upgrade-tasks/{id}/cancel":       accessAdmin,
 		"POST /api/v1/agent-releases/sync":             accessAdmin,
+		"GET /api/v1/settings/quiet-hours":             accessAdmin,
+		"PUT /api/v1/settings/quiet-hours":             accessAdmin,
 		"GET /api/v1/notification-channels":            accessAdmin,
 		"POST /api/v1/notification-channels":           accessAdmin,
 		"PUT /api/v1/notification-channels/{id}":       accessAdmin,
