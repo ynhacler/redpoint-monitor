@@ -1,9 +1,11 @@
 package report
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +24,8 @@ type fakePanel struct {
 	headers  map[int]string   // 状态码 → Retry-After
 	date     func() time.Time // 响应的 Date 头；与 Reporter 使用同一个假时钟，避免误报时钟偏差
 	sentAt   []int64
+	gzip     string // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
+	encoded  []string
 }
 
 func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -37,9 +41,27 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ra := p.headers[code]; ra != "" {
 		w.Header().Set("Retry-After", ra)
 	}
+	enc := r.Header.Get("Content-Encoding")
+	p.encoded = append(p.encoded, enc)
+	if p.gzip == "accept" {
+		w.Header().Set("Accept-Encoding", "gzip")
+	}
+	if enc == "gzip" && p.gzip != "accept" {
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		return
+	}
 	if code/100 == 2 {
 		var rep protocol.Report
-		json.NewDecoder(r.Body).Decode(&rep)
+		var body io.Reader = r.Body
+		if enc == "gzip" {
+			zr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body = zr
+		}
+		json.NewDecoder(body).Decode(&rep)
 		p.received = append(p.received, rep.Timestamp)
 		p.sentAt = append(p.sentAt, rep.SentAt)
 	}
@@ -248,5 +270,46 @@ func TestClockSkew(t *testing.T) {
 	r.Flush(context.Background(), false)
 	if st := r.Status(); st.ClockSkew != 0 {
 		t.Errorf("恢复后偏差应为 0：%d", st.ClockSkew)
+	}
+}
+
+// 压缩（设计 6.1）：面板声明支持后才压缩；面板回退到旧版本时改发未压缩的版本，上报不丢。
+func TestGzipNegotiation(t *testing.T) {
+	p := &fakePanel{gzip: "accept"}
+	r, _, logs := newReporter(t, p)
+	for i := int64(0); i < 3; i++ {
+		r.Enqueue(rep(i))
+	}
+	r.Flush(context.Background(), false)
+	if strings.Join(p.encoded, ",") != ",gzip,gzip" || len(p.received) != 3 {
+		t.Fatalf("第一份未压缩（尚不知面板是否支持），之后压缩：%q，收到 %d 份", p.encoded, len(p.received))
+	}
+
+	p.gzip, p.encoded = "reject", nil // 面板回退到旧版本
+	r.Enqueue(rep(3))
+	r.Enqueue(rep(4))
+	r.Flush(context.Background(), false)
+	if strings.Join(p.encoded, ",") != "gzip,," || len(p.received) != 5 {
+		t.Errorf("被拒绝后应立即改发未压缩的版本，不丢上报：%q，收到 %d 份", p.encoded, len(p.received))
+	}
+	if !strings.Contains(strings.Join(*logs, "\n"), "sending uncompressed") {
+		t.Errorf("应记录改为不压缩：%v", *logs)
+	}
+
+	old := &fakePanel{} // 旧版面板：从不声明，Agent 永不压缩
+	r2, _, _ := newReporter(t, old)
+	r2.Enqueue(rep(0))
+	r2.Enqueue(rep(1))
+	r2.Flush(context.Background(), false)
+	if strings.Join(old.encoded, ",") != "," {
+		t.Errorf("旧版面板不应收到压缩的上报：%q", old.encoded)
+	}
+}
+
+func TestAcceptsGzip(t *testing.T) {
+	for v, want := range map[string]bool{"gzip": true, "br, GZIP;q=0.5": true, "identity": false, "": false, "x-gzip2": false} {
+		if got := acceptsGzip([]string{v}); got != want {
+			t.Errorf("acceptsGzip(%q) = %v", v, got)
+		}
 	}
 }

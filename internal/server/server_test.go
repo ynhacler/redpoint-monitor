@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -401,5 +402,57 @@ func TestFlushRetriesFailedBatch(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("重试后应持久化一条指标，实际 %d", n)
+	}
+}
+
+// 压缩的上报（设计 6.1）：声明 Accept-Encoding，按 Content-Encoding 解压；
+// 解压后超过上限（压缩炸弹）返回 413，不认识的编码返回 415（设计 43.2、43.4）。
+func TestGzipReport(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("gz", 0, 1)
+	gz := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w := gzip.NewWriter(&buf)
+		w.Write(b)
+		w.Close()
+		return buf.Bytes()
+	}
+	post := func(body []byte, enc string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/v1/agent/report", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		if enc != "" {
+			req.Header.Set("Content-Encoding", enc)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := post([]byte(`{"system":{"boot_id":"b"},"cpu":{"usage":12}}`), "")
+	if rec.Code != 204 || rec.Header().Get("Accept-Encoding") != "gzip" {
+		t.Fatalf("未压缩的上报照常接受，并声明支持 gzip：%d %q", rec.Code, rec.Header().Get("Accept-Encoding"))
+	}
+	if rec := post(gz([]byte(`{"system":{"boot_id":"b"},"cpu":{"usage":34}}`)), "gzip"); rec.Code != 204 {
+		t.Fatalf("压缩的上报应被接受：%d %s", rec.Code, rec.Body)
+	}
+	s.mu.Lock()
+	cpu := s.latest[1].Report.CPU.Usage
+	s.mu.Unlock()
+	if cpu != 34 {
+		t.Errorf("压缩的上报应正确解析：cpu=%v", cpu)
+	}
+
+	bomb := gz(append([]byte(`{"system":{"boot_id":"`), bytes.Repeat([]byte("a"), maxReportSize*4)...))
+	if len(bomb) > maxReportSize/10 {
+		t.Fatalf("测试数据应是高压缩比的“炸弹”：%d 字节", len(bomb))
+	}
+	if rec := post(bomb, "gzip"); rec.Code != 413 || decodeError(t, rec).Code != "payload_too_large" {
+		t.Errorf("解压后超过上限应返回 413：%d %s", rec.Code, rec.Body)
+	}
+	if rec := post([]byte("not gzip"), "gzip"); rec.Code != 400 {
+		t.Errorf("损坏的 gzip 应返回 400：%d", rec.Code)
+	}
+	if rec := post([]byte(`{}`), "br"); rec.Code != 415 || decodeError(t, rec).Code != "unsupported_encoding" {
+		t.Errorf("不认识的编码应返回 415：%d %s", rec.Code, rec.Body)
 	}
 }

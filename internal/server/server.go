@@ -1,9 +1,11 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -286,11 +288,19 @@ func (s *Server) agent(h http.HandlerFunc) http.Handler {
 }
 
 // handleReport：POST /api/v1/agent/report，Agent Token 认证（设计 6.1）。
-// 成功返回 204；Token 无效 401；请求体不是合法 JSON 400；超过 64 KB 413。
+// 成功返回 204；Token 无效 401；请求体不是合法 JSON 400；超过 64 KB（压缩或解压后）413；不支持的 Content-Encoding 415。
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	sid := info(r).principalID
+	// 声明接受 gzip 压缩的上报（RFC 7694）：新版 Agent 看到后才压缩，旧版面板不声明，新旧组合都兼容（设计 6.1）
+	w.Header().Set("Accept-Encoding", "gzip")
+	body, err := reportBody(w, r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	defer body.Close()
 	var rep protocol.Report
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxReportSize)).Decode(&rep); err != nil {
+	if err := json.NewDecoder(body).Decode(&rep); err != nil {
 		if ae := asAPIError(err); ae.Code == CodePayloadTooLarge {
 			s.writeError(w, r, ae)
 			return
@@ -310,6 +320,48 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reportBody 返回上报正文的读取器：按 Content-Encoding 解压，原始与解压后的大小都受 maxReportSize 限制，
+// 压缩炸弹（很小的 gzip 解压出巨大内容）同样返回 413（设计 43.2）。不认识的编码返回 415。
+func reportBody(w http.ResponseWriter, r *http.Request) (io.ReadCloser, error) {
+	raw := http.MaxBytesReader(w, r.Body, maxReportSize)
+	switch enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); enc {
+	case "", "identity":
+		return raw, nil
+	case "gzip":
+		zr, err := gzip.NewReader(raw)
+		if err != nil {
+			if ae := asAPIError(err); ae.Code == CodePayloadTooLarge {
+				return nil, ae
+			}
+			return nil, &APIError{Code: CodeBadRequest, Cause: err}
+		}
+		return struct {
+			io.Reader
+			io.Closer
+		}{&limitedReader{r: zr, n: maxReportSize}, zr}, nil
+	default:
+		return nil, errorf(CodeUnsupportedEncoding, "不支持的内容编码："+enc)
+	}
+}
+
+// limitedReader 在读取超过 n 字节时返回 413 错误，而不是像 io.LimitReader 那样静默截断。
+type limitedReader struct {
+	r io.Reader
+	n int64
+}
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	if l.n <= 0 {
+		return 0, &APIError{Code: CodePayloadTooLarge}
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }
 
 const (
