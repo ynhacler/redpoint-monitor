@@ -167,19 +167,22 @@ type tempReading struct {
 // cpuSensors 是可信的 CPU 温度传感器。acpitz 等主板 / 虚拟化传感器在 VPS 上常为固定假值，不采用。
 var cpuSensors = []string{"coretemp", "k10temp", "zenpower", "x86_pkg_temp", "cpu_thermal", "cpu-thermal", "soc_thermal", "soc-thermal"}
 
+// isCPUSensor 判断传感器名称是否为可信的 CPU 温度传感器。
+func isCPUSensor(name string) bool {
+	for _, n := range cpuSensors {
+		if strings.EqualFold(name, n) {
+			return true
+		}
+	}
+	return false
+}
+
 // pickCPUTemp 取可信 CPU 传感器的最高温度（摄氏度，保留一位小数）；没有时返回 0，表示不上报。
 func pickCPUTemp(rs []tempReading) float64 {
 	var best int64
 	for _, r := range rs {
-		ok := false
-		for _, n := range cpuSensors {
-			if strings.EqualFold(r.name, n) {
-				ok = true
-				break
-			}
-		}
 		// 超出 0～150 ℃ 的读数视为传感器异常
-		if ok && r.milli > 0 && r.milli < 150_000 && r.milli > best {
+		if isCPUSensor(r.name) && r.milli > 0 && r.milli < 150_000 && r.milli > best {
 			best = r.milli
 		}
 	}

@@ -37,7 +37,17 @@ type linux struct {
 	portsAt     time.Time              // ports 的采集时间：监听端口变化少，每分钟刷新一次（设计 4.9.1）
 	statfs      *statfsProber          // 带超时的 statfs（设计 43.5）
 	memEstimate bool                   // 已记录过“没有 MemAvailable，按估算”的日志
+
+	// 很少变化的信息按 refreshEvery 刷新，减少每轮的文件读取（设计 4.2）
+	osInfo    cached[[2]string] // /etc/os-release 的 ID 与 VERSION_ID（系统升级后无需重启即可反映）
+	kernel    string            // 内核版本、boot_id 在本次启动内不变，读到一次即可
+	bootID    string
+	sensors   cached[[]sensorFile]    // 可信 CPU 温度传感器的文件；VPS 上通常为空，此后每轮不再扫描 /sys
+	wholeDisk cached[map[string]bool] // /proc/diskstats 中的整块磁盘（/sys/block 下存在的设备）
 }
+
+// sensorFile 是一个可信 CPU 温度传感器的读数文件。
+type sensorFile struct{ name, path string }
 
 // New 返回真实的 Linux 采集器。未指定排除列表时使用 DefaultExclude，
 // 跳过虚拟网卡，避免容器 / VPN 流量被重复计算（设计 5.6）。
@@ -143,15 +153,26 @@ func (c *linux) Collect() (protocol.Report, error) {
 func (c *linux) collectSystem(errs *errorList) protocol.System {
 	var s protocol.System
 	s.Hostname, _ = os.Hostname()
-	s.OS, s.OSVersion = parseOSRelease(readFile("/etc/os-release"))
-	s.Kernel = strings.TrimSpace(readFile("/proc/sys/kernel/osrelease"))
+	rel := c.osInfo.get(time.Now(), time.Hour, func() [2]string {
+		id, ver := parseOSRelease(readFile("/etc/os-release"))
+		return [2]string{id, ver}
+	})
+	s.OS, s.OSVersion = rel[0], rel[1]
+	if c.kernel == "" {
+		c.kernel = strings.TrimSpace(readFile("/proc/sys/kernel/osrelease"))
+	}
+	s.Kernel = c.kernel
 	s.Arch = runtime.GOARCH
 	// boot_id 每次启动都会变化，此时内核网卡计数从 0 重新开始。面板据此把新计数整体计为增量，
 	// 启动到首次上报之间的流量不会丢失（设计 5.5，见 server/traffic.go 的 ComputeDelta）。
-	// 读不到时流量仍可按计数递增统计，但无法识别重启，因此记录原因。
-	if b, ok := mustRead(errs, "system", "/proc/sys/kernel/random/boot_id"); ok {
-		s.BootID = strings.TrimSpace(b)
+	// 本次启动内不变（重启后 Agent 进程也是新的），读到一次即可；读不到时流量仍可按计数递增统计，
+	// 但无法识别重启，因此记录原因并在下一轮重试。
+	if c.bootID == "" {
+		if b, ok := mustRead(errs, "system", "/proc/sys/kernel/random/boot_id"); ok {
+			c.bootID = strings.TrimSpace(b)
+		}
 	}
+	s.BootID = c.bootID
 	if f := strings.Fields(readFile("/proc/uptime")); len(f) > 0 {
 		up, _ := strconv.ParseFloat(f[0], 64)
 		s.Uptime = uint64(up)
@@ -181,7 +202,7 @@ func (c *linux) collectCPU(errs *errorList) (protocol.CPU, int) {
 	cpu.Cores = len(cur.cores)
 	cpu.Breakdown = cpuBreakdown(c.prevCPU.all, cur.all)
 	cpu.PerCore = perCoreUsage(c.prevCPU.cores, cur.cores)
-	cpu.TempC = readCPUTemp()
+	cpu.TempC = readCPUTemp(c.sensors.get(time.Now(), refreshEvery, findCPUSensors))
 	c.prevCPU = cur
 	return cpu, cur.running
 }
@@ -233,14 +254,16 @@ func (c *linux) collectDisks(errs *errorList, mounts string) []protocol.Disk {
 // collectDiskIO 采集磁盘 IO（设计 4.7）：只统计整块磁盘（/sys/block 下的设备），分区的 IO 已包含在所属磁盘中。
 func (c *linux) collectDiskIO(now time.Time) []protocol.DiskIO {
 	ioNow := parseDiskstats(readFile("/proc/diskstats"))
+	// 整盘列表缓存：设备增减（热插拔、挂载新盘）时立即刷新，否则每 refreshEvery 一次，不再每轮逐个 stat
+	if c.wholeDisk.loaded && !sameKeys(ioNow, c.prevIO) {
+		c.wholeDisk.invalidate()
+	}
+	whole := c.wholeDisk.get(now, refreshEvery, func() map[string]bool { return findWholeDisks(ioNow) })
 	elapsed := now.Sub(c.prevIOAt).Seconds()
 	var out []protocol.DiskIO
 	for name, cur := range ioNow {
-		if skipIODevice(name) {
-			continue
-		}
-		if _, err := os.Stat("/sys/block/" + name); err != nil {
-			continue // 分区或已移除的设备
+		if !whole[name] {
+			continue // 分区、虚拟设备或已移除的设备
 		}
 		d := protocol.DiskIO{Device: name, ReadBytes: cur.readBytes, WriteBytes: cur.writeBytes,
 			ReadOps: cur.readOps, WriteOps: cur.writeOps, IOTimeMs: cur.ioTimeMs}
@@ -297,41 +320,76 @@ func (c *linux) collectNetwork(errs *errorList, now time.Time) []protocol.NetIfa
 	return out
 }
 
+// findWholeDisks 返回 diskstats 中代表真实整块磁盘的设备：/sys/block 下存在（分区不在其中），且不是回环、内存盘等。
+func findWholeDisks(stats map[string]ioCounters) map[string]bool {
+	out := map[string]bool{}
+	for name := range stats {
+		if skipIODevice(name) {
+			continue
+		}
+		if _, err := os.Stat("/sys/block/" + name); err == nil {
+			out[name] = true
+		}
+	}
+	return out
+}
+
 // countProcesses 统计 /proc 下的进程目录数（只读目录名，不读取任何进程的内容）。
+// 分批读取目录项，进程很多的主机上也不会一次分配全部名称。
 func countProcesses() int {
 	f, err := os.Open("/proc")
 	if err != nil {
 		return 0
 	}
 	defer f.Close()
-	names, _ := f.Readdirnames(-1)
 	n := 0
-	for _, name := range names {
-		if name != "" && name[0] >= '0' && name[0] <= '9' {
-			n++
+	for {
+		names, err := f.Readdirnames(256)
+		for _, name := range names {
+			if name != "" && name[0] >= '0' && name[0] <= '9' {
+				n++
+			}
+		}
+		if err != nil || len(names) == 0 {
+			return n
 		}
 	}
-	return n
 }
 
-// readCPUTemp 读取 hwmon 与 thermal_zone 中可信的 CPU 温度（设计 4.4）；都读不到时返回 0，不上报。
+// findCPUSensors 扫描 hwmon 与 thermal_zone，返回可信 CPU 温度传感器的读数文件（设计 4.4）。
+// 由调用方缓存：传感器在运行期间几乎不变，没必要每轮扫描整个目录。
 // 【安全】只读 /sys，不需要任何权限。
-func readCPUTemp() float64 {
-	var rs []tempReading
+func findCPUSensors() []sensorFile {
+	var out []sensorFile
 	hw, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
 	for _, d := range hw {
 		name := strings.TrimSpace(readFile(d + "/name"))
+		if !isCPUSensor(name) {
+			continue
+		}
 		inputs, _ := filepath.Glob(d + "/temp*_input")
 		for _, in := range inputs {
-			if v, err := strconv.ParseInt(strings.TrimSpace(readFile(in)), 10, 64); err == nil {
-				rs = append(rs, tempReading{name, v})
-			}
+			out = append(out, sensorFile{name, in})
 		}
 	}
 	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*")
 	for _, d := range zones {
-		if v, err := strconv.ParseInt(strings.TrimSpace(readFile(d+"/temp")), 10, 64); err == nil {
-			rs = append(rs, tempReading{strings.TrimSpace(readFile(d + "/type")), v})
+		if name := strings.TrimSpace(readFile(d + "/type")); isCPUSensor(name) {
+			out = append(out, sensorFile{name, d + "/temp"})
+		}
+	}
+	return out
+}
+
+// readCPUTemp 读取已发现传感器的温度；没有传感器或都读不到时返回 0，不上报。
+func readCPUTemp(sensors []sensorFile) float64 {
+	if len(sensors) == 0 {
+		return 0
+	}
+	rs := make([]tempReading, 0, len(sensors))
+	for _, sf := range sensors {
+		if v, err := strconv.ParseInt(strings.TrimSpace(readFile(sf.path)), 10, 64); err == nil {
+			rs = append(rs, tempReading{sf.name, v})
 		}
 	}
 	return pickCPUTemp(rs)
