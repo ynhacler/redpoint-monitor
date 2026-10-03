@@ -276,15 +276,51 @@ func TestPointTime(t *testing.T) {
 		{"旧版 Agent 没有时间戳", 0, now.Unix(), false},
 		{"正常上报", now.Unix() - 1, now.Unix() - 1, false},
 		{"断网后补发 20 分钟前的数据（设计 1.6.14）", now.Unix() - 1200, now.Unix() - 1200, false},
-		{"超过 1 小时的旧数据视为异常，用收到时间", now.Unix() - 7200, now.Unix(), false},
+		{"超过 1 小时的旧数据只计流量，用收到时间", now.Unix() - 7200, now.Unix(), false},
 		{"Agent 时钟超前 2 分钟（设计 43.5）", now.Unix() + 120, now.Unix(), true},
 		{"超前 30 秒在容忍范围内", now.Unix() + 30, now.Unix() + 30, false},
 	}
 	for _, c := range cases {
-		at, skewed := pointTime(protocol.Report{Timestamp: c.ts}, now)
-		if at.Unix() != c.want || skewed != c.skewed {
-			t.Errorf("%s：%d skewed=%v，应为 %d skewed=%v", c.name, at.Unix(), skewed, c.want, c.skewed)
+		at, skewed, old := pointTime(protocol.Report{Timestamp: c.ts}, now)
+		if at.Unix() != c.want || skewed != c.skewed || old != (c.ts != 0 && c.ts < now.Unix()-3600) {
+			t.Errorf("%s：%d skewed=%v old=%v，应为 %d skewed=%v", c.name, at.Unix(), skewed, old, c.want, c.skewed)
 		}
+	}
+}
+
+// Agent 落盘保留的重启前最后一份计数：超过补发期限也要补齐同一次启动内的流量，
+// 但不改实时状态、不写指标点；不连续的旧计数直接忽略（设计 1.6.14、5.5）。
+func TestCarryOverIngest(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("co", 0, 1)
+	post := func(ts int64, boot string, cpu int, rx uint64) {
+		body := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":%q},"cpu":{"usage":%d},"network":[{"interface":"eth0","ifindex":2,"rx_bytes":%d,"tx_bytes":0}]}`,
+			ts, boot, cpu, rx)
+		if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(body)); rec.Code != 204 {
+			t.Fatalf("上报失败：%d", rec.Code)
+		}
+	}
+	now := time.Now().Unix()
+	post(now-10, "a", 11, 1000)     // 断网前最后一次成功上报，当时正常送达（首次只建基线）
+	post(now-2*3600, "a", 22, 9000) // 重启前落盘的最后一份，2 小时后才送达
+	s.mu.Lock()
+	cpu := s.latest[1].Report.CPU.Usage
+	s.mu.Unlock()
+	if cpu != 11 {
+		t.Errorf("过期的旧上报不能成为实时状态：cpu=%v", cpu)
+	}
+	post(now-2*3600, "z", 33, 99999) // 其他启动的旧计数：不连续，忽略
+	post(now, "b", 44, 500)          // 重启后的首份上报：新基线，计入开机以来的 500
+	s.flush()
+
+	rx, _, _ := s.store.TrafficSince(1, time.Now().AddDate(0, 0, -1))
+	if rx != 8000+500 {
+		t.Errorf("应补齐重启前的 8000 与重启后的 500，不计入不连续的旧计数：%d", rx)
+	}
+	var n int
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM metrics_raw WHERE server_id = 1`).Scan(&n)
+	if n != 2 {
+		t.Errorf("过期的旧上报不写指标点，只有两份正常上报：%d 行", n)
 	}
 }
 

@@ -85,6 +85,8 @@ type pendingWrite struct {
 	rep      protocol.Report
 	rx, tx   uint64 // traffic delta to add to today's bucket
 	counters map[string]Counter
+	// trafficOnly：超过补发期限的旧上报只计流量，不写历史指标点（设计 1.6.14）
+	trafficOnly bool
 }
 
 // New 创建面板服务：从数据库恢复各网卡的上一次计数，保证重启面板后流量增量连续（设计 5.5）。
@@ -295,13 +297,13 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	at, skewed := pointTime(rep, now)
+	at, skewed, old := pointTime(rep, now)
 	if skewed {
 		// TODO(A5): 时钟偏差超过 60 秒时产生 Agent 异常提示（设计 16.1、43.5）
 		s.log.Warn("agent clock ahead of server", "component", "agent-api", "server_id", sid,
 			"skew_s", rep.Timestamp-now.Unix())
 	}
-	s.ingest(sid, rep, at, now)
+	s.ingest(sid, rep, at, now, old)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -313,32 +315,37 @@ const (
 // pointTime 决定指标点的时间（设计 1.6.14 时间戳校验）。
 //
 // Agent 断网恢复后会补发缓存的上报，必须按采集时间入库，否则历史曲线会把这段数据堆在“现在”。
-// 采集时间在 [now-1h, now+60s] 内时采用；更早的视为异常，使用收到时间；超前过多说明 Agent 时钟偏差，
-// 也使用收到时间，并返回 skewed=true。旧版 Agent 的 timestamp 就是发送时间，行为不变。
-func pointTime(rep protocol.Report, now time.Time) (at time.Time, skewed bool) {
+// 采集时间在 [now-1h, now+60s] 内时采用；超前过多说明 Agent 时钟偏差，使用收到时间，并返回 skewed=true。
+// 早于 1 小时的返回 old=true（时间用收到时间）：这类上报来自 Agent 落盘保留的、重启前最后一份计数，
+// 只用于补齐流量，不能当作实时状态或历史指标点（设计 1.6.14、5.5）。旧版 Agent 的 timestamp 就是发送时间，行为不变。
+func pointTime(rep protocol.Report, now time.Time) (at time.Time, skewed, old bool) {
 	if rep.Timestamp == 0 {
-		return now, false
+		return now, false, false
 	}
 	t := time.Unix(rep.Timestamp, 0)
 	switch {
 	case t.After(now.Add(maxSkew)):
-		return now, true
+		return now, true, false
 	case t.Before(now.Add(-maxBackfill)):
-		return now, false
+		return now, false, true
 	}
-	return t, false
+	return t, false, false
 }
 
 // ingest 把一份上报写入内存状态并排队等待批量写库。at 为指标点时间，now 为收到时间。
 // 补发的旧数据不会覆盖更新的实时状态；同一时间点重复上报在写库时覆盖（主键去重），
-// 流量增量为 0，不会重复计算。
-func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
+// 流量增量为 0，不会重复计算。trafficOnly 的上报只更新网卡计数与流量，不改实时状态、不写指标点。
+func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, trafficOnly bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	snap := s.latest[sid]
 	stale := snap != nil && at.Before(snap.At)
-	if !stale {
+	if trafficOnly {
+		if snap != nil {
+			snap.ReceivedAt = now // 收到上报说明 Agent 在线
+		}
+	} else if !stale {
 		s.latest[sid] = &snapshot{ReceivedAt: now, At: at, Report: rep}
 	} else {
 		snap.ReceivedAt = now
@@ -347,14 +354,19 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 	if s.counters[sid] == nil {
 		s.counters[sid] = map[string]*Counter{}
 	}
-	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}}
+	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}, trafficOnly: trafficOnly}
 	// 乱序补发仍写入历史指标，但不能回退累计计数基线，否则后续上报会重复计费。
 	for _, ni := range rep.Network {
 		if stale {
 			break
 		}
 		cur := Counter{BootID: rep.System.BootID, IfIndex: ni.IfIndex, Rx: ni.RxBytes, Tx: ni.TxBytes, Bits: rep.System.CounterBits}
-		drx, dtx, reset := ComputeDelta(s.counters[sid][ni.Interface], cur)
+		prev := s.counters[sid][ni.Interface]
+		if trafficOnly && !continuesCounter(prev, cur) {
+			// 重启前最后一份计数只用于补齐同一次启动内的缺口；不连续时宁可少算，也不能回退基线或整笔重复计入
+			continue
+		}
+		drx, dtx, reset := ComputeDelta(prev, cur)
 		if reset {
 			s.log.Info("traffic counter reset", "component", "traffic", "server_id", sid, "iface", ni.Interface,
 				"boot_id_changed", s.counters[sid][ni.Interface] != nil && s.counters[sid][ni.Interface].BootID != cur.BootID)
@@ -366,6 +378,16 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 		pw.counters[ni.Interface] = cur
 	}
 	s.pending = append(s.pending, pw)
+}
+
+// continuesCounter 判断 cur 是否是 prev 在同一次启动、同一块网卡上的后续计数（递增或 32 位回绕）。
+func continuesCounter(prev *Counter, cur Counter) bool {
+	if prev == nil || prev.BootID != cur.BootID || prev.IfIndex != cur.IfIndex {
+		return false
+	}
+	_, okRx := protocol.CounterDelta(prev.Rx, cur.Rx, cur.Bits)
+	_, okTx := protocol.CounterDelta(prev.Tx, cur.Tx, cur.Bits)
+	return okRx && okTx
 }
 
 func (s *Server) flushLoop(ctx context.Context) {
@@ -406,34 +428,37 @@ func (s *Server) flush() {
 	}
 	defer tx.Rollback()
 	for _, p := range batch {
-		rep := p.rep
-		var diskUsed, diskTotal, rxs, txs, ioRead, ioWrite uint64
-		for _, d := range rep.Disk {
-			if d.Mount == "/" {
-				diskUsed, diskTotal = d.Used, d.Total
+		// 超过补发期限的旧上报只计流量，不写历史指标点（设计 1.6.14）
+		if !p.trafficOnly {
+			rep := p.rep
+			var diskUsed, diskTotal, rxs, txs, ioRead, ioWrite uint64
+			for _, d := range rep.Disk {
+				if d.Mount == "/" {
+					diskUsed, diskTotal = d.Used, d.Total
+				}
 			}
-		}
-		for _, n := range rep.Network {
-			rxs += n.RxSpeed
-			txs += n.TxSpeed
-		}
-		// 磁盘读写速率为所有磁盘之和；旧版 Agent 不上报 IO，写入 NULL 而不是 0，避免把“没有数据”画成“空闲”
-		var ioR, ioW any
-		if len(rep.DiskIO) > 0 {
-			for _, d := range rep.DiskIO {
-				ioRead += d.ReadSpeed
-				ioWrite += d.WriteSpeed
+			for _, n := range rep.Network {
+				rxs += n.RxSpeed
+				txs += n.TxSpeed
 			}
-			ioR, ioW = ioRead, ioWrite
-		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO metrics_raw
-			(server_id, ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed,
-			disk_read, disk_write)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			p.serverID, p.at.Unix(), rep.CPU.Usage, rep.CPU.Load1, rep.Memory.Used, rep.Memory.Total,
-			rep.Swap.Used, diskUsed, diskTotal, rxs, txs, ioR, ioW); err != nil {
-			s.log.Error("flush metrics failed", "component", "store", "err", err)
-			return
+			// 磁盘读写速率为所有磁盘之和；旧版 Agent 不上报 IO，写入 NULL 而不是 0，避免把“没有数据”画成“空闲”
+			var ioR, ioW any
+			if len(rep.DiskIO) > 0 {
+				for _, d := range rep.DiskIO {
+					ioRead += d.ReadSpeed
+					ioWrite += d.WriteSpeed
+				}
+				ioR, ioW = ioRead, ioWrite
+			}
+			if _, err := tx.Exec(`INSERT OR REPLACE INTO metrics_raw
+				(server_id, ts, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, tx_speed,
+				disk_read, disk_write)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				p.serverID, p.at.Unix(), rep.CPU.Usage, rep.CPU.Load1, rep.Memory.Used, rep.Memory.Total,
+				rep.Swap.Used, diskUsed, diskTotal, rxs, txs, ioR, ioW); err != nil {
+				s.log.Error("flush metrics failed", "component", "store", "err", err)
+				return
+			}
 		}
 		if p.rx > 0 || p.tx > 0 {
 			// 按面板本地时区划分日期。TODO(A4): 按节点设置计费时区（设计 1.2.4）。
