@@ -6,11 +6,10 @@ package release
 // 【安全】这里只有公钥。对应的私钥由开发者用 minisign 在离线机器上生成与保管（minisign -G），
 // 永远不进入仓库、CI 或任何面板。更换公钥需要发布一个由旧 current 签名的版本。
 //
-// TODO(A7)：开发者生成正式密钥后填入（minisign 公钥文件的第二行，base64）。在此之前所有发布校验都会失败，
-// 程序会拒绝安装或升级任何版本，这是有意的“失败即拒绝”。
+// 公钥为 minisign 公钥文件的第二行（base64）。私钥由开发者离线保管：current 在开发者签名机，next 离线备份。
 var officialKeys = []string{
-	// current:
-	// next:
+	"RWRvxJiJUet21SDEV8XFOSShkV7Wbn/ZsQhL/dpS5VVB781sfhsqwMu9", // current（2026-10-03 生成）
+	"RWR+mBTiANUomgVn75uz3om58EKm81G/0yIheQ9aQTKnjI+bp9oorf6H", // next（备用，只在 current 泄露时使用）
 }
 
 // TrustedKeys 返回编译进程序的官方公钥。

@@ -228,3 +228,17 @@ func sha256Hex(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
+
+// 官方公钥必须全部能解析，且 ID 互不相同（否则校验时可能选错公钥）。
+func TestOfficialKeys(t *testing.T) {
+	keys := TrustedKeys()
+	if len(keys) != len(officialKeys) || len(keys) < 2 {
+		t.Fatalf("官方公钥应为 current + next 两把且全部可解析：%d / %d", len(keys), len(officialKeys))
+	}
+	if keys[0].ID == keys[1].ID {
+		t.Fatal("两把官方公钥的 ID 相同")
+	}
+	for _, k := range keys {
+		t.Logf("官方公钥 ID %s", k.IDHex())
+	}
+}

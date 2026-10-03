@@ -105,7 +105,8 @@
 - [x] 发布流程：打标签 → Actions 生成草稿 Release → 离线 minisign 签名（scripts/sign-release.sh）→ 手动发布（设计 40.8.4、29.7）
 - [x] 签名清单（internal/release）与安装脚本模板 scripts/agent.sh.in（设计 27.5、29.7.2）
 - [x] `vpsmon-agent upgrade`：签名清单、防降级、健康检查与回滚（设计 29.7～29.12）
-- [ ] 开发者生成正式 minisign 密钥（current + next），公钥填入 internal/release/keys.go，发布第一个签名版本
+- [x] 开发者生成正式 minisign 密钥（current D576EB518998C46F + next 9A28D500E214987E），公钥已填入 internal/release/keys.go
+- [ ] 打 v0.2.0 标签，离线签名并发布第一个签名版本
 - [ ] 面板同步并验签官方发布，安装命令改为默认命令（下载 → 校验 → 执行）；面板镜像（设计 27.3.1、27.5.3、29.1）
 - [ ] 远程升级：升级任务、Agent 轮询 /agent/upgrade、特权 updater（systemd path unit）、状态上报、Web 页面（设计 29.2～29.20）
 
