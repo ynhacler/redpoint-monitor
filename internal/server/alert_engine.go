@@ -139,12 +139,7 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	snaps := make(map[int64]snapshot, len(s.latest))
-	for id, sn := range s.latest {
-		snaps[id] = *sn
-	}
-	s.mu.Unlock()
+	snaps := s.snapshots()
 
 	refreshTraffic := now.Sub(e.trafficAt) >= alertTrafficInterval
 	if refreshTraffic {
@@ -157,26 +152,17 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 			continue // 待安装节点不产生告警（设计 27.7）
 		}
 		seenServers[row.ID] = true
-		sn, hasSnap := snaps[row.ID]
-		last := time.Unix(row.LastSeenAt, 0)
-		if hasSnap {
-			last = sn.ReceivedAt
-		} else if row.LastSeenAt == 0 {
-			last = time.Unix(row.EnrolledAt, 0) // 注册后从未上报：从注册时间算起
-		}
-		in := alertInput{OfflineFor: now.Sub(last)}
-		if hasSnap && in.OfflineFor <= unknownWithin {
-			rep := sn.Report
-			in.Report = &rep
-		}
+		_, hasSnap := snaps[row.ID]
 		if refreshTraffic {
 			if tv, err := s.trafficOf(row, now); err == nil {
+				e.mu.Lock()
 				e.traffic[row.ID] = &tv
+				e.mu.Unlock()
 			} else {
 				s.log.Error("alert traffic failed", "component", "alert", "server_id", row.ID, "err", err)
 			}
 		}
-		in.Traffic = e.traffic[row.ID]
+		in := s.alertInputFor(row, snaps, now)
 
 		for _, r := range EffectiveRules(rules, row.ID, row.Group) {
 			k := alertKey{row.ID, r.RuleKey}
@@ -203,12 +189,46 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 	for _, k := range stale {
 		s.endAlert(k, now)
 	}
+	e.mu.Lock()
 	for id := range e.traffic {
 		if !seenServers[id] {
 			delete(e.traffic, id)
 		}
 	}
+	e.mu.Unlock()
 	return nil
+}
+
+// snapshots 复制各节点的最新上报，评估期间不持有 s.mu。
+func (s *Server) snapshots() map[int64]snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[int64]snapshot, len(s.latest))
+	for id, sn := range s.latest {
+		out[id] = *sn
+	}
+	return out
+}
+
+// alertInputFor 组装一个节点的评估输入：离线时长、在线时的最新上报、最近一次计算的本周期流量。
+// 告警评估与规则预览共用，保证预览结论与实际评估一致。
+func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time.Time) alertInput {
+	sn, hasSnap := snaps[row.ID]
+	last := time.Unix(row.LastSeenAt, 0)
+	if hasSnap {
+		last = sn.ReceivedAt
+	} else if row.LastSeenAt == 0 {
+		last = time.Unix(row.EnrolledAt, 0) // 注册后从未上报：从注册时间算起
+	}
+	in := alertInput{OfflineFor: now.Sub(last)}
+	if hasSnap && in.OfflineFor <= unknownWithin {
+		rep := sn.Report
+		in.Report = &rep
+	}
+	s.alerts.mu.Lock()
+	in.Traffic = s.alerts.traffic[row.ID]
+	s.alerts.mu.Unlock()
+	return in
 }
 
 // applyAlert 推进一个节点一条规则的状态，并持久化 firing / resolved。

@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 33 | A5 第二步：规则编辑接口与预览（19.9）；Web “告警”页（告警 / 规则两个标签，导航角标）；详情页指标块显示名称 | 16.2、19.9、11.1 |
 | 32 | A5 告警引擎第一步：alert_rules 增加 rule_key（三层覆盖的标识）；pending 不持久化；面板启动宽限期；节点摘要依赖抑制；/alerts 参数；“需要关注”改由服务端告警判定 | 16.7、18.7、18.8、19.9 |
 | 31 | 详情页指标块进一步贴近 ServerCat：数值改用等宽字体；CPU 占比一行、底部 CORES / IDLE / UPTIME / LOAD 一行；内存 FREE / USED / PAGE CACHE 一行；网络移到磁盘之前（41.6 顺序同步） | 11.1、41.6 |
 | 30 | Web 总览与节点列表合并为首页 `/`：统计行兼作状态筛选（全部 / 在线 / 离线 / 需要关注 / 流量 ≥ 80%），去掉 Top N 与单独的“需要关注”列表；/servers 跳转到 / | 9、10、41.6 |
@@ -5320,10 +5321,14 @@ GET  /api/v1/servers/{id}/traffic/adjustments    校准历史
 ```http
 GET    /api/v1/alerts?state=active|resolved|all&server_id=&cursor=&limit=
 GET    /api/v1/alert-rules
-POST   /api/v1/alert-rules
-PUT    /api/v1/alert-rules/{id}
-DELETE /api/v1/alert-rules/{id}
+POST   /api/v1/alert-rules              为分组 / 节点新增覆盖（以同 rule_key 的全局规则为基础）
+POST   /api/v1/alert-rules/preview      预览“按当前数据会对几台节点触发”
+PUT    /api/v1/alert-rules/{id}         修改阈值、恢复阈值、持续时间、级别、重复提醒、开关
+DELETE /api/v1/alert-rules/{id}         删除覆盖；默认规则不能删除，只能关闭
 ```
+
+Web “告警”页（导航显示进行中的告警数）：告警标签列出全部节点的活动 / 历史告警；规则标签编辑默认规则与覆盖，
+编辑时实时预览。修改、新增、删除规则记入操作日志（alert_rule.*）。
 
 ---
 

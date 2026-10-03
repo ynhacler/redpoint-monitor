@@ -222,7 +222,7 @@ paths:
   /alert-rules:
     get:
       tags: [alerts]
-      summary: 全部告警规则（全局 / 分组 / 节点三层，设计 16.2）；修改随 A5 后续提供
+      summary: 全部告警规则（全局 / 分组 / 节点三层，设计 16.2）
       responses:
         '200':
           description: 规则
@@ -234,6 +234,92 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/AlertRule' } }
         '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [alerts]
+      summary: 为分组或节点新增覆盖：以同 rule_key 的全局规则为基础，应用请求中的字段
+      requestBody:
+        required: true
+        content:
+            application/json:
+              schema:
+                type: object
+                required: [rule_key, scope_type, scope_id]
+                properties:
+                  rule_key: { type: string }
+                  scope_type: { type: string, enum: [group, server] }
+                  scope_id: { type: string, description: 分组名或节点 ID }
+                  threshold: { type: number }
+                  recover_threshold: { type: number, description: 不高于触发阈值 }
+                  duration_s: { type: integer, minimum: 0, maximum: 86400 }
+                  recover_duration_s: { type: integer, minimum: 0, maximum: 86400 }
+                  severity: { type: string, enum: [info, warning, critical] }
+                  repeat_interval_s: { type: integer, minimum: 0, maximum: 604800 }
+                  enabled: { type: boolean }
+      responses:
+        '201': { description: 新增的规则, content: { application/json: { schema: { $ref: '#/components/schemas/AlertRule' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /alert-rules/{id}:
+    put:
+      tags: [alerts]
+      summary: 修改规则；省略的字段保持不变；类型、rule_key、层级不可改
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      requestBody:
+        required: true
+        content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threshold: { type: number }
+                  recover_threshold: { type: number, description: 不高于触发阈值 }
+                  duration_s: { type: integer, minimum: 0, maximum: 86400 }
+                  recover_duration_s: { type: integer, minimum: 0, maximum: 86400 }
+                  severity: { type: string, enum: [info, warning, critical] }
+                  repeat_interval_s: { type: integer, minimum: 0, maximum: 604800 }
+                  enabled: { type: boolean }
+      responses:
+        '200': { description: 修改后的规则, content: { application/json: { schema: { $ref: '#/components/schemas/AlertRule' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [alerts]
+      summary: 删除分组 / 节点覆盖（回到上一层的设置）；默认规则不能删除（422），可以关闭
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /alert-rules/preview:
+    post:
+      tags: [alerts]
+      summary: 预览“按当前数据，此规则会对几台节点触发”（设计 16.2）；只比较阈值，不含持续时间
+      description: 请求同新增或修改（带 id 表示修改现有规则）；被下层覆盖或关闭的节点不计入
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: 预览结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matching: { type: integer }
+                  total: { type: integer, description: 由此规则决定的节点数 }
+                  items: { type: array, items: { type: object, properties: { server_id: { type: integer }, name: { type: string }, value: { type: number }, detail: { type: string } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   /audit-logs:
     get:

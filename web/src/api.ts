@@ -404,6 +404,50 @@ export function listAlerts(q: { state?: 'active' | 'resolved' | 'all'; server_id
   return request('GET', `/alerts?${qs}`)
 }
 
+/** 告警规则（设计 16.2）：全局 / 分组 / 节点三层，下层按 rule_key 覆盖上层 */
+export interface AlertRule {
+  id: number
+  rule_key: string
+  scope_type: 'global' | 'group' | 'server'
+  /** 分组名或节点 ID；全局为空 */
+  scope_id: string
+  type: string
+  operator: '>' | '>='
+  threshold: number
+  /** 低于此值恢复（回差） */
+  recover_threshold: number
+  duration_s: number
+  recover_duration_s: number
+  severity: AlertSeverity
+  repeat_interval_s: number
+  enabled: boolean
+}
+
+/** 规则中可修改的字段 */
+export type AlertRuleInput = Partial<Pick<AlertRule, 'threshold' | 'recover_threshold' | 'duration_s' | 'recover_duration_s' | 'severity' | 'repeat_interval_s' | 'enabled'>>
+
+export async function listAlertRules(): Promise<AlertRule[]> {
+  return (await request<{ items: AlertRule[] }>('GET', '/alert-rules')).items
+}
+
+export function updateAlertRule(id: number, v: AlertRuleInput): Promise<AlertRule> {
+  return request('PUT', `/alert-rules/${id}`, v)
+}
+
+/** 为分组或节点新增覆盖，以同 rule_key 的全局规则为基础 */
+export function createAlertRule(v: AlertRuleInput & { rule_key: string; scope_type: 'group' | 'server'; scope_id: string }): Promise<AlertRule> {
+  return request('POST', '/alert-rules', v)
+}
+
+export function deleteAlertRule(id: number): Promise<void> {
+  return request('DELETE', `/alert-rules/${id}`)
+}
+
+/** 预览：按当前数据，此规则会对几台节点触发（只比较阈值，不考虑持续时间） */
+export function previewAlertRule(v: AlertRuleInput & { id?: number; rule_key?: string; scope_type?: string; scope_id?: string }): Promise<{ matching: number; total: number; items: { server_id: number; name: string; value: number; detail?: string }[] }> {
+  return request('POST', '/alert-rules/preview', v)
+}
+
 /** 一条审计记录（设计 24.8）；details 已脱敏 */
 export interface AuditLog {
   id: number
