@@ -185,6 +185,56 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
 
+  /agent/upgrade:
+    get:
+      tags: [agent]
+      summary: Agent 查询本节点的升级任务（设计 29.4、29.13）
+      description: |
+        有进行中的任务时返回目标版本与官方签名的清单原文（base64）及 minisign 签名。
+        【安全】面板只转交官方签名的内容；Agent 与特权 updater 都用内置公钥独立验签并拒绝降级，面板无法让节点执行其他内容。
+        首次获取时任务从 pending 变为 delivered。Agent 只在主机启用了远程升级（安装了 updater）时查询。
+      security:
+        - agentToken: []
+      responses:
+        '200':
+          description: 升级任务
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [upgrade]
+                properties:
+                  upgrade: { type: boolean }
+                  task_id: { type: integer }
+                  version: { type: string }
+                  manifest: { type: string, format: byte, description: 签名清单原文（base64） }
+                  manifest_signature: { type: string, description: manifest.json.minisig 原文 }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /agent/upgrade/status:
+    post:
+      tags: [agent]
+      summary: Agent 上报升级进度与结果（设计 29.12）
+      description: 只能更新本节点进行中的任务；staged 表示已下载、校验并交给 updater。
+      security:
+        - agentToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task_id, status]
+              properties:
+                task_id: { type: integer }
+                status: { type: string, enum: [staged, success, failed, rolled_back] }
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '204': { description: 已记录 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /agent/unregister:
     post:
       tags: [agent]
@@ -339,6 +389,59 @@ paths:
         '200': { description: 同步到的版本, content: { application/json: { schema: { type: object, properties: { version: { type: string }, channel: { type: string } } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+
+  /upgrade-tasks:
+    get:
+      tags: [servers]
+      summary: 远程升级任务，最新在前（最多 100 个，设计 29.14）
+      parameters:
+        - { name: server_id, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 任务列表
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [servers]
+      summary: 为节点创建升级任务（设计 29.14）
+      description: |
+        version 必须是已同步并验签的官方版本。尚未安装、当前版本不低于目标版本、已有进行中任务的节点会被跳过并说明原因。
+        只有 Web 管理员可以创建；App 凭证不能（CLAUDE.md 约束 5）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [server_ids, version]
+              properties:
+                server_ids: { type: array, items: { type: integer }, minItems: 1, maxItems: 500 }
+                version: { type: string, example: '0.3.0' }
+      responses:
+        '201':
+          description: 创建结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } }
+                  skipped: { type: array, items: { type: object, properties: { server_id: { type: integer }, reason: { type: string } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /upgrade-tasks/{id}/cancel:
+    post:
+      tags: [servers]
+      summary: 取消尚未交给 updater 的升级任务（pending / delivered）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: 已取消 }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 
   /silences:
     get:
@@ -866,6 +969,21 @@ components:
         synced_at: { type: integer }
         notes: { type: string }
         artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
+
+    UpgradeTask:
+      type: object
+      description: 远程升级任务（设计 29.10、29.13）
+      properties:
+        id: { type: integer }
+        server_id: { type: integer }
+        server_name: { type: string }
+        target_version: { type: string }
+        from_version: { type: string, description: 创建任务时节点上报的版本 }
+        status: { type: string, enum: [pending, delivered, staged, success, failed, rolled_back, cancelled] }
+        reason: { type: string, description: 失败或回滚原因 }
+        created_by: { type: string }
+        created_at: { type: integer }
+        updated_at: { type: integer }
 
     EnrollCodeView:
       type: object

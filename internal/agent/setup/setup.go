@@ -31,6 +31,14 @@ import (
 //go:embed vpsmon-agent.service
 var unitFile string
 
+// 远程升级的 systemd 单元（设计 29.13），同样与 deploy/systemd 中的保持一致。
+//
+//go:embed vpsmon-agent-updater.path
+var updaterPathFile string
+
+//go:embed vpsmon-agent-updater.service
+var updaterServiceFile string
+
 const (
 	userName    = "vpsmon-agent" // 运行 Agent 的系统用户（设计 1.6.9）
 	serviceName = "vpsmon-agent"
@@ -42,6 +50,10 @@ type Paths struct {
 	ConfDir  string // /etc/vpsmon-agent：token 与 env
 	StateDir string // /var/lib/vpsmon-agent：status.json，由 systemd StateDirectory 创建
 	Unit     string // /etc/systemd/system/vpsmon-agent.service
+	// 远程升级（设计 29.13）
+	Updater        string // /usr/local/lib/vpsmon-agent/updater：updater 的独立副本，不随远程升级替换
+	UpdaterPath    string // /etc/systemd/system/vpsmon-agent-updater.path
+	UpdaterService string // /etc/systemd/system/vpsmon-agent-updater.service
 }
 
 // DefaultPaths 是 Linux 主机上的默认路径。
@@ -50,11 +62,18 @@ var DefaultPaths = Paths{
 	ConfDir:  "/etc/vpsmon-agent",
 	StateDir: "/var/lib/vpsmon-agent",
 	Unit:     "/etc/systemd/system/vpsmon-agent.service",
+
+	Updater:        "/usr/local/lib/vpsmon-agent/updater",
+	UpdaterPath:    "/etc/systemd/system/vpsmon-agent-updater.path",
+	UpdaterService: "/etc/systemd/system/vpsmon-agent-updater.service",
 }
 
 func (p Paths) tokenFile() string  { return filepath.Join(p.ConfDir, "token") }
 func (p Paths) envFile() string    { return filepath.Join(p.ConfDir, "env") }
 func (p Paths) statusFile() string { return filepath.Join(p.StateDir, "status.json") }
+
+// NoRemoteUpgradeFile 存在时 updater 拒绝远程升级（设计 29.13）。由主机管理员控制，面板无法改变。
+func (p Paths) NoRemoteUpgradeFile() string { return filepath.Join(p.ConfDir, "no-remote-upgrade") }
 
 // System 抽象安装过程中对主机的修改，便于在非 Linux 环境中测试完整流程。
 type System interface {
@@ -70,17 +89,18 @@ type System interface {
 
 // Options 是 install / uninstall 的参数。
 type Options struct {
-	Server       string // 面板地址，如 https://monitor.example.com
-	EnrollCode   string
-	AllowHTTP    bool          // 仅本地开发：允许向非回环地址明文注册（与 --allow-http 一致）
-	Version      string        // 本程序版本，注册时上报
-	Self         string        // 当前可执行文件路径；不在 Paths.Bin 时复制过去
-	Paths        Paths         // 为空时使用 DefaultPaths
-	Sys          System        // 为空时使用真实系统
-	HTTP         *http.Client  // 为空时使用默认客户端（10 秒超时，始终校验证书）
-	Out          io.Writer     // 进度输出
-	WaitFirst    time.Duration // 等待首次上报成功的时长，默认 20 秒
-	HostInfoRoot string        // 读取 /etc/hostname 等文件的根目录，测试用；默认 "/"
+	Server          string // 面板地址，如 https://monitor.example.com
+	EnrollCode      string
+	AllowHTTP       bool          // 仅本地开发：允许向非回环地址明文注册（与 --allow-http 一致）
+	NoRemoteUpgrade bool          // 不启用远程升级（设计 29.13）；之后可用 enable-remote-upgrade 打开
+	Version         string        // 本程序版本，注册时上报
+	Self            string        // 当前可执行文件路径；不在 Paths.Bin 时复制过去
+	Paths           Paths         // 为空时使用 DefaultPaths
+	Sys             System        // 为空时使用真实系统
+	HTTP            *http.Client  // 为空时使用默认客户端（10 秒超时，始终校验证书）
+	Out             io.Writer     // 进度输出
+	WaitFirst       time.Duration // 等待首次上报成功的时长，默认 20 秒
+	HostInfoRoot    string        // 读取 /etc/hostname 等文件的根目录，测试用；默认 "/"
 }
 
 func (o *Options) defaults() {
@@ -223,6 +243,18 @@ func Install(ctx context.Context, o Options) error {
 	if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
 		return rollback(fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out))
 	}
+	if o.NoRemoteUpgrade {
+		if err := writeFile(o.Sys, p.NoRemoteUpgradeFile(), "# 存在时拒绝远程升级（设计 29.13）\n", 0o644, 0); err != nil {
+			return rollback(err)
+		}
+		say("✓ 未启用远程升级（启用：sudo vpsmon-agent enable-remote-upgrade）")
+	} else {
+		undo = append(undo, func() { removeUpdater(o) })
+		if err := installUpdater(o); err != nil {
+			return rollback(fmt.Errorf("安装远程升级组件失败：%w", err))
+		}
+		say("✓ 已启用远程升级：只安装官方签名、版本更高的 Agent（关闭：sudo touch %s）", p.NoRemoteUpgradeFile())
+	}
 	started := time.Now()
 	if out, err := o.Sys.Run("systemctl", "enable", "--now", serviceName); err != nil {
 		return rollback(fmt.Errorf("启动服务失败：%v %s", err, out))
@@ -241,6 +273,73 @@ func Install(ctx context.Context, o Options) error {
 	say("查看状态：vpsmon-agent status")
 	say("卸载：    sudo vpsmon-agent uninstall")
 	return nil
+}
+
+// installUpdater 安装或刷新远程升级组件（设计 29.13）：updater 的独立副本与 systemd path / service 单元。
+// 【安全】updater 以 root 运行，只从暂存目录读取并用内置公钥复验；它自身只随 install / 本机 upgrade 更新，
+// 远程升级只替换 /usr/local/bin/vpsmon-agent，因此被替换的程序无法改变执行替换的程序。
+func installUpdater(o Options) error {
+	p := o.Paths
+	src := o.Self
+	if src == "" {
+		src = p.Bin
+	}
+	if err := os.MkdirAll(filepath.Dir(p.Updater), 0o755); err != nil {
+		return err
+	}
+	if err := copyFile(src, p.Updater, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(p.UpdaterService, []byte(updaterServiceFile), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(p.UpdaterPath, []byte(updaterPathFile), 0o644); err != nil {
+		return err
+	}
+	if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out)
+	}
+	if out, err := o.Sys.Run("systemctl", "enable", "--now", "vpsmon-agent-updater.path"); err != nil {
+		return fmt.Errorf("启用 vpsmon-agent-updater.path 失败：%v %s", err, out)
+	}
+	return nil
+}
+
+func removeUpdater(o Options) {
+	p := o.Paths
+	o.Sys.Run("systemctl", "disable", "--now", "vpsmon-agent-updater.path")
+	for _, f := range []string{p.UpdaterPath, p.UpdaterService, p.Updater} {
+		os.Remove(f)
+	}
+	os.Remove(filepath.Dir(p.Updater))
+}
+
+// EnableRemoteUpgrade 为已安装的 Agent 启用远程升级（sudo vpsmon-agent enable-remote-upgrade）。
+func EnableRemoteUpgrade(o Options) error {
+	o.defaults()
+	if !o.Sys.IsRoot() {
+		return errors.New("需要 root 权限，请使用 sudo 执行")
+	}
+	if _, err := os.Stat(o.Paths.tokenFile()); err != nil {
+		return errors.New("本机尚未安装 Agent，请先执行面板中的安装命令")
+	}
+	if err := installUpdater(o); err != nil {
+		return err
+	}
+	if err := os.Remove(o.Paths.NoRemoteUpgradeFile()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	fmt.Fprintf(o.Out, "✓ 已启用远程升级：只安装官方签名、版本更高的 Agent（关闭：sudo touch %s）\n", o.Paths.NoRemoteUpgradeFile())
+	return nil
+}
+
+// RefreshUpdater 在本机升级后刷新 updater 副本（只在已启用远程升级时）。
+func RefreshUpdater(o Options) error {
+	o.defaults()
+	if _, err := os.Stat(o.Paths.UpdaterPath); err != nil {
+		return nil
+	}
+	return copyFile(o.Paths.Bin, o.Paths.Updater, 0o755)
 }
 
 // shellSafe 去掉换行等字符，节点名写入 env 文件时不能破坏格式（systemd EnvironmentFile 按行解析）。

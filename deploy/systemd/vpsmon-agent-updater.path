@@ -1,0 +1,11 @@
+# 远程升级触发器（设计 29.13）：Agent 写入 request.json 后启动特权 updater。
+# 关闭远程升级：touch /etc/vpsmon-agent/no-remote-upgrade，或 systemctl disable --now vpsmon-agent-updater.path
+[Unit]
+Description=VPS Monitor agent remote upgrade trigger
+
+[Path]
+PathChanged=/var/lib/vpsmon-agent/update/request.json
+Unit=vpsmon-agent-updater.service
+
+[Install]
+WantedBy=multi-user.target

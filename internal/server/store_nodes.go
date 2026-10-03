@@ -150,6 +150,7 @@ func (s *Store) DeleteServer(id int64) (string, error) {
 		`DELETE FROM agent_tokens WHERE server_id = ?`, // 外键已设置级联，这里显式删除，不依赖 PRAGMA foreign_keys
 		`DELETE FROM enroll_codes WHERE server_id = ?`,
 		`DELETE FROM alert_events WHERE server_id = ?`,
+		`DELETE FROM upgrade_tasks WHERE server_id = ?`,
 		`DELETE FROM alert_rules WHERE scope_type = 'server' AND scope_id = CAST(? AS TEXT)`,
 		`DELETE FROM servers WHERE id = ?`,
 	} {

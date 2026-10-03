@@ -125,6 +125,7 @@ func Uninstall(ctx context.Context, o Options) error {
 	}
 
 	o.Sys.Run("systemctl", "disable", "--now", serviceName)
+	removeUpdater(o)
 	say("✓ 已停止服务")
 
 	env := readEnv(p.envFile())

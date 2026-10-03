@@ -3,6 +3,7 @@
 // 指标顺序与 App 一致（设计 41.6）。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, getHistory, getServer, UnauthorizedError, type HistoryRange, type HistoryView, type ServerView } from '../api'
+import AgentUpgrade from '../components/AgentUpgrade.vue'
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import Flag from '../components/Flag.vue'
@@ -234,7 +235,11 @@ const expireDays = computed(() => {
             <dt>IPv4</dt><dd class="num">{{ s.ipv4 || s.expected_ipv4 || DASH }}</dd>
             <dt>IPv6</dt><dd class="num">{{ s.ipv6 || s.expected_ipv6 || DASH }}</dd>
             <dt>内核</dt><dd>{{ sys?.kernel || DASH }}</dd>
-            <dt>Agent</dt><dd>{{ s.latest?.agent_version || DASH }}</dd>
+            <dt>Agent</dt>
+            <dd>
+              <AgentUpgrade v-if="s.status !== 'pending'" :server-id="s.id" :current="s.latest?.agent_version" @unauthorized="logout" />
+              <template v-else>{{ DASH }}</template>
+            </dd>
             <dt>注册时间</dt><dd>{{ fmtTime(s.enrolled_at) }}</dd>
             <dt>最后上报</dt><dd>{{ fmtTime(s.last_seen_at) }}</dd>
           </dl>

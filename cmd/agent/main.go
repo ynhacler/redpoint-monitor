@@ -10,9 +10,13 @@
 //	vpsmon-agent install --server URL --enroll ENR-…   注册并安装为 systemd 服务（需要 root）
 //	vpsmon-agent status                                 服务状态与最近一次上报
 //	vpsmon-agent uninstall                              停止并删除，通知面板（需要 root）
+//	vpsmon-agent upgrade [--version vX]                 本机升级到官方签名的版本（需要 root，设计 29）
+//	vpsmon-agent enable-remote-upgrade                  为已安装的 Agent 启用远程升级（需要 root，设计 29.13）
+//	vpsmon-agent updater                                特权 updater，由 vpsmon-agent-updater.service 调用
 //	vpsmon-agent [run] --server URL --token-file F      前台运行（systemd 单元使用）
 //
-// 不负责：升级（设计 29）。
+// 远程升级（设计 29.13）：运行中的 Agent 只查询任务、校验并暂存官方签名的版本；替换由独立的 root updater 完成，
+// updater 不联网、用内置公钥复验并拒绝降级。面板只能选择官方签名的版本，无法让节点执行任何其他内容。
 package main
 
 import (
@@ -55,6 +59,10 @@ func main() {
 			os.Exit(cmdUninstall())
 		case "upgrade":
 			os.Exit(cmdUpgrade(os.Args[2:]))
+		case "updater":
+			os.Exit(cmdUpdater())
+		case "enable-remote-upgrade":
+			os.Exit(cmdEnableRemoteUpgrade())
 		case "version":
 			fmt.Println(version)
 			return
@@ -72,6 +80,7 @@ func cmdInstall(args []string) int {
 	server := fs.String("server", "", "panel URL, e.g. https://monitor.example.com")
 	code := fs.String("enroll", "", "one-time enroll code from the panel (ENR-XXXX-XXXX-XXXX-XXXX)")
 	allowHTTP := fs.Bool("allow-http", false, "allow plain HTTP to a non-loopback panel (development only)")
+	noRemote := fs.Bool("no-remote-upgrade", false, "do not enable remote upgrades from the panel (design 29.13)")
 	_ = fs.Parse(args)
 	if runtime.GOOS != "linux" {
 		fmt.Fprintln(os.Stderr, "✗ install 只支持 Linux")
@@ -79,7 +88,7 @@ func cmdInstall(args []string) int {
 	}
 	self, _ := os.Executable()
 	err := setup.Install(context.Background(), setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
-		Version: version, Self: self, Out: os.Stdout})
+		NoRemoteUpgrade: *noRemote, Version: version, Self: self, Out: os.Stdout})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1
@@ -104,23 +113,87 @@ func cmdUpgrade(args []string) int {
 	}
 	p := setup.DefaultPaths
 	o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
-		Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, Out: os.Stdout,
-		ReadStatus: func() (string, int64, error) {
-			st, err := setup.ReadStatus(filepath.Join(p.StateDir, "status.json"))
-			if err != nil {
-				return "", 0, err
-			}
-			return st.Version, st.LastSuccess, nil
-		}}
+		Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, WorkDir: upgrade.RootWorkDir, Out: os.Stdout,
+		ReadStatus: readStatus(p)}
 	// 只有安装了 systemd 服务时才重启并做健康检查；否则替换后由使用者自行重启
 	if _, err := os.Stat(p.Unit); err == nil {
-		o.Restart = func() error { return exec.Command("systemctl", "restart", "vpsmon-agent").Run() }
+		o.Restart = restartService
 	}
 	if err := upgrade.Run(context.Background(), o); err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1
 	}
+	// 本机升级由管理员发起，顺带刷新 updater 副本（远程升级不会替换 updater，设计 29.13）
+	if err := setup.RefreshUpdater(setup.Options{}); err != nil {
+		fmt.Fprintln(os.Stderr, "! 刷新 updater 失败："+err.Error())
+	}
 	return 0
+}
+
+// cmdUpdater 是特权 updater（设计 29.13）：由 vpsmon-agent-updater.service 以 root 调用，处理一次暂存的升级请求。
+func cmdUpdater() int {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		fmt.Fprintln(os.Stderr, "✗ updater 只能由 vpsmon-agent-updater.service 以 root 运行")
+		return 1
+	}
+	p := setup.DefaultPaths
+	err := upgrade.RunUpdater(context.Background(), upgrade.UpdaterOptions{
+		StageDir: filepath.Join(p.StateDir, "update"), WorkDir: upgrade.RootWorkDir, StateDir: p.StateDir,
+		Bin: p.Bin, DisableFile: p.NoRemoteUpgradeFile(), Keys: release.TrustedKeys(),
+		Restart: restartService, ReadStatus: readStatus(p), Out: os.Stdout})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+func cmdEnableRemoteUpgrade() int {
+	self, _ := os.Executable()
+	if err := setup.EnableRemoteUpgrade(setup.Options{Self: self, Out: os.Stdout}); err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+func restartService() error { return exec.Command("systemctl", "restart", "vpsmon-agent").Run() }
+
+func readStatus(p setup.Paths) func() (string, int64, error) {
+	return func() (string, int64, error) {
+		st, err := setup.ReadStatus(filepath.Join(p.StateDir, "status.json"))
+		if err != nil {
+			return "", 0, err
+		}
+		return st.Version, st.LastSuccess, nil
+	}
+}
+
+// remoteUpgradeEnabled：主机安装了 updater 且未禁止时才查询升级任务（设计 29.13）。
+func remoteUpgradeEnabled() bool {
+	p := setup.DefaultPaths
+	if _, err := os.Stat(p.UpdaterPath); err != nil {
+		return false
+	}
+	_, err := os.Stat(p.NoRemoteUpgradeFile())
+	return errors.Is(err, os.ErrNotExist)
+}
+
+// pollUpgrades 定期查询升级任务：启动 30 秒后一次，之后每 5 分钟（设计 29.13）。在独立 goroutine 中运行，下载不阻塞上报。
+func pollUpgrades(server, token, stateDir string) {
+	o := upgrade.RemoteOptions{Server: server, Token: token, Current: version, Keys: release.TrustedKeys(),
+		StageDir: filepath.Join(stateDir, "update"), Log: log.Printf}
+	time.Sleep(30 * time.Second)
+	for {
+		if remoteUpgradeEnabled() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			if err := upgrade.CheckRemote(ctx, o); err != nil {
+				log.Printf("upgrade check: %v", err)
+			}
+			cancel()
+		}
+		time.Sleep(5 * time.Minute)
+	}
 }
 
 // cmdUninstall 执行 vpsmon-agent uninstall（设计 27.11），返回进程退出码。
@@ -180,6 +253,10 @@ func run() {
 	}
 	// 【安全】只记录上报地址，不记录 Token（设计 24.7）。
 	log.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
+
+	if *stateDir != "" && runtime.GOOS == "linux" {
+		go pollUpgrades(*server, tok, *stateDir)
+	}
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
 	_, _ = col.Collect()

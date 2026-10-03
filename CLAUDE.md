@@ -42,7 +42,8 @@ internal/server/
   store_nodes.go       nodes, enroll codes, audit log persistence
 internal/logging/      slog setup + credential redaction (design 24.7)
 internal/release/      minisign verification, signed release manifest, versions, official public keys (design 29.7)
-internal/agent/upgrade/ local `vpsmon-agent upgrade`: verify → anti-downgrade → atomic swap → health check → rollback
+internal/agent/upgrade/ local `vpsmon-agent upgrade`: verify → anti-downgrade → atomic swap → health check → rollback;
+                       remote.go (agent stages signed release) + updater.go (root updater via systemd path unit, design 29.13)
 cmd/vpsmon-release/    CI tool: agent-x.y.z.sh + manifest.json + SHA256SUMS (never signs; signing is offline)
 api/openapi.yaml       API contract — change it before the code (design 19.0.1)
 web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed

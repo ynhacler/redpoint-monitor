@@ -186,7 +186,9 @@ func (s *Server) routes() http.Handler {
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
 	handle("POST /api/v1/agent/report", accessAgent, s.handleReport)
-	handle("POST /api/v1/agent/unregister", accessAgent, s.handleUnregister)
+	handle("GET /api/v1/agent/upgrade", accessAgent, s.handleAgentUpgrade)
+	handle("POST /api/v1/agent/upgrade/status", accessAgent, s.handleAgentUpgradeStatus)
+	handle("POST /api/v1/agent/unregister", accessAgent, s.handleUnregister) // 注销会吊销 Token，放在 Agent 路由最后（权限矩阵测试按顺序调用）
 
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
@@ -197,6 +199,9 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/alert-rules/{id}", accessAdmin, s.handleUpdateAlertRule)
 	handle("DELETE /api/v1/alert-rules/{id}", accessAdmin, s.handleDeleteAlertRule)
 	handle("GET /api/v1/agent-releases", accessAdmin, s.handleReleases)
+	handle("GET /api/v1/upgrade-tasks", accessAdmin, s.handleUpgradeTasks)
+	handle("POST /api/v1/upgrade-tasks", accessAdmin, s.handleCreateUpgradeTasks)
+	handle("POST /api/v1/upgrade-tasks/{id}/cancel", accessAdmin, s.handleCancelUpgradeTask)
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
 	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
 	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
@@ -471,6 +476,11 @@ func (s *Server) maintenance(ctx context.Context) {
 		if tick%10 == 0 {
 			if err := s.store.PruneSessions(now); err != nil {
 				s.log.Error("session prune failed", "component", "auth", "err", err)
+			}
+			if n, err := s.store.ExpireUpgradeTasks(now); err != nil {
+				s.log.Error("upgrade task expiry failed", "component", "upgrade", "err", err)
+			} else if n > 0 {
+				s.log.Info("upgrade tasks timed out", "component", "upgrade", "tasks", n)
 			}
 			if n, err := s.store.PruneAlertEvents(now); err != nil {
 				s.log.Error("alert prune failed", "component", "alert", "err", err)
