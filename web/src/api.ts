@@ -355,6 +355,8 @@ export interface InstallCommand {
   command: string
   /** 手动方式（设计 27.3.3），两种模式都提供 */
   manual_command: string
+  /** 主机上已安装 Agent（如 Token 已吊销）时，凭新注册码就地更换 Token（设计 17.2） */
+  rotate_command: string
   server: string
   /** 生成默认命令所用的已验签官方版本；未同步时为 null */
   release: AgentRelease | null
@@ -652,6 +654,11 @@ export function changePassword(current: string, next: string): Promise<void> {
 }
 
 /** 敏感操作前重新输入密码，10 分钟内有效（设计 17.4）。 */
+/** 立即吊销节点的全部 Agent Token（设计 17.2）；需先重新验证密码 */
+export function revokeAgentToken(id: number): Promise<void> {
+  return request('POST', `/servers/${id}/revoke-agent-token`)
+}
+
 export function reauth(password: string): Promise<void> {
   return request('POST', '/auth/reauth', { password })
 }

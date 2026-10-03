@@ -35,6 +35,8 @@ const withCode = (cmd: string) => {
 const command = computed(() => (view.value ? withCode(view.value.install.command) : ''))
 const manualCommand = computed(() => (view.value ? withCode(view.value.install.manual_command) : ''))
 const showManual = ref(false)
+const rotateCommand = computed(() => (view.value ? withCode(view.value.install.rotate_command) : ''))
+const showRotate = ref(false)
 
 // 同步官方版本：成功后重新获取命令（默认命令需要已验签的版本）
 const syncing = ref(false)
@@ -142,6 +144,13 @@ onUnmounted(stop)
       <template v-if="status === 'ACTIVE' && view.install.mode === 'default'">
         <button type="button" class="text" @click="showManual = !showManual">{{ showManual ? '▾' : '▸' }} 程序已在主机上？使用手动命令</button>
         <CommandBlock v-if="showManual" :command="manualCommand" />
+      </template>
+      <template v-if="status === 'ACTIVE'">
+        <button type="button" class="text" @click="showRotate = !showRotate">{{ showRotate ? '▾' : '▸' }} 主机上已安装 Agent（如 Token 已吊销）？更换 Token</button>
+        <template v-if="showRotate">
+          <CommandBlock :command="rotateCommand" />
+          <p class="muted small">不需要卸载重装：用这个一次性注册码换取新 Token 并重启服务，该节点之前的 Token 随即失效。</p>
+        </template>
       </template>
       <p v-else-if="status === 'EXPIRED'" class="muted">注册码已过期，请重新生成。</p>
       <p v-else-if="status === 'REVOKED'" class="muted">注册码已撤销，请重新生成。</p>

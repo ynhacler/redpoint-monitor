@@ -11,6 +11,7 @@
 //	vpsmon-agent status                                 服务状态与最近一次上报
 //	vpsmon-agent uninstall                              停止并删除，通知面板（需要 root）
 //	vpsmon-agent upgrade [--version vX]                 本机升级到官方签名的版本（需要 root，设计 29）
+//	vpsmon-agent rotate-token --enroll ENR-…           用面板新生成的注册码更换 Token（需要 root，设计 17.2）
 //	vpsmon-agent enable-remote-upgrade                  为已安装的 Agent 启用远程升级（需要 root，设计 29.13）
 //	vpsmon-agent updater                                特权 updater，由 vpsmon-agent-updater.service 调用
 //	vpsmon-agent [run] --server URL --token-file F      前台运行（systemd 单元使用）
@@ -61,6 +62,8 @@ func main() {
 			os.Exit(cmdUpgrade(os.Args[2:]))
 		case "updater":
 			os.Exit(cmdUpdater())
+		case "rotate-token":
+			os.Exit(cmdRotateToken(os.Args[2:]))
 		case "enable-remote-upgrade":
 			os.Exit(cmdEnableRemoteUpgrade())
 		case "version":
@@ -141,6 +144,25 @@ func cmdUpdater() int {
 		StageDir: filepath.Join(p.StateDir, "update"), WorkDir: upgrade.RootWorkDir, StateDir: p.StateDir,
 		Bin: p.Bin, DisableFile: p.NoRemoteUpgradeFile(), Keys: release.TrustedKeys(),
 		Restart: restartService, ReadStatus: readStatus(p), Out: os.Stdout})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// cmdRotateToken 执行 vpsmon-agent rotate-token（设计 17.2）。
+func cmdRotateToken(args []string) int {
+	fs := flag.NewFlagSet("rotate-token", flag.ExitOnError)
+	code := fs.String("enroll", "", "one-time enroll code generated for this node in the panel")
+	allowHTTP := fs.Bool("allow-http", false, "allow plain HTTP to a non-loopback panel (development only)")
+	_ = fs.Parse(args)
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "✗ rotate-token 只支持 Linux")
+		return 1
+	}
+	err := setup.RotateToken(context.Background(), setup.Options{EnrollCode: *code, AllowHTTP: *allowHTTP,
+		Version: version, Out: os.Stdout})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1

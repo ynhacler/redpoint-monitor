@@ -47,11 +47,11 @@
 - [x] `POST /api/v1/agent/enroll`：一次性注册码换 Agent Token、信息核对、10 分钟重试幂等、单独限流（设计 27.6）
 - [x] `vpsmon-agent install / uninstall / status`，`POST /api/v1/agent/unregister`（设计 27.6.1、27.11）
 - [ ] 在 test-agent（jp-store）上按产品流程验证 install / status / uninstall（设计 40.4.3）
-- [ ] `scripts/agent.sh.in` + `scripts/release-agent-sh.sh`：架构识别、内置 SHA256、试运行、`--download-only`（设计 27.5）
+- [x] `scripts/agent.sh.in`：架构识别、内置 SHA256、试运行、`--download-only`（设计 27.5）；发布由 `cmd/vpsmon-release prepare` 生成（随 A7 完成）
 - [x] 审计日志精简版 `audit_logs`：节点新建、注册码生成 / 撤销、Agent 注册（设计 18.16、24.8）
-- [ ] `vpsmon-server audit` 查看审计日志（设计 24.8）
+- [x] `vpsmon-server audit` 查看审计日志：按类别、结果、操作前缀筛选，`--json`（设计 24.8）
 - [x] 重装 / 重试注册时吊销旧 Token（设计 27.6.4、27.8）
-- [ ] Web 手动吊销 / 轮换 Agent Token（设计 17.2）
+- [x] Web 吊销 Agent Token；`vpsmon-agent rotate-token --enroll` 凭新注册码就地更换（设计 17.2、23.2）
 - [x] 节点查看 / 修改 / 删除：`GET/PUT/DELETE /api/v1/servers/{id}` 与 Web 编辑页（设计 19.5）
 
 ### A2 Web 登录（替换开发用 admin token）

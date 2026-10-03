@@ -159,7 +159,7 @@ func (r *Reporter) handle(rep protocol.Report, code int, retryAfter time.Duratio
 		r.nextAttempt = now.Add(authRetry)
 		r.status.LastError = "401: 凭证已失效"
 		r.logf("report: ERROR server rejected the agent token (401); reporting paused, will retry in %s. "+
-			"Regenerate an enroll code in the panel and reinstall", authRetry)
+			"Generate an enroll code on the node's install page in the panel, then run: sudo vpsmon-agent rotate-token --enroll ENR-…", authRetry)
 		return true
 
 	case code == http.StatusTooManyRequests:

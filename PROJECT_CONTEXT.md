@@ -14,7 +14,7 @@ App（Flutter）在阶段 C。开发顺序 A（API + Agent）→ B（Web）→ C
 
 | 范围 | 内容 |
 |---|---|
-| A1 注册 | 新建节点 → 注册码 ENR-… → `vpsmon-agent install` 注册换 agt_ Token；重装 / 卸载 |
+| A1 注册 | 新建节点 → 注册码 ENR-… → `vpsmon-agent install` 注册换 agt_ Token；重装 / 卸载；Web 吊销 Token（重新验证密码）+ `vpsmon-agent rotate-token --enroll` 就地更换；`vpsmon-server audit` 命令行审计。剩 jp-store 真机验证 |
 | A2 登录 | Argon2id、HttpOnly 会话 Cookie + CSRF、二次验证、强制改初始密码、自建滑动拼图验证码 |
 | A3 数据 | 断网缓冲补发、降采样（1m/5m/1h）、多挂载点与磁盘 IO；丰富指标：CPU 占比 / 每核 / 温度 / 型号、内存缓存、IOPS / 耗时 / 繁忙、进程、TCP/UDP/TIME_WAIT |
 | A4 流量 | 计费模式、GB/GiB 口径、统计系数、手动校准（只作用于当前周期）、预测（不足 3 天不预测，满 7 天用近 7 天日均） |
@@ -27,7 +27,7 @@ App（Flutter）在阶段 C。开发顺序 A（API + Agent）→ B（Web）→ C
 | A5 第一步 | 告警引擎：迁移 10 默认规则（rule_key 三层覆盖）、状态机 + 回差、firing 持久化与重启恢复、NODATA、离线依赖抑制、启动宽限期；`GET /alerts`、`GET /alert-rules`；“需要关注”以服务端告警为准；详情页告警记录 |
 | Web | 首页 = 节点列表（统计行即筛选，无 Top N）；NeoServer 风格卡片（CPU/Mem/Disk/Net/I/O，周期流量）；详情页 = Monito 概况 + 速览 + ServerCat 指标块（每块左上角名称：CPU / Mem / Net / Disk）+ 流量卡 + 告警记录 + 历史；日志页（登录 / 操作）；节点表单只收 Agent 采集不到的字段（含带宽） |
 
-数据库迁移到第 14 号。设计修订记录到第 42 条。发布新版本：打 vX.Y.Z 标签 → 草稿 → Mac 上 scripts/sign-release.sh vX.Y.Z。仓库已公开，官方发布地址为 GitHub Releases。
+数据库迁移到第 14 号。设计修订记录到第 43 条。发布新版本：打 vX.Y.Z 标签 → 草稿 → Mac 上 scripts/sign-release.sh vX.Y.Z。仓库已公开，官方发布地址为 GitHub Releases。
 
 ## 下一步
 

@@ -59,6 +59,9 @@ type enrollBody struct {
 	OSVersion     string `json:"os_version"`
 	Arch          string `json:"arch"`
 	AgentVersion  string `json:"agent_version"`
+	// 可选：更换 Token 时 Agent 当前所属的节点（vpsmon-agent rotate-token）。注册码属于其他节点时拒绝，
+	// 避免误用别的节点的注册码把本机变成那个节点（设计 17.2）
+	ServerID int64 `json:"server_id,omitempty"`
 }
 
 // enrollResponse 是注册成功的响应。agent_token 只在这里出现一次，Agent 写入本地文件后不再传输。
@@ -102,7 +105,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 
 	req := EnrollRequest{CodeHash: HashToken(code), Hostname: trimTo(body.Hostname, 253),
 		MachineIDHash: trimTo(body.MachineIDHash, 80), OS: trimTo(body.OS, 64), OSVersion: trimTo(body.OSVersion, 64),
-		Arch: trimTo(body.Arch, 32), AgentVersion: trimTo(body.AgentVersion, 64), SourceIP: ip}
+		Arch: trimTo(body.Arch, 32), AgentVersion: trimTo(body.AgentVersion, 64), SourceIP: ip, ExpectServerID: body.ServerID}
 	res, err := s.store.Enroll(req, verifyEnroll, time.Now())
 	switch {
 	case errors.Is(err, errEnrollInvalid):

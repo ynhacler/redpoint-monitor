@@ -222,6 +222,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
+	handle("POST /api/v1/servers/{id}/revoke-agent-token", accessAdmin, s.handleRevokeAgentToken)
 	handle("GET /api/v1/servers/{id}/metrics/history", accessAdmin, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
