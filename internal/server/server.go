@@ -76,6 +76,8 @@ type snapshot struct {
 	ReceivedAt time.Time       // 最近一次收到上报的时间，决定在线状态（设计 22）
 	At         time.Time       // Report 的采集时间
 	Report     protocol.Report // 采集时间最新的一份上报
+	// ClockSkew 是最近一次上报测得的 Agent 时钟偏差（秒，正数为 Agent 偏快）；无法测量时为 nil（设计 16.1、43.5）
+	ClockSkew *float64
 }
 
 type pendingWrite struct {
@@ -297,13 +299,16 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	at, skewed, old := pointTime(rep, now)
-	if skewed {
-		// TODO(A5): 时钟偏差超过 60 秒时产生 Agent 异常提示（设计 16.1、43.5）
-		s.log.Warn("agent clock ahead of server", "component", "agent-api", "server_id", sid,
-			"skew_s", rep.Timestamp-now.Unix())
-	}
+	at, _, old := pointTime(rep, now)
 	s.ingest(sid, rep, at, now, old)
+	// 时钟偏差由告警引擎按“Agent 时钟偏差”规则评估（设计 16.1），这里只记录测量值
+	if skew, ok := clockSkew(rep, now); ok {
+		s.mu.Lock()
+		if sn := s.latest[sid]; sn != nil {
+			sn.ClockSkew = &skew
+		}
+		s.mu.Unlock()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -332,6 +337,21 @@ func pointTime(rep protocol.Report, now time.Time) (at time.Time, skewed, old bo
 	return t, false, false
 }
 
+// clockSkew 计算 Agent 时钟相对面板的偏差（秒，正数为 Agent 偏快；设计 43.5）。
+//
+// 新版 Agent 带 sent_at（发送时刻），偏差 = sent_at − 收到时间，快慢都能识别，补发的旧数据也能测；
+// 网络传输的延迟只有亚秒级，相对 60 秒的阈值可以忽略。旧版 Agent 只有采集时间，
+// 只能识别“采集时间超前收到时间”的偏快情况；偏慢与断网补发无法区分，返回 ok=false。
+func clockSkew(rep protocol.Report, now time.Time) (float64, bool) {
+	if rep.SentAt > 0 {
+		return float64(rep.SentAt - now.Unix()), true
+	}
+	if rep.Timestamp > now.Unix() {
+		return float64(rep.Timestamp - now.Unix()), true
+	}
+	return 0, false
+}
+
 // ingest 把一份上报写入内存状态并排队等待批量写库。at 为指标点时间，now 为收到时间。
 // 补发的旧数据不会覆盖更新的实时状态；同一时间点重复上报在写库时覆盖（主键去重），
 // 流量增量为 0，不会重复计算。trafficOnly 的上报只更新网卡计数与流量，不改实时状态、不写指标点。
@@ -346,7 +366,11 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 			snap.ReceivedAt = now // 收到上报说明 Agent 在线
 		}
 	} else if !stale {
-		s.latest[sid] = &snapshot{ReceivedAt: now, At: at, Report: rep}
+		ns := &snapshot{ReceivedAt: now, At: at, Report: rep}
+		if snap != nil {
+			ns.ClockSkew = snap.ClockSkew // 由 handleReport 随后更新；旧版 Agent 测不到时沿用上次的值
+		}
+		s.latest[sid] = ns
 	} else {
 		snap.ReceivedAt = now
 	}

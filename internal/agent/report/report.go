@@ -45,8 +45,9 @@ type Status struct {
 	LastAttempt int64 // Unix 秒
 	LastSuccess int64 // 最近一次成功上报的采集时间，Unix 秒
 	LastError   string
-	Queued      int  // 等待补发的份数
-	AuthFailed  bool // 凭证已失效，已停止上报
+	Queued      int   // 等待补发的份数
+	AuthFailed  bool  // 凭证已失效，已停止上报
+	ClockSkew   int64 // 本机时钟与面板的偏差（秒，正数表示本机偏快）；按最近一次响应的 Date 头计算
 }
 
 // Reporter 缓存并发送上报。方法可并发调用（由内部锁保护队列与状态）。
@@ -59,15 +60,16 @@ type Reporter struct {
 	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
 	StatePath string
 
-	mu          sync.Mutex // 保护以下字段；发送请求时不持有锁以外的资源
-	queue       []protocol.Report
-	failures    int
-	nextAttempt time.Time
-	authFailed  bool
-	status      Status
-	errLog      dedup
-	savedAt     time.Time // 最近一次落盘时间
-	onDisk      bool      // 落盘文件存在，队列清空后需要删除
+	mu           sync.Mutex // 保护以下字段；发送请求时不持有锁以外的资源
+	queue        []protocol.Report
+	failures     int
+	nextAttempt  time.Time
+	authFailed   bool
+	status       Status
+	errLog       dedup
+	savedAt      time.Time // 最近一次落盘时间
+	skewLoggedAt time.Time // 最近一次记录时钟偏差 WARN 的时间
+	onDisk       bool      // 落盘文件存在，队列清空后需要删除
 }
 
 func (r *Reporter) now() time.Time {
@@ -245,6 +247,7 @@ func backoff(n int) time.Duration {
 
 // post 发送一份上报，返回状态码与 Retry-After。网络错误时 code 为 0。
 func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Duration, error) {
+	rep.SentAt = r.now().Unix() // 发送时刻，面板据此计算时钟偏差（设计 43.5）
 	body, _ := json.Marshal(rep)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.Endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -258,11 +261,41 @@ func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Dur
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // 读完响应体以复用连接；内容不使用
+	r.checkClock(resp.Header.Get("Date"))
 	var ra time.Duration
 	if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs > 0 {
 		ra = time.Duration(secs) * time.Second
 	}
 	return resp.StatusCode, ra, nil
+}
+
+// maxClockSkew：与面板时钟相差超过此值时记录 WARN（设计 43.5）。面板同时据 sent_at 产生“Agent 时钟偏差”告警。
+const maxClockSkew = 60 * time.Second
+
+// checkClock 用面板响应的 Date 头（秒级精度）比对本机时钟，偏差过大时记录 WARN，每小时最多一次。
+// 时钟偏差会让断网补发的数据落在错误的时间点上，也会影响计费日的划分。
+func (r *Reporter) checkClock(date string) {
+	t, err := http.ParseTime(date)
+	if err != nil {
+		return
+	}
+	now := r.now()
+	skew := now.Sub(t)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.status.ClockSkew = int64(skew.Round(time.Second) / time.Second)
+	if skew > -maxClockSkew && skew < maxClockSkew {
+		return
+	}
+	if now.Sub(r.skewLoggedAt) < time.Hour {
+		return
+	}
+	r.skewLoggedAt = now
+	dir := "ahead of"
+	if skew < 0 {
+		dir, skew = "behind", -skew
+	}
+	r.logf("report: WARN local clock is %s %s the panel; check NTP (e.g. timedatectl status)", skew.Round(time.Second), dir)
 }
 
 // dedup 实现日志防刷屏：同一类错误（key 相同）1 分钟内只记录一次，下次记录时附带重复次数，

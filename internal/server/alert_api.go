@@ -120,6 +120,8 @@ func thresholdRange(typ string) (lo, hi float64, unit string) {
 		return 1, 200, "%"
 	case AlertTrafficForecast:
 		return 50, 1000, "%"
+	case AlertAgentClock:
+		return 10, 86400, "秒"
 	}
 	return 1, 100, "%"
 }

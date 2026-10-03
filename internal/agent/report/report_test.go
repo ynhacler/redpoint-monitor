@@ -19,7 +19,9 @@ type fakePanel struct {
 	mu       sync.Mutex
 	codes    []int // 依次使用；用完后返回 204
 	received []int64
-	headers  map[int]string // 状态码 → Retry-After
+	headers  map[int]string   // 状态码 → Retry-After
+	date     func() time.Time // 响应的 Date 头；与 Reporter 使用同一个假时钟，避免误报时钟偏差
+	sentAt   []int64
 }
 
 func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +31,9 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(p.codes) > 0 {
 		code, p.codes = p.codes[0], p.codes[1:]
 	}
+	if p.date != nil {
+		w.Header().Set("Date", p.date().UTC().Format(http.TimeFormat))
+	}
 	if ra := p.headers[code]; ra != "" {
 		w.Header().Set("Retry-After", ra)
 	}
@@ -36,6 +41,7 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var rep protocol.Report
 		json.NewDecoder(r.Body).Decode(&rep)
 		p.received = append(p.received, rep.Timestamp)
+		p.sentAt = append(p.sentAt, rep.SentAt)
 	}
 	w.WriteHeader(code)
 }
@@ -55,6 +61,9 @@ func newReporter(t *testing.T, p *fakePanel) (*Reporter, *clock, *[]string) {
 	srv := httptest.NewServer(p)
 	t.Cleanup(srv.Close)
 	c := &clock{t: time.Unix(base, 0)}
+	if p.date == nil {
+		p.date = c.now
+	}
 	var logs []string
 	r := &Reporter{Endpoint: srv.URL, Token: "agt_test", Client: srv.Client(), Now: c.now,
 		Logf: func(f string, a ...any) { logs = append(logs, fmt.Sprintf(f, a...)) }}
@@ -208,5 +217,36 @@ func TestLogDedup(t *testing.T) {
 	d.log(logf, t0.Add(70*time.Second), "refused", "failed (queued 7)")
 	if len(out) != 2 || !strings.HasSuffix(out[1], "(x6)") {
 		t.Errorf("应只记录两行，第二行带重复次数：%q", out)
+	}
+}
+
+// 时钟偏差（设计 43.5）：上报带发送时刻；本机与面板相差超过 60 秒时记录 WARN，每小时最多一次。
+func TestClockSkew(t *testing.T) {
+	p := &fakePanel{}
+	r, c, logs := newReporter(t, p)
+	panelClock := c.now().Add(-5 * time.Minute) // 本机比面板快 5 分钟
+	p.date = func() time.Time { return panelClock }
+	r.Enqueue(rep(-600)) // 10 分钟前采集的补发数据
+	r.Flush(context.Background(), false)
+	if len(p.sentAt) != 1 || p.sentAt[0] != c.now().Unix() {
+		t.Errorf("sent_at 应为发送时刻而不是采集时间：%v", p.sentAt)
+	}
+	if st := r.Status(); st.ClockSkew != 300 {
+		t.Errorf("状态中应记录偏差 300 秒：%d", st.ClockSkew)
+	}
+	if len(*logs) != 1 || !strings.Contains((*logs)[0], "5m0s ahead") {
+		t.Fatalf("应记录一次 WARN：%v", *logs)
+	}
+	c.add(10 * time.Second)
+	r.Enqueue(rep(10))
+	r.Flush(context.Background(), false)
+	if len(*logs) != 1 {
+		t.Errorf("一小时内不重复记录：%v", *logs)
+	}
+	p.date = c.now // 时钟恢复
+	r.Enqueue(rep(20))
+	r.Flush(context.Background(), false)
+	if st := r.Status(); st.ClockSkew != 0 {
+		t.Errorf("恢复后偏差应为 0：%d", st.ClockSkew)
 	}
 }

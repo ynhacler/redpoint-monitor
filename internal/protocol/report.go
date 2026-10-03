@@ -6,19 +6,22 @@ package protocol
 // Report is sent by the agent every report interval via POST /api/v1/agent/report.
 // The server identifies the node from the Agent Token, never from fields in the body.
 type Report struct {
-	Timestamp    int64        `json:"timestamp"` // unix seconds, agent clock
-	AgentVersion string       `json:"agent_version"`
-	Final        bool         `json:"final,omitempty"` // last report sent on SIGTERM
-	System       System       `json:"system"`
-	CPU          CPU          `json:"cpu"`
-	Memory       Memory       `json:"memory"`
-	Swap         Swap         `json:"swap"`
-	Disk         []Disk       `json:"disk"`
-	Network      []NetIface   `json:"network"`
-	DiskIO       []DiskIO     `json:"disk_io,omitempty"`   // 可选：旧版 Agent 不带（设计 4.7）
-	Processes    *Processes   `json:"processes,omitempty"` // 可选（设计 4.9）
-	Conns        *Conns       `json:"conns,omitempty"`     // 可选（设计 4.9）
-	Ports        []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
+	Timestamp    int64  `json:"timestamp"` // unix seconds, agent clock
+	AgentVersion string `json:"agent_version"`
+	Final        bool   `json:"final,omitempty"` // last report sent on SIGTERM
+	// 可选：发送时刻的 Agent 时钟（Unix 秒）。与采集时间不同，补发的旧数据也带当前发送时间，
+	// 面板据此计算时钟偏差（设计 16.1、43.5）
+	SentAt    int64        `json:"sent_at,omitempty"`
+	System    System       `json:"system"`
+	CPU       CPU          `json:"cpu"`
+	Memory    Memory       `json:"memory"`
+	Swap      Swap         `json:"swap"`
+	Disk      []Disk       `json:"disk"`
+	Network   []NetIface   `json:"network"`
+	DiskIO    []DiskIO     `json:"disk_io,omitempty"`   // 可选：旧版 Agent 不带（设计 4.7）
+	Processes *Processes   `json:"processes,omitempty"` // 可选（设计 4.9）
+	Conns     *Conns       `json:"conns,omitempty"`     // 可选（设计 4.9）
+	Ports     []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
 	// 可选：本轮失败的采集项及原因；对应字段留空，其余照常上报（设计 43.5）
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
 }

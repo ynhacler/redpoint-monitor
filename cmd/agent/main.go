@@ -314,7 +314,7 @@ func run() {
 	writeStatus := func() {
 		st := r.Status()
 		setup.WriteStatus(*stateDir, setup.Status{Version: version, Server: *server, LastAttempt: st.LastAttempt,
-			LastSuccess: st.LastSuccess, LastError: st.LastError, Queued: st.Queued})
+			LastSuccess: st.LastSuccess, LastError: st.LastError, Queued: st.Queued, ClockSkew: st.ClockSkew})
 	}
 	// save 按需落盘；写入失败（状态目录不可写）只在原因变化时记录一次，避免刷屏
 	var saveErr string
