@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
 | 54 | Agent 存活与占用：systemd watchdog（Type=notify、WatchdogSec=120、StartLimitIntervalSec=0）、`refresh-unit` 子命令；GOMAXPROCS 默认 1；/proc 读取复用缓冲区 | 4.2、43.5 |
 | 53 | Agent 时钟偏差：上报新增可选字段 sent_at；默认规则 agent_clock（迁移 19，提示级）；Agent 按响应 Date 头记录 WARN 并在 status 中显示 | 6.2、16.1、43.5 |
 | 52 | Agent 资源占用纳入 CI：真实 Linux 采集器集成测试与基准、`scripts/agent-footprint.sh`（常驻内存 > 30 MB 失败） | 4.2、40.8.3 |
@@ -3403,6 +3404,17 @@ Header：
 ```http
 Authorization: Bearer AGENT_TOKEN
 Content-Type: application/json
+Content-Encoding: gzip        （可选，见下）
+```
+
+压缩：Agent 自身的上报流量同样计入用户的套餐（约 2 KB × 每 10 秒，每月约 0.6 GB 正文），gzip 后约为 45%。
+按 RFC 7694 协商，新旧版本任意组合都兼容：
+
+```text
+面板    上报接口的响应头声明 Accept-Encoding: gzip；按 Content-Encoding 解压，原始与解压后都不超过 64 KB（压缩炸弹返回 413），
+        不认识的编码返回 415（unsupported_encoding）
+Agent   看到声明后才压缩（BestSpeed，压缩器复用，避免每份上报分配约 800 KB）；压缩的上报被拒绝（400 / 415，
+        例如面板回退到旧版本）时关闭压缩并立即改发未压缩的版本，上报不丢弃
 ```
 
 ---
@@ -9614,6 +9626,7 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | password_change_required | 403 | 请先修改初始密码 |
 | reauth_required | 403 | 请重新输入密码以确认此操作 |
 | captcha_failed | 400 | 滑块验证未通过，请重试 |
+| unsupported_encoding | 415 | 不支持的内容编码 |
 
 ---
 

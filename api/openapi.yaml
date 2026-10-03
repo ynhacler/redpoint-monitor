@@ -171,7 +171,14 @@ paths:
     post:
       tags: [agent]
       summary: Agent 定时上报（设计 6）
-      description: 只按 Token 哈希确定节点，请求体中的节点标识不可信（设计 1.6.6）。请求体上限 64 KB。
+      description: >-
+        只按 Token 哈希确定节点，请求体中的节点标识不可信（设计 1.6.6）。请求体上限 64 KB（压缩时原始与解压后都受限）。
+        响应头 Accept-Encoding: gzip 声明接受压缩；Agent 看到后以 Content-Encoding: gzip 发送（设计 6.1）。
+      parameters:
+        - name: Content-Encoding
+          in: header
+          required: false
+          schema: { type: string, enum: [gzip, identity] }
       security:
         - agentToken: []
       requestBody:
@@ -180,10 +187,14 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/Report' }
       responses:
-        '204': { description: 已接收 }
+        '204':
+          description: 已接收
+          headers:
+            Accept-Encoding: { schema: { type: string, example: gzip }, description: 面板接受的上报压缩方式 }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
 
   /releases/{version}/{file}:
     servers: [{ url: / }]

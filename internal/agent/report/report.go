@@ -7,6 +7,7 @@ package report
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,13 +62,19 @@ type Reporter struct {
 	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
 	StatePath string
 
-	mu           sync.Mutex // 保护以下字段；发送请求时不持有锁以外的资源
-	queue        []protocol.Report
-	failures     int
-	nextAttempt  time.Time
-	authFailed   bool
-	status       Status
-	errLog       dedup
+	mu          sync.Mutex // 保护以下字段；发送请求时不持有锁以外的资源
+	queue       []protocol.Report
+	failures    int
+	nextAttempt time.Time
+	authFailed  bool
+	status      Status
+	errLog      dedup
+
+	// 压缩（设计 6.1）：面板在响应中声明 Accept-Encoding: gzip 后才压缩。只在发送 goroutine 中使用，
+	// 压缩器与缓冲区复用：每次新建 gzip.Writer 要分配约 800 KB（设计 4.2）
+	gzipOK       bool
+	gzw          *gzip.Writer
+	gzBuf        bytes.Buffer
 	savedAt      time.Time // 最近一次落盘时间
 	skewLoggedAt time.Time // 最近一次记录时钟偏差 WARN 的时间
 	onDisk       bool      // 落盘文件存在，队列清空后需要删除
@@ -246,15 +254,51 @@ func backoff(n int) time.Duration {
 }
 
 // post 发送一份上报，返回状态码与 Retry-After。网络错误时 code 为 0。
+//
+// 面板声明接受 gzip 后压缩正文（约为原来的 45%，Agent 自身流量同样计入用户的套餐）。压缩的上报被拒绝
+// （400 / 415，例如面板回退到不支持压缩的旧版本）时关闭压缩并立即改发未压缩的版本，这份上报不会被丢弃。
 func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Duration, error) {
 	rep.SentAt = r.now().Unix() // 发送时刻，面板据此计算时钟偏差（设计 43.5）
 	body, _ := json.Marshal(rep)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.Endpoint, bytes.NewReader(body))
+	r.mu.Lock()
+	compress := r.gzipOK
+	r.mu.Unlock()
+	code, ra, err := r.send(ctx, body, compress)
+	if compress && err == nil && (code == http.StatusBadRequest || code == http.StatusUnsupportedMediaType) {
+		r.mu.Lock()
+		r.gzipOK = false
+		r.mu.Unlock()
+		r.logf("report: panel rejected a compressed report (HTTP %d), sending uncompressed", code)
+		return r.send(ctx, body, false)
+	}
+	return code, ra, err
+}
+
+// send 发送一次请求；compress 为 true 时按 gzip 压缩正文。
+func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, time.Duration, error) {
+	payload := body
+	if compress {
+		r.gzBuf.Reset()
+		if r.gzw == nil {
+			r.gzw, _ = gzip.NewWriterLevel(&r.gzBuf, gzip.BestSpeed) // 上报很小，最快的级别已压到一半以下
+		} else {
+			r.gzw.Reset(&r.gzBuf)
+		}
+		if _, err := r.gzw.Write(body); err == nil && r.gzw.Close() == nil {
+			payload = r.gzBuf.Bytes()
+		} else {
+			compress = false
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.Endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return 0, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+r.Token)
 	req.Header.Set("Content-Type", "application/json")
+	if compress {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 	resp, err := r.Client.Do(req)
 	if err != nil {
 		return 0, 0, err
@@ -262,11 +306,32 @@ func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Dur
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // 读完响应体以复用连接；内容不使用
 	r.checkClock(resp.Header.Get("Date"))
+	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {
+		r.mu.Lock()
+		if !r.gzipOK {
+			r.gzipOK = true
+			r.logf("report: panel accepts gzip, compressing reports")
+		}
+		r.mu.Unlock()
+	}
 	var ra time.Duration
 	if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs > 0 {
 		ra = time.Duration(secs) * time.Second
 	}
 	return resp.StatusCode, ra, nil
+}
+
+// acceptsGzip 判断 Accept-Encoding 响应头是否包含 gzip（RFC 7694）。
+func acceptsGzip(values []string) bool {
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			name, _, _ := strings.Cut(strings.TrimSpace(part), ";")
+			if strings.EqualFold(strings.TrimSpace(name), "gzip") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // maxClockSkew：与面板时钟相差超过此值时记录 WARN（设计 43.5）。面板同时据 sent_at 产生“Agent 时钟偏差”告警。
