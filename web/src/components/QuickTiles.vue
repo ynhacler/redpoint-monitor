@@ -4,7 +4,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { fmtBytes, fmtBytesShort, fmtPct } from '../format'
-import { cpu, fullestDisk, gaugeLevel, mem, rx, tx, type LiveSample } from '../metrics'
+import { cpu, diskSummary, gaugeLevel, mem, rx, tx, type LiveSample } from '../metrics'
 import Chart, { type Series } from './Chart.vue'
 import Qty from './Qty.vue'
 import Ring from './Ring.vue'
@@ -18,11 +18,11 @@ const props = defineProps<{
 }>()
 
 const r = computed(() => props.server.latest!)
-const disk = computed(() => fullestDisk(props.server))
+const disk = computed(() => diskSummary(props.server))
 const swapPct = computed(() => (r.value.swap.total ? (r.value.swap.used / r.value.swap.total) * 100 : undefined))
 const cpuLv = computed(() => gaugeLevel(cpu(props.server), 'cpu'))
 const memLv = computed(() => gaugeLevel(mem(props.server), 'mem'))
-const diskLv = computed(() => gaugeLevel(disk.value?.usage, 'disk'))
+const diskLv = computed(() => disk.value?.level ?? 'ok')
 // 正常时用强调色（与参考一致的蓝），接近阈值时随状态变色
 const color = (lv: string) => (lv === 'ok' ? 'var(--accent)' : `var(--${lv})`)
 const pct1 = (v: number | undefined) => (v == null ? '—' : v >= 10 ? String(Math.round(v * 10) / 10) : v.toFixed(1))
@@ -55,7 +55,7 @@ const icons = {
     </div>
 
     <div class="tile">
-      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.disk" /></svg>磁盘<span v-if="disk && disk.mount !== '/'" class="extra">{{ disk.mount }}</span></div>
+      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.disk" /></svg>磁盘<span v-if="disk && disk.level !== 'ok' && gaugeLevel(disk.usage, 'disk') !== disk.level" class="extra" :class="disk.level">{{ disk.fullest.mount }} {{ Math.round(disk.fullest.usage) }}%</span><span v-else-if="disk && disk.count > 1" class="extra">{{ disk.count }} 块</span></div>
       <div class="ring-row">
         <div>
           <div class="big" :class="diskLv"><Qty :v="disk ? Math.round(disk.usage) : '—'" u="%" /></div>
@@ -125,6 +125,8 @@ i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: no
 .speed { grid-column: 1 / -1; padding-bottom: var(--space-1); }
 .speed-head { display: flex; gap: var(--space-2) var(--space-4); align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .speed-head .label { flex: 1; }
+.extra.warn { color: var(--warn); }
+.extra.bad { color: var(--bad); }
 .speed-head .extra { margin-left: var(--space-2); }
 .values { display: flex; gap: var(--space-4); }
 /* Chart 自带面板样式，这里嵌在卡片中，去掉边框与内边距 */

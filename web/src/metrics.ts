@@ -29,6 +29,48 @@ export const tx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.tx
 export const fullestDisk = (s: ServerView): DiskInfo | undefined =>
   s.latest?.disk.reduce<DiskInfo | undefined>((a, d) => (!a || d.usage > a.usage ? d : a), undefined)
 
+/** 全部磁盘的合计（列表卡片与速览显示的口径）。fullest 为使用率最高的挂载点，用于配色与提示 */
+export interface DiskSummary {
+  total: number
+  used: number
+  usage: number
+  /** 参与合计的磁盘数（同一设备的多个挂载只算一次） */
+  count: number
+  fullest: DiskInfo
+  /** 合计与最满挂载点中较严重的级别：快满的单个分区不会被合计掩盖（设计 1.5.6） */
+  level: 'ok' | 'warn' | 'bad'
+}
+
+/**
+ * 合计所有挂载点的容量。同一设备（bind mount、btrfs 子卷等）只算一次；没有设备名的旧版 Agent 按挂载点区分。
+ * 使用率口径与 df 一致：上报了可用空间时为 used / (used + available)，否则为 used / total。
+ */
+export function diskSummary(s: ServerView): DiskSummary | undefined {
+  const list = s.latest?.disk
+  if (!list?.length) return undefined
+  const seen = new Set<string>()
+  let total = 0
+  let used = 0
+  let avail = 0
+  let hasAvail = true
+  for (const d of list) {
+    const key = d.device || d.mount
+    if (seen.has(key)) continue
+    seen.add(key)
+    total += d.total
+    used += d.used
+    if (d.available == null) hasAvail = false
+    else avail += d.available
+  }
+  const denom = hasAvail ? used + avail : total
+  const usage = denom ? (used / denom) * 100 : 0
+  const fullest = fullestDisk(s)!
+  const rank = { ok: 0, warn: 1, bad: 2 }
+  const a = gaugeLevel(usage, 'disk')
+  const b = gaugeLevel(fullest.usage, 'disk')
+  return { total, used, usage, count: seen.size, fullest, level: rank[b] > rank[a] ? b : a }
+}
+
 /** 本周期流量使用率；不限流量时为 undefined */
 export const trafficPct = (s: ServerView) =>
   s.traffic.limit > 0 ? (s.traffic.used / s.traffic.limit) * 100 : undefined

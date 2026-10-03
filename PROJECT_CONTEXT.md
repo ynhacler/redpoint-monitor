@@ -26,7 +26,7 @@ App（Flutter）在阶段 C。开发顺序 A（API + Agent）→ B（Web）→ C
 | A5 第一步 | 告警引擎：迁移 10 默认规则（rule_key 三层覆盖）、状态机 + 回差、firing 持久化与重启恢复、NODATA、离线依赖抑制、启动宽限期；`GET /alerts`、`GET /alert-rules`；“需要关注”以服务端告警为准；详情页告警记录 |
 | Web | 首页 = 节点列表（统计行即筛选，无 Top N）；NeoServer 风格卡片（CPU/Mem/Disk/Net/I/O，周期流量）；详情页 = Monito 概况 + 速览 + ServerCat 指标块（每块左上角名称：CPU / Mem / Net / Disk）+ 流量卡 + 告警记录 + 历史；日志页（登录 / 操作）；节点表单只收 Agent 采集不到的字段（含带宽） |
 
-数据库迁移到第 13 号。设计修订记录到第 38 条。发布新版本：打 vX.Y.Z 标签 → 草稿 → Mac 上 scripts/sign-release.sh vX.Y.Z。仓库已公开，官方发布地址为 GitHub Releases。
+数据库迁移到第 13 号。设计修订记录到第 39 条。发布新版本：打 vX.Y.Z 标签 → 草稿 → Mac 上 scripts/sign-release.sh vX.Y.Z。仓库已公开，官方发布地址为 GitHub Releases。
 
 ## 下一步
 
