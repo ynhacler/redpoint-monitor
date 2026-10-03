@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"vpsmon/internal/protocol"
+	"vpsmon/internal/release"
 )
 
 const (
@@ -30,6 +31,8 @@ type Options struct {
 	PublicURL string       // 面板对外地址，写进安装命令；为空时由请求推断（设计 27.3.1）
 	// NoLoginCaptcha 关闭登录滑动验证码（默认开启，设计 17.4）；仅用于需要脚本登录的场景
 	NoLoginCaptcha bool
+	// NoReleaseSync 关闭自动同步官方 Agent 版本（离线 / 内网环境；仍可在 Web 中手动同步，设计 29.1）
+	NoReleaseSync bool
 }
 
 type Server struct {
@@ -43,7 +46,13 @@ type Server struct {
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
 	alerts      *alertEngine   // 告警引擎（设计 16.7）
-	routeTable  []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+
+	// 官方版本同步（设计 29.1）：发布地址与验签公钥默认为官方值，测试中替换
+	releaseBase   string
+	releaseKeys   []release.PublicKey
+	releaseHTTP   *http.Client
+	noReleaseSync bool
+	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -81,7 +90,8 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{alerts: alerts, store: store, web: web, log: opts.Logger, version: opts.Version,
+	return &Server{alerts: alerts, releaseBase: OfficialReleases, releaseKeys: release.TrustedKeys(),
+		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync, store: store, web: web, log: opts.Logger, version: opts.Version,
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
@@ -93,6 +103,9 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	go s.flushLoop(ctx)
 	go s.runTask(ctx, "maintenance", s.maintenance)
 	go s.runTask(ctx, "alerts", s.alertLoop)
+	if !s.noReleaseSync {
+		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
+	}
 
 	srv := &http.Server{
 		Addr:              listen,
@@ -183,6 +196,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/alert-rules/preview", accessAdmin, s.handlePreviewAlertRule)
 	handle("PUT /api/v1/alert-rules/{id}", accessAdmin, s.handleUpdateAlertRule)
 	handle("DELETE /api/v1/alert-rules/{id}", accessAdmin, s.handleDeleteAlertRule)
+	handle("GET /api/v1/agent-releases", accessAdmin, s.handleReleases)
+	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
 	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
 	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
 	handle("DELETE /api/v1/silences/{id}", accessAdmin, s.handleEndSilence)

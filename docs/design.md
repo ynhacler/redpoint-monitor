@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 36 | A7 第二步：面板同步并验签官方版本（迁移 12 agent_releases，每次读取重新验签）；安装命令改为默认命令（下载 → 校验 → 执行），另提供 manual_command；--no-release-sync | 27.3.1、29.1、29.20 |
 | 35 | A7 第一步：签名发布链路（minisign、清单含 installer、cmd/vpsmon-release、草稿 Release + 离线签名脚本、官方地址为公开 GitHub Releases）；安装脚本 scripts/agent.sh.in；本地 vpsmon-agent upgrade（验签、防降级、健康检查与回滚） | 27.5、29、29.7.2、40.8.4 |
 | 34 | A5 第三步：静音与维护（迁移 11 silences；接口；维护不评估、静音只标记）；StatusDot 增加“维护中” | 16.6、18.14、41.3 |
 | 33 | A5 第二步：规则编辑接口与预览（19.9）；Web “告警”页（告警 / 规则两个标签，导航角标）；详情页指标块显示名称 | 16.2、19.9、11.1 |
@@ -6039,7 +6040,9 @@ curl -fsSLo agent.sh https://get.redpoint.dev/agent-1.0.0.sh \
 | `--server` | 面板自身的对外地址 | Agent 上报目标 |
 | `--enroll` | 本节点的一次性注册码 | 注册并绑定到该节点 |
 
-哈希由命令自动比对，用户不需要肉眼核对。`get.redpoint.dev` 为占位域名，正式发布时替换为官方域名。
+哈希由命令自动比对，用户不需要肉眼核对。官方地址为 `https://github.com/ynhacler/redpoint-monitor/releases/download/vX.Y.Z/agent-X.Y.Z.sh`
+（上面的 `get.redpoint.dev` 为早期占位）。实现见 nodes.go installCommand：使用最新的已验签正式版（beta 不用于安装命令）；
+接口同时返回 `manual_command`（27.3.3），供程序已在主机上时使用。
 
 面板尚未成功同步并验签任何版本时，不显示默认命令，只显示 27.3.3 的手动方式，并提示“请先在系统设置中同步官方版本”。
 
@@ -6675,7 +6678,13 @@ Web 管理端**不提供上传二进制的功能**。版本来源只有一个：
                 手动：离线 / 内网环境可导入官方发布包（manifest + 二进制 + 签名），导入时同样校验签名
 ```
 
-签名校验失败的版本不会出现在版本列表中。同步时一并下载并验签该版本的安装脚本 `agent-x.y.z.sh(.minisig)`，验签通过后记录脚本的 SHA256，用于生成安装命令（设计 27.5.5）。验签所用的官方公钥编译在 monitor-server 中。
+签名校验失败的版本不会出现在版本列表中。
+
+实现（A7 第二步）：面板启动 30 秒后、之后每 6 小时从 `releases/latest/download/manifest.json(.minisig)` 获取最新清单，
+用编译进面板的官方公钥验签，通过后把清单原文与签名存入 `agent_releases`（迁移 12）；每次读取时重新验签，
+数据库被改动的版本不会被使用。`--no-release-sync` 关闭自动同步，Web 安装命令页可手动“同步官方版本”。
+接口：`GET /api/v1/agent-releases`、`POST /api/v1/agent-releases/sync`（验签失败返回 503，记入操作日志 release.sync）。
+导入离线发布包与镜像（27.5.3）随后提供。同步时一并下载并验签该版本的安装脚本 `agent-x.y.z.sh(.minisig)`，验签通过后记录脚本的 SHA256，用于生成安装命令（设计 27.5.5）。验签所用的官方公钥编译在 monitor-server 中。
 
 每个版本记录（来自签名 manifest，面板不可修改）：
 

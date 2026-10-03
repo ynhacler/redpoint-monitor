@@ -2,7 +2,8 @@
 // 节点安装命令页（设计 27.3.4）：展示命令，并等待主机注册结果。
 // TODO(B): 改为 WebSocket 事件 server.enrolled 实时更新（设计 19.11、20），目前每 3 秒轮询一次。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ApiError, getInstallCommand, regenerateEnrollCode, UnauthorizedError, type EnrollCodeView } from '../api'
+import { ApiError, getInstallCommand, regenerateEnrollCode, syncReleases, UnauthorizedError, type EnrollCodeView } from '../api'
+import { fmtTime } from '../format'
 import CommandBlock from './CommandBlock.vue'
 import StatusDot from './StatusDot.vue'
 
@@ -27,11 +28,31 @@ const busy = ref(false)
 let timer: number | undefined
 
 // 有完整注册码时展示可直接执行的命令；否则命令里只有脱敏提示，需要重新生成
-const command = computed(() => {
+const withCode = (cmd: string) => {
   const v = view.value
-  if (!v) return ''
-  return fullCode.value ? v.install.command.replace(v.enroll_code_hint, fullCode.value) : v.install.command
-})
+  return v && fullCode.value ? cmd.replace(v.enroll_code_hint, fullCode.value) : cmd
+}
+const command = computed(() => (view.value ? withCode(view.value.install.command) : ''))
+const manualCommand = computed(() => (view.value ? withCode(view.value.install.manual_command) : ''))
+const showManual = ref(false)
+
+// 同步官方版本：成功后重新获取命令（默认命令需要已验签的版本）
+const syncing = ref(false)
+const syncMsg = ref('')
+async function sync() {
+  syncing.value = true
+  syncMsg.value = ''
+  try {
+    const r = await syncReleases()
+    syncMsg.value = `已同步并验签 v${r.version}`
+    await refresh()
+  } catch (e) {
+    if (e instanceof UnauthorizedError) emit('unauthorized')
+    else syncMsg.value = e instanceof ApiError ? e.message : '同步失败'
+  } finally {
+    syncing.value = false
+  }
+}
 const status = computed(() => view.value?.enroll_status ?? 'NONE')
 const enrolled = computed(() => status.value === 'USED')
 const expiresText = computed(() => {
@@ -94,14 +115,18 @@ onUnmounted(stop)
     <p v-if="error" class="banner">{{ error }}</p>
 
     <template v-if="view">
-      <!-- 没有已验签的官方版本时只能手动安装（设计 27.3.1、27.3.3） -->
-      <div v-if="view.install.mode === 'manual'" class="note">
-        面板尚未同步官方签名版本，暂时需要手动安装：
-        <ol>
-          <li>把 <code>vpsmon-agent</code> 放到主机上（开发阶段：复制自己构建的 <code>dist/vpsmon-agent-linux-*</code>）。</li>
-          <li>在主机上以 root 执行下面的命令，它会注册、安装为系统服务并开始上报。</li>
-        </ol>
-        如果程序不在 PATH 中，把命令开头的 <code>vpsmon-agent</code> 换成它的路径，如 <code>./vpsmon-agent-linux-amd64</code>。
+      <!-- 默认命令：下载按版本固定的脚本 → 按已验签清单中的 SHA256 校验 → 执行（设计 27.3.1） -->
+      <p v-if="view.install.mode === 'default' && view.install.release" class="muted small">
+        在主机上以 root 执行。命令会先校验安装脚本的 SHA256（来自官方签名的 v{{ view.install.release.version }} 发布清单，
+        公钥 {{ view.install.release.key_id }}，{{ fmtTime(view.install.release.synced_at) }} 同步），不一致时不会执行。
+      </p>
+      <!-- 没有已验签的官方版本时只能手动安装（设计 27.3.3） -->
+      <div v-else class="note">
+        面板尚未同步官方签名版本，暂时需要手动安装：把 <code>vpsmon-agent</code> 放到主机上，再以 root 执行下面的命令。
+        <div class="sync">
+          <button type="button" class="secondary" :disabled="syncing" @click="sync">{{ syncing ? '同步中…' : '同步官方版本' }}</button>
+          <span v-if="syncMsg" class="small">{{ syncMsg }}</span>
+        </div>
       </div>
 
       <template v-if="status === 'ACTIVE' && fullCode">
@@ -111,6 +136,10 @@ onUnmounted(stop)
       <template v-else-if="status === 'ACTIVE'">
         <CommandBlock :command="command" />
         <p class="muted">完整注册码只在生成时显示一次，上面的命令中已隐藏。如果没有保存，请重新生成。</p>
+      </template>
+      <template v-if="status === 'ACTIVE' && view.install.mode === 'default'">
+        <button type="button" class="text" @click="showManual = !showManual">{{ showManual ? '▾' : '▸' }} 程序已在主机上？使用手动命令</button>
+        <CommandBlock v-if="showManual" :command="manualCommand" />
       </template>
       <p v-else-if="status === 'EXPIRED'" class="muted">注册码已过期，请重新生成。</p>
       <p v-else-if="status === 'REVOKED'" class="muted">注册码已撤销，请重新生成。</p>
@@ -135,6 +164,7 @@ onUnmounted(stop)
 <style scoped>
 .note { background: var(--surface-2); border-left: 3px solid var(--warn); padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); margin: var(--space-3) 0; }
 .note ol { margin: var(--space-2) 0; padding-left: var(--space-5); }
+.sync { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
 .state { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
 .actions { display: flex; gap: var(--space-2); margin-top: var(--space-5); }
 </style>
