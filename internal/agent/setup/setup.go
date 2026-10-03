@@ -333,6 +333,39 @@ func EnableRemoteUpgrade(o Options) error {
 	return nil
 }
 
+// RefreshUnit 把已安装的 systemd 单元更新为当前二进制内嵌的版本（sudo vpsmon-agent refresh-unit）。
+//
+// 单元只在 install 时写入；新版本改进了单元（如 watchdog 存活检测，设计 43.5）时，已安装的节点用它更新。
+// 本机升级（sudo vpsmon-agent upgrade）成功后自动调用。远程升级不调用：updater 不以 root 执行新下载的代码（设计 29.13）。
+// 单元已是最新时不做任何事；更新后 daemon-reload 并重启服务，返回是否有变化。
+func RefreshUnit(o Options) (bool, error) {
+	o.defaults()
+	if !o.Sys.IsRoot() {
+		return false, errors.New("需要 root 权限，请使用 sudo 执行")
+	}
+	cur, err := os.ReadFile(o.Paths.Unit)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, errors.New("本机尚未安装 Agent 服务，请先执行面板中的安装命令")
+	}
+	if err != nil {
+		return false, err
+	}
+	if string(cur) == unitFile {
+		return false, nil
+	}
+	if err := writeFile(o.Sys, o.Paths.Unit, unitFile, 0o644, 0); err != nil {
+		return false, err
+	}
+	if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
+		return false, fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out)
+	}
+	if out, err := o.Sys.Run("systemctl", "restart", serviceName); err != nil {
+		return false, fmt.Errorf("重启服务失败：%v %s", err, out)
+	}
+	fmt.Fprintf(o.Out, "✓ 已更新 %s 并重启服务\n", o.Paths.Unit)
+	return true, nil
+}
+
 // RefreshUpdater 在本机升级后刷新 updater 副本（只在已启用远程升级时）。
 func RefreshUpdater(o Options) error {
 	o.defaults()

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -340,5 +341,35 @@ func TestRotateToken(t *testing.T) {
 	os.Remove(p.tokenFile())
 	if err := RotateToken(context.Background(), o); err == nil {
 		t.Error("未安装时应拒绝")
+	}
+}
+
+// 已安装的节点用 refresh-unit 获得新版本的单元（如 watchdog，设计 43.5）；已是最新时不重启服务。
+func TestRefreshUnit(t *testing.T) {
+	p, _ := testPaths(t)
+	sys := &fakeSystem{root: true, systemd: true, users: map[string]bool{}}
+	o := Options{Paths: p, Sys: sys, Out: io.Discard}
+	if _, err := RefreshUnit(o); err == nil {
+		t.Error("未安装时应提示先安装")
+	}
+	os.MkdirAll(filepath.Dir(p.Unit), 0o755)
+	os.WriteFile(p.Unit, []byte("[Service]\nType=simple\n"), 0o644)
+	changed, err := RefreshUnit(o)
+	if err != nil || !changed {
+		t.Fatalf("旧单元应被更新：%v %v", changed, err)
+	}
+	if b, _ := os.ReadFile(p.Unit); string(b) != unitFile || !strings.Contains(unitFile, "WatchdogSec=") {
+		t.Error("应写入内嵌的单元（含 watchdog）")
+	}
+	if strings.Join(sys.cmds, ";") != "systemctl daemon-reload;systemctl restart vpsmon-agent" {
+		t.Errorf("更新后应 daemon-reload 并重启：%v", sys.cmds)
+	}
+	sys.cmds = nil
+	if changed, err := RefreshUnit(o); err != nil || changed || len(sys.cmds) != 0 {
+		t.Errorf("已是最新时不应重启：%v %v %v", changed, err, sys.cmds)
+	}
+	sys.root = false
+	if _, err := RefreshUnit(o); err == nil {
+		t.Error("需要 root")
 	}
 }

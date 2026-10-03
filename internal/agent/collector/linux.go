@@ -4,6 +4,7 @@ package collector
 
 import (
 	"log"
+	"sync"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -61,13 +62,40 @@ func New(opts Options) Collector {
 
 // readFile 读取失败时返回空字符串。文件缺失是正常情况（精简容器、旧内核、未启用 IPv6），
 // 单项缺失应留空该字段，而不是让整份上报失败（设计 43.5）。
+//
+// /proc 文件的 stat 大小为 0，os.ReadFile 只能从 512 字节起逐步扩容，一个文件要分配多次；
+// 这里复用同一块缓冲区读取，每个文件只在转为 string 时分配一次（设计 4.2）。
 func readFile(p string) string {
-	b, err := os.ReadFile(p)
+	readMu.Lock()
+	defer readMu.Unlock()
+	f, err := os.Open(p)
 	if err != nil {
 		return ""
 	}
-	return string(b)
+	defer f.Close()
+	buf := readBuf[:0]
+	for {
+		if len(buf) == cap(buf) {
+			buf = append(buf, 0)[:len(buf)] // 扩容；超大的文件（如上千核的 /proc/stat）也能读完
+		}
+		n, err := f.Read(buf[len(buf):cap(buf)])
+		buf = buf[:len(buf)+n]
+		if err != nil {
+			break
+		}
+	}
+	if cap(buf) <= maxReadBuf {
+		readBuf = buf // 保留扩容后的缓冲区供下次使用，但不长期占用异常大的内存
+	}
+	return string(buf)
 }
+
+const maxReadBuf = 256 << 10
+
+var (
+	readMu  sync.Mutex
+	readBuf = make([]byte, 0, 16<<10)
+)
 
 // mustRead 读取采集项必需的文件；失败或为空时记录原因并返回 false。
 func mustRead(errs *errorList, item, p string) (string, bool) {

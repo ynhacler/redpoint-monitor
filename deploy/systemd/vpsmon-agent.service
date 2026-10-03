@@ -2,12 +2,19 @@
 Description=VPS Monitor agent
 After=network-online.target
 Wants=network-online.target
+# Liveness (design 43.5): never give up restarting, however often the agent exits
+StartLimitIntervalSec=0
 
 [Service]
 User=vpsmon-agent
 Group=vpsmon-agent
 EnvironmentFile=/etc/vpsmon-agent/env
 ExecStart=/usr/local/bin/vpsmon-agent --server ${VPSMON_SERVER} --token-file /etc/vpsmon-agent/token --state-dir /var/lib/vpsmon-agent
+# Type=notify: the agent reports READY=1 after its first sample and pings the watchdog every loop.
+# A hung agent (stuck, not exited) is killed and restarted after WatchdogSec.
+Type=notify
+NotifyAccess=main
+WatchdogSec=120
 Restart=always
 RestartSec=5
 # Final report on stop (design 5.5) needs a moment

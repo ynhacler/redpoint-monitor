@@ -69,6 +69,10 @@ jobs:
       - name: Agent 资源占用（设计 4.2）
         run: scripts/agent-footprint.sh dist/vpsmon-agent-linux-amd64
 
+      # 以 Type=notify + 短 WatchdogSec 运行：确认 Agent 报告就绪并按时喂看门狗（设计 43.5）
+      - name: Agent systemd 存活检测（设计 43.5）
+        run: scripts/agent-systemd-check.sh dist/vpsmon-agent-linux-amd64
+
   design-doc:
     name: 设计文档校验
     runs-on: ubuntu-latest
