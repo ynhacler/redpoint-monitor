@@ -4,23 +4,25 @@ import (
 	"math"
 	"slices"
 	"time"
+
+	"vpsmon/internal/protocol"
 )
 
-// Counter is the last seen cumulative kernel counter for one interface of one server.
+// Counter 是某节点某网卡最近一次的内核累计计数。
 type Counter struct {
 	BootID  string
 	IfIndex int
 	Rx, Tx  uint64
+	Bits    int // 计数器位数，取自上报（32 位内核会回绕）；不入库，只看当前这份上报
 }
 
-// ComputeDelta implements the traffic rules from docs/design.md 5.5.
+// ComputeDelta 按设计 5.5 计算两次上报之间的流量增量：
 //
-//	prev == nil                      → first sighting: baseline only, delta 0
-//	                                   (traffic before monitoring started is unknown)
-//	boot_id or ifindex changed       → reboot / NIC recreated: delta = cur
-//	                                   (counts traffic between boot and first report)
-//	same boot, counter increased     → delta = cur - prev
-//	same boot, counter went backward → driver reset / overflow: delta = cur, reset=true
+//	prev == nil                    → 首次出现：只建立基线，增量 0（监控开始前的流量无从得知）
+//	boot_id 或 ifindex 变化        → 重启 / 网卡重建：增量 = 当前计数（计入开机到首次上报之间的流量）
+//	同一次启动，计数递增           → 增量 = 当前 − 上次
+//	同一次启动，32 位计数器回绕    → 按回绕补算（protocol.CounterDelta），收发分别判断
+//	同一次启动，其他计数回退       → 驱动重置 / 溢出：增量 = 当前计数，reset=true
 func ComputeDelta(prev *Counter, cur Counter) (dRx, dTx uint64, reset bool) {
 	if prev == nil {
 		return 0, 0, false
@@ -28,10 +30,12 @@ func ComputeDelta(prev *Counter, cur Counter) (dRx, dTx uint64, reset bool) {
 	if prev.BootID != cur.BootID || prev.IfIndex != cur.IfIndex {
 		return cur.Rx, cur.Tx, true
 	}
-	if cur.Rx < prev.Rx || cur.Tx < prev.Tx {
+	rx, okRx := protocol.CounterDelta(prev.Rx, cur.Rx, cur.Bits)
+	tx, okTx := protocol.CounterDelta(prev.Tx, cur.Tx, cur.Bits)
+	if !okRx || !okTx {
 		return cur.Rx, cur.Tx, true
 	}
-	return cur.Rx - prev.Rx, cur.Tx - prev.Tx, false
+	return rx, tx, false
 }
 
 // Count modes (design 1.2.4).

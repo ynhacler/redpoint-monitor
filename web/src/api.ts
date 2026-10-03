@@ -33,7 +33,7 @@ export interface Report {
   timestamp: number
   agent_version: string
   /** uptime 为秒；cpu_model 为可选（旧版 Agent 不带） */
-  system: { hostname: string; os: string; os_version: string; kernel: string; arch: string; uptime: number; cpu_model?: string }
+  system: { hostname: string; os: string; os_version: string; kernel: string; arch: string; uptime: number; cpu_model?: string; counter_bits?: number }
   cpu: {
     usage: number
     cores: number
@@ -60,6 +60,8 @@ export interface Report {
   conns?: { tcp: number; udp: number; time_wait: number }
   /** 本机监听端口（设计 4.9.1）；旧版 Agent 不上报，节点列表接口也省略 */
   ports?: ListenPort[]
+  /** 本轮失败的采集项及原因，对应字段留空（设计 43.5）；全部成功时没有 */
+  collect_errors?: { item: string; message: string }[]
 }
 
 /** 两次采样之间各类 CPU 时间的占比，0～100 */

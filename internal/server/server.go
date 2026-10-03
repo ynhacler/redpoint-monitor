@@ -353,7 +353,7 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time) {
 		if stale {
 			break
 		}
-		cur := Counter{BootID: rep.System.BootID, IfIndex: ni.IfIndex, Rx: ni.RxBytes, Tx: ni.TxBytes}
+		cur := Counter{BootID: rep.System.BootID, IfIndex: ni.IfIndex, Rx: ni.RxBytes, Tx: ni.TxBytes, Bits: rep.System.CounterBits}
 		drx, dtx, reset := ComputeDelta(s.counters[sid][ni.Interface], cur)
 		if reset {
 			s.log.Info("traffic counter reset", "component", "traffic", "server_id", sid, "iface", ni.Interface,

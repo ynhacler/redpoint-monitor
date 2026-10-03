@@ -1346,6 +1346,7 @@ components:
             uptime: { type: integer, description: 秒 }
             boot_id: { type: string }
             cpu_model: { type: string, description: 可选（设计 4.4） }
+            counter_bits: { type: integer, enum: [32, 64], description: 可选：内核网卡计数器位数；32 位时面板按回绕补算流量（设计 5.5） }
         cpu:
           type: object
           properties:
@@ -1435,6 +1436,14 @@ components:
               write_iops: { type: number, description: 可选 }
               await_ms: { type: number, description: 可选：每次 IO 平均耗时 }
               util: { type: number, description: 可选：设备忙碌占比 0～100 }
+        collect_errors:
+          type: array
+          description: 可选：本轮失败的采集项及原因，对应字段留空，其余照常（设计 43.5）
+          items:
+            type: object
+            properties:
+              item: { type: string, enum: [system, cpu, memory, disk, disk_io, network, processes, conns, ports] }
+              message: { type: string }
 
     MetricPoint:
       type: object

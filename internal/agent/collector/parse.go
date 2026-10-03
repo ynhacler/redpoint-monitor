@@ -209,6 +209,52 @@ func parseMeminfo(s string) map[string]uint64 {
 	return m
 }
 
+// memoryFrom 由 /proc/meminfo 计算内存（设计 4.5），没有 MemTotal 时返回 false。
+//
+// 已用 = MemTotal − MemAvailable，而不是 MemTotal − MemFree：页缓存可以回收，算作已用会让长期运行的 VPS 看起来接近 100%。
+// MemAvailable 从内核 3.14 开始提供；更旧的内核与部分 OpenVZ 容器没有它，按 MemFree + Buffers + Cached + SReclaimable 估算，
+// 否则会显示 100% 并误触发内存告警。LXC（lxcfs）中偶见 MemAvailable > MemTotal，截断为 MemTotal，避免无符号下溢。
+func memoryFrom(m map[string]uint64) (mem protocol.Memory, estimated, ok bool) {
+	total := m["MemTotal"]
+	if total == 0 {
+		return protocol.Memory{}, false, false
+	}
+	cached := m["Cached"] + m["SReclaimable"]
+	avail, has := m["MemAvailable"]
+	if !has {
+		avail, estimated = m["MemFree"]+m["Buffers"]+cached, true
+	}
+	avail = min(avail, total)
+	return protocol.Memory{Total: total, Available: avail, Used: total - avail, Usage: pct(total-avail, total),
+		Free: m["MemFree"], Buffers: m["Buffers"], Cached: cached}, estimated, true
+}
+
+// swapFrom 由 /proc/meminfo 计算交换分区；SwapFree > SwapTotal（部分容器）时已用记为 0。
+func swapFrom(m map[string]uint64) protocol.Swap {
+	total := m["SwapTotal"]
+	return protocol.Swap{Total: total, Used: total - min(m["SwapFree"], total)}
+}
+
+// counterBits 由 uname 的 machine 判断内核网卡计数器的位数（设计 5.5）；不认识时返回 0（未知）。
+//
+// 32 位内核上，只维护 unsigned long 统计的驱动在约 4 GiB 处回绕；64 位内核不会。
+// 32 位 Agent 运行在 64 位内核上时，arm64 返回 armv8l、x86_64 仍返回 x86_64，都按 64 位处理。
+func counterBits(machine string) int {
+	switch {
+	case machine == "":
+		return 0
+	case machine == "x86_64", machine == "aarch64", machine == "arm64", machine == "armv8l", machine == "aarch64_be",
+		machine == "riscv64", machine == "ppc64", machine == "ppc64le", machine == "s390x",
+		machine == "mips64", machine == "loongarch64", machine == "sparc64":
+		return 64
+	case len(machine) == 4 && machine[0] == 'i' && machine[2:] == "86", // i386 … i686
+		strings.HasPrefix(machine, "armv"), machine == "arm", machine == "riscv32", machine == "mips", machine == "mipsel",
+		machine == "ppc", machine == "s390":
+		return 32
+	}
+	return 0
+}
+
 // netCounters 是一块网卡的累计收发字节数。
 type netCounters struct{ rx, tx uint64 }
 
