@@ -415,6 +415,30 @@ var migrations = []string{
 	// 展示时按当前系数与计费模式重算偏差，校准后修改系数或模式不会重复修正（设计 5.7）。旧记录为 NULL，沿用固定偏差。
 	`ALTER TABLE traffic_adjustments ADD COLUMN raw_rx INTEGER;
 	ALTER TABLE traffic_adjustments ADD COLUMN raw_tx INTEGER;`,
+
+	// 迁移 18：历史曲线增加 CPU steal / iowait 占比（%）与 TCP 连接数（设计 4.4、4.9、21）。
+	// 旧版 Agent 不上报时为 NULL，聚合时只用有值的点，避免把“没有数据”画成 0。
+	`ALTER TABLE metrics_raw ADD COLUMN steal REAL;
+	ALTER TABLE metrics_raw ADD COLUMN iowait REAL;
+	ALTER TABLE metrics_raw ADD COLUMN tcp INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN steal REAL;
+	ALTER TABLE metrics_1m ADD COLUMN steal_max REAL;
+	ALTER TABLE metrics_1m ADD COLUMN iowait REAL;
+	ALTER TABLE metrics_1m ADD COLUMN iowait_max REAL;
+	ALTER TABLE metrics_1m ADD COLUMN tcp INTEGER;
+	ALTER TABLE metrics_1m ADD COLUMN tcp_max INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN steal REAL;
+	ALTER TABLE metrics_5m ADD COLUMN steal_max REAL;
+	ALTER TABLE metrics_5m ADD COLUMN iowait REAL;
+	ALTER TABLE metrics_5m ADD COLUMN iowait_max REAL;
+	ALTER TABLE metrics_5m ADD COLUMN tcp INTEGER;
+	ALTER TABLE metrics_5m ADD COLUMN tcp_max INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN steal REAL;
+	ALTER TABLE metrics_1h ADD COLUMN steal_max REAL;
+	ALTER TABLE metrics_1h ADD COLUMN iowait REAL;
+	ALTER TABLE metrics_1h ADD COLUMN iowait_max REAL;
+	ALTER TABLE metrics_1h ADD COLUMN tcp INTEGER;
+	ALTER TABLE metrics_1h ADD COLUMN tcp_max INTEGER;`,
 }
 
 func (s *Store) migrate() error {
@@ -593,6 +617,21 @@ type MetricPoint struct {
 	DiskReadMax  *uint64 `json:"disk_read_max"`
 	DiskWrite    *uint64 `json:"disk_write"`
 	DiskWriteMax *uint64 `json:"disk_write_max"`
+	// CPU steal / iowait 占比（0～100）与 TCP 连接数（设计 4.4、4.9）；旧版 Agent 的时段为 null
+	Steal     *float64 `json:"steal"`
+	StealMax  *float64 `json:"steal_max"`
+	IOWait    *float64 `json:"iowait"`
+	IOWaitMax *float64 `json:"iowait_max"`
+	TCP       *uint64  `json:"tcp"`
+	TCPMax    *uint64  `json:"tcp_max"`
+}
+
+// nullableF 把可空浮点数转为指针，JSON 中 NULL 输出为 null。
+func nullableF(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
+	}
+	return &v.Float64
 }
 
 // nullable 把可空整数转为指针，JSON 中 NULL 输出为 null。
@@ -607,10 +646,12 @@ func nullable(v sql.NullInt64) *uint64 {
 // MetricsHistory 读取某一粒度表中 since 之后的点。table 只能是内部常量，不来自用户输入。
 func (s *Store) MetricsHistory(serverID int64, table string, since time.Time) ([]MetricPoint, error) {
 	cols := `ts, cpu, cpu_max, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed_max,
-		tx_speed, tx_speed_max, disk_read, disk_read_max, disk_write, disk_write_max`
+		tx_speed, tx_speed_max, disk_read, disk_read_max, disk_write, disk_write_max,
+		steal, steal_max, iowait, iowait_max, tcp, tcp_max`
 	if table == "metrics_raw" {
 		cols = `ts, cpu, cpu, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed,
-			tx_speed, tx_speed, disk_read, disk_read, disk_write, disk_write`
+			tx_speed, tx_speed, disk_read, disk_read, disk_write, disk_write,
+			steal, steal, iowait, iowait, tcp, tcp`
 	}
 	rows, err := s.DB.Query(`SELECT `+cols+` FROM `+table+` WHERE server_id = ? AND ts >= ? ORDER BY ts`, serverID, since.Unix())
 	if err != nil {
@@ -621,11 +662,14 @@ func (s *Store) MetricsHistory(serverID int64, table string, since time.Time) ([
 	for rows.Next() {
 		var p MetricPoint
 		var cpu, cpuMax, load1 sql.NullFloat64
-		var mu, mt, su, du, dt, rx, rxm, tx, txm, dr, drm, dw, dwm sql.NullInt64
+		var mu, mt, su, du, dt, rx, rxm, tx, txm, dr, drm, dw, dwm, tcp, tcpm sql.NullInt64
+		var st, stm, iw, iwm sql.NullFloat64
 		if err := rows.Scan(&p.TS, &cpu, &cpuMax, &load1, &mu, &mt, &su, &du, &dt, &rx, &rxm, &tx, &txm,
-			&dr, &drm, &dw, &dwm); err != nil {
+			&dr, &drm, &dw, &dwm, &st, &stm, &iw, &iwm, &tcp, &tcpm); err != nil {
 			return nil, err
 		}
+		p.Steal, p.StealMax, p.IOWait, p.IOWaitMax = nullableF(st), nullableF(stm), nullableF(iw), nullableF(iwm)
+		p.TCP, p.TCPMax = nullable(tcp), nullable(tcpm)
 		p.DiskRead, p.DiskReadMax, p.DiskWrite, p.DiskWriteMax = nullable(dr), nullable(drm), nullable(dw), nullable(dwm)
 		p.CPU, p.CPUMax, p.Load1 = cpu.Float64, cpuMax.Float64, load1.Float64
 		p.MemUsed, p.MemTotal, p.SwapUsed = uint64(mu.Int64), uint64(mt.Int64), uint64(su.Int64)

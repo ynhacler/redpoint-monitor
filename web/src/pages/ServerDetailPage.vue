@@ -140,6 +140,7 @@ const line = (name: string, f: (p: (typeof pts.value)[number]) => number | null)
   })
   return { name, data }
 }
+const hasData = (f: (p: (typeof pts.value)[number]) => number | null) => pts.value.some((p) => f(p) != null)
 const charts = computed(() => [
   {
     title: 'CPU', max: 100, format: (v: number) => `${Math.round(v)}%`,
@@ -161,6 +162,19 @@ const charts = computed(() => [
     title: '负载（1 分钟）', format: (v: number) => v.toFixed(v < 10 ? 2 : 0),
     series: [line('Load1', (p) => p.load1)],
   },
+  // steal 高说明宿主机超售，iowait 高说明在等磁盘（设计 4.4）；旧版 Agent 没有数据时不显示
+  ...(hasData((p) => p.steal ?? p.iowait)
+    ? [{
+        title: 'CPU 等待（steal / iowait）', format: (v: number) => `${v.toFixed(v < 10 ? 1 : 0)}%`,
+        series: [line('steal', (p) => p.steal), line('iowait', (p) => p.iowait)],
+      }]
+    : []),
+  ...(hasData((p) => p.tcp)
+    ? [{
+        title: 'TCP 连接数', format: (v: number) => String(Math.round(v)),
+        series: coarse.value ? [line('平均', (p) => p.tcp), line('峰值', (p) => p.tcp_max)] : [line('TCP', (p) => p.tcp)],
+      }]
+    : []),
 ])
 </script>
 

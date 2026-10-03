@@ -114,7 +114,8 @@ func (s *Store) downsampleLevel(lv aggLevel, srcDone int64) (int64, int64, error
 				CAST(AVG(disk_used) AS INTEGER), MAX(disk_used), MAX(disk_total),
 				CAST(AVG(rx_speed) AS INTEGER), MAX(rx_speed), MIN(rx_speed),
 				CAST(AVG(tx_speed) AS INTEGER), MAX(tx_speed), MIN(tx_speed),
-				CAST(AVG(disk_read) AS INTEGER), MAX(disk_read), CAST(AVG(disk_write) AS INTEGER), MAX(disk_write)
+				CAST(AVG(disk_read) AS INTEGER), MAX(disk_read), CAST(AVG(disk_write) AS INTEGER), MAX(disk_write),
+				AVG(steal), MAX(steal), AVG(iowait), MAX(iowait), CAST(AVG(tcp) AS INTEGER), MAX(tcp)
 			FROM metrics_raw WHERE ts >= ? AND ts < ? GROUP BY server_id, b`
 	} else {
 		// 平均值按原始点数 n 加权，保证逐级聚合后的平均值与直接对原始点求平均一致
@@ -129,7 +130,10 @@ func (s *Store) downsampleLevel(lv aggLevel, srcDone int64) (int64, int64, error
 				CAST(SUM(tx_speed * n) / SUM(n) AS INTEGER), MAX(tx_speed_max), MIN(tx_speed_min),
 				-- 磁盘 IO 在旧数据中为 NULL：只用有值的桶加权，避免把没有数据的时段算成 0
 				CAST(SUM(disk_read * n) / SUM(CASE WHEN disk_read IS NOT NULL THEN n END) AS INTEGER), MAX(disk_read_max),
-				CAST(SUM(disk_write * n) / SUM(CASE WHEN disk_write IS NOT NULL THEN n END) AS INTEGER), MAX(disk_write_max)
+				CAST(SUM(disk_write * n) / SUM(CASE WHEN disk_write IS NOT NULL THEN n END) AS INTEGER), MAX(disk_write_max),
+				SUM(steal * n) / SUM(CASE WHEN steal IS NOT NULL THEN n END), MAX(steal_max),
+				SUM(iowait * n) / SUM(CASE WHEN iowait IS NOT NULL THEN n END), MAX(iowait_max),
+				CAST(SUM(tcp * n) / SUM(CASE WHEN tcp IS NOT NULL THEN n END) AS INTEGER), MAX(tcp_max)
 			FROM ` + lv.src + ` WHERE ts >= ? AND ts < ? GROUP BY server_id, b`
 	}
 	res, err := tx.Exec(q, lv.step, lv.step, from, to)
