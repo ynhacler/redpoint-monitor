@@ -89,6 +89,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
   <div class="live">
     <!-- CPU -->
     <section class="block cpu">
+      <h3 class="title"><span>CPU</span><span v-if="r.system.cpu_model" class="ctx" :title="r.system.cpu_model">{{ r.system.cpu_model }}</span></h3>
       <div class="cpu-top">
         <div class="hero-col">
           <div class="hero" :class="cpuLv"><Qty :v="Math.round(cpu(server) ?? 0)" u="%" /></div>
@@ -137,7 +138,8 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     </section>
 
     <!-- 内存 -->
-    <section class="block row-block" :title="`内存 ${fmtBytesShort(m.total)}`">
+    <section class="block row-block">
+      <h3 class="title"><span>Mem</span><span class="ctx">{{ fmtBytesShort(m.total) }}</span></h3>
       <dl class="cols">
         <div v-if="m.free != null"><dt><i style="background: var(--track)" />FREE</dt><dd><Qty :text="fmtBytesShort(m.free)" /></dd></div>
         <div><dt><i :style="{ background: `var(--${memLv})` }" />USED</dt><dd><Qty :text="fmtBytesShort(m.used)" /></dd></div>
@@ -146,12 +148,12 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       <Ring :pct="mem(server)" :level="memLv" :segments="memSegments" :size="60" label="内存" />
       <p v-if="r.swap.total" class="sub-line muted">
         <span>SWAP <b><Qty :text="fmtBytesShort(r.swap.used)" /></b> / <Qty :text="fmtBytesShort(r.swap.total)" /></span>
-        <span>TOTAL <b><Qty :text="fmtBytesShort(m.total)" /></b></span>
       </p>
     </section>
 
     <!-- 网络 -->
-    <section class="block row-block net" :title="`网卡：${r.network.map((n) => n.interface).join('、')}`">
+    <section class="block row-block net">
+      <h3 class="title"><span>Net</span><span class="ctx">{{ r.network.map((n) => n.interface).join(' · ') }}</span></h3>
       <dl class="cols speeds">
         <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
         <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
@@ -170,13 +172,13 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 磁盘（设计 4.6、4.7）：每个挂载点一块 -->
     <section v-for="d in r.disk" :key="d.mount" class="block disk">
+      <h3 class="title"><span>Disk</span><span class="ctx">{{ d.fstype }}</span></h3>
       <div class="disk-head">
         <div class="disk-name">
           <div class="mount">{{ d.mount }}</div>
           <div class="muted dev">{{ d.device || DASH }}</div>
         </div>
         <div class="disk-cap">
-          <div class="muted dev">{{ d.fstype }}</div>
           <div class="cap"><Qty :text="fmtBytesShort(d.used)" /><span class="slash">/</span><Qty :text="fmtBytesShort(d.total)" /></div>
         </div>
         <span class="pill" :title="fmtPct(d.usage)"><span :class="gaugeLevel(d.usage, 'disk')" :style="{ height: `${Math.max(4, d.usage)}%` }" /></span>
@@ -217,6 +219,13 @@ dt { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-m
 dt i { width: 5px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 dd { font-size: 22px; line-height: 28px; white-space: nowrap; font-family: var(--font-mono); letter-spacing: -0.02em; }
 dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
+
+/* 每块左上角的指标名称，右侧为简短的上下文（型号、总量、网卡、文件系统） */
+.title { display: flex; align-items: baseline; gap: var(--space-3); margin: 0 0 var(--space-3); min-width: 0; flex-basis: 100%;
+  font-size: var(--font-md); line-height: var(--line-md); font-weight: var(--weight-strong); color: var(--text); }
+.row-block .title { margin-bottom: calc(-1 * var(--space-1)); } /* 行内块已有间距，去掉标题的下边距 */
+.title .ctx { margin-left: auto; font-size: var(--font-sm); font-weight: var(--weight-regular); color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* CPU */
 .cpu-top { display: flex; align-items: flex-start; gap: var(--space-6); }
