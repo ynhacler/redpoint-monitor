@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 54 | Agent 存活与占用：systemd watchdog（Type=notify、WatchdogSec=120、StartLimitIntervalSec=0）、`refresh-unit` 子命令；GOMAXPROCS 默认 1；/proc 读取复用缓冲区 | 4.2、43.5 |
 | 53 | Agent 时钟偏差：上报新增可选字段 sent_at；默认规则 agent_clock（迁移 19，提示级）；Agent 按响应 Date 头记录 WARN 并在 status 中显示 | 6.2、16.1、43.5 |
 | 52 | Agent 资源占用纳入 CI：真实 Linux 采集器集成测试与基准、`scripts/agent-footprint.sh`（常驻内存 > 30 MB 失败） | 4.2、40.8.3 |
 | 51 | 历史曲线增加 CPU steal / iowait 占比与 TCP 连接数（迁移 18：metrics_raw 与各聚合表新增列，NULL 表示旧版 Agent 未上报）；节点详情两张新图 | 4.4、4.9、21 |
@@ -2789,6 +2790,8 @@ Agent 不负责：
 内核版本、boot_id 在本次启动内不变，只读一次
 VPS 上通常没有可信的 CPU 温度传感器，发现为空后每轮不再扫描 /sys
 Go 运行时设 20 MiB 软内存上限（GOMEMLIMIT 可覆盖），补发积压等短时高峰后尽快归还内存
+GOMAXPROCS 默认 1（采集与上报都是串行的，环境变量可覆盖），少建线程
+读取 /proc 文件复用同一块缓冲区：/proc 文件的大小未知，逐步扩容会让每个文件分配多次
 ```
 
 检查方式：CI 在 ubuntu runner 上运行真实采集器的集成测试（与 /proc、statfs 对照）与基准，并用 `scripts/agent-footprint.sh`
@@ -9624,6 +9627,7 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | 429 | 按 Retry-After 等待 |
 | 单个采集项失败 | 照常上报其他指标，失败项留空，原因写入上报的 `collect_errors`（最多 16 条，每条 ≤ 200 字节），节点详情页显示 |
 | 采集代码 panic | 按采集项捕获，该项本轮留空，其余正常；同一采集项只在第一次打印调用栈。采集入口再兜底一层，任何 panic 都不让 Agent 退出 |
+| Agent 卡死（未退出） | systemd 单元 Type=notify + WatchdogSec=120：Agent 首次采样后报告就绪，主循环每轮喂看门狗，超时由 systemd 重启；StartLimitIntervalSec=0，无论退出多频繁都继续重启；后台 goroutine 的 panic 也被捕获。已安装的节点用 `sudo vpsmon-agent refresh-unit` 更新单元，本机升级后自动执行（远程升级不执行，设计 29.13） |
 | Agent 重启时有未发出的上报 | 落盘到 queue.json，重启后先补发（见 1.6.14） |
 | 磁盘 statfs 阻塞 | 整轮限时 2 秒，超时的挂载点本轮留空；仍未返回的挂载点后续直接跳过（见 4.6） |
 | 时钟偏差 | 上报带发送时刻 `sent_at`，面板按“sent_at − 收到时间”计算偏差（快慢都能识别，补发的旧数据也能测），由默认规则“Agent 时钟偏差”产生提示（> 60 秒持续 5 分钟触发，< 30 秒持续 5 分钟恢复）；Agent 用响应的 Date 头比对，偏差 > 60 秒时每小时最多记录一次 WARN，`status` 中显示 |

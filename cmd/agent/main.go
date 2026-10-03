@@ -13,6 +13,7 @@
 //	vpsmon-agent upgrade [--version vX]                 本机升级到官方签名的版本（需要 root，设计 29）
 //	vpsmon-agent rotate-token --enroll ENR-…           用面板新生成的注册码更换 Token（需要 root，设计 17.2）
 //	vpsmon-agent enable-remote-upgrade                  为已安装的 Agent 启用远程升级（需要 root，设计 29.13）
+//	vpsmon-agent refresh-unit                           把 systemd 单元更新为本版本内嵌的版本（需要 root，设计 43.5）
 //	vpsmon-agent updater                                特权 updater，由 vpsmon-agent-updater.service 调用
 //	vpsmon-agent [run] --server URL --token-file F      前台运行（systemd 单元使用）
 //
@@ -39,6 +40,7 @@ import (
 
 	"vpsmon/internal/agent/collector"
 	"vpsmon/internal/agent/report"
+	"vpsmon/internal/agent/sdnotify"
 	"vpsmon/internal/agent/setup"
 	"vpsmon/internal/agent/upgrade"
 	"vpsmon/internal/protocol"
@@ -67,6 +69,8 @@ func main() {
 			os.Exit(cmdRotateToken(os.Args[2:]))
 		case "enable-remote-upgrade":
 			os.Exit(cmdEnableRemoteUpgrade())
+		case "refresh-unit":
+			os.Exit(cmdRefreshUnit())
 		case "version":
 			fmt.Println(version)
 			return
@@ -130,6 +134,27 @@ func cmdUpgrade(args []string) int {
 	// 本机升级由管理员发起，顺带刷新 updater 副本（远程升级不会替换 updater，设计 29.13）
 	if err := setup.RefreshUpdater(setup.Options{}); err != nil {
 		fmt.Fprintln(os.Stderr, "! 刷新 updater 失败："+err.Error())
+	}
+	// 单元文件内嵌在二进制中：由刚安装的新版本写入它自己的单元（如新增的 watchdog，设计 43.5）
+	if _, err := os.Stat(p.Unit); err == nil {
+		cmd := exec.Command(p.Bin, "refresh-unit")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "! 更新 systemd 单元失败（可稍后执行 sudo vpsmon-agent refresh-unit）："+err.Error())
+		}
+	}
+	return 0
+}
+
+// cmdRefreshUnit 执行 vpsmon-agent refresh-unit：把 systemd 单元更新为本版本内嵌的版本。
+func cmdRefreshUnit() int {
+	changed, err := setup.RefreshUnit(setup.Options{Out: os.Stdout})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	if !changed {
+		fmt.Println("✓ systemd 单元已是最新")
 	}
 	return 0
 }
@@ -208,14 +233,26 @@ func pollUpgrades(server, token, stateDir string) {
 		StageDir: filepath.Join(stateDir, "update"), Log: log.Printf}
 	time.Sleep(30 * time.Second)
 	for {
-		if remoteUpgradeEnabled() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			if err := upgrade.CheckRemote(ctx, o); err != nil {
-				log.Printf("upgrade check: %v", err)
-			}
-			cancel()
-		}
+		checkUpgradeOnce(o)
 		time.Sleep(5 * time.Minute)
+	}
+}
+
+// checkUpgradeOnce 执行一次升级查询。后台 goroutine 中的 panic 会让整个进程退出、中断上报，
+// 因此在这里捕获，下一轮照常查询（设计 43.5）。
+func checkUpgradeOnce(o upgrade.RemoteOptions) {
+	defer func() {
+		if v := recover(); v != nil {
+			log.Printf("upgrade check panicked: %v", v)
+		}
+	}()
+	if !remoteUpgradeEnabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if err := upgrade.CheckRemote(ctx, o); err != nil {
+		log.Printf("upgrade check: %v", err)
 	}
 }
 
@@ -253,6 +290,11 @@ func run() {
 	// 接近上限时 GC 会更积极地回收并归还内存，常驻内存不会停在高峰值。可用 GOMEMLIMIT 环境变量覆盖。
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(agentMemoryLimit)
+	}
+	// 采集与上报都是串行的，一个 P 足够：少建线程、少占每个 P 的缓存（设计 4.2）。
+	// 阻塞在系统调用中的 goroutine（如 statfs）会让出 P，不影响主循环。可用 GOMAXPROCS 环境变量覆盖。
+	if os.Getenv("GOMAXPROCS") == "" {
+		runtime.GOMAXPROCS(1)
 	}
 
 	// 配置错误立即退出（设计 43.5）：启动后静默不上报，比让 systemd 显示失败更难发现。
@@ -302,6 +344,16 @@ func run() {
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
 	_, _ = collect(col, false)
 
+	// systemd 存活检测（设计 43.5）：Type=notify 启动后报告就绪；主循环每轮喂一次看门狗，
+	// 主循环卡住（而不是退出）超过 WatchdogSec 时由 systemd 重启。不在 systemd 下运行时为空操作。
+	if _, err := sdnotify.Notify("READY=1"); err != nil {
+		log.Printf("sd_notify: %v", err)
+	}
+	if wd := sdnotify.WatchdogInterval(); wd > 0 && wd < 2**interval {
+		log.Printf("WARN systemd WatchdogSec (%s) is shorter than two report intervals (%s); the agent may be restarted spuriously", wd, *interval)
+	}
+	alive := func() { _, _ = sdnotify.Notify("WATCHDOG=1") }
+
 	// systemctl stop 发送 SIGTERM，Ctrl-C 发送 SIGINT，两者都触发下面的补报。
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
@@ -347,9 +399,12 @@ func run() {
 				r.Enqueue(rep)
 			}
 			flush(context.Background(), false)
+			alive()
 		case <-retry.C:
 			flush(context.Background(), false)
+			alive()
 		case <-sig:
+			_, _ = sdnotify.Notify("STOPPING=1")
 			// 退出前补报，避免最后一个周期到停止之间的流量丢失（设计 5.5）。忽略退避，立即尝试。
 			// 2 秒超时：停止过久会被 systemd 强制 SIGKILL（单元中 TimeoutStopSec=5）。
 			if rep, ok := collect(col, true); ok {

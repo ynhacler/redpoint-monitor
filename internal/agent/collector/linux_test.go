@@ -6,6 +6,8 @@ package collector
 // 确认在真实内核上没有失败项、数值合理（设计 4、43.5）。macOS 开发机上不编译。
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -86,5 +88,25 @@ func BenchmarkLinuxCollect(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		c.Collect()
+	}
+}
+
+// readFile 复用缓冲区：超过初始容量的文件也要完整读出，连续读取互不影响（设计 4.2）。
+func TestReadFileReusesBuffer(t *testing.T) {
+	dir := t.TempDir()
+	big := strings.Repeat("0123456789abcdef", 3000) // 48 KB，超过 16 KB 初始缓冲
+	os.WriteFile(filepath.Join(dir, "big"), []byte(big), 0o600)
+	os.WriteFile(filepath.Join(dir, "small"), []byte("x 1\n"), 0o600)
+	if got := readFile(filepath.Join(dir, "big")); got != big {
+		t.Fatalf("大文件读取不完整：%d 字节", len(got))
+	}
+	if got := readFile(filepath.Join(dir, "small")); got != "x 1\n" {
+		t.Fatalf("复用缓冲后的读取：%q", got)
+	}
+	if readFile(filepath.Join(dir, "missing")) != "" {
+		t.Error("不存在的文件返回空字符串")
+	}
+	if want, _ := os.ReadFile("/proc/meminfo"); readFile("/proc/meminfo")[:20] != string(want[:20]) {
+		t.Error("/proc 文件应与 os.ReadFile 一致")
 	}
 }
