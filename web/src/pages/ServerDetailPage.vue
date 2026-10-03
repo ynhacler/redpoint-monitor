@@ -93,6 +93,15 @@ onBeforeUnmount(() => liveTimer && clearInterval(liveTimer))
 
 const liveServer = computed(() => (detail.value?.id === sid.value && detail.value.latest ? detail.value : s.value))
 
+// 采集失败项（设计 43.5）：显示采集项的中文名称
+const itemNames: Record<string, string> = {
+  system: '系统', cpu: 'CPU', memory: '内存', disk: '磁盘', disk_io: '磁盘 IO', network: '网络',
+  processes: '进程', conns: '连接', ports: '端口',
+}
+const collectErrors = computed(() =>
+  (liveServer.value?.latest?.collect_errors ?? []).map((e) => ({ item: itemNames[e.item] ?? e.item, message: e.message })),
+)
+
 // ---- 历史曲线 ----
 const ranges: HistoryRange[] = ['1h', '6h', '24h', '7d', '30d']
 const range = ref<HistoryRange>('1h')
@@ -191,6 +200,13 @@ const charts = computed(() => [
         <section class="section">
           <LivePanels :server="liveServer" />
         </section>
+        <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
+        <section v-if="collectErrors.length" class="section collect-errors small">
+          <strong>部分指标本轮未采集到</strong>
+          <ul>
+            <li v-for="(e, i) in collectErrors" :key="i"><span class="muted">{{ e.item }}</span>{{ e.message }}</li>
+          </ul>
+        </section>
       </template>
 
       <!-- 流量 -->
@@ -233,4 +249,7 @@ const charts = computed(() => [
 @media (max-width: 600px) {
   .charts { grid-template-columns: 1fr; }
 }
+.collect-errors { padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.collect-errors ul { margin: var(--space-2) 0 0; padding-left: var(--space-4); }
+.collect-errors li span { margin-right: var(--space-2); }
 </style>

@@ -281,7 +281,7 @@ func run() {
 	}
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
-	_, _ = col.Collect()
+	_, _ = collect(col, false)
 
 	// systemctl stop 发送 SIGTERM，Ctrl-C 发送 SIGINT，两者都触发下面的补报。
 	sig := make(chan os.Signal, 1)
@@ -337,7 +337,14 @@ func run() {
 
 // collect 采集一份上报并填写时间戳与版本。采集失败只记录，不影响下一个周期。
 // Timestamp 是采集时间：断网后补发时，面板按它把数据放回正确的位置（设计 1.6.14）。
-func collect(col collector.Collector, final bool) (protocol.Report, bool) {
+// 采集项的 panic 已在采集器内按项捕获；这里再兜底一层，任何意外都不能让 Agent 退出、停止上报（设计 43.5）。
+func collect(col collector.Collector, final bool) (rep protocol.Report, ok bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			log.Printf("collect panicked: %v", v)
+			rep, ok = protocol.Report{}, false
+		}
+	}()
 	rep, err := col.Collect()
 	if err != nil {
 		log.Printf("collect: %v", err)

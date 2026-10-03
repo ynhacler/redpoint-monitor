@@ -166,3 +166,44 @@ func TestParseDiskstats(t *testing.T) {
 		t.Error("skipIODevice 判断错误")
 	}
 }
+
+func TestMemoryFrom(t *testing.T) {
+	const k = 1024
+	cases := []struct {
+		name          string
+		m             map[string]uint64
+		used, avail   uint64
+		estimated, ok bool
+	}{
+		{"正常：已用 = MemTotal − MemAvailable", map[string]uint64{"MemTotal": 1000 * k, "MemAvailable": 600 * k, "MemFree": 100 * k}, 400 * k, 600 * k, false, true},
+		{"旧内核没有 MemAvailable：按 Free + Buffers + Cached + SReclaimable 估算",
+			map[string]uint64{"MemTotal": 1000 * k, "MemFree": 100 * k, "Buffers": 50 * k, "Cached": 300 * k, "SReclaimable": 50 * k}, 500 * k, 500 * k, true, true},
+		{"LXC 中 MemAvailable > MemTotal：截断，不下溢", map[string]uint64{"MemTotal": 1000 * k, "MemAvailable": 1200 * k}, 0, 1000 * k, false, true},
+		{"缺少 MemTotal", map[string]uint64{"MemFree": 1}, 0, 0, false, false},
+	}
+	for _, c := range cases {
+		mem, est, ok := memoryFrom(c.m)
+		if ok != c.ok || est != c.estimated || mem.Used != c.used || mem.Available != c.avail {
+			t.Errorf("%s：%+v est=%v ok=%v", c.name, mem, est, ok)
+		}
+	}
+	if s := swapFrom(map[string]uint64{"SwapTotal": 100, "SwapFree": 150}); s.Used != 0 {
+		t.Errorf("SwapFree > SwapTotal 时已用为 0：%+v", s)
+	}
+	if s := swapFrom(map[string]uint64{"SwapTotal": 100, "SwapFree": 30}); s.Used != 70 {
+		t.Errorf("交换分区已用：%+v", s)
+	}
+}
+
+func TestCounterBits(t *testing.T) {
+	cases := map[string]int{
+		"x86_64": 64, "aarch64": 64, "armv8l": 64, "riscv64": 64, "s390x": 64,
+		"i686": 32, "i386": 32, "armv7l": 32, "armv6l": 32, "mips": 32, "riscv32": 32,
+		"": 0, "unknown": 0,
+	}
+	for m, want := range cases {
+		if got := counterBits(m); got != want {
+			t.Errorf("counterBits(%q) = %d，应为 %d", m, got, want)
+		}
+	}
+}

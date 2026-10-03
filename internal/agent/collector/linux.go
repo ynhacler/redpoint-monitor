@@ -3,6 +3,7 @@
 package collector
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,15 +20,23 @@ import (
 //
 // 【安全】只读取所有用户可读的 /proc 与 /sys，不需要 root，也不需要任何 capability（设计 1.6.9）。
 // 有状态：CPU 与网速依赖上一次采样，同一实例不可并发调用。
+//
+// 容错（设计 43.5）：每个采集项由 guard 隔离，先算出结果再一次性写入上报与内部状态；
+// 某项失败或 panic 时该项本轮留空，原因写入 collect_errors，其余照常上报。
 type linux struct {
-	opts     Options
-	prevCPU  procStat               // 上一次 /proc/stat 采样，用于计算 CPU 使用率与各类占比
-	cpuModel string                 // /proc/cpuinfo 的型号，只在首次采集时读取
-	prevNet  map[string]netCounters // 上一次各网卡的累计字节数，用于计算网速
-	prevIO   map[string]ioCounters  // 上一次各磁盘的累计 IO，用于计算读写速率
-	prevTime time.Time              // prevNet / prevIO 的采样时间
-	ports    []protocol.ListenPort  // 上次采集的监听端口
-	portsAt  time.Time              // ports 的采集时间：监听端口变化少，每分钟刷新一次（设计 4.9.1）
+	opts        Options
+	prevCPU     procStat               // 上一次 /proc/stat 采样，用于计算 CPU 使用率与各类占比
+	cpuModel    string                 // /proc/cpuinfo 的型号，只在首次采集时读取
+	bits        int                    // 内核网卡计数器位数（32 / 64），启动时读取一次（设计 5.5）
+	prevNet     map[string]netCounters // 上一次各网卡的累计字节数，用于计算网速
+	prevNetAt   time.Time              // prevNet 的采样时间
+	lastIfaces  []string               // 上次选中的统计网卡；默认路由短暂缺失时沿用（设计 5.6）
+	prevIO      map[string]ioCounters  // 上一次各磁盘的累计 IO，用于计算读写速率
+	prevIOAt    time.Time              // prevIO 的采样时间
+	ports       []protocol.ListenPort  // 上次采集的监听端口
+	portsAt     time.Time              // ports 的采集时间：监听端口变化少，每分钟刷新一次（设计 4.9.1）
+	statfs      *statfsProber          // 带超时的 statfs（设计 43.5）
+	memEstimate bool                   // 已记录过“没有 MemAvailable，按估算”的日志
 }
 
 // New 返回真实的 Linux 采集器。未指定排除列表时使用 DefaultExclude，
@@ -36,7 +45,8 @@ func New(opts Options) Collector {
 	if len(opts.Exclude) == 0 {
 		opts.Exclude = DefaultExclude
 	}
-	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{}}
+	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{},
+		bits: counterBits(unameMachine()), statfs: newStatfsProber(statfs)}
 }
 
 // readFile 读取失败时返回空字符串。文件缺失是正常情况（精简容器、旧内核、未启用 IPv6），
@@ -47,6 +57,41 @@ func readFile(p string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// mustRead 读取采集项必需的文件；失败或为空时记录原因并返回 false。
+func mustRead(errs *errorList, item, p string) (string, bool) {
+	b, err := os.ReadFile(p)
+	if err != nil || len(b) == 0 {
+		errs.add(item, "%s 读取失败", p)
+		return "", false
+	}
+	return string(b), true
+}
+
+// unameMachine 返回 uname 的 machine（如 x86_64、armv7l）。
+func unameMachine() string {
+	var u syscall.Utsname
+	if syscall.Uname(&u) != nil {
+		return ""
+	}
+	b := make([]byte, 0, len(u.Machine))
+	for _, c := range u.Machine { // 各架构上元素类型为 int8 或 uint8，统一转为 byte
+		if c == 0 {
+			break
+		}
+		b = append(b, byte(c))
+	}
+	return string(b)
+}
+
+// statfs 调用 statfs(2)（不需要权限）。
+func statfs(path string) (diskStat, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return diskStat{}, err
+	}
+	return diskStat{Blocks: uint64(st.Blocks), Bfree: uint64(st.Bfree), Bavail: uint64(st.Bavail), Bsize: uint64(st.Bsize)}, nil
 }
 
 // collectListenPorts 读取 IPv4 / IPv6 的 TCP 与 UDP 表（设计 4.9.1）。按流读取：TCP 读到第一条已建立连接即停止。
@@ -64,67 +109,132 @@ func collectListenPorts() []protocol.ListenPort {
 }
 
 // Collect 采集一次完整上报（不含 Timestamp / AgentVersion，由上报方填写）。
+// 不返回错误：单项失败写入 CollectErrors，整份上报始终可发送（设计 43.5）。
 func (c *linux) Collect() (protocol.Report, error) {
 	now := time.Now()
 	var r protocol.Report
+	var errs errorList
 
-	// 系统信息
-	r.System.Hostname, _ = os.Hostname()
-	r.System.OS, r.System.OSVersion = parseOSRelease(readFile("/etc/os-release"))
-	r.System.Kernel = strings.TrimSpace(readFile("/proc/sys/kernel/osrelease"))
-	r.System.Arch = runtime.GOARCH
+	guard(&errs, "system", func() { r.System = c.collectSystem(&errs) })
+	var running int
+	guard(&errs, "cpu", func() { r.CPU, running = c.collectCPU(&errs) })
+	guard(&errs, "memory", func() { r.Memory, r.Swap = c.collectMemory(&errs) })
+	guard(&errs, "processes", func() { r.Processes = &protocol.Processes{Total: countProcesses(), Running: running} })
+	guard(&errs, "conns", func() {
+		tcp4, udp4, tw := parseSockstat(readFile("/proc/net/sockstat"))
+		tcp6, udp6, _ := parseSockstat(readFile("/proc/net/sockstat6"))
+		r.Conns = &protocol.Conns{TCP: tcp4 + tcp6, UDP: udp4 + udp6, TimeWait: tw}
+	})
+	guard(&errs, "ports", func() {
+		if now.Sub(c.portsAt) >= time.Minute {
+			c.ports, c.portsAt = collectListenPorts(), now
+		}
+		r.Ports = c.ports
+	})
+	guard(&errs, "disk", func() { r.Disk = c.collectDisks(&errs, readFile("/proc/self/mounts")) })
+	guard(&errs, "disk_io", func() { r.DiskIO = c.collectDiskIO(now) })
+	guard(&errs, "network", func() { r.Network = c.collectNetwork(&errs, now) })
+	r.System.CounterBits = c.bits
+	r.CollectErrors = errs
+	return r, nil
+}
+
+// collectSystem 采集系统信息。
+func (c *linux) collectSystem(errs *errorList) protocol.System {
+	var s protocol.System
+	s.Hostname, _ = os.Hostname()
+	s.OS, s.OSVersion = parseOSRelease(readFile("/etc/os-release"))
+	s.Kernel = strings.TrimSpace(readFile("/proc/sys/kernel/osrelease"))
+	s.Arch = runtime.GOARCH
 	// boot_id 每次启动都会变化，此时内核网卡计数从 0 重新开始。面板据此把新计数整体计为增量，
 	// 启动到首次上报之间的流量不会丢失（设计 5.5，见 server/traffic.go 的 ComputeDelta）。
-	r.System.BootID = strings.TrimSpace(readFile("/proc/sys/kernel/random/boot_id"))
+	// 读不到时流量仍可按计数递增统计，但无法识别重启，因此记录原因。
+	if b, ok := mustRead(errs, "system", "/proc/sys/kernel/random/boot_id"); ok {
+		s.BootID = strings.TrimSpace(b)
+	}
 	if f := strings.Fields(readFile("/proc/uptime")); len(f) > 0 {
 		up, _ := strconv.ParseFloat(f[0], 64)
-		r.System.Uptime = uint64(up)
+		s.Uptime = uint64(up)
 	}
-
 	if c.cpuModel == "" {
 		c.cpuModel = parseCPUModel(readFile("/proc/cpuinfo"))
 	}
-	r.System.CPUModel = c.cpuModel
+	s.CPUModel = c.cpuModel
+	return s
+}
 
-	// CPU：/proc/stat 是开机以来的累计 jiffies，使用率取与上一次采样之间的忙碌占比（首次为 0）。
-	// 同时给出各类时间占比与每核使用率（设计 4.4）。
-	cur := parseProcStat(readFile("/proc/stat"))
-	r.CPU.Usage = cpuUsage(c.prevCPU.all, cur.all)
-	r.CPU.Cores = len(cur.cores)
-	r.CPU.Breakdown = cpuBreakdown(c.prevCPU.all, cur.all)
-	r.CPU.PerCore = perCoreUsage(c.prevCPU.cores, cur.cores)
-	r.CPU.TempC = readCPUTemp()
-	c.prevCPU = cur
+// collectCPU 采集 CPU（设计 4.4）。/proc/stat 是开机以来的累计 jiffies，使用率取与上一次采样之间的忙碌占比（首次为 0）。
+// 同时返回 procs_running，供进程数使用。
+func (c *linux) collectCPU(errs *errorList) (protocol.CPU, int) {
+	var cpu protocol.CPU
 	if f := strings.Fields(readFile("/proc/loadavg")); len(f) >= 3 {
-		r.CPU.Load1, _ = strconv.ParseFloat(f[0], 64)
-		r.CPU.Load5, _ = strconv.ParseFloat(f[1], 64)
-		r.CPU.Load15, _ = strconv.ParseFloat(f[2], 64)
+		cpu.Load1, _ = strconv.ParseFloat(f[0], 64)
+		cpu.Load5, _ = strconv.ParseFloat(f[1], 64)
+		cpu.Load15, _ = strconv.ParseFloat(f[2], 64)
 	}
-
-	// 内存：已用 = MemTotal - MemAvailable，而不是 MemTotal - MemFree。
-	// 页缓存可以回收，算作已用会让长期运行的 VPS 看起来接近 100%（设计 4.5）。
-	m := parseMeminfo(readFile("/proc/meminfo"))
-	total, avail := m["MemTotal"], m["MemAvailable"]
-	r.Memory = protocol.Memory{Total: total, Available: avail, Used: total - avail, Usage: pct(total-avail, total),
-		Free: m["MemFree"], Buffers: m["Buffers"], Cached: m["Cached"] + m["SReclaimable"]}
-
-	// 进程数与套接字数（设计 4.9）
-	r.Processes = &protocol.Processes{Total: countProcesses(), Running: cur.running}
-	tcp4, udp4, tw := parseSockstat(readFile("/proc/net/sockstat"))
-	tcp6, udp6, _ := parseSockstat(readFile("/proc/net/sockstat6"))
-	r.Conns = &protocol.Conns{TCP: tcp4 + tcp6, UDP: udp4 + udp6, TimeWait: tw}
-	if now.Sub(c.portsAt) >= time.Minute {
-		c.ports, c.portsAt = collectListenPorts(), now
+	raw, ok := mustRead(errs, "cpu", "/proc/stat")
+	if !ok {
+		return cpu, 0
 	}
-	r.Ports = c.ports
-	r.Swap = protocol.Swap{Total: m["SwapTotal"], Used: m["SwapTotal"] - m["SwapFree"]}
+	cur := parseProcStat(raw)
+	cpu.Usage = cpuUsage(c.prevCPU.all, cur.all)
+	cpu.Cores = len(cur.cores)
+	cpu.Breakdown = cpuBreakdown(c.prevCPU.all, cur.all)
+	cpu.PerCore = perCoreUsage(c.prevCPU.cores, cur.cores)
+	cpu.TempC = readCPUTemp()
+	c.prevCPU = cur
+	return cpu, cur.running
+}
 
-	// 磁盘容量：本地块设备文件系统的每个挂载点（设计 4.6）
-	r.Disk = collectDisks(readFile("/proc/self/mounts"))
+// collectMemory 采集内存与交换分区（设计 4.5）。
+func (c *linux) collectMemory(errs *errorList) (protocol.Memory, protocol.Swap) {
+	raw, ok := mustRead(errs, "memory", "/proc/meminfo")
+	if !ok {
+		return protocol.Memory{}, protocol.Swap{}
+	}
+	m := parseMeminfo(raw)
+	mem, estimated, ok := memoryFrom(m)
+	if !ok {
+		errs.add("memory", "/proc/meminfo 缺少 MemTotal")
+		return protocol.Memory{}, protocol.Swap{}
+	}
+	if estimated && !c.memEstimate {
+		c.memEstimate = true
+		log.Println("collect memory: MemAvailable not provided by this kernel, estimating from MemFree + Buffers + Cached")
+	}
+	return mem, swapFrom(m)
+}
 
-	// 磁盘 IO：只统计整块磁盘（/sys/block 下的设备），分区的 IO 已包含在所属磁盘中（设计 4.7）
+// collectDisks 采集本地块设备文件系统各挂载点的容量（设计 4.6）。读不到挂载表时退回只采集 “/”。
+// statfs 并发执行、整体限时；失败或超时的挂载点本轮不上报并记录原因，其余照常（设计 43.5）。
+func (c *linux) collectDisks(errs *errorList, mounts string) []protocol.Disk {
+	sel := selectMounts(parseMounts(mounts))
+	if len(sel) == 0 {
+		sel = []mountEntry{{Mount: "/"}}
+	}
+	paths := make([]string, len(sel))
+	for i, m := range sel {
+		paths[i] = m.Mount
+	}
+	stats, failed := c.statfs.statAll(paths)
+	var out []protocol.Disk
+	for _, m := range sel {
+		if reason, bad := failed[m.Mount]; bad {
+			errs.add("disk", "%s：%s", m.Mount, reason)
+			continue
+		}
+		if d, ok := diskFromStat(m, stats[m.Mount]); ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// collectDiskIO 采集磁盘 IO（设计 4.7）：只统计整块磁盘（/sys/block 下的设备），分区的 IO 已包含在所属磁盘中。
+func (c *linux) collectDiskIO(now time.Time) []protocol.DiskIO {
 	ioNow := parseDiskstats(readFile("/proc/diskstats"))
-	elapsedIO := now.Sub(c.prevTime).Seconds()
+	elapsed := now.Sub(c.prevIOAt).Seconds()
+	var out []protocol.DiskIO
 	for name, cur := range ioNow {
 		if skipIODevice(name) {
 			continue
@@ -135,93 +245,55 @@ func (c *linux) Collect() (protocol.Report, error) {
 		d := protocol.DiskIO{Device: name, ReadBytes: cur.readBytes, WriteBytes: cur.writeBytes,
 			ReadOps: cur.readOps, WriteOps: cur.writeOps, IOTimeMs: cur.ioTimeMs}
 		// 计数倒退（设备重新挂载）时本轮不计算速率，与网速处理一致
-		if p, ok := c.prevIO[name]; ok && elapsedIO > 0 && cur.readBytes >= p.readBytes && cur.writeBytes >= p.writeBytes {
-			d.ReadSpeed = uint64(float64(cur.readBytes-p.readBytes) / elapsedIO)
-			d.WriteSpeed = uint64(float64(cur.writeBytes-p.writeBytes) / elapsedIO)
-			d.ReadIOPS, d.WriteIOPS, d.AwaitMs, d.Util, _ = ioRates(p, cur, elapsedIO)
+		if p, ok := c.prevIO[name]; ok && elapsed > 0 && cur.readBytes >= p.readBytes && cur.writeBytes >= p.writeBytes {
+			d.ReadSpeed = uint64(float64(cur.readBytes-p.readBytes) / elapsed)
+			d.WriteSpeed = uint64(float64(cur.writeBytes-p.writeBytes) / elapsed)
+			d.ReadIOPS, d.WriteIOPS, d.AwaitMs, d.Util, _ = ioRates(p, cur, elapsed)
 		}
-		r.DiskIO = append(r.DiskIO, d)
+		out = append(out, d)
 	}
-	sort.Slice(r.DiskIO, func(i, j int) bool { return r.DiskIO[i].Device < r.DiskIO[j].Device })
-	c.prevIO = ioNow
+	sort.Slice(out, func(i, j int) bool { return out[i].Device < out[j].Device })
+	c.prevIO, c.prevIOAt = ioNow, now
+	return out
+}
 
-	// 网络：上报原始累计计数，流量统计由面板负责（设计 5.3）；
-	// 网速只用于展示，取与上一次采样的差值（设计 5.2）。
-	counters := parseNetDev(readFile("/proc/net/dev"))
-	elapsed := now.Sub(c.prevTime).Seconds()
-	for _, name := range c.selectIfaces(counters) {
+// collectNetwork 采集网卡计数与网速。上报原始累计计数，流量统计由面板负责（设计 5.3）；
+// 网速只用于展示，取与上一次采样的差值（设计 5.2）。
+func (c *linux) collectNetwork(errs *errorList, now time.Time) []protocol.NetIface {
+	raw, ok := mustRead(errs, "network", "/proc/net/dev")
+	if !ok {
+		return nil
+	}
+	counters := parseNetDev(raw)
+	routed := append(parseDefaultRouteIfaces(readFile("/proc/net/route")), parseDefaultRoute6Ifaces(readFile("/proc/net/ipv6_route"))...)
+	names, missing, sticky := pickIfaces(c.opts.Interfaces, routed, counters, c.opts.Exclude, c.lastIfaces)
+	if len(missing) > 0 {
+		errs.add("network", "指定的网卡不存在：%s", strings.Join(missing, ", "))
+	}
+	if sticky {
+		errs.add("network", "未找到默认路由，沿用上次的统计网卡：%s", strings.Join(names, ", "))
+	}
+	elapsed := now.Sub(c.prevNetAt).Seconds()
+	var out []protocol.NetIface
+	for _, name := range names {
 		cn := counters[name]
 		ni := protocol.NetIface{Interface: name, RxBytes: cn.rx, TxBytes: cn.tx}
 		// ifindex 让面板识别“同名网卡被重建”：未重启但计数从 0 重新开始（设计 5.5）。
 		ni.IfIndex, _ = strconv.Atoi(strings.TrimSpace(readFile("/sys/class/net/" + name + "/ifindex")))
-		// 计数变小（网卡重置）时本轮不计算网速：一次 0 比一个巨大的错误尖峰好。
-		if p, ok := c.prevNet[name]; ok && elapsed > 0 && cn.rx >= p.rx && cn.tx >= p.tx {
-			ni.RxSpeed = uint64(float64(cn.rx-p.rx) / elapsed)
-			ni.TxSpeed = uint64(float64(cn.tx-p.tx) / elapsed)
-		}
-		r.Network = append(r.Network, ni)
-	}
-	c.prevNet = counters
-	c.prevTime = now
-	return r, nil
-}
-
-// collectDisks 对选出的挂载点调用 statfs（不需要权限）。读不到挂载表时退回只采集 “/”。
-//
-// 已用 = Blocks - Bfree（root 保留块计为已用）；使用率 = 已用 / (已用 + Bavail)，与 df 的 Use% 一致：
-// 普通用户可用空间耗尽时显示 100%，即使 root 保留块还有剩余。
-func collectDisks(mounts string) []protocol.Disk {
-	sel := selectMounts(parseMounts(mounts))
-	if len(sel) == 0 {
-		sel = []mountEntry{{Mount: "/"}}
-	}
-	var out []protocol.Disk
-	for _, m := range sel {
-		var st syscall.Statfs_t
-		if err := syscall.Statfs(m.Mount, &st); err != nil || st.Blocks == 0 {
-			continue // 单个挂载点失败不影响其他（设计 43.5）
-		}
-		bs := uint64(st.Bsize)
-		total := st.Blocks * bs
-		used := total - st.Bfree*bs
-		avail := st.Bavail * bs
-		out = append(out, protocol.Disk{Mount: m.Mount, Total: total, Used: used, Available: avail,
-			Usage: pct(used, used+avail), FSType: m.FSType, Device: m.Device})
-	}
-	return out
-}
-
-// selectIfaces 选出参与统计的网卡（设计 5.6）：
-// 显式指定的列表优先；否则取持有默认路由的网卡（IPv4 + IPv6，去重）；
-// 找不到默认路由时，取所有未被排除的网卡。
-// 默认路由网卡就是服务商计费的那块网卡，比把所有网卡相加更接近服务商面板的数值。
-func (c *linux) selectIfaces(counters map[string]netCounters) []string {
-	if len(c.opts.Interfaces) > 0 {
-		var out []string
-		for _, n := range c.opts.Interfaces {
-			if _, ok := counters[n]; ok {
-				out = append(out, n)
+		// 计数回退时：32 位计数器回绕按回绕补算；其他情况（网卡重置）本轮不计算网速，一次 0 比一个巨大的错误尖峰好。
+		if p, ok := c.prevNet[name]; ok && elapsed > 0 {
+			drx, okRx := protocol.CounterDelta(p.rx, cn.rx, c.bits)
+			dtx, okTx := protocol.CounterDelta(p.tx, cn.tx, c.bits)
+			if okRx && okTx {
+				ni.RxSpeed, ni.TxSpeed = uint64(float64(drx)/elapsed), uint64(float64(dtx)/elapsed)
 			}
 		}
-		return out
+		out = append(out, ni)
 	}
-	seen := map[string]bool{}
-	var out []string
-	for _, n := range append(parseDefaultRouteIfaces(readFile("/proc/net/route")),
-		parseDefaultRoute6Ifaces(readFile("/proc/net/ipv6_route"))...) {
-		if _, ok := counters[n]; ok && !seen[n] && !excluded(n, c.opts.Exclude) {
-			seen[n] = true
-			out = append(out, n)
-		}
+	if len(names) > 0 {
+		c.lastIfaces = names
 	}
-	if len(out) > 0 {
-		return out
-	}
-	for n := range counters {
-		if !excluded(n, c.opts.Exclude) {
-			out = append(out, n)
-		}
-	}
+	c.prevNet, c.prevNetAt = counters, now
 	return out
 }
 

@@ -15,10 +15,13 @@ func TestComputeDelta(t *testing.T) {
 		wantReset      bool
 	}{
 		{"first sighting", nil, base, 0, 0, false},
-		{"normal increase", &base, Counter{"a", 2, 1500, 700}, 500, 200, false},
-		{"reboot with larger counters still detected", &base, Counter{"b", 2, 5000, 5000}, 5000, 5000, true},
-		{"nic recreated", &base, Counter{"a", 7, 10, 20}, 10, 20, true},
-		{"counter went backward", &base, Counter{"a", 2, 10, 600}, 10, 600, true},
+		{"normal increase", &base, Counter{"a", 2, 1500, 700, 0}, 500, 200, false},
+		{"reboot with larger counters still detected", &base, Counter{"b", 2, 5000, 5000, 0}, 5000, 5000, true},
+		{"nic recreated", &base, Counter{"a", 7, 10, 20, 0}, 10, 20, true},
+		{"counter went backward", &base, Counter{"a", 2, 10, 600, 0}, 10, 600, true},
+		{"32 位内核：接收计数回绕，按回绕补算", &Counter{"a", 2, 1<<32 - 1000, 500, 0}, Counter{"a", 2, 24, 700, 32}, 1024, 200, false},
+		{"位数未知时回退仍按重置", &Counter{"a", 2, 1<<32 - 1000, 500, 0}, Counter{"a", 2, 24, 700, 0}, 24, 700, true},
+		{"32 位但另一方向异常回退：整体重置", &Counter{"a", 2, 1<<32 - 1000, 1 << 31, 0}, Counter{"a", 2, 24, 10, 32}, 24, 10, true},
 	}
 	for _, c := range cases {
 		rx, tx, reset := ComputeDelta(c.prev, c.cur)
