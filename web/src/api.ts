@@ -369,6 +369,39 @@ export function syncReleases(): Promise<{ version: string; channel: string }> {
   return request('POST', '/agent-releases/sync')
 }
 
+/** 已同步并验签的官方版本，最新在前 */
+export function listReleases(): Promise<{ items: AgentRelease[] }> {
+  return request('GET', '/agent-releases')
+}
+
+export type UpgradeStatus = 'pending' | 'delivered' | 'staged' | 'success' | 'failed' | 'rolled_back' | 'cancelled'
+
+/** 远程升级任务（设计 29.13、29.14） */
+export interface UpgradeTask {
+  id: number
+  server_id: number
+  server_name: string
+  target_version: string
+  from_version: string
+  status: UpgradeStatus
+  reason: string
+  created_by: string
+  created_at: number
+  updated_at: number
+}
+
+export function listUpgradeTasks(serverId?: number): Promise<{ items: UpgradeTask[] }> {
+  return request('GET', '/upgrade-tasks' + (serverId ? `?server_id=${serverId}` : ''))
+}
+
+export function createUpgradeTasks(serverIds: number[], version: string): Promise<{ created: UpgradeTask[]; skipped: { server_id: number; reason: string }[] }> {
+  return request('POST', '/upgrade-tasks', { server_ids: serverIds, version })
+}
+
+export function cancelUpgradeTask(id: number): Promise<void> {
+  return request('POST', `/upgrade-tasks/${id}/cancel`)
+}
+
 /** 注册码与安装命令。enroll_code 只在新建与重新生成时返回一次（设计 19.11）。 */
 export interface EnrollCodeView {
   server_id: number

@@ -6,7 +6,8 @@
 //
 // 【安全】只会安装官方签名、版本更高的 vpsmon-agent；不执行任何其他程序或命令（设计 29.21）。
 // 唯一的降级途径是在本机显式加 --allow-downgrade（设计 29.7.4）。
-// 远程升级（面板下发任务、特权 updater）随 A7 后续加入，复用本包的校验与替换逻辑。
+// 远程升级（设计 29.13）复用同一流程：Agent 把文件暂存到 update/ 目录，特权 updater 用 DirSource 从暂存目录读取，
+// 不联网、不解析面板的任何指令，按同样的规则独立复验后再替换（见 remote.go、updater.go）。
 package upgrade
 
 import (
@@ -28,6 +29,9 @@ import (
 	"vpsmon/internal/release"
 )
 
+// RootWorkDir 是以 root 运行（本机 upgrade、特权 updater）时的工作目录，只有 root 可读写。
+const RootWorkDir = "/var/lib/vpsmon-agent-updater"
+
 // OfficialReleases 是官方发布地址（GitHub Releases，公开，任何人都可以核对签名，设计 29.7.5）。
 const OfficialReleases = "https://github.com/ynhacler/redpoint-monitor/releases"
 
@@ -40,7 +44,14 @@ type Options struct {
 	Keys           []release.PublicKey
 
 	Bin      string // 要替换的程序：/usr/local/bin/vpsmon-agent
-	StateDir string // /var/lib/vpsmon-agent：update/、backup/ 与 status.json
+	StateDir string // /var/lib/vpsmon-agent：Agent 的状态目录（status.json）
+	// WorkDir 存放下载中的新版本与备份（update/、backup/），默认同 StateDir。
+	// 【安全】以 root 运行时必须是只有 root 可写的目录（RootWorkDir）：Agent 可写的目录中可能被预先放置
+	// 符号链接或伪造的“备份”，root 写入或回滚时会被利用（设计 29.13）。
+	WorkDir string
+
+	// Source 提供清单、签名与二进制；nil 时从 Mirror 或官方地址下载（HTTPSource）
+	Source Source
 
 	HTTP          *http.Client
 	Restart       func() error // 重启 Agent 服务；nil 表示不重启（例如没有安装服务）
@@ -63,14 +74,9 @@ func Run(ctx context.Context, o Options) error {
 	say := func(f string, a ...any) { fmt.Fprintf(o.Out, f+"\n", a...) }
 
 	// 1. 发布清单与签名
-	mURL, sURL := o.manifestURLs()
-	data, err := o.get(ctx, mURL, maxManifest)
+	data, sig, err := o.Source.Manifest(ctx)
 	if err != nil {
-		return fmt.Errorf("下载发布清单失败：%w", err)
-	}
-	sig, err := o.get(ctx, sURL, maxSignature)
-	if err != nil {
-		return fmt.Errorf("下载清单签名失败：%w", err)
+		return err
 	}
 	m, err := release.VerifyManifest(o.Keys, data, sig)
 	if err != nil {
@@ -96,14 +102,13 @@ func Run(ctx context.Context, o Options) error {
 	if !ok {
 		return fmt.Errorf("版本 %s 没有 %s/%s 的构建", m.Version, runtime.GOOS, arch)
 	}
-	updDir := filepath.Join(o.StateDir, "update")
+	updDir := filepath.Join(o.WorkDir, "work")
 	if err := os.MkdirAll(updDir, 0o700); err != nil {
 		return err
 	}
 	newPath := filepath.Join(updDir, "vpsmon-agent.new")
 	defer os.Remove(newPath)
-	say("下载 %s", o.fileURL(m.Version, art.File))
-	if err := o.download(ctx, o.fileURL(m.Version, art.File), newPath, art.Size); err != nil {
+	if err := o.Source.Binary(ctx, m.Version, art.File, newPath, art.Size); err != nil {
 		return err
 	}
 	if got, err := fileSHA256(newPath); err != nil || got != art.SHA256 {
@@ -169,7 +174,95 @@ func (o *Options) defaults() {
 		o.Out = io.Discard
 	}
 	o.Mirror = strings.TrimRight(o.Mirror, "/")
+	if o.Source == nil {
+		o.Source = &httpSource{o: o}
+	}
+	if o.WorkDir == "" {
+		o.WorkDir = o.StateDir
+	}
 }
+
+// Source 提供一次升级所需的文件。实现只负责取文件，校验全部在 Run 中完成：来源不可信也不影响安全性。
+type Source interface {
+	// Manifest 返回清单原文与 minisign 签名。
+	Manifest(ctx context.Context) (data, sig []byte, err error)
+	// Binary 把指定版本的构建写到 dst，大小必须恰好为 size。
+	Binary(ctx context.Context, version, file, dst string, size int64) error
+}
+
+// httpSource 从面板镜像或官方地址下载。
+type httpSource struct{ o *Options }
+
+func (h *httpSource) Manifest(ctx context.Context) ([]byte, []byte, error) {
+	mURL, sURL := h.o.manifestURLs()
+	data, err := h.o.get(ctx, mURL, maxManifest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("下载发布清单失败：%w", err)
+	}
+	sig, err := h.o.get(ctx, sURL, maxSignature)
+	if err != nil {
+		return nil, nil, fmt.Errorf("下载清单签名失败：%w", err)
+	}
+	return data, sig, nil
+}
+
+func (h *httpSource) Binary(ctx context.Context, version, file, dst string, size int64) error {
+	url := h.o.fileURL(version, file)
+	fmt.Fprintf(h.o.Out, "下载 %s\n", url)
+	return h.o.download(ctx, url, dst, size)
+}
+
+// DirSource 从暂存目录读取（特权 updater 使用，不联网，设计 29.13）。目录中的内容视为不可信，照常完整复验。
+type DirSource struct{ Dir string }
+
+func (d DirSource) Manifest(context.Context) ([]byte, []byte, error) {
+	data, err := readLimited(filepath.Join(d.Dir, "manifest.json"), maxManifest)
+	if err != nil {
+		return nil, nil, err
+	}
+	sig, err := readLimited(filepath.Join(d.Dir, "manifest.json.minisig"), maxSignature)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, sig, nil
+}
+
+func (d DirSource) Binary(_ context.Context, _, file, dst string, size int64) error {
+	if file != filepath.Base(file) || strings.HasPrefix(file, ".") {
+		return fmt.Errorf("文件名无效：%q", file)
+	}
+	b, err := readLimited(filepath.Join(d.Dir, file), maxBinary)
+	if err != nil {
+		return err
+	}
+	if int64(len(b)) != size {
+		return fmt.Errorf("暂存的 %s 大小不符", file)
+	}
+	return os.WriteFile(dst, b, 0o600)
+}
+
+// readLimited 读取暂存目录中的文件：不跟随符号链接，只接受普通文件，限制大小。
+// 先打开再对已打开的文件 fstat，避免检查与读取之间被替换（TOCTOU）。
+func readLimited(path string, max int64) ([]byte, error) {
+	f, err := openNoFollow(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 失败（不接受符号链接）：%w", filepath.Base(path), err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > max {
+		return nil, fmt.Errorf("%s 不是普通文件或超过大小上限", filepath.Base(path))
+	}
+	return io.ReadAll(io.LimitReader(f, max))
+}
+
+// RollbackError 表示新版本健康检查失败、已从本机备份回滚（设计 29.12）。
+type RollbackError struct{ Reason string }
+
+func (e *RollbackError) Error() string { return "升级失败，已回滚：" + e.Reason }
 
 // manifestURLs 返回清单与签名地址：官方最新版用 releases/latest/download，指定版本用 download/vX；镜像为 {mirror}/vX/。
 func (o *Options) manifestURLs() (string, string) {
@@ -261,7 +354,7 @@ func (o *Options) download(ctx context.Context, url, path string, size int64) er
 
 // backupCurrent 把当前程序复制到 backup/vpsmon-agent-<版本>，返回备份路径。
 func (o *Options) backupCurrent() (string, error) {
-	dir := filepath.Join(o.StateDir, "backup")
+	dir := filepath.Join(o.WorkDir, "backup")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
@@ -309,7 +402,7 @@ func (o *Options) rollback(backup, reason string) error {
 			return fmt.Errorf("%s；已恢复旧版本，但重启失败：%v", reason, err)
 		}
 	}
-	return fmt.Errorf("升级失败，已回滚到 %s：%s", o.Current, reason)
+	return &RollbackError{Reason: reason}
 }
 
 // ArchLabel 返回本程序的构建架构名，与发布文件名一致：arm 区分 armv7 / armv6（设计 27.5.4）。

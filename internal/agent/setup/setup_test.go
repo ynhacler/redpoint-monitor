@@ -68,7 +68,10 @@ func fakePanel(t *testing.T, status int, body string) (*httptest.Server, *enroll
 func testPaths(t *testing.T) (Paths, string) {
 	dir := t.TempDir()
 	p := Paths{Bin: filepath.Join(dir, "bin/vpsmon-agent"), ConfDir: filepath.Join(dir, "etc/vpsmon-agent"),
-		StateDir: filepath.Join(dir, "var/lib/vpsmon-agent"), Unit: filepath.Join(dir, "systemd/vpsmon-agent.service")}
+		StateDir: filepath.Join(dir, "var/lib/vpsmon-agent"), Unit: filepath.Join(dir, "systemd/vpsmon-agent.service"),
+		Updater:        filepath.Join(dir, "lib/vpsmon-agent/updater"),
+		UpdaterPath:    filepath.Join(dir, "systemd/vpsmon-agent-updater.path"),
+		UpdaterService: filepath.Join(dir, "systemd/vpsmon-agent-updater.service")}
 	for _, d := range []string{filepath.Dir(p.Bin), filepath.Dir(p.Unit), p.StateDir, filepath.Join(dir, "host/etc")} {
 		os.MkdirAll(d, 0o755)
 	}
@@ -118,8 +121,15 @@ func TestInstallSuccess(t *testing.T) {
 	if b, _ := os.ReadFile(p.Unit); string(b) != unitFile {
 		t.Error("应写入内嵌的 systemd 单元")
 	}
+	if b, _ := os.ReadFile(p.Updater); string(b) != "#!binary" {
+		t.Error("应安装 updater 的独立副本（设计 29.13）")
+	}
+	if b, _ := os.ReadFile(p.UpdaterPath); string(b) != updaterPathFile {
+		t.Error("应写入远程升级的 path 单元")
+	}
 	want := []string{"useradd --system --no-create-home --shell /usr/sbin/nologin vpsmon-agent",
-		"systemctl daemon-reload", "systemctl enable --now vpsmon-agent"}
+		"systemctl daemon-reload", "systemctl daemon-reload", "systemctl enable --now vpsmon-agent-updater.path",
+		"systemctl enable --now vpsmon-agent"}
 	if strings.Join(sys.cmds, "\n") != strings.Join(want, "\n") {
 		t.Errorf("执行的命令：\n%s\n应为：\n%s", strings.Join(sys.cmds, "\n"), strings.Join(want, "\n"))
 	}
@@ -216,7 +226,7 @@ func TestUninstall(t *testing.T) {
 	if *unregToken != "Bearer agt_abcdefghijklmnop" {
 		t.Errorf("卸载时应用 Agent Token 通知面板（设计 27.11）：%q", *unregToken)
 	}
-	for _, f := range []string{p.ConfDir, p.StateDir, p.Unit, p.Bin} {
+	for _, f := range []string{p.ConfDir, p.StateDir, p.Unit, p.Bin, p.Updater, p.UpdaterPath, p.UpdaterService} {
 		if _, err := os.Stat(f); err == nil {
 			t.Errorf("卸载后 %s 不应存在", f)
 		}
@@ -238,11 +248,43 @@ func TestStatusFile(t *testing.T) {
 
 // 内嵌的单元必须与 deploy/systemd 中的一致，避免两份配置漂移。
 func TestEmbeddedUnitMatchesDeployFile(t *testing.T) {
-	b, err := os.ReadFile("../../../deploy/systemd/vpsmon-agent.service")
-	if err != nil {
+	for name, embedded := range map[string]string{"vpsmon-agent.service": unitFile,
+		"vpsmon-agent-updater.path": updaterPathFile, "vpsmon-agent-updater.service": updaterServiceFile} {
+		b, err := os.ReadFile("../../../deploy/systemd/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(b) != embedded {
+			t.Errorf("internal/agent/setup/%s 与 deploy/systemd/%s 不一致，请同步修改", name, name)
+		}
+	}
+}
+
+// --no-remote-upgrade：不安装 updater，写下禁止文件；之后 enable-remote-upgrade 可以打开（设计 29.13）。
+func TestInstallWithoutRemoteUpgrade(t *testing.T) {
+	p, dir := testPaths(t)
+	panel, _, _ := fakePanel(t, 200, okBody)
+	sys := &fakeSystem{root: true, systemd: true, users: map[string]bool{}}
+	sys.onEnable = func() { WriteStatus(p.StateDir, Status{LastSuccess: time.Now().Unix() + 1}) }
+	o := Options{Server: panel.URL, EnrollCode: "ENR-AAAA-AAAA-AAAA-AAAA", NoRemoteUpgrade: true,
+		Self: filepath.Join(dir, "downloaded-agent"), Paths: p, Sys: sys, WaitFirst: time.Second,
+		HostInfoRoot: filepath.Join(dir, "host")}
+	if err := Install(context.Background(), o); err != nil {
 		t.Fatal(err)
 	}
-	if string(b) != unitFile {
-		t.Error("internal/agent/setup/vpsmon-agent.service 与 deploy/systemd/vpsmon-agent.service 不一致，请同步修改")
+	if _, err := os.Stat(p.Updater); err == nil {
+		t.Error("--no-remote-upgrade 时不应安装 updater")
+	}
+	if _, err := os.Stat(p.NoRemoteUpgradeFile()); err != nil {
+		t.Error("--no-remote-upgrade 时应写下禁止文件")
+	}
+	if err := EnableRemoteUpgrade(Options{Paths: p, Sys: sys, Self: p.Bin}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.NoRemoteUpgradeFile()); err == nil {
+		t.Error("启用后应删除禁止文件")
+	}
+	if _, err := os.Stat(p.Updater); err != nil {
+		t.Error("启用后应安装 updater")
 	}
 }

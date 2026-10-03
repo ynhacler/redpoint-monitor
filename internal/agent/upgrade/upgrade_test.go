@@ -141,7 +141,7 @@ func TestUpgradeHealthCheckRollback(t *testing.T) {
 	f.publish("0.3.0", nil, "")
 	// 新版本重启后一直没有成功上报：60 秒（此处 10 秒）后回滚
 	_, err := f.run("0.3.0", nil)
-	if err == nil || !strings.Contains(err.Error(), "已回滚到 0.2.0") {
+	if _, ok := err.(*RollbackError); !ok {
 		t.Fatalf("健康检查超时应回滚：%v", err)
 	}
 	if f.installed() != string(script("0.2.0")) || f.restart != 2 {

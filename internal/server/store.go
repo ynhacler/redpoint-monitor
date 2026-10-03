@@ -355,6 +355,20 @@ var migrations = []string{
 		released_at TEXT NOT NULL,
 		synced_at INTEGER NOT NULL
 	);`,
+
+	// 迁移 13：远程升级任务（设计 29.10、29.14）。同一节点同时只有一个进行中的任务。
+	`CREATE TABLE upgrade_tasks (
+		id INTEGER PRIMARY KEY,
+		server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+		target_version TEXT NOT NULL,       -- 已验签的官方版本，不带 v
+		from_version TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,               -- pending / delivered / staged / installing / success / failed / rolled_back / cancelled
+		reason TEXT NOT NULL DEFAULT '',    -- 失败或回滚原因（Agent 上报，已截断）
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE INDEX upgrade_tasks_server ON upgrade_tasks(server_id, id);`,
 }
 
 func (s *Store) migrate() error {

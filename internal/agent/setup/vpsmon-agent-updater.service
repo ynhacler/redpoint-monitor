@@ -1,0 +1,14 @@
+# 特权 updater（设计 29.13）：从暂存目录读取，不联网；用内置公钥复验签名、拒绝降级，
+# 只替换 /usr/local/bin/vpsmon-agent，健康检查失败自动回滚。updater 自身不通过远程升级更新。
+[Unit]
+Description=VPS Monitor agent updater
+ConditionPathExists=!/etc/vpsmon-agent/no-remote-upgrade
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/vpsmon-agent/updater updater
+TimeoutStartSec=180
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+PrivateNetwork=true

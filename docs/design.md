@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 37 | A7 第三步：远程升级。迁移 13 upgrade_tasks；管理员接口 /upgrade-tasks（创建 / 列表 / 取消），Agent 接口 /agent/upgrade 与 /agent/upgrade/status（转交官方签名清单原文）；Agent 校验并暂存，systemd path 单元触发 root updater（独立副本、不联网、os.Root 操作暂存目录、复验与防降级、健康检查与回滚）；安装时默认启用，--no-remote-upgrade / enable-remote-upgrade / no-remote-upgrade 文件控制；节点详情显示升级按钮与进度 | 19、27.11、29.13、29.14、29.20 |
 | 36 | A7 第二步：面板同步并验签官方版本（迁移 12 agent_releases，每次读取重新验签）；安装命令改为默认命令（下载 → 校验 → 执行），另提供 manual_command；--no-release-sync | 27.3.1、29.1、29.20 |
 | 35 | A7 第一步：签名发布链路（minisign、清单含 installer、cmd/vpsmon-release、草稿 Release + 离线签名脚本、官方地址为公开 GitHub Releases）；安装脚本 scripts/agent.sh.in；本地 vpsmon-agent upgrade（验签、防降级、健康检查与回滚） | 27.5、29、29.7.2、40.8.4 |
 | 34 | A5 第三步：静音与维护（迁移 11 silences；接口；维护不评估、静音只标记）；StatusDot 增加“维护中” | 16.6、18.14、41.3 |
@@ -7145,16 +7146,52 @@ updater 设计约束：
 不联网，不解析来自 monitor-server 的任何指令
 只替换 /usr/local/bin/monitor-agent 这一个路径
 自身不通过该流程升级（随 Agent 安装包或系统包管理器更新）
-config.yaml 中 upgrade.remote = false 时直接拒绝执行
+节点存在 /etc/monitor-agent/no-remote-upgrade 时直接拒绝执行
 ```
 
 即使 monitor-agent 进程被攻破，攻击者也只能让 updater 安装一个合法签名的更高版本。
+
+### 29.13.1 实现（A7 第三步）
+
+```text
+文件布局
+  /usr/local/lib/monitor-agent/updater          updater 的独立副本（与 Agent 同一程序，子命令 updater）；
+                                                只随 install / 本机 upgrade / enable-remote-upgrade 更新
+  /etc/systemd/system/monitor-agent-updater.path     PathChanged=/var/lib/monitor-agent/update/request.json
+  /etc/systemd/system/monitor-agent-updater.service  Type=oneshot，root，PrivateNetwork=true
+  /var/lib/monitor-agent/update/                暂存目录（Agent 用户可写，updater 视为不可信）
+  /var/lib/monitor-agent-updater/               updater 工作目录与备份（root 0700）
+
+Agent（非 root）
+  启动 30 秒后、之后每 5 分钟：仅当已安装 path 单元且没有 no-remote-upgrade 时查询 GET /agent/upgrade
+  先上报 updater 留下的 result.json，再处理新任务
+  验签面板转交的清单原文 → 版本与任务一致 → 防降级 → 从官方地址下载本机构建 → SHA256
+  写入 manifest.json、manifest.json.minisig、构建文件，最后原子写入 request.json → 上报 staged
+  任一步失败上报 failed，不写 request.json
+
+updater（root）
+  暂存目录必须是真实目录（不接受符号链接）；通过 os.Root 删除与写入，不会落到目录之外
+  文件以 O_NOFOLLOW 打开并限制大小；当前版本取自已安装程序本身（不是 Agent 可写的 status.json）
+  以暂存目录为来源（不联网）执行与本机升级相同的流程（29.7～29.12）：复验 → 防降级 → 备份 → 原子替换
+  → 重启 → 健康检查 → 失败回滚；结果写入 result.json（success / failed / rolled_back）
+
+开关
+  安装时 --no-remote-upgrade：不安装 updater，写入 no-remote-upgrade
+  sudo monitor-agent enable-remote-upgrade：为已安装的节点启用
+  关闭：sudo touch /etc/monitor-agent/no-remote-upgrade（updater 单元也以此为 ConditionPathExists）
+```
 
 ---
 
 ## 29.14 Web 升级任务
 
-升级任务数据：
+第一阶段实现（迁移 13 upgrade_tasks）：任务按节点创建，字段为 id、server_id、target_version、from_version、
+status（pending → delivered → staged → success / failed / rolled_back，或 cancelled）、reason、created_by、
+created_at、updated_at。每个节点同时只有一个进行中的任务；超过 1 小时未结束判为失败；pending / delivered 可取消。
+目标版本只能是已同步并验签的官方版本，不高于节点当前版本的节点被跳过。Web 在节点详情的 Agent 一栏显示
+“升级到 vX”与任务进度。按分组 / 标签 / 全部批量创建见下表（接口已支持多个 server_id，界面后续提供）。
+
+完整设计的升级任务数据：
 
 ```text
 task_id
