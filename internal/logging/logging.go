@@ -20,9 +20,17 @@ import (
 // 前缀前要求不是字母或数字，避免误伤 “redemption_” 之类的普通单词。
 var credential = regexp.MustCompile(`(^|[^A-Za-z0-9])((?:adm|ses|agt|dev|rt)_[a-z0-9]{8,}|(?:MNT|ENR)-[A-Z0-9][A-Z0-9-]{7,})`)
 
+// botToken 是 Telegram Bot Token（数字 ID + 冒号 + 30 位以上密钥，通知渠道使用，设计 16.5）。
+// 只保留 ID 与末 4 位：123456789:…sawQ
+var botToken = regexp.MustCompile(`(^|[^0-9])(\d{5,15}):[A-Za-z0-9_-]{30,64}`)
+
 // Redact 把字符串中出现的凭证替换为“前缀 + … + 末 4 位”，例如 agt_…r5sx（设计 24.7）。
 // 保留前缀便于判断是哪类凭证，保留末 4 位便于与用户手里的凭证对照，其余部分不可恢复。
 func Redact(s string) string {
+	s = botToken.ReplaceAllStringFunc(s, func(m string) string {
+		i := strings.IndexByte(m, ':')
+		return m[:i+1] + "…" + m[len(m)-4:]
+	})
 	idx := credential.FindAllStringSubmatchIndex(s, -1)
 	if idx == nil {
 		return s

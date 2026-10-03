@@ -107,7 +107,7 @@ const title = computed(() => ruleNames[r.rule_key] ?? r.rule_key)
       </label>
       <label>未恢复时重复提醒（小时）
         <input v-model="f.repeatH" type="number" min="0" max="168" step="0.5" />
-        <small class="muted">0 表示不重复（通知功能随后提供）</small>
+        <small class="muted">0 表示不重复；通知发到“通知”标签中的渠道</small>
       </label>
       <label class="check"><input v-model="f.enabled" type="checkbox" />启用“{{ title }}”</label>
     </div>

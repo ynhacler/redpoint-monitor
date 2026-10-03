@@ -21,6 +21,9 @@ func TestRedact(t *testing.T) {
 		{"一行中多个凭证", "a=agt_aaaaaaaaaaaa1111 b=adm_bbbbbbbbbbbb2222", "a=agt_…1111 b=adm_…2222"},
 		{"普通单词不误伤", "redemption_value admin_panel ENROLL", "redemption_value admin_panel ENROLL"},
 		{"过短的不算凭证", "agt_abc", "agt_abc"},
+		{"Telegram Bot Token（通知渠道）", "post https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ/sendMessage",
+			"post https://api.telegram.org/bot123456789:…sawQ/sendMessage"},
+		{"时间不是 Bot Token", "at 12:30:45 port 8080:443", "at 12:30:45 port 8080:443"},
 	}
 	for _, c := range cases {
 		if got := Redact(c.in); got != c.want {

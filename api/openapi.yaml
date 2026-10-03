@@ -461,6 +461,77 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
+  /notification-channels:
+    get:
+      tags: [alerts]
+      summary: 通知渠道（设计 16.5、31）；凭证已脱敏
+      responses:
+        '200':
+          description: 渠道列表
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/NotifyChannel' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [alerts]
+      summary: 添加通知渠道（记入操作日志）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotifyChannelInput' } } }
+      responses:
+        '201': { description: 已添加（脱敏）, content: { application/json: { schema: { $ref: '#/components/schemas/NotifyChannel' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /notification-channels/{id}:
+    put:
+      tags: [alerts]
+      summary: 修改通知渠道；类型不可修改，凭证字段留空保持原值
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotifyChannelInput' } } }
+      responses:
+        '200': { description: 已修改（脱敏）, content: { application/json: { schema: { $ref: '#/components/schemas/NotifyChannel' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [alerts]
+      summary: 删除通知渠道（投递记录保留）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /notification-channels/{id}/test:
+    post:
+      tags: [alerts]
+      summary: 发送测试通知（同步发送一次，不重试；停用的渠道也可测试）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 发送结果；失败原因不含请求地址与凭证
+          content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, error: { type: string } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /notification-deliveries:
+    get:
+      tags: [alerts]
+      summary: 通知投递记录，最新在前（保留 30 天，设计 18.15）
+      parameters:
+        - { name: event_id, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 投递记录
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
   /silences:
     get:
       tags: [alerts]
@@ -1005,6 +1076,62 @@ components:
         notes: { type: string }
         artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
         mirrored: { type: boolean, description: 全部文件已校验并保存在本面板（设计 27.5.3） }
+
+    NotifyChannel:
+      type: object
+      description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥只返回是否已设置
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [telegram, webhook] }
+        name: { type: string }
+        enabled: { type: boolean }
+        min_severity: { type: string, enum: [critical, warning, info], description: 达到该级别才发送 }
+        notify_resolved: { type: boolean }
+        config:
+          type: object
+          properties:
+            bot_token: { type: string, example: '123456789:AA…sawQ' }
+            chat_id: { type: string }
+            url: { type: string, example: 'https://hooks.example.com/…' }
+            has_secret: { type: boolean }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+
+    NotifyChannelInput:
+      type: object
+      required: [name, config]
+      properties:
+        type: { type: string, enum: [telegram, webhook], description: 创建时必填，不可修改 }
+        name: { type: string, maxLength: 40 }
+        enabled: { type: boolean, default: true }
+        min_severity: { type: string, enum: [critical, warning, info], default: warning }
+        notify_resolved: { type: boolean, default: true }
+        config:
+          type: object
+          description: 修改时凭证字段留空表示保持原值
+          properties:
+            bot_token: { type: string, description: Telegram Bot Token（@BotFather） }
+            chat_id: { type: string, description: 数字 ID（群组为负数）或 @频道名 }
+            url: { type: string, description: Webhook 地址；只允许 HTTPS，回环地址除外；不跟随重定向 }
+            secret: { type: string, maxLength: 128, description: 可选，请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret, 请求体) }
+            clear_secret: { type: boolean }
+
+    Delivery:
+      type: object
+      properties:
+        id: { type: integer }
+        channel_id: { type: integer }
+        channel_name: { type: string }
+        channel_type: { type: string, enum: [telegram, webhook] }
+        event_id: { type: integer, description: 测试通知为 0 }
+        server_name: { type: string }
+        kind: { type: string, enum: [firing, resolved, repeat, test] }
+        title: { type: string }
+        status: { type: string, enum: [sent, failed, retrying] }
+        attempts: { type: integer }
+        last_error: { type: string, description: 不含请求地址与凭证 }
+        created_at: { type: integer }
+        sent_at: { type: integer }
 
     UpgradeTask:
       type: object

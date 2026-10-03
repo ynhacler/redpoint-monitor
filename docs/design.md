@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 44 | A5 通知第一步：Telegram 与 Webhook 渠道（迁移 15 notification_channels / notification_deliveries），触发 / 恢复 / 重复提醒，按最低级别筛选，静音不发送，失败重试 3 次，投递记录 30 天，测试通知；凭证脱敏与 Bot Token 日志脱敏；告警页新增“通知”标签 | 16.5、18.15、24.7、31 |
 | 43 | Agent Token 吊销与更换：Web 吊销（重新验证密码，节点回到待安装、历史保留）；vpsmon-agent rotate-token 凭新注册码就地更换，注册请求可带 server_id，注册码属于其他节点时拒绝；不提供凭旧 Token 自助轮换。vpsmon-server audit 命令行查看审计日志（可按类别、结果、操作前缀筛选，--json） | 17.2、23.2、24.8、27.6.2、27.11 |
 | 42 | 面板镜像与离线导入：--release-mirror 同步时镜像全部文件，release import 导入官方发布包（验签 + 逐个校验，迁移 14 mirrored_at）；/releases/v{版本}/{文件} 只提供清单列出的文件并在发出前核对 SHA256；已镜像时安装命令与远程升级从本面板下载 | 19、27.5.3、29.1 |
 | 41 | 节点详情：系统与资产信息并入顶部概况卡片（系统信息有值才显示；资产字段——供应商、套餐、带宽、国家 / 地区、城市 / 机房、分组、续费、到期、备注——始终显示，未填写为“—”；IP 可点击复制，到期按剩余天数着色），去掉底部“系统”“资产”两个面板 | 11.1 |
@@ -4531,6 +4532,24 @@ FLAPPING  30 分钟内触发与恢复超过 4 次：只通知一次“状态频�
 ```
 
 投递失败按渠道重试 3 次（指数退避），仍失败记录到通知投递表并显示在事件中心；推送渠道失败的处理见 30.6。每个渠道提供“发送测试通知”按钮。
+
+实现（A5 通知第一步：Telegram 与 Webhook）：
+
+```text
+渠道      notification_channels（迁移 15）：类型、名称、启用、最低级别（严重 / 警告 / 提示）、是否发送恢复通知、参数
+          Telegram：Bot Token + Chat ID，调用 Bot API sendMessage（纯文本）
+          Webhook：POST JSON（version 1：kind、title、text、event_id、server、rule_key、type、severity、value、
+          threshold、message、started_at、resolved_at、url）；只允许 HTTPS（回环地址除外），不跟随重定向；
+          可选签名密钥：X-Vpsmon-Signature: sha256=HMAC-SHA256(密钥, 请求体)
+触发      进入 firing、恢复（渠道开启“恢复时通知”）、仍未恢复且到达规则的重复间隔（repeat_interval_s）
+          已静音的告警不发送（重复提醒的计时照常推进）；规则关闭、维护开始等“规则失效”结束的告警不发恢复通知
+投递      异步发送，并发上限 4；失败后按 2s / 8s / 30s 重试 3 次；每次投递写入 notification_deliveries，保留 30 天
+测试      “发送测试”同步发送一次、不重试，结果直接显示并写入投递记录
+安全      凭证只用于发送：接口返回时脱敏（Bot Token 保留 ID 与末 4 位；Webhook 只显示协议与主机），修改时留空保持原值；
+          错误信息去掉请求地址（Telegram 地址含 Token）；日志脱敏规则增加 Bot Token（设计 24.7）；渠道修改记入操作日志
+链接      配置了 --public-url 时，通知附节点详情地址
+暂未提供  免打扰时段、批量离线合并、抖动检测（随 A5 降噪）；App 推送（阶段 C）
+```
 
 ---
 

@@ -372,6 +372,37 @@ var migrations = []string{
 
 	// 迁移 14：面板镜像（设计 27.5.3）。mirrored_at 非 0 表示该版本的全部文件已校验并保存在数据目录的 releases/ 下。
 	`ALTER TABLE agent_releases ADD COLUMN mirrored_at INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 15：通知渠道与投递记录（设计 16.5、18.15）。config 为渠道参数（含凭证，只用于发送，接口返回时脱敏）；
+	// 投递记录冗余保存渠道名与节点名，渠道或节点删除后记录仍可读，保留 30 天。
+	`CREATE TABLE notification_channels (
+		id INTEGER PRIMARY KEY,
+		type TEXT NOT NULL,                 -- telegram / webhook
+		name TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		min_severity TEXT NOT NULL DEFAULT 'warning',
+		notify_resolved INTEGER NOT NULL DEFAULT 1,
+		config TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE notification_deliveries (
+		id INTEGER PRIMARY KEY,
+		channel_id INTEGER NOT NULL,
+		channel_name TEXT NOT NULL,
+		channel_type TEXT NOT NULL,
+		event_id INTEGER NOT NULL DEFAULT 0,  -- 测试通知为 0
+		server_name TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL,                   -- firing / resolved / repeat / test
+		title TEXT NOT NULL,
+		status TEXT NOT NULL,                 -- sent / failed / retrying
+		attempts INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT '',  -- 不含请求地址与凭证
+		created_at INTEGER NOT NULL,
+		sent_at INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX notification_deliveries_event ON notification_deliveries(event_id);
+	CREATE INDEX notification_deliveries_created ON notification_deliveries(created_at);`,
 }
 
 func (s *Store) migrate() error {
