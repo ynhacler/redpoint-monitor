@@ -1275,7 +1275,7 @@ components:
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
         scope_type: { type: string, enum: [global, group, server] }
         scope_id: { type: string }
-        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast] }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock] }
         operator: { type: string, enum: ['>', '>='] }
         threshold: { type: number }
         recover_threshold: { type: number, description: 低于此值恢复（回差） }
@@ -1335,6 +1335,7 @@ components:
         timestamp: { type: integer }
         agent_version: { type: string }
         final: { type: boolean }
+        sent_at: { type: integer, description: 可选：发送时刻的 Agent 时钟（Unix 秒），面板据此计算时钟偏差（设计 43.5） }
         system:
           type: object
           properties:

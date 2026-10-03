@@ -439,6 +439,11 @@ var migrations = []string{
 	ALTER TABLE metrics_1h ADD COLUMN iowait_max REAL;
 	ALTER TABLE metrics_1h ADD COLUMN tcp INTEGER;
 	ALTER TABLE metrics_1h ADD COLUMN tcp_max INTEGER;`,
+
+	// 迁移 19：默认规则“Agent 时钟偏差”（设计 16.1、43.5）：偏差 > 60 秒持续 5 分钟触发，< 30 秒持续 5 分钟恢复，级别提示。
+	`INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('agent_clock', 'agent_clock', '>', 60, 30, 300, 300, 'info', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

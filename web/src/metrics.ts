@@ -89,6 +89,7 @@ function alertLabel(a: AlertBrief): string {
     case 'load': return `负载 ${a.value.toFixed(1)}×`
     case 'traffic': return `流量 ${pct}`
     case 'traffic_forecast': return '流量预计超额'
+    case 'agent_clock': return `时钟偏差 ${Math.round(a.value)} 秒`
     default: return a.message
   }
 }

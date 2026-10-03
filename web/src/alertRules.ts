@@ -15,13 +15,14 @@ export const ruleNames: Record<string, string> = {
   traffic_95: '流量 95%',
   traffic_100: '流量 100%',
   traffic_forecast: '流量预计超额',
+  agent_clock: 'Agent 时钟偏差',
 }
 
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
 
-/** 阈值单位：离线为秒，负载为“倍核数”，其余为百分比 */
+/** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，其余为百分比 */
 export function thresholdUnit(type: string): string {
-  if (type === 'offline') return '秒'
+  if (type === 'offline' || type === 'agent_clock') return '秒'
   if (type === 'load') return '倍核数'
   return '%'
 }
@@ -33,6 +34,7 @@ export function thresholdRange(type: string): { min: number; max: number; step: 
     case 'load': return { min: 0.1, max: 100, step: 0.1 }
     case 'traffic': return { min: 1, max: 200, step: 1 }
     case 'traffic_forecast': return { min: 50, max: 1000, step: 1 }
+    case 'agent_clock': return { min: 10, max: 86400, step: 10 }
   }
   return { min: 1, max: 100, step: 1 }
 }

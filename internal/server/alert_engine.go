@@ -273,6 +273,7 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 	if hasSnap && in.OfflineFor <= unknownWithin {
 		rep := sn.Report
 		in.Report = &rep
+		in.ClockSkew = sn.ClockSkew
 	}
 	s.alerts.mu.Lock()
 	in.Traffic = s.alerts.traffic[row.ID]

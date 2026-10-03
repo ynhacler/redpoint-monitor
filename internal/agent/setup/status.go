@@ -29,6 +29,7 @@ type Status struct {
 	LastSuccess int64  `json:"last_success"` // Unix 秒；0 表示从未成功
 	LastError   string `json:"last_error"`   // 最近一次失败的原因；成功后清空
 	Queued      int    `json:"queued"`       // 断网缓存中等待补发的份数（设计 1.6.14）
+	ClockSkew   int64  `json:"clock_skew"`   // 本机时钟与面板的偏差（秒，正数为偏快；设计 43.5）
 }
 
 // WriteStatus 原子写入 status.json。dir 为空或不存在时直接忽略（例如在 Mac 上开发），
@@ -101,6 +102,10 @@ func PrintStatus(o Options) error {
 			time.Since(time.Unix(st.LastSuccess, 0)).Round(time.Second))
 	} else {
 		fmt.Fprintln(o.Out, "最近成功：从未成功")
+	}
+	if st.ClockSkew >= 60 || st.ClockSkew <= -60 {
+		fmt.Fprintf(o.Out, "时钟偏差：本机比面板%s %d 秒，请检查时间同步（timedatectl status）\n",
+			map[bool]string{true: "快", false: "慢"}[st.ClockSkew > 0], max(st.ClockSkew, -st.ClockSkew))
 	}
 	if st.Queued > 0 {
 		fmt.Fprintf(o.Out, "待补发：  %d 份（网络恢复后自动按时间顺序补发）\n", st.Queued)

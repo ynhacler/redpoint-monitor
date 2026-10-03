@@ -21,6 +21,7 @@ const (
 	AlertLoad            = "load"
 	AlertTraffic         = "traffic"
 	AlertTrafficForecast = "traffic_forecast"
+	AlertAgentClock      = "agent_clock" // Agent 异常：时钟偏差（设计 16.1、43.5）
 )
 
 // 告警级别（设计 16.1）。
@@ -86,6 +87,7 @@ type alertInput struct {
 	OfflineFor time.Duration    // 距最后一次上报的时长
 	Report     *protocol.Report // 最新上报；离线时为 nil（资源规则暂停评估，设计 16.3 NODATA）
 	Traffic    *trafficView     // 本周期流量；未计算时为 nil
+	ClockSkew  *float64         // Agent 时钟偏差（秒，正数为偏快）；离线或无法测量时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -131,6 +133,14 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if t := in.Traffic; t != nil && t.Limit > 0 && t.Forecast != nil {
 			return float64(t.Forecast.Total) * 100 / float64(t.Limit), "", true
 		}
+	case AlertAgentClock:
+		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
+		if sk := in.ClockSkew; sk != nil {
+			if *sk < 0 {
+				return -*sk, "慢", true
+			}
+			return *sk, "快", true
+		}
 	}
 	return 0, "", false
 }
@@ -155,6 +165,8 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return fmt.Sprintf("本周期流量已用 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertTrafficForecast:
 		return fmt.Sprintf("预计周期结束用量为额度的 %s", pct(v))
+	case AlertAgentClock:
+		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
 	}
 	return r.Type
 }

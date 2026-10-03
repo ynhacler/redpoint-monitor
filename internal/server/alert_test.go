@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -142,11 +143,67 @@ func TestAlertValue(t *testing.T) {
 		{AlertSwap, alertInput{Report: &protocol.Report{}}, 0, "", false},                          // 未启用 Swap
 		{AlertTraffic, alertInput{Traffic: &trafficView{Used: 1}}, 0, "", false},                   // 不限流量
 		{AlertTrafficForecast, alertInput{Traffic: &trafficView{Used: 1, Limit: 9}}, 0, "", false}, // 周期不足 3 天，没有预测
+		{AlertAgentClock, alertInput{ClockSkew: ptrF(-90)}, 90, "慢", true},                         // 快慢都按绝对值比较
+		{AlertAgentClock, alertInput{ClockSkew: ptrF(75)}, 75, "快", true},
+		{AlertAgentClock, alertInput{Report: rep}, 0, "", false}, // 无法测量（旧版 Agent 且时钟不超前）
 	}
 	for _, c := range cases {
 		v, d, ok := alertValue(c.typ, c.in)
 		if v != c.v || d != c.detail || ok != c.ok {
 			t.Errorf("%s：(%v, %q, %v)，应为 (%v, %q, %v)", c.typ, v, d, ok, c.v, c.detail, c.ok)
 		}
+	}
+}
+
+func ptrF(v float64) *float64 { return &v }
+
+func TestClockSkew(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	cases := []struct {
+		name string
+		rep  protocol.Report
+		want float64
+		ok   bool
+	}{
+		{"新版 Agent：按发送时刻，偏快", protocol.Report{Timestamp: now.Unix() - 600, SentAt: now.Unix() + 90}, 90, true},
+		{"新版 Agent：偏慢（补发的旧数据也能测）", protocol.Report{Timestamp: now.Unix() - 900, SentAt: now.Unix() - 120}, -120, true},
+		{"旧版 Agent：采集时间超前", protocol.Report{Timestamp: now.Unix() + 100}, 100, true},
+		{"旧版 Agent：采集时间落后，无法区分偏慢与补发", protocol.Report{Timestamp: now.Unix() - 100}, 0, false},
+	}
+	for _, c := range cases {
+		got, ok := clockSkew(c.rep, now)
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s：(%v, %v)，应为 (%v, %v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+	r := AlertRule{Type: AlertAgentClock}
+	if m := alertMessage(r, 120, "慢"); m != "Agent 时钟比面板慢 120 秒，请检查主机的时间同步（NTP）" {
+		t.Errorf("告警消息：%s", m)
+	}
+}
+
+// 上报中的 sent_at 进入实时状态，供告警引擎评估（设计 16.1、43.5）。
+func TestClockSkewIngest(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("clk", 0, 1)
+	now := time.Now().Unix()
+	body := fmt.Sprintf(`{"timestamp":%d,"sent_at":%d,"system":{"boot_id":"b"}}`, now, now-300)
+	if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(body)); rec.Code != 204 {
+		t.Fatalf("上报失败：%d", rec.Code)
+	}
+	snaps := s.snapshots()
+	sk := snaps[1].ClockSkew
+	if sk == nil || *sk > -299 || *sk < -301 {
+		t.Fatalf("应记录 Agent 偏慢约 300 秒：%v", sk)
+	}
+	row, _ := s.store.GetServer(1)
+	if in := s.alertInputFor(*row, snaps, time.Now()); in.ClockSkew == nil {
+		t.Error("告警输入应带时钟偏差")
+	}
+	// 下一份旧版格式的上报测不到偏差：沿用上次的值，而不是清空后让告警误以为恢复
+	body = fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"}}`, now+1)
+	do(h, "POST", "/api/v1/agent/report", tok, []byte(body))
+	if sk := s.snapshots()[1].ClockSkew; sk == nil {
+		t.Error("测不到时应沿用上次的偏差")
 	}
 }
