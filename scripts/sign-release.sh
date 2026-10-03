@@ -16,6 +16,11 @@ VERSION="${TAG#v}"
 [ -f "$KEY" ] || { echo "✗ 找不到私钥 $KEY（用 minisign -G -p vpsmon.pub -s $KEY 生成）" >&2; exit 1; }
 command -v minisign >/dev/null 2>&1 || { echo "✗ 需要 minisign（brew install minisign）" >&2; exit 1; }
 
+# gh 在临时目录中无法从 git 推断仓库：先在仓库目录中确定，之后通过 GH_REPO 传给每次调用
+GH_REPO="${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
+export GH_REPO
+echo "仓库：$GH_REPO"
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
