@@ -95,6 +95,10 @@ build-linux: web ## Cross-compile agent (6 arches) + server (amd64/arm64) into d
 	done
 	@cd dist && shasum -a 256 vpsmon-* > SHA256SUMS && echo "dist/SHA256SUMS written"
 
+installer: build-linux ## Release files for VERSION=x.y.z: agent-x.y.z.sh, manifest.json, SHA256SUMS into dist/ (no signing)
+	@test -n "$(VERSION)" || (echo "usage: make installer VERSION=0.2.0" && exit 1)
+	go run ./cmd/vpsmon-release prepare --version $(VERSION) --dist dist
+
 # ---------- Linux VM on your Mac (OrbStack) for real agent metrics ----------
 
 vm-create: ## Create an Ubuntu VM in OrbStack for testing the real Linux collector

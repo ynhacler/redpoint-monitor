@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 35 | A7 第一步：签名发布链路（minisign、清单含 installer、cmd/vpsmon-release、草稿 Release + 离线签名脚本、官方地址为公开 GitHub Releases）；安装脚本 scripts/agent.sh.in；本地 vpsmon-agent upgrade（验签、防降级、健康检查与回滚） | 27.5、29、29.7.2、40.8.4 |
 | 34 | A5 第三步：静音与维护（迁移 11 silences；接口；维护不评估、静音只标记）；StatusDot 增加“维护中” | 16.6、18.14、41.3 |
 | 33 | A5 第二步：规则编辑接口与预览（19.9）；Web “告警”页（告警 / 规则两个标签，导航角标）；详情页指标块显示名称 | 16.2、19.9、11.1 |
 | 32 | A5 告警引擎第一步：alert_rules 增加 rule_key（三层覆盖的标识）；pending 不持久化；面板启动宽限期；节点摘要依赖抑制；/alerts 参数；“需要关注”改由服务端告警判定 | 16.7、18.7、18.8、19.9 |
@@ -6585,6 +6586,11 @@ Web 显示“该节点需手动升级”，并给出带校验的升级命令
 
 Agent 支持由 Web 管理端发起的远程升级（MVP 之后，设计 36.2）。MVP 只提供节点本地的 `monitor-agent upgrade` 命令，校验流程完全相同。
 
+本地升级已实现：`sudo vpsmon-agent upgrade [--version vX.Y.Z] [--mirror URL] [--allow-downgrade]`
+（internal/agent/upgrade）：下载清单与签名 → 内置公钥验签 → 防降级与最低版本检查 → 下载本机构建并校验大小与 SHA256
+→ 试运行并核对自报版本 → 备份到 /var/lib/vpsmon-agent/backup → 原子替换 → 重启服务 → 60 秒内新版本须成功上报一次，
+否则从备份回滚。默认从官方地址下载最新正式版（releases/latest）。
+
 核心前提：**版本只能由开发者离线签名发布，monitor-server 只能“选择”官方版本，不能“制造”版本。**
 
 升级设计采用：
@@ -6907,6 +6913,10 @@ monitor-server **不持有任何签名私钥**。如果服务端持有私钥，�
   ]
 }
 ```
+
+实现（A7 第一步）：清单还包含 `installer`（agent-x.y.z.sh 的大小与 SHA256）与可选 `notes`；`version` 不带 v；
+二进制文件名为 `vpsmon-agent-linux-{arch}`（arch 同 27.5.4）。签名文件为 `manifest.json.minisig`（minisign，Ed25519，
+默认对 BLAKE2b-512 摘要签名）。校验代码在 internal/release，先验签、后解析；出现未知字段也拒绝。
 
 Agent / updater 校验：
 
@@ -8647,9 +8657,21 @@ CI 中不存放任何签名私钥或服务器凭证。
 ### 40.8.4 Releases
 
 ```text
-打标签 vX.Y.Z → Actions 构建全部架构的二进制并生成 SHA256SUMS、agent-X.Y.Z.sh，创建草稿 Release
-开发者在离线环境下载 SHA256SUMS 与 agent-X.Y.Z.sh，用 minisign 签名后上传 .minisig（设计 29.7）
-确认签名文件齐全后，手动发布 Release
+打标签 vX.Y.Z → Actions（.github/workflows/release.yml）构建全部架构的二进制，
+  用 cmd/vpsmon-release 生成 agent-X.Y.Z.sh、manifest.json、SHA256SUMS，创建草稿 Release（不签名）
+开发者在保管私钥的机器上运行 scripts/sign-release.sh vX.Y.Z：下载三份文件 → 核对彼此一致
+  → minisign 签名 → 上传 .minisig → 确认后公开发布（设计 29.7）
+发布前可本地复核：VPSMON_RELEASE_DIR=… VPSMON_RELEASE_PUBKEY=… go test ./internal/release -run TestVerifyReleaseDir
+```
+
+官方发布地址：https://github.com/ynhacler/redpoint-monitor/releases（公开仓库，任何人可核对签名，设计 29.7.5）。
+
+一次性准备（开发者）：
+
+```text
+minisign -G -p vpsmon.pub -s ~/.minisign/vpsmon.key        当前密钥（设置密码，离线备份）
+minisign -G -p vpsmon-next.pub -s <离线介质>/vpsmon-next.key  备用密钥（只在 current 泄露时使用，设计 29.7.3）
+把两把公钥（.pub 文件第二行）填入 internal/release/keys.go，提交后再打第一个正式标签
 ```
 
 Release 是 Agent 二进制与安装脚本的官方下载地址（设计 27.3.3、27.5）。

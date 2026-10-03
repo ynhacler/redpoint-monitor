@@ -1,0 +1,55 @@
+# 发布（设计 29.7、40.8.4）：推送 v* 标签时构建全部二进制，生成安装脚本、发布清单与 SHA256SUMS，
+# 并创建 **草稿** Release。草稿不公开，Agent 与面板看不到。
+#
+# 【安全】CI 中没有签名私钥，也不会签名（设计 29.7.1）。开发者随后在离线机器上运行
+# scripts/sign-release.sh vX.Y.Z：下载草稿中的清单与校验和 → minisign 签名 → 上传 .minisig → 公开发布。
+# 没有有效签名的版本，Agent、面板与安装脚本都会拒绝。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # 创建草稿 Release 并上传文件
+
+jobs:
+  draft:
+    name: 构建草稿 Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe 生成版本号（设计 40.3.2）
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装 Web 依赖
+        run: npm ci
+        working-directory: web
+
+      - name: 测试
+        run: make web && make test
+
+      - name: 交叉编译（Agent 6 种架构 + 面板 amd64/arm64）
+        run: make build-linux VERSION=${{ github.ref_name }}
+
+      - name: 生成安装脚本、发布清单与 SHA256SUMS
+        run: go run ./cmd/vpsmon-release prepare --version ${{ github.ref_name }} --dist dist
+
+      - name: 创建草稿 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" --draft --verify-tag \
+            --title "${{ github.ref_name }}" \
+            --notes "草稿：待开发者离线签名（scripts/sign-release.sh ${{ github.ref_name }}）后发布。" \
+            dist/vpsmon-* dist/agent-*.sh dist/manifest.json dist/SHA256SUMS
