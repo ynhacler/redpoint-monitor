@@ -15,6 +15,7 @@ make check-design # design numbering / references (run scripts/check_design_refs
 make build-linux  # agent for 6 linux arches + server amd64/arm64 into dist/
 make vm-agent     # real Linux collector in an OrbStack VM
 make agent-footprint # on Linux: run the real agent 60s, report RSS / CPU vs design 4.2 (also in CI)
+make loadtest     # panel capacity: temp panel + 100 simulated agents (scripts/loadtest.sh N INTERVAL DURATION BACKLOG)
 make app-run      # Flutter app
 make deploy VPS=user@host                      # dev-only SSH deploy (design 27)
 make install-server / install-agent            # on a VPS checkout, after `make build`
@@ -136,4 +137,4 @@ Not yet: login, alerts, push, downsampling, calibration, built-in HTTPS. See TOD
   (UDP 443 is taken by another service there, so Caddy runs with `protocols h1 h2`).
 - test-agent (jp-store): installed with the dev scripts until the enroll flow (A1) exists; after that,
   always through the product install command (design 40.4.2).
-- Building on a VPS needs Go ≥ 1.24 and Node ≥ 20.19 (Ubuntu's apt versions are too old).
+- Building on a VPS needs Go ≥ 1.26 (required by the SQLite driver since v0.33) and Node ≥ 20.19 (Ubuntu's apt versions are too old).

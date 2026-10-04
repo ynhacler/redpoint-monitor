@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/ncruces/go-sqlite3/driver" // pure Go (wasm), no CGO
-	_ "github.com/ncruces/go-sqlite3/embed"
+	_ "github.com/ncruces/go-sqlite3/driver" // 纯 Go（SQLite 预先转换为 Go 代码），无需 CGO，也不在运行时编译
 )
 
 // Store wraps SQLite. Writes go through a single connection-limited pool in batches
@@ -23,8 +22,12 @@ func OpenStore(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, err
 	}
+	// _txlock=immediate：显式事务（都是写事务）在 BEGIN 时就取得写锁，与其他写入冲突时按 busy_timeout 等待。
+	// 默认的 deferred 事务先读后写时，若另一个写入已提交，SQLite 直接返回 “database is locked” 而不等待——
+	// 压测中批量写入与降采样同时进行时出现过（设计 21、43.3）。
 	dsn := "file:" + filepath.Join(dataDir, "monitor.db") +
-		"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)"
+		"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)" +
+		"&_txlock=immediate"
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err

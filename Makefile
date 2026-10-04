@@ -101,6 +101,9 @@ installer: build-linux ## Release files for VERSION=x.y.z: agent-x.y.z.sh, manif
 
 # ---------- Linux VM on your Mac (OrbStack) for real agent metrics ----------
 
+loadtest: ## Panel capacity: temp panel + 100 simulated agents, steady load then reconnect burst (design 3.2)
+	@scripts/loadtest.sh 100 10s 60s 180
+
 agent-footprint: build-linux ## On Linux: run the real agent 60s and report RSS / CPU against design 4.2
 	@scripts/agent-footprint.sh
 

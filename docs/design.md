@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
 | 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
 | 54 | Agent 存活与占用：systemd watchdog（Type=notify、WatchdogSec=120、StartLimitIntervalSec=0）、`refresh-unit` 子命令；GOMAXPROCS 默认 1；/proc 读取复用缓冲区 | 4.2、43.5 |
@@ -2611,6 +2612,18 @@ TimescaleDB
 | 部署产物 | 1 个二进制 + 1 个数据目录 |
 
 目标是能与几个小服务共存在一台 512MB～1GB 的 VPS 上。
+
+实测（`make loadtest`：临时面板 + 模拟 Agent，上报为真实大小并 gzip 压缩）：
+
+```text
+100 台 × 10 秒     上报 p99 1.6 ms，CPU 平均 < 1%，常驻内存约 59 MB，节点列表接口约 19 ms
+100 台 × 1 秒      （相当于 1000 台 × 10 秒）上报 p99 4 ms，CPU 平均约 8%
+重连补发高峰       100 台各补发 180 份（共 18000 份）同时涌入：全部接收，p99 7 ms，无错误
+```
+
+内存主要来自 SQLite：驱动 v0.33 起把 SQLite 预先转换为 Go 代码，不再在运行时编译 wasm（旧版仅此一项约 50 MB）。
+所有显式事务都是写事务，以 `_txlock=immediate` 打开：与其他写入冲突时按 busy_timeout 等待，而不是直接返回
+“database is locked”（批量写入与降采样同时进行时会出现）。
 
 ---
 
