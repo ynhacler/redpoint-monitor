@@ -112,6 +112,10 @@ func summary(dataDir string, now time.Time) string {
 	count("管理员账号", `SELECT COUNT(*) FROM users`)
 	count("活动告警", `SELECT COUNT(*) FROM alert_events WHERE state = 'firing'`)
 	count("自定义告警规则", `SELECT COUNT(*) FROM alert_rules WHERE scope_type <> 'global'`)
+	// 云账户只统计数量与同步状态：名称、区域与凭证都不进诊断包（设计 44.2）
+	count("云账户", `SELECT COUNT(*) FROM cloud_accounts`)
+	count("  同步失败中", `SELECT COUNT(*) FROM cloud_accounts WHERE last_error <> ''`)
+	count("  凭证失效", `SELECT COUNT(*) FROM cloud_accounts WHERE auth_failed = 1`)
 	count("生效中的静音 / 维护", `SELECT COUNT(*) FROM silences WHERE ends_at IS NULL OR ends_at > ?`, now.Unix())
 	// 通知渠道只统计类型与启用状态：地址与 Token 属于凭证（设计 24.7）
 	if rows, err := db.Query(`SELECT type, enabled, COUNT(*) FROM notification_channels GROUP BY type, enabled ORDER BY type`); err == nil {

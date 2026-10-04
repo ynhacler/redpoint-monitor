@@ -139,6 +139,12 @@ export function fmtBandwidth(mbps: number | null | undefined): string {
   return mbps >= 1000 ? `${Math.round((mbps / 1000) * 10) / 10} Gbps` : `${mbps} Mbps`
 }
 
+/** 金额：按币种显示，0 也显示（费用、余额，设计 44）；null 显示 “—” */
+export function fmtMoney(cents: number | null | undefined, currency: string): string {
+  if (cents == null) return DASH
+  return `${currency} ${(cents / 100).toFixed(2)}`
+}
+
 /** 价格：按币种显示，如 “USD 5.99”；未填显示 “—” */
 export function fmtPrice(cents: number, currency: string): string {
   if (!cents) return DASH

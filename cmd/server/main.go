@@ -151,6 +151,11 @@ func main() {
 		}
 		fmt.Printf("✓ backup written: %s (%d bytes, schema %d, %d servers)\n", info.Path, info.Size, info.SchemaVersion, info.Servers)
 		fmt.Println("  contains password and token hashes and notification secrets: store it like a credential (mode 0600)")
+		// 云账户凭证是密文，密钥 DATA/secret.key 不在备份中（设计 44.2）：迁移到新机器时需单独复制
+		if _, err := os.Stat(filepath.Join(*data, "secret.key")); err == nil {
+			fmt.Println("  cloud account credentials are encrypted with", filepath.Join(*data, "secret.key"),
+				"which is NOT in the backup: copy it separately (keep it apart from the backup) or re-enter the credentials after restore")
+		}
 		if *out == "" && *keep > 0 {
 			removed, err := server.PruneBackups(filepath.Join(*data, "backups"), *keep)
 			if err != nil {

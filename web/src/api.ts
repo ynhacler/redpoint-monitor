@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
 } from './api.gen'
 
@@ -371,6 +371,40 @@ export async function listSessions() {
 /** 踢出一个会话（该浏览器需要重新登录） */
 export function revokeSession(id: number) {
   return request('delete', '/auth/sessions/{id}', { params: { id } })
+}
+
+// ---- 云厂商账户（设计 44） ----
+
+export async function listCloudAccounts() {
+  return (await request('get', '/cloud-accounts')).items
+}
+
+/** 添加云账户；需先在 10 分钟内重新验证过密码（reauth） */
+export function createCloudAccount(v: G.CloudAccountInput) {
+  return request('post', '/cloud-accounts', { body: v })
+}
+
+/** 修改；credential 留空表示不变（提供时需先重新验证密码） */
+export function updateCloudAccount(id: number, v: G.CloudAccountInput) {
+  return request('put', '/cloud-accounts/{id}', { params: { id }, body: v })
+}
+
+/** 删除账户及同步的数据；需先重新验证密码 */
+export function deleteCloudAccount(id: number) {
+  return request('delete', '/cloud-accounts/{id}', { params: { id } })
+}
+
+/** 立即在后台同步（同一账户 1 分钟一次） */
+export function syncCloudAccount(id: number) {
+  return request('post', '/cloud-accounts/{id}/sync', { params: { id } })
+}
+
+export async function listCloudCosts(id: number) {
+  return (await request('get', '/cloud-accounts/{id}/costs', { params: { id } })).items
+}
+
+export async function listCloudInstances(accountId?: number) {
+  return (await request('get', '/cloud-instances', { query: { account_id: accountId } })).items
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----

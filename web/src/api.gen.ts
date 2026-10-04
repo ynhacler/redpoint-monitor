@@ -531,6 +531,104 @@ export interface Report {
   }
 }
 
+/** 添加时 provider、name、credential 必填；修改时 provider 不可更改，credential 留空表示不变 */
+export interface CloudAccountInput {
+  /** 目前支持 AWS；阿里云、腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10） */
+  provider?: 'aws'
+  name: string
+  /** 只同步这些区域；空表示全部已启用的区域 */
+  regions?: string[]
+  /** 只读凭证（设计 44.3 列出最小权限）。只写不读：响应中只有 credential_hint */
+  credential?: {
+    /** AWS IAM 用户的 Access Key ID（AKIA…） */
+    access_key_id?: string
+    secret_access_key?: string
+  }
+  /** 月度预算（账户币种）；0 表示不设 */
+  budget?: number
+  /** 费用同步间隔，小时；AWS 每次同步约 0.02 美元 */
+  cost_interval_h?: 6 | 12 | 24
+  enabled?: boolean
+  sync_cost?: boolean
+  sync_traffic?: boolean
+}
+
+export interface CloudAccount {
+  id: number
+  provider: 'aws'
+  name: string
+  regions: string[]
+  /** 如 AKIA…WXYZ；完整凭证不返回 */
+  credential_hint: string
+  budget_cents: number
+  cost_interval_h: number
+  enabled: boolean
+  sync_cost: boolean
+  sync_traffic: boolean
+  /** 上次成功同步费用的时间，Unix 秒；0 表示从未 */
+  cost_synced_at: number
+  instances_synced_at: number
+  traffic_synced_at: number
+  /** 最近一次同步失败的原因（云厂商的错误码与说明）；空表示正常 */
+  last_error: string
+  /** 连续失败的开始时间，Unix 秒；0 表示正常 */
+  error_since: number
+  /** 凭证失效或权限不足，已停止自动同步，需更新凭证 */
+  auth_failed: boolean
+  /** 失败后下次自动重试的时间 */
+  next_try_at: number
+  /** 正在同步 */
+  syncing?: boolean
+  instance_count: number
+  /** 本月费用；尚未同步时为 null */
+  current_cost: CloudCost | null
+  created_at: number
+  updated_at: number
+}
+
+export interface CloudCost {
+  /** YYYY-MM */
+  period: string
+  /** 本月已产生 */
+  amount_cents: number
+  /** 本月预估；数据不足时为 null */
+  forecast_cents: number | null
+  /** 账户余额（预付费账户）；没有时为 null */
+  balance_cents: number | null
+  currency: string
+  updated_at: number
+}
+
+export interface CloudInstance {
+  id: number
+  account_id: number
+  account_name: string
+  provider: string
+  instance_id: string
+  name: string
+  region: string
+  /** ec2 / lightsail / … */
+  kind: string
+  /** 云厂商原样，如 running / stopped */
+  state: string
+  public_ipv4: string
+  public_ipv6: string
+  /** 规格（EC2 实例类型、Lightsail 套餐） */
+  plan: string
+  /** 到期时间，Unix 秒；按需付费为 0 */
+  expire_at: number
+  renew_price_cents: number
+  /** 流量包额度，字节；0 表示没有流量包 */
+  traffic_limit_bytes: number
+  /** 本周期已用（云厂商口径，有数小时延迟） */
+  traffic_used_bytes: number
+  /** YYYY-MM-DD */
+  traffic_period_start: string
+  /** 关联的节点（设计 44.5，随第五步） */
+  server_id: number | null
+  updated_at: number
+}
+
 /** WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type */
 export interface WsEvent {
   /** server.enrolled：主机已用注册码注册（设计 19.11） */
@@ -1035,6 +1133,74 @@ export interface Paths {
         to?: number
       }
       response: unknown
+    }
+  }
+  '/cloud-accounts': {
+    /** 云账户列表（不含凭证，只有末 4 位提示） */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: CloudAccount[]
+      }
+    }
+    /** 添加云账户（需在 10 分钟内重新验证过密码，设计 17.4、44.2）；添加后立即在后台同步一次 */
+    post: {
+      body: CloudAccountInput
+      response: CloudAccount
+    }
+  }
+  '/cloud-accounts/{id}': {
+    /** 修改云账户；credential 留空表示不变，提供时需重新验证密码，并清除“凭证失效”状态 */
+    put: {
+      params: {
+        id: number
+      }
+      body: CloudAccountInput
+      response: CloudAccount
+    }
+    /** 删除云账户及同步的费用与实例（需重新验证密码） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/cloud-accounts/{id}/sync': {
+    /** 立即在后台同步一次全部数据（同一账户 1 分钟内只允许一次）；结果见账户的 *_synced_at 与 last_error */
+    post: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/cloud-accounts/{id}/costs': {
+    /** 按月费用，最新在前（最多 24 个月） */
+    get: {
+      params: {
+        id: number
+      }
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: CloudCost[]
+      }
+    }
+  }
+  '/cloud-instances': {
+    /** 云厂商的实例列表 */
+    get: {
+      query?: {
+        /** 只看某个账户 */
+        account_id?: number
+      }
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: CloudInstance[]
+      }
     }
   }
   '/servers': {
