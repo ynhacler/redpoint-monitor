@@ -8,6 +8,7 @@ import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, fmtTraffic, fmtUptime, periodNames } from '../format'
 import AgentUpgrade from './AgentUpgrade.vue'
 import Flag from './Flag.vue'
+import Icon, { type IconName } from './Icon.vue'
 import StatusDot from './StatusDot.vue'
 import { displayStatus } from '../metrics'
 
@@ -65,29 +66,29 @@ async function copy(v: string) {
   }
 }
 
-// 信息块：图标为 Lucide 路径（ISC 许可），线宽 1.5（设计 41.4.3）
-const tiles = computed(() => [
-  { icon: 'M4 6h16M4 12h16M4 18h10', label: '操作系统', value: [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' ') || DASH },
-  { icon: 'M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2M7 5h10v14H7z', label: '架构', value: sys.value?.arch || DASH },
+// 信息块（图标见 Icon.vue，设计 41.4.3）
+const tiles = computed<{ icon: IconName, label: string, value: string, extra?: string, tone?: string }[]>(() => [
+  { icon: 'list', label: '操作系统', value: [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' ') || DASH },
+  { icon: 'cpu', label: '架构', value: sys.value?.arch || DASH },
   {
-    icon: 'M3 3v18h18M7 15l4-4 3 3 5-6', label: '负载 1 / 5 / 15',
+    icon: 'chart', label: '负载 1 / 5 / 15',
     value: props.live && r.value
       ? [r.value.cpu.load1, r.value.cpu.load5, r.value.cpu.load15].filter((v) => v != null).map((v) => v!.toFixed(2)).join('/')
       : DASH,
   },
-  { icon: 'M12 6v6l4 2M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', label: '运行时间', value: props.live ? fmtUptime(sys.value?.uptime) : DASH },
+  { icon: 'clock', label: '运行时间', value: props.live ? fmtUptime(sys.value?.uptime) : DASH },
   {
-    icon: 'M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5', label: '内存',
+    icon: 'layers', label: '内存',
     value: r.value ? fmtBytes(r.value.memory.total) : DASH,
     extra: r.value?.swap.total ? `Swap ${fmtBytesShort(r.value.swap.total)}` : '',
   },
   {
-    icon: 'M22 12H2M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6L5.5 5ZM6 16h.01M10 16h.01', label: '磁盘',
+    icon: 'hard-drive', label: '磁盘',
     value: diskTotal.value ? fmtBytes(diskTotal.value) : DASH,
     extra: r.value && r.value.disk.length > 1 ? `挂载 ${r.value.disk.length}` : '',
   },
-  { icon: 'M12 19V5M5 12l7-7 7 7', label: '本周期上传', value: fmtTraffic(s.value.traffic.tx, s.value.traffic.unit), tone: 'up' },
-  { icon: 'M12 5v14M19 12l-7 7-7-7', label: '本周期下载', value: fmtTraffic(s.value.traffic.rx, s.value.traffic.unit), tone: 'down' },
+  { icon: 'arrow-up', label: '本周期上传', value: fmtTraffic(s.value.traffic.tx, s.value.traffic.unit), tone: 'up' },
+  { icon: 'arrow-down', label: '本周期下载', value: fmtTraffic(s.value.traffic.rx, s.value.traffic.unit), tone: 'down' },
 ])
 </script>
 
@@ -105,14 +106,14 @@ const tiles = computed(() => [
 
     <div class="grid">
       <div v-if="sys?.cpu_model" class="tile wide">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2M7 5h10v14H7zM10 9h4v6h-4z" /></svg>
+        <Icon name="cpu" :size="18" />
         <div class="body">
           <div class="label">CPU</div>
           <div class="value" :title="sys.cpu_model"><span class="ellipsis">{{ sys.cpu_model }}</span><span v-if="r" class="extra">{{ r.cpu.cores }} 核</span></div>
         </div>
       </div>
       <div v-for="t in tiles" :key="t.label" class="tile" :class="t.tone">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="t.icon" /></svg>
+        <Icon :name="t.icon" :size="18" />
         <div class="body">
           <div class="label">{{ t.label }}</div>
           <div class="value num"><span class="ellipsis">{{ t.value }}</span><span v-if="t.extra" class="extra">{{ t.extra }}</span></div>
@@ -155,9 +156,9 @@ const tiles = computed(() => [
 .tile { display: flex; align-items: center; gap: var(--space-3); padding: 10px var(--space-3); border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface); min-width: 0; }
 .tile.wide { grid-column: 1 / -1; }
-.tile svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--text-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.tile.up svg { stroke: var(--ok); }
-.tile.down svg { stroke: var(--accent); }
+.tile svg { flex: none; color: var(--text-muted); }
+.tile.up svg { color: var(--ok); }
+.tile.down svg { color: var(--accent); }
 .body { min-width: 0; flex: 1; }
 .label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
 .value { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);

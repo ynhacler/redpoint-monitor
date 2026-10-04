@@ -15,6 +15,7 @@
     "prebuild": "npm run tokens"
   },
   "dependencies": {
+    "@lucide/vue": "^1.52.0",
     "echarts": "^6.1.0",
     "flag-icons": "^7.5.0",
     "vue": "^3.5.43",

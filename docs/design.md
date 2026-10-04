@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 69 | 图标定为 Lucide，Web 使用 @lucide/vue（经 Icon.vue 按需引用） | 41.4.3 |
 | 68 | 新增第 44 章：云厂商账户（AWS、阿里云国内站 / 国际站、腾讯云、Oracle Cloud）的费用、流量与实例；只读凭证、AES-256-GCM 加密保存、签名自行实现不引入 SDK；DMIT 无公开 API 暂不接入 | 44 |
 | 67 | 审计日志按主体、操作、时间筛选与 CSV 导出（BOM、防 CSV 注入、导出记入日志）；登录会话列表与踢出（auth.session_revoke 归入登录日志）；Web 日志页筛选与导出、账号页“登录中的设备” | 24.8 |
 | 66 | 内置 HTTPS：--domain（autocert，仅限指定域名，证书缓存 DATA/certs）、:80 重定向与 HTTP-01、TLS 1.2 起、HSTS；systemd drop-in 只授予 CAP_NET_BIND_SERVICE；新增依赖 golang.org/x/net（autocert 所需） | 25、23.1 |
@@ -9305,7 +9306,8 @@ App：Material 3 作为底层，ThemeData 全部由令牌生成，不使用默�
 ### 41.4.3 图标
 
 ```text
-统一使用一套线性图标（Web 与 App 同一套，如 Lucide），线宽 1.5
+统一使用 Lucide 线性图标（ISC 许可，Web 与 App 同一套），线宽 1.5
+Web：@lucide/vue，经 components/Icon.vue 按名称引用，只打包用到的图标
 图标只用于高频操作和状态，不为每个菜单项都配图标
 ```
 
