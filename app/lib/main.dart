@@ -149,7 +149,9 @@ class Api {
         .timeout(const Duration(seconds: 8));
     if (res.statusCode == 401) throw Exception('Token 无效');
     if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-    final list = jsonDecode(res.body) as List<dynamic>;
+    // 列表接口返回 {"items": [...], "next_cursor": "..."}（设计 19.0.2）；兼容旧版面板的裸数组
+    final body = jsonDecode(res.body);
+    final list = (body is Map<String, dynamic> ? body['items'] : body) as List<dynamic>;
     return list.map((e) => ServerItem.fromJson(e as Map<String, dynamic>)).toList();
   }
 }

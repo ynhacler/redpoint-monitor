@@ -316,8 +316,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  * 获取节点列表。
  * @throws UnauthorizedError Token 无效（401）
  */
-export function listServers(): Promise<ServerView[]> {
-  return request('GET', '/servers')
+/** 列表接口的统一格式（设计 19.0.2）：next_cursor 为空表示没有更多 */
+export interface ListPage<T> {
+  items: T[]
+  next_cursor: string
+}
+
+export async function listServers(): Promise<ServerView[]> {
+  // 节点列表一次返回全部（总览的统计与筛选需要全量），next_cursor 恒为空
+  return (await request<ListPage<ServerView>>('GET', '/servers')).items
 }
 
 /** 新建节点的表单（设计 27.2）；空字符串字段表示未填写。 */

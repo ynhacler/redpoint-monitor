@@ -185,7 +185,7 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": list, "auto_sync": !s.noReleaseSync, "source": s.releaseBase, "mirror": s.releaseMirror})
+	writeList(w, list, "", map[string]any{"auto_sync": !s.noReleaseSync, "source": s.releaseBase, "mirror": s.releaseMirror})
 }
 
 // handleSyncReleases：POST /api/v1/agent-releases/sync，admin。立即从官方地址同步并验签（设计 29.20）。

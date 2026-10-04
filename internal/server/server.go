@@ -668,7 +668,7 @@ type serverView struct {
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
-// TODO(A0): 列表改为 {"items", "next_cursor"} 格式（设计 19.0.2），与 Web、App 同步修改。
+// 返回 {"items", "next_cursor"}（设计 19.0.2）；一次返回全部节点（总览的统计与筛选需要全量），next_cursor 恒为空。
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.store.ListServers()
 	if err != nil {
@@ -683,16 +683,17 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, r, internalError(err))
 			return
 		}
-		// 列表每 3 秒轮询一次：每核使用率与监听端口只在详情页显示，列表中省略以减小响应（多核节点每台可达数百字节）
-		if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil) {
+		// 列表每 3 秒轮询一次：每核使用率、监听端口与扩展指标只在详情页使用，列表中省略以减小响应
+		if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil || v.Latest.Extra != nil) {
 			rep := *v.Latest
 			rep.CPU.PerCore = nil
 			rep.Ports = nil
+			rep.Extra = nil
 			v.Latest = &rep
 		}
 		out = append(out, v)
 	}
-	writeJSON(w, out)
+	writeList(w, out, "", nil)
 }
 
 // viewOf 组装一个节点的展示数据：持久化信息 + 内存中的实时状态 + 本周期流量。
@@ -747,6 +748,7 @@ type historyView struct {
 	Range      string        `json:"range"`
 	Resolution int64         `json:"resolution"` // 点的间隔，秒
 	Items      []MetricPoint `json:"items"`
+	NextCursor string        `json:"next_cursor"` // 列表约定（设计 19.0.2）；按时间范围一次返回，恒为空
 }
 
 // handleHistory：GET /api/v1/servers/{id}/metrics/history?range=1h，admin（设计 19.7）。

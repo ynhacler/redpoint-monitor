@@ -75,7 +75,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
 	for _, c := range list {
 		out = append(out, c.view())
 	}
-	writeJSON(w, map[string]any{"items": out})
+	writeList(w, out, "", nil)
 }
 
 // handleCreateChannel：POST /api/v1/notification-channels，admin。成功 201，返回脱敏后的渠道。
@@ -211,5 +211,5 @@ func (s *Server) handleDeliveries(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": list})
+	writeList(w, list, "", nil)
 }

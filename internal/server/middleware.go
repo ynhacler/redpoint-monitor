@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -190,6 +191,19 @@ func (s *Server) audit(r *http.Request, e AuditEntry) {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeList 写出列表响应（设计 19.0.2）：{"items": [...], "next_cursor": "..."}，next_cursor 为空表示没有更多。
+// items 为 nil 时输出空数组而不是 null；extra 是同一响应中的其他字段（如版本列表的同步设置），可为 nil。
+func writeList(w http.ResponseWriter, items any, next string, extra map[string]any) {
+	if v := reflect.ValueOf(items); !v.IsValid() || (v.Kind() == reflect.Slice && v.IsNil()) {
+		items = []struct{}{}
+	}
+	body := map[string]any{"items": items, "next_cursor": next}
+	for k, v := range extra {
+		body[k] = v
+	}
+	writeJSON(w, body)
 }
 
 // writeError 把错误映射为统一的错误响应（设计 43.4），是业务代码返回错误的唯一出口。

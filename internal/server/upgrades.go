@@ -188,7 +188,7 @@ func (s *Server) handleUpgradeTasks(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": list})
+	writeList(w, list, "", nil)
 }
 
 // handleCreateUpgradeTasks：POST /api/v1/upgrade-tasks，admin（设计 29.14）。

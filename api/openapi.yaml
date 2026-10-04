@@ -310,8 +310,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, next_cursor]
                 properties:
+                  next_cursor: { type: string, description: 空表示没有更多（此列表不分页，恒为空） }
                   items: { type: array, items: { $ref: '#/components/schemas/AlertRule' } }
         '401': { $ref: '#/components/responses/Error' }
     post:
@@ -408,7 +409,7 @@ paths:
       responses:
         '200':
           description: 版本列表
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string }, mirror: { type: boolean, description: 是否开启 --release-mirror } } } } }
+          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string }, mirror: { type: boolean, description: 是否开启 --release-mirror } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
   /agent-releases/sync:
@@ -429,7 +430,7 @@ paths:
       responses:
         '200':
           description: 任务列表
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } } } } } }
+          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
     post:
@@ -502,7 +503,7 @@ paths:
       responses:
         '200':
           description: 渠道列表
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/NotifyChannel' } } } } } }
+          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/NotifyChannel' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
     post:
       tags: [alerts]
@@ -563,7 +564,7 @@ paths:
       responses:
         '200':
           description: 投递记录
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
+          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
   /silences:
@@ -573,7 +574,7 @@ paths:
       responses:
         '200':
           description: 静音与维护
-          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Silence' } } } } } }
+          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Silence' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
     post:
       tags: [alerts]
@@ -650,15 +651,19 @@ paths:
     get:
       tags: [servers]
       summary: 节点列表（实时状态取自内存）
-      description: TODO(A0)：改为 {"items", "next_cursor"} 格式（设计 19.0.2）。
+      description: >-
+        一次返回全部节点（总览的统计与筛选需要全量），next_cursor 恒为空；每核使用率、监听端口与扩展指标只在详情中返回（设计 19.0.2）。
       responses:
         '200':
           description: 节点列表
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/ServerView' }
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ServerView' } }
+                  next_cursor: { type: string, description: 空表示没有更多 }
         '401': { $ref: '#/components/responses/Error' }
     post:
       tags: [servers]
@@ -804,8 +809,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [range, resolution, items]
+                required: [range, resolution, items, next_cursor]
                 properties:
+                  next_cursor: { type: string, description: 按时间范围一次返回，恒为空（设计 19.0.2） }
                   range: { type: string }
                   resolution: { type: integer, description: 点的间隔，秒 }
                   items:
@@ -843,8 +849,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, next_cursor]
                 properties:
+                  next_cursor: { type: string, description: 空表示没有更多（此列表不分页，恒为空） }
                   items:
                     type: array
                     items:
@@ -872,8 +879,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, next_cursor]
                 properties:
+                  next_cursor: { type: string, description: 空表示没有更多（此列表不分页，恒为空） }
                   items:
                     type: array
                     items:
@@ -929,8 +937,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, next_cursor]
                 properties:
+                  next_cursor: { type: string, description: 空表示没有更多（此列表不分页，恒为空） }
                   items:
                     type: array
                     items:

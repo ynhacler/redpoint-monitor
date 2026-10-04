@@ -57,7 +57,7 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": items, "next_cursor": cursorOf(next)})
+	writeList(w, items, cursorOf(next), nil)
 }
 
 // handleAlertRules：GET /api/v1/alert-rules，admin。返回全部三层规则（全局 / 分组 / 节点）。
@@ -67,7 +67,7 @@ func (s *Server) handleAlertRules(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": rules})
+	writeList(w, rules, "", nil)
 }
 
 // alertRuleBody 是修改 / 新增规则的请求体；PUT 中省略的字段保持不变。

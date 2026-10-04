@@ -172,7 +172,7 @@ func (s *Server) handleTrafficDaily(w http.ResponseWriter, r *http.Request) {
 		items = append(items, dailyItem{Day: key, Rx: t.Rx, Tx: t.Tx,
 			Used: EffectiveUsed(CountedBytes(row.CountMode, t.Rx, t.Tx), row.TrafficFactor, 0)})
 	}
-	writeJSON(w, map[string]any{"items": items})
+	writeList(w, items, "", nil)
 }
 
 type cycleItem struct {
@@ -220,7 +220,7 @@ func (s *Server) handleTrafficMonthly(w http.ResponseWriter, r *http.Request) {
 		items = append(items, it)
 		start = CycleStart(start.AddDate(0, 0, -1), row.ResetDay)
 	}
-	writeJSON(w, map[string]any{"items": items})
+	writeList(w, items, "", nil)
 }
 
 // handleCalibrate：POST /api/v1/servers/{id}/traffic/calibrate，admin（设计 5.7）。
@@ -293,7 +293,7 @@ func (s *Server) handleAdjustments(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": items})
+	writeList(w, items, "", nil)
 }
 
 // intQuery 读取整数查询参数；缺省时用 def，超出 [min, max] 或格式错误时写 422 并返回 false。

@@ -40,5 +40,5 @@ func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": items, "next_cursor": formatCursor(next)})
+	writeList(w, items, formatCursor(next), nil)
 }
