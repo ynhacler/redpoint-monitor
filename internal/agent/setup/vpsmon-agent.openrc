@@ -17,8 +17,10 @@ error_logger="logger -t vpsmon-agent -p daemon.notice"
 # Final report on stop (design 5.5) needs a moment
 retry="TERM/5/KILL/2"
 
+# Soft dependency: containers and minimal installs may have no "net" provider; the agent retries
+# with backoff until the network is up (design 43.5)
 depend() {
-	need net
+	use net
 	after firewall
 }
 
