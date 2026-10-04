@@ -113,7 +113,7 @@ type ClockSync struct {
 
 // Environment 是运行环境（静态信息，Agent 每 10 分钟刷新）。
 type Environment struct {
-	Virt       string `json:"virt,omitempty"`        // kvm / xen / vmware / hyperv / openvz / lxc / docker / podman / none
+	Virt       string `json:"virt,omitempty"`        // kvm / xen / vmware / hyperv / virtualbox / openvz / lxc / docker / podman / wsl / vm / none；无法判断时为空
 	DMIVendor  string `json:"dmi_vendor,omitempty"`  // /sys/class/dmi/id/sys_vendor，如 QEMU、Alibaba Cloud
 	DMIProduct string `json:"dmi_product,omitempty"` // /sys/class/dmi/id/product_name
 }

@@ -29,6 +29,16 @@ const expireDays = computed(() => {
   return Math.ceil((new Date(s.value.expire_date + 'T00:00:00').getTime() - Date.now()) / 86400000)
 })
 type Fact = { k: string; v: string; copy?: boolean; mono?: boolean; tone?: string; wide?: boolean; flag?: string }
+// 虚拟化类型（设计 46.3）：OpenVZ / LXC 等容器的内存与流量是容器口径，提示用户
+const virtNames: Record<string, string> = {
+  kvm: 'KVM', xen: 'Xen', vmware: 'VMware', hyperv: 'Hyper-V', virtualbox: 'VirtualBox', openvz: 'OpenVZ（容器）',
+  lxc: 'LXC（容器）', docker: 'Docker（容器）', podman: 'Podman（容器）', wsl: 'WSL', vm: '虚拟机（类型未知）', none: '物理机',
+}
+const virt = computed(() => {
+  const v = r.value?.extra?.env?.virt
+  return v ? virtNames[v] ?? v : ''
+})
+
 const facts = computed<Fact[]>(() => {
   const x = s.value
   const out: Fact[] = []
@@ -38,6 +48,7 @@ const facts = computed<Fact[]>(() => {
   add({ k: 'IPv4', v: x.ipv4 || x.expected_ipv4 || '', copy: true, mono: true })
   add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
   add({ k: '内核', v: sys.value?.kernel || '', mono: true })
+  add({ k: '虚拟化', v: virt.value })
   asset({ k: '供应商', v: x.provider })
   asset({ k: '套餐', v: x.plan })
   asset({ k: '带宽', v: x.bandwidth_mbps ? fmtBandwidth(x.bandwidth_mbps) : '' })

@@ -513,3 +513,33 @@ func TestReportIntervalHeader(t *testing.T) {
 		t.Errorf("不在可选范围的间隔应返回 422：%d", rec.Code)
 	}
 }
+
+// 扩展指标每分钟才上报一次：其余上报沿用上一次的值，节点详情始终能显示虚拟化类型等（设计 46.3）
+func TestExtraCarriedForward(t *testing.T) {
+	s, h, _ := testServer(t)
+	_, tok, _ := s.store.CreateServer("virt", 0, 1)
+	now := time.Now().Unix()
+	for i, body := range []string{
+		fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"extra":{"env":{"virt":"kvm"}}}`, now-20),
+		fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"}}`, now-10),
+	} {
+		if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(body)); rec.Code != 204 {
+			t.Fatalf("第 %d 份上报失败：%d", i+1, rec.Code)
+		}
+	}
+	var v struct {
+		Latest struct {
+			Timestamp int64 `json:"timestamp"`
+			Extra     struct {
+				Env struct {
+					Virt string `json:"virt"`
+				} `json:"env"`
+			} `json:"extra"`
+		} `json:"latest"`
+	}
+	admin := adminToken(t, s)
+	json.Unmarshal(do(h, "GET", "/api/v1/servers/1", admin, nil).Body.Bytes(), &v)
+	if v.Latest.Timestamp != now-10 || v.Latest.Extra.Env.Virt != "kvm" {
+		t.Fatalf("最新上报 %+v，应沿用上一次的扩展指标", v.Latest)
+	}
+}

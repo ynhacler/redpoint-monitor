@@ -439,6 +439,10 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 		ns := &snapshot{ReceivedAt: now, At: at, Report: rep}
 		if snap != nil {
 			ns.ClockSkew = snap.ClockSkew // 由 handleReport 随后更新；旧版 Agent 测不到时沿用上次的值
+			// 扩展指标（含虚拟化类型）每分钟才上报一次：其余上报沿用上一次的值，详情页始终能显示（设计 46.3）
+			if ns.Report.Extra == nil {
+				ns.Report.Extra = snap.Report.Extra
+			}
 		}
 		s.latest[sid] = ns
 	} else {
