@@ -66,6 +66,7 @@ type Server struct {
 	quiet         *quietState // 免打扰时段（设计 16.5）
 	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 	ws            *wsHub      // WebSocket 事件推送（设计 20）
+	cloud         *cloudState // 云厂商账户同步（设计 44）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -117,7 +118,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts), ws: newWSHub()}
+		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState()}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -146,6 +147,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.flushLoop(ctx)
 	go s.runTask(ctx, "maintenance", s.maintenance)
 	go s.runTask(ctx, "alerts", s.alertLoop)
+	go s.runTask(ctx, "cloud", s.cloudLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -210,6 +212,14 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
 	handle("GET /api/v1/auth/sessions", accessAdmin, s.handleSessions)
 	handle("DELETE /api/v1/auth/sessions/{id}", accessAdmin, s.handleRevokeSession)
+	// 云厂商账户（设计 44.8）：添加、更换凭证、删除需重新验证密码（在处理函数中校验）
+	handle("GET /api/v1/cloud-accounts", accessAdmin, s.handleCloudAccounts)
+	handle("POST /api/v1/cloud-accounts", accessAdmin, s.handleCreateCloudAccount)
+	handle("PUT /api/v1/cloud-accounts/{id}", accessAdmin, s.handleUpdateCloudAccount)
+	handle("DELETE /api/v1/cloud-accounts/{id}", accessAdmin, s.handleDeleteCloudAccount)
+	handle("POST /api/v1/cloud-accounts/{id}/sync", accessAdmin, s.handleSyncCloudAccount)
+	handle("GET /api/v1/cloud-accounts/{id}/costs", accessAdmin, s.handleCloudCosts)
+	handle("GET /api/v1/cloud-instances", accessAdmin, s.handleCloudInstances)
 	// 实时事件（设计 20）：只推送，不接收指令
 	handle("GET /ws", accessAdmin, s.handleWS)
 

@@ -15,7 +15,8 @@ import (
 // (see Server.flushLoop); reads use the same handle (WAL allows concurrent readers).
 // TODO(P2): 通过接口支持可选的 PostgreSQL 后端（设计 3.5、36.3）。
 type Store struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Dir string // 数据目录：云账户凭证的密钥 secret.key 也在这里（设计 44.2）
 }
 
 func OpenStore(dataDir string) (*Store, error) {
@@ -33,7 +34,7 @@ func OpenStore(dataDir string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
-	s := &Store{DB: db}
+	s := &Store{DB: db, Dir: dataDir}
 	if err := s.enableIncrementalVacuum(); err != nil {
 		return nil, fmt.Errorf("auto_vacuum: %w", err)
 	}
@@ -454,6 +455,62 @@ var migrations = []string{
 	// 迁移 21：节点的计费时区（IANA 名称，如 America/Los_Angeles）；空表示面板本地时区（设计 5.4）。
 	// 只影响之后写入的每日流量：已有的按天汇总不重新划分。
 	`ALTER TABLE servers ADD COLUMN traffic_timezone TEXT NOT NULL DEFAULT '';`,
+
+	// 迁移 22：云厂商账户（设计 44.7）。凭证为 AES-256-GCM 密文（密钥 DATA/secret.key，设计 44.2），只显示末 4 位。
+	// 金额以“分”为整数，币种随账户；同步状态：各类数据上次成功时间、失败退避、凭证失效时停止自动同步。
+	`CREATE TABLE cloud_accounts (
+		id INTEGER PRIMARY KEY,
+		provider TEXT NOT NULL,
+		name TEXT NOT NULL UNIQUE,
+		regions TEXT NOT NULL DEFAULT '',
+		credential_enc BLOB NOT NULL,
+		credential_hint TEXT NOT NULL DEFAULT '',
+		budget_cents INTEGER NOT NULL DEFAULT 0,
+		cost_interval_h INTEGER NOT NULL DEFAULT 12,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		sync_cost INTEGER NOT NULL DEFAULT 1,
+		sync_traffic INTEGER NOT NULL DEFAULT 1,
+		cost_synced_at INTEGER NOT NULL DEFAULT 0,
+		instances_synced_at INTEGER NOT NULL DEFAULT 0,
+		traffic_synced_at INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT '',
+		error_since INTEGER NOT NULL DEFAULT 0,
+		fail_count INTEGER NOT NULL DEFAULT 0,
+		next_try_at INTEGER NOT NULL DEFAULT 0,
+		auth_failed INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE cloud_costs (
+		account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+		period TEXT NOT NULL,
+		amount_cents INTEGER NOT NULL,
+		forecast_cents INTEGER,
+		balance_cents INTEGER,
+		currency TEXT NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (account_id, period)
+	);
+	CREATE TABLE cloud_instances (
+		id INTEGER PRIMARY KEY,
+		account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+		instance_id TEXT NOT NULL,
+		name TEXT NOT NULL DEFAULT '',
+		region TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL,
+		state TEXT NOT NULL DEFAULT '',
+		public_ipv4 TEXT NOT NULL DEFAULT '',
+		public_ipv6 TEXT NOT NULL DEFAULT '',
+		plan TEXT NOT NULL DEFAULT '',
+		expire_at INTEGER NOT NULL DEFAULT 0,
+		renew_price_cents INTEGER NOT NULL DEFAULT 0,
+		traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,
+		traffic_used_bytes INTEGER NOT NULL DEFAULT 0,
+		traffic_period_start TEXT NOT NULL DEFAULT '',
+		server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL,
+		updated_at INTEGER NOT NULL,
+		UNIQUE (account_id, instance_id)
+	);`,
 }
 
 func (s *Store) migrate() error {
