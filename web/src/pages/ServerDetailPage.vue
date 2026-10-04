@@ -96,7 +96,7 @@ const liveServer = computed(() => (detail.value?.id === sid.value && detail.valu
 // 采集失败项（设计 43.5）：显示采集项的中文名称
 const itemNames: Record<string, string> = {
   system: '系统', cpu: 'CPU', memory: '内存', disk: '磁盘', disk_io: '磁盘 IO', network: '网络',
-  processes: '进程', conns: '连接', ports: '端口',
+  processes: '进程', conns: '连接', ports: '端口', extra: '扩展指标',
 }
 const collectErrors = computed(() =>
   (liveServer.value?.latest?.collect_errors ?? []).map((e) => ({ item: itemNames[e.item] ?? e.item, message: e.message })),

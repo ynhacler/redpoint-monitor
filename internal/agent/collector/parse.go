@@ -258,8 +258,13 @@ func counterBits(machine string) int {
 	return 0
 }
 
-// netCounters 是一块网卡的累计收发字节数。
-type netCounters struct{ rx, tx uint64 }
+// netCounters 是一块网卡的累计计数：字节、包数、错误与丢包（设计 4.10）。
+type netCounters struct {
+	rx, tx               uint64
+	rxPackets, txPackets uint64
+	rxErrs, txErrs       uint64
+	rxDrop, txDrop       uint64
+}
 
 // parseNetDev 把 /proc/net/dev 解析为各网卡的累计字节数。
 func parseNetDev(s string) map[string]netCounters {
@@ -276,9 +281,16 @@ func parseNetDev(s string) map[string]netCounters {
 		if len(f) < 9 {
 			continue
 		}
-		rx, _ := strconv.ParseUint(f[0], 10, 64)
-		tx, _ := strconv.ParseUint(f[8], 10, 64)
-		out[strings.TrimSpace(name)] = netCounters{rx: rx, tx: tx}
+		u := func(i int) uint64 {
+			if i >= len(f) {
+				return 0
+			}
+			n, _ := strconv.ParseUint(f[i], 10, 64)
+			return n
+		}
+		// 接收：bytes packets errs drop …；发送从 f[8] 开始，顺序相同
+		out[strings.TrimSpace(name)] = netCounters{rx: u(0), tx: u(8), rxPackets: u(1), txPackets: u(9),
+			rxErrs: u(2), txErrs: u(10), rxDrop: u(3), txDrop: u(11)}
 	}
 	return out
 }
@@ -441,6 +453,7 @@ func selectMounts(entries []mountEntry) []mountEntry {
 type ioCounters struct {
 	readBytes, writeBytes, readOps, writeOps, ioTimeMs uint64
 	readMs, writeMs                                    uint64 // 读 / 写请求累计耗时（含排队），用于平均耗时
+	inFlight                                           uint64 // 采样时正在处理的请求数（设计 4.10）
 }
 
 // parseDiskstats 解析 /proc/diskstats（设计 4.7）。
@@ -456,7 +469,7 @@ func parseDiskstats(s string) map[string]ioCounters {
 		}
 		u := func(i int) uint64 { n, _ := strconv.ParseUint(f[i], 10, 64); return n }
 		out[f[2]] = ioCounters{readOps: u(3), readBytes: u(5) * 512, readMs: u(6), writeOps: u(7), writeBytes: u(9) * 512,
-			writeMs: u(10), ioTimeMs: u(12)}
+			writeMs: u(10), inFlight: u(11), ioTimeMs: u(12)}
 	}
 	return out
 }

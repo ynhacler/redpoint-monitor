@@ -101,6 +101,8 @@ jobs:
       - uses: actions/checkout@v4
       # 只依赖 Python 3 标准库，使用 runner 自带的 python3（设计 40.9.3）
       - run: make check-design
+      # OpenAPI 契约至少要能被严格的 YAML 解析器解析（runner 自带 Ruby / libyaml）；完整的契约校验见 TODO(A0)
+      - run: ruby -ryaml -e 'YAML.load_file("api/openapi.yaml")'
 
   shellcheck:
     name: shellcheck

@@ -47,6 +47,15 @@ type linux struct {
 	wholeDisk cached[map[string]bool] // /proc/diskstats 中的整块磁盘（/sys/block 下存在的设备）
 	cgLimit   cached[cgroupLimit]     // 容器根 cgroup 的内存上限；VM / 物理机为 0，此后每轮不再读取用量（设计 4.5）
 	cgLogged  bool                    // 已记录过“按容器 cgroup 计算内存”的日志
+
+	// 扩展指标（设计 4.10）：/proc/stat 与 /proc/meminfo 由 CPU、内存采集项读取后留给这里，不重复读文件
+	curStat   statCounters
+	prevStat  statCounters
+	meminfo   map[string]uint64
+	prevVM    map[string]uint64
+	prevSnmp  map[string]map[string]uint64
+	prevExtra time.Time
+	env       cached[*protocol.Environment]
 }
 
 // sensorFile 是一个可信 CPU 温度传感器的读数文件。
@@ -131,7 +140,8 @@ func statfs(path string) (diskStat, error) {
 	if err := syscall.Statfs(path, &st); err != nil {
 		return diskStat{}, err
 	}
-	return diskStat{Blocks: uint64(st.Blocks), Bfree: uint64(st.Bfree), Bavail: uint64(st.Bavail), Bsize: uint64(st.Bsize)}, nil
+	return diskStat{Blocks: uint64(st.Blocks), Bfree: uint64(st.Bfree), Bavail: uint64(st.Bavail), Bsize: uint64(st.Bsize),
+		Files: uint64(st.Files), Ffree: uint64(st.Ffree)}, nil
 }
 
 // collectListenPorts 读取 IPv4 / IPv6 的 TCP 与 UDP 表（设计 4.9.1）。按流读取：TCP 读到第一条已建立连接即停止。
@@ -174,6 +184,9 @@ func (c *linux) Collect() (protocol.Report, error) {
 	guard(&errs, "disk", func() { r.Disk = c.collectDisks(&errs, readFile("/proc/self/mounts")) })
 	guard(&errs, "disk_io", func() { r.DiskIO = c.collectDiskIO(now) })
 	guard(&errs, "network", func() { r.Network = c.collectNetwork(&errs, now) })
+	if now.Sub(c.prevExtra) >= extraEvery {
+		guard(&errs, "extra", func() { r.Extra = c.collectExtra(now) })
+	}
 	r.System.CounterBits = c.bits
 	r.CollectErrors = errs
 	return r, nil
@@ -228,6 +241,7 @@ func (c *linux) collectCPU(errs *errorList) (protocol.CPU, int) {
 		return cpu, 0
 	}
 	cur := parseProcStat(raw)
+	c.curStat = parseStatCounters(raw)
 	cpu.Usage = cpuUsage(c.prevCPU.all, cur.all)
 	cpu.Cores = len(cur.cores)
 	cpu.Breakdown = cpuBreakdown(c.prevCPU.all, cur.all)
@@ -244,6 +258,7 @@ func (c *linux) collectMemory(errs *errorList) (protocol.Memory, protocol.Swap) 
 		return protocol.Memory{}, protocol.Swap{}
 	}
 	m := parseMeminfo(raw)
+	c.meminfo = m
 	mem, estimated, ok := memoryFrom(m)
 	if !ok {
 		errs.add("memory", "/proc/meminfo 缺少 MemTotal")
@@ -325,7 +340,7 @@ func (c *linux) collectDiskIO(now time.Time) []protocol.DiskIO {
 			continue // 分区、虚拟设备或已移除的设备
 		}
 		d := protocol.DiskIO{Device: name, ReadBytes: cur.readBytes, WriteBytes: cur.writeBytes,
-			ReadOps: cur.readOps, WriteOps: cur.writeOps, IOTimeMs: cur.ioTimeMs}
+			ReadOps: cur.readOps, WriteOps: cur.writeOps, IOTimeMs: cur.ioTimeMs, InFlight: cur.inFlight}
 		// 计数倒退（设备重新挂载）时本轮不计算速率，与网速处理一致
 		if p, ok := c.prevIO[name]; ok && elapsed > 0 && cur.readBytes >= p.readBytes && cur.writeBytes >= p.writeBytes {
 			d.ReadSpeed = uint64(float64(cur.readBytes-p.readBytes) / elapsed)
@@ -359,7 +374,8 @@ func (c *linux) collectNetwork(errs *errorList, now time.Time) []protocol.NetIfa
 	var out []protocol.NetIface
 	for _, name := range names {
 		cn := counters[name]
-		ni := protocol.NetIface{Interface: name, RxBytes: cn.rx, TxBytes: cn.tx}
+		ni := protocol.NetIface{Interface: name, RxBytes: cn.rx, TxBytes: cn.tx,
+			RxErrors: cn.rxErrs, TxErrors: cn.txErrs, RxDropped: cn.rxDrop, TxDropped: cn.txDrop}
 		// ifindex 让面板识别“同名网卡被重建”：未重启但计数从 0 重新开始（设计 5.5）。
 		ni.IfIndex, _ = strconv.Atoi(strings.TrimSpace(readFile("/sys/class/net/" + name + "/ifindex")))
 		// 计数回退时：32 位计数器回绕按回绕补算；其他情况（网卡重置）本轮不计算网速，一次 0 比一个巨大的错误尖峰好。
@@ -369,6 +385,7 @@ func (c *linux) collectNetwork(errs *errorList, now time.Time) []protocol.NetIfa
 			if okRx && okTx {
 				ni.RxSpeed, ni.TxSpeed = uint64(float64(drx)/elapsed), uint64(float64(dtx)/elapsed)
 			}
+			ni.RxPPS, ni.TxPPS = rate(p.rxPackets, cn.rxPackets, elapsed), rate(p.txPackets, cn.txPackets, elapsed)
 		}
 		out = append(out, ni)
 	}
@@ -452,4 +469,69 @@ func readCPUTemp(sensors []sensorFile) float64 {
 		}
 	}
 	return pickCPUTemp(rs)
+}
+
+// extraEvery：扩展指标每分钟随上报附带一次，速率为这一分钟的平均值。暂不入库也不展示，
+// 不必每 10 秒发送；这样每份上报平均只多约 70 字节（压缩后），Agent 自身的流量同样计入用户的套餐。
+const extraEvery = time.Minute
+
+// collectExtra 采集扩展指标（设计 4.10）。每一项读不到都只省略该项，不记为失败：
+// PSI、oom_kill、conntrack 等取决于内核版本与模块，缺失是正常情况。
+func (c *linux) collectExtra(now time.Time) *protocol.Extra {
+	elapsed := now.Sub(c.prevExtra).Seconds()
+	vm := parseKeyValues(readFile("/proc/vmstat"))
+	snmp := parseSnmp(readFile("/proc/net/snmp"))
+	x := &protocol.Extra{
+		Activity:    activityFrom(c.prevStat, c.curStat, elapsed),
+		VM:          vmFrom(c.prevVM, vm, elapsed, uint64(os.Getpagesize())),
+		Pressure:    readPressure(),
+		MemoryMore:  memoryMoreFrom(c.meminfo),
+		Net:         netStackFrom(c.prevSnmp, snmp, elapsed),
+		FileHandles: parseFileNr(readFile("/proc/sys/fs/file-nr")),
+		Conntrack: parseConntrack(readFile("/proc/sys/net/netfilter/nf_conntrack_count"),
+			readFile("/proc/sys/net/netfilter/nf_conntrack_max")),
+		Clock: readClockSync(),
+		Env:   c.env.get(now, refreshEvery, readEnvironment),
+	}
+	c.prevStat, c.prevVM, c.prevSnmp, c.prevExtra = c.curStat, vm, snmp, now
+	return x
+}
+
+// readPressure 读取 PSI（内核 4.20+，且需启用 CONFIG_PSI）；没有时返回 nil。
+func readPressure() *protocol.Pressure {
+	cs, c60, _, ok := parsePSI(readFile("/proc/pressure/cpu"))
+	if !ok {
+		return nil
+	}
+	ms, _, mf, _ := parsePSI(readFile("/proc/pressure/memory"))
+	is, _, iof, _ := parsePSI(readFile("/proc/pressure/io"))
+	return &protocol.Pressure{CPUSome10: cs, CPUSome60: c60, MemorySome10: ms, MemoryFull10: mf, IOSome10: is, IOFull10: iof}
+}
+
+// readClockSync 以只读方式调用 adjtimex（modes 为 0，不需要任何权限）：内核时钟同步状态与最大误差。
+// TIME_ERROR（5）或状态中的 STA_UNSYNC 表示未同步；调用被容器的 seccomp 拒绝时返回 nil。
+func readClockSync() *protocol.ClockSync {
+	var tx syscall.Timex
+	state, err := syscall.Adjtimex(&tx)
+	if err != nil {
+		return nil
+	}
+	const timeError, staUnsync = 5, 0x0040
+	return &protocol.ClockSync{Synced: state != timeError && tx.Status&staUnsync == 0, MaxErrorUs: int64(tx.Maxerror)}
+}
+
+// readEnvironment 读取运行环境的线索并判断虚拟化 / 容器类型。DMI 的厂商与型号所有用户可读（序列号等需要 root，不读）。
+func readEnvironment() *protocol.Environment {
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	h := envHints{
+		openVZ:        exists("/proc/vz") && !exists("/proc/bc"),
+		containerFile: strings.TrimSpace(readFile("/run/systemd/container")),
+		dockerEnv:     exists("/.dockerenv"),
+		podmanEnv:     exists("/run/.containerenv"),
+		xen:           strings.TrimSpace(readFile("/sys/hypervisor/type")) == "xen",
+		vendor:        strings.TrimSpace(readFile("/sys/class/dmi/id/sys_vendor")),
+		product:       strings.TrimSpace(readFile("/sys/class/dmi/id/product_name")),
+		hypervisorCPU: cpuHasHypervisorFlag(readFile("/proc/cpuinfo")),
+	}
+	return &protocol.Environment{Virt: detectVirt(h), DMIVendor: h.vendor, DMIProduct: h.product}
 }
