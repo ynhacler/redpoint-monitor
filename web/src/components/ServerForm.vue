@@ -25,7 +25,6 @@ const emit = defineEmits<{
   deleted: []
   /** 取消，返回列表 */
   cancel: []
-  /** Token 失效，需要重新输入 */
 }>()
 const editing = computed(() => !!props.server)
 
