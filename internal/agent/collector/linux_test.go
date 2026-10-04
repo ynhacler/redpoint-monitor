@@ -6,6 +6,7 @@ package collector
 // 确认在真实内核上没有失败项、数值合理（设计 4、43.5）。macOS 开发机上不编译。
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,11 +17,12 @@ import (
 )
 
 func TestLinuxCollect(t *testing.T) {
-	c := New(Options{})
+	c := New(Options{}).(*linux)
 	if _, err := c.Collect(); err != nil { // 首轮只建立 CPU / 网速基线
 		t.Fatal(err)
 	}
 	time.Sleep(1100 * time.Millisecond)
+	c.prevExtra = c.prevExtra.Add(-extraEvery) // 扩展指标每分钟采集一次：让第二次采样也带上，以便检查速率
 	r, err := c.Collect()
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +86,20 @@ func TestLinuxCollect(t *testing.T) {
 			t.Errorf("磁盘 IO 不应包含 loop 设备，繁忙不超过 100%%：%+v", d)
 		}
 	}
+	// 扩展指标（设计 4.10）：第二次采样起应有各项速率；PSI、conntrack、adjtimex 取决于内核与容器设置，不强求
+	x := r.Extra
+	if x == nil || x.Activity == nil || x.VM == nil || x.Net == nil || x.MemoryMore == nil || x.FileHandles == nil ||
+		x.Env == nil || x.Env.Virt == "" {
+		t.Fatalf("扩展指标不完整：%+v", x)
+	}
+	if x.Activity.CtxSwitches <= 0 || x.FileHandles.Max == 0 || x.MemoryMore.CommitLimit == 0 {
+		t.Errorf("扩展指标数值不合理：%+v %+v %+v", x.Activity, x.FileHandles, x.MemoryMore)
+	}
+	if r.Disk[0].FSType == "ext4" && r.Disk[0].InodesTotal == 0 {
+		t.Errorf("ext4 根分区应有 inode 数：%+v", r.Disk[0])
+	}
+	b, _ := json.Marshal(x)
+	t.Logf("extra=%s", b)
 	t.Logf("cores=%d mem=%d MiB disks=%d ifaces=%v diskio=%d ports=%d bits=%d",
 		r.CPU.Cores, r.Memory.Total>>20, len(r.Disk), r.Network, len(r.DiskIO), len(r.Ports), r.System.CounterBits)
 }

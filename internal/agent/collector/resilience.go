@@ -57,6 +57,7 @@ func guard(errs *errorList, item string, f func()) {
 // diskStat 是 statfs 结果中用到的字段，与平台无关，便于测试。
 type diskStat struct {
 	Blocks, Bfree, Bavail, Bsize uint64
+	Files, Ffree                 uint64 // inode 总数与空闲数（设计 4.10）
 }
 
 // statfsTimeout：一轮磁盘采集的总等待时间。本地文件系统的 statfs 通常在微秒级返回；
@@ -145,8 +146,12 @@ func diskFromStat(m mountEntry, st diskStat) (protocol.Disk, bool) {
 	total := st.Blocks * st.Bsize
 	used := total - free*st.Bsize
 	a := avail * st.Bsize
-	return protocol.Disk{Mount: m.Mount, Total: total, Used: used, Available: a,
-		Usage: pct(used, used+a), FSType: m.FSType, Device: m.Device}, true
+	d := protocol.Disk{Mount: m.Mount, Total: total, Used: used, Available: a,
+		Usage: pct(used, used+a), FSType: m.FSType, Device: m.Device}
+	if st.Files > 0 { // btrfs 等动态分配 inode 的文件系统报告 0，不上报
+		d.InodesTotal, d.InodesUsed = st.Files, st.Files-min(st.Ffree, st.Files)
+	}
+	return d, true
 }
 
 // pickIfaces 选出参与流量统计的网卡（设计 5.6）：

@@ -24,6 +24,98 @@ type Report struct {
 	Ports     []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
 	// 可选：本轮失败的采集项及原因；对应字段留空，其余照常上报（设计 43.5）
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
+	// 可选：扩展指标（设计 4.10）。面板保存在实时状态中、随接口返回，暂不入库也不展示
+	Extra *Extra `json:"extra,omitempty"`
+}
+
+// Extra 是扩展指标（设计 4.10）：都来自无需特权的只读来源，读不到的项省略。
+// 速率为与上一次采样之间的平均值，首次采样时省略。
+type Extra struct {
+	Activity    *Activity    `json:"activity,omitempty"`
+	VM          *VMStat      `json:"vm,omitempty"`
+	Pressure    *Pressure    `json:"pressure,omitempty"`
+	MemoryMore  *MemoryMore  `json:"memory_more,omitempty"`
+	Net         *NetStack    `json:"net,omitempty"`
+	FileHandles *FileHandles `json:"file_handles,omitempty"`
+	Conntrack   *Conntrack   `json:"conntrack,omitempty"`
+	Clock       *ClockSync   `json:"clock,omitempty"`
+	Env         *Environment `json:"env,omitempty"`
+}
+
+// Activity 取自 /proc/stat：上下文切换、中断、新建进程的每秒速率，以及阻塞在 IO 上的进程数。
+type Activity struct {
+	CtxSwitches  float64 `json:"ctx_switches"` // 次/秒
+	Interrupts   float64 `json:"interrupts"`   // 次/秒
+	Forks        float64 `json:"forks"`        // 新建进程/秒
+	ProcsBlocked int     `json:"procs_blocked"`
+}
+
+// VMStat 取自 /proc/vmstat：主缺页与换入换出速率，以及开机以来的 OOM kill 次数（内核 4.13+）。
+type VMStat struct {
+	MajorFaults float64 `json:"major_faults"` // 次/秒；持续偏高说明内存不足、频繁从磁盘读回
+	SwapIn      float64 `json:"swap_in"`      // 字节/秒
+	SwapOut     float64 `json:"swap_out"`     // 字节/秒
+	OOMKills    *uint64 `json:"oom_kills,omitempty"`
+}
+
+// Pressure 是 PSI（/proc/pressure，内核 4.20+）：资源不足而等待的时间占比，0～100。
+// some：至少一个任务在等；full：所有非空闲任务都在等（CPU 的 full 在多数内核上无意义，不采集）。
+type Pressure struct {
+	CPUSome10    float64 `json:"cpu_some_avg10"`
+	CPUSome60    float64 `json:"cpu_some_avg60"`
+	MemorySome10 float64 `json:"memory_some_avg10"`
+	MemoryFull10 float64 `json:"memory_full_avg10"`
+	IOSome10     float64 `json:"io_some_avg10"`
+	IOFull10     float64 `json:"io_full_avg10"`
+}
+
+// MemoryMore 是 /proc/meminfo 的其他字段，单位字节。
+type MemoryMore struct {
+	Shmem         uint64 `json:"shmem"`          // 共享内存与 tmpfs
+	SlabUnreclaim uint64 `json:"slab_unreclaim"` // 不可回收的内核 slab，持续增长多为内核侧泄漏
+	Dirty         uint64 `json:"dirty"`          // 等待写回磁盘
+	Writeback     uint64 `json:"writeback"`
+	Committed     uint64 `json:"committed"`    // Committed_AS：已承诺的虚拟内存
+	CommitLimit   uint64 `json:"commit_limit"` // 超过后（严格超额承诺模式下）分配会失败
+}
+
+// NetStack 取自 /proc/net/snmp：TCP 重传率、建连速率与错误计数。累计值为开机以来。
+type NetStack struct {
+	TCPEstablished  uint64  `json:"tcp_established"`
+	TCPRetransRate  float64 `json:"tcp_retrans_rate"`  // 重传报文占发送报文的百分比；线路质量差时升高
+	TCPActiveOpens  float64 `json:"tcp_active_opens"`  // 主动建连/秒
+	TCPPassiveOpens float64 `json:"tcp_passive_opens"` // 被动建连/秒
+	TCPInErrs       uint64  `json:"tcp_in_errs"`       // 累计
+	TCPAttemptFails uint64  `json:"tcp_attempt_fails"` // 累计
+	UDPRcvbufErrors uint64  `json:"udp_rcvbuf_errors"` // 累计：接收缓冲区满而丢弃
+	UDPSndbufErrors uint64  `json:"udp_sndbuf_errors"` // 累计
+	UDPInErrors     uint64  `json:"udp_in_errors"`     // 累计
+}
+
+// FileHandles 取自 /proc/sys/fs/file-nr。
+type FileHandles struct {
+	Allocated uint64 `json:"allocated"`
+	Max       uint64 `json:"max"`
+}
+
+// Conntrack 取自 /proc/sys/net/netfilter/nf_conntrack_{count,max}；未加载 conntrack 时省略。
+// 表满后新连接被丢弃，代理 / NAT 机器常见。
+type Conntrack struct {
+	Count uint64 `json:"count"`
+	Max   uint64 `json:"max"`
+}
+
+// ClockSync 取自 adjtimex（只读调用，无需特权）：内核是否认为时钟已同步，及最大误差。
+type ClockSync struct {
+	Synced     bool  `json:"synced"`
+	MaxErrorUs int64 `json:"max_error_us"`
+}
+
+// Environment 是运行环境（静态信息，Agent 每 10 分钟刷新）。
+type Environment struct {
+	Virt       string `json:"virt,omitempty"`        // kvm / xen / vmware / hyperv / openvz / lxc / docker / podman / none
+	DMIVendor  string `json:"dmi_vendor,omitempty"`  // /sys/class/dmi/id/sys_vendor，如 QEMU、Alibaba Cloud
+	DMIProduct string `json:"dmi_product,omitempty"` // /sys/class/dmi/id/product_name
 }
 
 // CollectError 是一个采集项本轮失败的原因（设计 43.5）。只含采集项名称与简短原因，不含凭证或文件内容。
@@ -118,6 +210,9 @@ type Disk struct {
 	FSType    string  `json:"fstype,omitempty"`    // 可选，如 ext4
 	Device    string  `json:"device,omitempty"`    // 可选，如 /dev/vda1
 	Available uint64  `json:"available,omitempty"` // 可选：普通用户可用的字节（不含 root 保留块）
+	// 可选（设计 4.10）：inode 总数与已用；inode 耗尽时即使还有空间也无法创建文件。btrfs 等不限 inode 的文件系统为 0
+	InodesTotal uint64 `json:"inodes_total,omitempty"`
+	InodesUsed  uint64 `json:"inodes_used,omitempty"`
 }
 
 // DiskIO 是一块磁盘的 IO 计数（设计 4.7）。累计值来自 /proc/diskstats；速率由 Agent 用两次采样计算。
@@ -133,8 +228,9 @@ type DiskIO struct {
 	// 可选（设计 4.7）：与上一次采样之间的平均值
 	ReadIOPS  float64 `json:"read_iops,omitempty"`
 	WriteIOPS float64 `json:"write_iops,omitempty"`
-	AwaitMs   float64 `json:"await_ms,omitempty"` // 每次 IO 的平均耗时（含排队），毫秒
-	Util      float64 `json:"util,omitempty"`     // 设备忙碌时间占比 0～100
+	AwaitMs   float64 `json:"await_ms,omitempty"`  // 每次 IO 的平均耗时（含排队），毫秒
+	Util      float64 `json:"util,omitempty"`      // 设备忙碌时间占比 0～100
+	InFlight  uint64  `json:"in_flight,omitempty"` // 可选（设计 4.10）：采样时正在处理的 IO 请求数（队列深度）
 }
 
 // NetIface carries cumulative kernel counters. The server computes traffic deltas;
@@ -146,6 +242,13 @@ type NetIface struct {
 	TxBytes   uint64 `json:"tx_bytes"`
 	RxSpeed   uint64 `json:"rx_speed"` // bytes/s
 	TxSpeed   uint64 `json:"tx_speed"` // bytes/s
+	// 可选（设计 4.10）：包速率与开机以来的错误、丢包累计
+	RxPPS     float64 `json:"rx_pps,omitempty"`
+	TxPPS     float64 `json:"tx_pps,omitempty"`
+	RxErrors  uint64  `json:"rx_errors,omitempty"`
+	TxErrors  uint64  `json:"tx_errors,omitempty"`
+	RxDropped uint64  `json:"rx_dropped,omitempty"`
+	TxDropped uint64  `json:"tx_dropped,omitempty"`
 }
 
 // maxWrapDelta：按 32 位回绕补算时，单次增量的上限（2 GiB）。超过说明更可能是计数器被重置，
