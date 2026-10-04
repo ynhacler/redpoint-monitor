@@ -82,7 +82,7 @@ func TestCloudReminders(t *testing.T) {
 	_, node, _ := createNode(t, h, admin, `{"name":"linked","expire_date":"2099-01-01"}`)
 	s.store.ReplaceCloudInstances(v.ID, []cloud.Instance{
 		{ID: "ls-1", Name: "ls-1", Kind: "lightsail", TrafficLimit: 1000},
-		{ID: "i-exp", Name: "exp", Kind: "ec2", ExpireAt: now.Add(48 * time.Hour).Unix()},   // 未关联：提醒
+		{ID: "i-exp", Name: "exp", Kind: "ec2", ExpireAt: now.Add(48 * time.Hour).Unix()},    // 未关联：提醒
 		{ID: "i-linked", Name: "lnk", Kind: "ec2", ExpireAt: now.Add(48 * time.Hour).Unix()}, // 关联到有到期日的节点：不提醒
 	}, now)
 	s.store.SaveCloudTraffic(v.ID, []cloud.Instance{{ID: "ls-1", TrafficUsed: 920, TrafficLimit: 1000, TrafficPeriodStart: "2026-10-01"}}, now)
