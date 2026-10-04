@@ -72,6 +72,7 @@ type Server struct {
 	latest    map[int64]*snapshot           // 各节点最新上报，实时读取只走内存，不查数据库（设计 3.5）
 	counters  map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
 	intervals map[int64]time.Duration       // 各节点的采样间隔缓存，避免每份上报都查库；节点修改后清除
+	traffic   trafficCache                  // 本周期流量的短期缓存（traffic_cache.go）
 	pending   []pendingWrite                // 等待批量写入的上报
 }
 
@@ -717,7 +718,7 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 			v.Status = "unknown"
 		}
 	}
-	t, err := s.trafficOf(row, now)
+	t, err := s.trafficCached(row, now)
 	if err != nil {
 		return v, err
 	}

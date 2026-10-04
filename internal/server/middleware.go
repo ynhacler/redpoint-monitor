@@ -78,6 +78,11 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		ri := &reqInfo{id: newRequestID()}
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, ri))
 		w.Header().Set("X-Request-ID", ri.id)
+		if wantsGzip(r) {
+			gz := &gzipWriter{ResponseWriter: w}
+			defer gz.close() // 最后执行：panic 时下面写出的错误响应也会被完整压缩
+			w = gz
+		}
 		rec := &statusRecorder{ResponseWriter: w}
 
 		defer func() {
