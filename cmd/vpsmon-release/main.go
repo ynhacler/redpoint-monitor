@@ -27,7 +27,7 @@ import (
 )
 
 // agentArchs 与 Makefile AGENT_ARCHS、安装脚本的架构识别一致（设计 27.5.4）。
-var agentArchs = []string{"amd64", "arm64", "armv7", "armv6", "386", "riscv64"}
+var agentArchs = []string{"amd64", "arm64", "armv7", "armv6", "386", "riscv64", "mips", "mipsle"}
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "prepare" {
