@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 78 | 386 构建改为软浮点（GO386=softfloat），不依赖 SSE2；CI 在较老的 CPU 型号上运行 386 / armv6 / armv7 / arm64 构建 | 27.5.4 |
 | 77 | Web 导航“首页”改名为“仪表板”（标签页标题、节点详情返回链接同步） | 41.6 |
 | 76 | 云账户第三步：腾讯云国内站与国际站（TC3 签名、账单与余额、CVM / 轻量实例与到期、轻量流量包）；服务商改用下拉选择；CommandBlock 支持按原样显示多行内容 | 44.3、44.4、44.7 |
 | 75 | Web 导航“节点”改名为“首页”（首页即节点列表；节点详情的返回链接同步改名） | 41.6 |
@@ -6561,7 +6562,7 @@ CPU 架构（`uname -m`）→ 下载的构建：
 | `aarch64`、`arm64` | `linux-arm64` | Oracle ARM、AWS Graviton、Hetzner CAX |
 | `armv7l`、`armv7*`、`armhf`、`armv8l` | `linux-armv7` | 树莓派 2/3（32 位系统）、部分 ARM 小鸡 |
 | `armv6l`、`armv6*` | `linux-armv6` | 树莓派 Zero / 1 |
-| `i386`、`i486`、`i586`、`i686`、`x86` | `linux-386` | 老旧 32 位 VPS |
+| `i386`、`i486`、`i586`、`i686`、`x86` | `linux-386` | 老旧 32 位 VPS、旧 PC（软浮点构建，不需要 SSE2，Pentium III / AMD Geode 也能运行） |
 | `riscv64` | `linux-riscv64` | RISC-V 开发板 |
 | `mips` / `mipsel`（大端） | `linux-mips` | 部分 OpenWrt 路由器；uname -m 不区分字节序，按 /bin/sh 的 ELF 头 EI_DATA 判断 |
 | `mips` / `mipsel`（小端） | `linux-mipsle` | MT7621 等 OpenWrt 路由器 |
@@ -6574,6 +6575,9 @@ CPU 架构（`uname -m`）→ 下载的构建：
   glibc / musl（Alpine）无需区分
   64 位内核 + 32 位用户态（如 aarch64 内核的 32 位树莓派系统）直接使用 64 位构建即可运行
 armv8l 表示 64 位 CPU 运行 32 位内核，只能运行 32 位程序，因此使用 armv7 构建
+386 构建使用 GO386=softfloat：Go 默认的 386 构建需要 SSE2（Pentium 4 起），在更老的 CPU 上会直接崩溃
+CI 用 qemu 在较老的 CPU 型号上运行各构建：386 → Pentium、armv6 → ARM1176（树莓派 1 / Zero）、
+  armv7 → Cortex-A7、arm64 → Cortex-A53、mips / mipsle
 架构判断之后仍会试运行一次 --version；出现 “Exec format error” 等情况时终止并提示，不会安装无法运行的程序
 ```
 
