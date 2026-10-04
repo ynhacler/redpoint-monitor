@@ -25,8 +25,8 @@ onUnmounted(stopPolling)
     <div class="inner">
       <RouterLink to="/" class="brand">VPS Monitor</RouterLink>
       <nav v-if="signedIn">
-        <!-- 首页即节点列表；节点详情、编辑、安装命令也属于“首页” -->
-        <RouterLink to="/" :class="{ active: route.path === '/' || route.path.startsWith('/servers') }">首页</RouterLink>
+        <!-- 仪表板即首页（统计 + 节点列表）；节点详情、编辑、安装命令也属于“仪表板” -->
+        <RouterLink to="/" :class="{ active: route.path === '/' || route.path.startsWith('/servers') }">仪表板</RouterLink>
         <RouterLink to="/alerts" active-class="active" class="with-badge">告警<span v-if="alertCount" class="badge num">{{ alertCount }}</span></RouterLink>
         <RouterLink to="/cloud" active-class="active">云账户</RouterLink>
         <RouterLink to="/logs" active-class="active">日志</RouterLink>
@@ -81,7 +81,7 @@ nav a.active { color: var(--text); background: var(--surface-2); font-weight: va
   /* 导航项较多时可横向滚动，不与右侧工具区重叠 */
   nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 }
-/* 很窄的屏幕（≤ 420px）不显示品牌名：“首页”同样回到首页，留出空间给导航 */
+/* 很窄的屏幕（≤ 420px）不显示品牌名：“仪表板”同样回到首页，留出空间给导航 */
 @media (max-width: 420px) {
   .brand { display: none; }
 }
