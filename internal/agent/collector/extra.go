@@ -209,6 +209,9 @@ type envHints struct {
 	containerFile string // /run/systemd/container 的内容（systemd 写入，如 lxc、docker）
 	dockerEnv     bool   // /.dockerenv
 	podmanEnv     bool   // /run/.containerenv
+	cgroup        string // /proc/self/cgroup：没有 systemd 的 LXC / Docker 容器靠这里识别
+	lxcfs         bool   // /proc/self/mountinfo 中有 lxcfs 挂载的 /proc 视图（LXC 常见）
+	wsl           bool   // /proc/sys/kernel/osrelease 含 microsoft
 	xen           bool   // /sys/hypervisor/type 为 xen
 	vendor        string // /sys/class/dmi/id/sys_vendor
 	product       string // /sys/class/dmi/id/product_name
@@ -226,6 +229,12 @@ func detectVirt(h envHints) string {
 		return "docker"
 	case h.podmanEnv:
 		return "podman"
+	case h.wsl:
+		return "wsl"
+	case strings.Contains(h.cgroup, "/lxc/") || strings.Contains(h.cgroup, "lxc.payload") || h.lxcfs:
+		return "lxc"
+	case strings.Contains(h.cgroup, "/docker/") || strings.Contains(h.cgroup, "docker-"):
+		return "docker"
 	case h.xen:
 		return "xen"
 	}
@@ -233,6 +242,8 @@ func detectVirt(h envHints) string {
 	switch {
 	case strings.Contains(v, "vmware"):
 		return "vmware"
+	case strings.Contains(v, "innotek") || strings.Contains(p, "virtualbox"):
+		return "virtualbox"
 	case strings.Contains(v, "microsoft") && strings.Contains(p, "virtual"):
 		return "hyperv"
 	case strings.Contains(v, "xen") || strings.Contains(p, "hvm domu"):
@@ -244,6 +255,8 @@ func detectVirt(h envHints) string {
 		return "kvm"
 	case h.hypervisorCPU:
 		return "vm" // 有 hypervisor 标志但无法识别具体类型
+	case v == "":
+		return "" // 没有 DMI 信息（多数 ARM 设备）时无法判断，不猜测为物理机
 	}
 	return "none"
 }

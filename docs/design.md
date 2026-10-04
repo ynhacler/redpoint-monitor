@@ -360,6 +360,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 81 | 虚拟化类型补充识别：无 systemd 的 LXC（cgroup / lxcfs）、WSL、VirtualBox；无 DMI 时为未知；面板沿用最近一次扩展指标，节点详情显示 | 46.3 |
 | 80 | 新增第 45 章开放接口（只读 API Key、实时事件、可选公开状态页）与第 46 章 Agent 优化（按需实时模式、虚拟化类型、tcp / http 探测）；参考 Komari，列出因安全约束不采用的部分 | 20、42、45、46 |
 | 79 | 新增 27.13 非 root 安装（用户模式）：家目录安装，systemd 用户服务（需 linger）或 crontab + keepalive 保活，运行锁保证单实例；安装页提示不带 sudo 的命令 | 27.13 |
 | 78 | 386 构建改为软浮点（GO386=softfloat），不依赖 SSE2；CI 在较老的 CPU 型号上运行 386 / armv6 / armv7 / arm64 构建 | 27.5.4 |
@@ -10211,6 +10212,8 @@ Token 放在 URL 查询串                         违反 27.1
 虚拟化类型   kvm / xen / vmware / hyper-v / openvz / lxc / docker / podman / wsl / 物理机
             来自 /sys/class/dmi/id、/proc/cpuinfo 的 hypervisor 标志、/proc/vz、/run/.containerenv、/.dockerenv、
             /proc/self/cgroup；普通用户可读（27.13）。节点详情显示，便于识别 OpenVZ / LXC 小鸡的内存与流量口径
+            已实现（修订第 81 条）：随扩展指标每分钟上报（extra.env.virt，collector/extra.go）；
+            面板在其余上报中沿用上一次的扩展指标，节点详情“虚拟化”一栏始终可见
 GPU          不采集：只能通过执行 nvidia-smi 等外部程序获得
 公网 IP      不由 Agent 查询外部服务（会把节点信息交给第三方，1.6）；面板记录连接来源 IP
 ```

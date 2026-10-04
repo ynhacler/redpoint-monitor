@@ -102,6 +102,12 @@ func TestDetectVirt(t *testing.T) {
 		{"Hyper-V", envHints{vendor: "Microsoft Corporation", product: "Virtual Machine"}, "hyperv"},
 		{"无法识别的虚拟机", envHints{hypervisorCPU: true, vendor: "Example"}, "vm"},
 		{"物理机", envHints{vendor: "Dell Inc.", product: "PowerEdge R640"}, "none"},
+		{"LXC（无 systemd，cgroup）", envHints{cgroup: "0::/lxc.payload.ct101/init.scope\n", vendor: "QEMU"}, "lxc"},
+		{"LXC（lxcfs）", envHints{lxcfs: true}, "lxc"},
+		{"Docker（cgroup v1）", envHints{cgroup: "12:pids:/docker/0123abcd\n"}, "docker"},
+		{"WSL", envHints{wsl: true}, "wsl"},
+		{"VirtualBox", envHints{vendor: "innotek GmbH", product: "VirtualBox"}, "virtualbox"},
+		{"无法判断（ARM 无 DMI）", envHints{}, ""},
 	}
 	for _, c := range cases {
 		if got := detectVirt(c.h); got != c.want {

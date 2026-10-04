@@ -1735,7 +1735,13 @@ components:
             file_handles: { type: object, description: /proc/sys/fs/file-nr：allocated、max }
             conntrack: { type: object, description: nf_conntrack：count、max；未加载时省略 }
             clock: { type: object, description: adjtimex：synced、max_error_us }
-            env: { type: object, description: 运行环境：virt（kvm / xen / vmware / hyperv / openvz / lxc / docker / podman / vm / none）、dmi_vendor、dmi_product }
+            env:
+              type: object
+              description: 运行环境（设计 46.3）
+              properties:
+                virt: { type: string, description: 'kvm / xen / vmware / hyperv / virtualbox / openvz / lxc / docker / podman / wsl / vm / none；无法判断时省略' }
+                dmi_vendor: { type: string, description: /sys/class/dmi/id/sys_vendor，如 QEMU、Alibaba Cloud }
+                dmi_product: { type: string }
 
     CloudAccountInput:
       type: object

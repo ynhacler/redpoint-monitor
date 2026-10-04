@@ -528,8 +528,14 @@ export interface Report {
     conntrack?: Record<string, unknown>
     /** adjtimex：synced、max_error_us */
     clock?: Record<string, unknown>
-    /** 运行环境：virt（kvm / xen / vmware / hyperv / openvz / lxc / docker / podman / vm / none）、dmi_vendor、dmi_product */
-    env?: Record<string, unknown>
+    /** 运行环境（设计 46.3） */
+    env?: {
+      /** kvm / xen / vmware / hyperv / virtualbox / openvz / lxc / docker / podman / wsl / vm / none；无法判断时省略 */
+      virt?: string
+      /** /sys/class/dmi/id/sys_vendor，如 QEMU、Alibaba Cloud */
+      dmi_vendor?: string
+      dmi_product?: string
+    }
   }
 }
 
