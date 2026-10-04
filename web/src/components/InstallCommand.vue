@@ -39,6 +39,16 @@ const manualCommand = computed(() => (view.value ? withCode(view.value.install.m
 const showManual = ref(false)
 const rotateCommand = computed(() => (view.value ? withCode(view.value.install.rotate_command) : ''))
 const showRotate = ref(false)
+// 没有 root 权限的主机：去掉 sudo 即以用户模式安装（设计 27.13）。
+// v0.3.1 起的安装脚本才支持；更早的版本不带 sudo 会直接报错，因此不提示
+const userCommand = computed(() => command.value.replace(/\bsudo\s+/g, ''))
+const showUser = ref(false)
+const supportsUserMode = computed(() => {
+  const v = view.value?.install.release?.version
+  if (!v) return false
+  const [a = 0, b = 0, c = 0] = v.replace(/^v/, '').split(/[.-]/).map((x) => Number(x) || 0)
+  return a * 1e6 + b * 1e3 + c >= 3001 // ≥ 0.3.1
+})
 
 // 同步官方版本：成功后重新获取命令（默认命令需要已验签的版本）
 const syncing = ref(false)
@@ -153,6 +163,16 @@ onUnmounted(() => {
       <template v-else-if="status === 'ACTIVE'">
         <CommandBlock :command="command" />
         <p class="muted">完整注册码只在生成时显示一次，上面的命令中已隐藏。如果没有保存，请重新生成。</p>
+      </template>
+      <template v-if="status === 'ACTIVE' && view.install.mode === 'default' && supportsUserMode && command.includes('sudo ')">
+        <button type="button" class="text" @click="showUser = !showUser">{{ showUser ? '▾' : '▸' }} 没有 root 权限？以当前用户安装</button>
+        <template v-if="showUser">
+          <CommandBlock :command="userCommand" />
+          <p class="muted small">
+            不使用 sudo 时安装到 ~/.local/bin，配置在 ~/.config/vpsmon-agent；开机启动与掉线拉起由 systemd 用户服务
+            （需已开启 linger）或 crontab 完成。用户模式不支持从面板远程升级，升级请在主机上执行 vpsmon-agent upgrade。
+          </p>
+        </template>
       </template>
       <template v-if="status === 'ACTIVE' && view.install.mode === 'default'">
         <button type="button" class="text" @click="showManual = !showManual">{{ showManual ? '▾' : '▸' }} 程序已在主机上？使用手动命令</button>

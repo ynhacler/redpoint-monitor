@@ -169,6 +169,7 @@
   - [27.10 主机上的文件布局](#2710-主机上的文件布局)
   - [27.11 本地管理命令](#2711-本地管理命令)
   - [27.12 不支持 systemd 的系统](#2712-不支持-systemd-的系统)
+  - [27.13 非 root 安装（用户模式）](#2713-非-root-安装用户模式)
 - [28. 服务管理兼容](#28-服务管理兼容)
   - [28.1 Systemd](#281-systemd)
 - [29. Agent 远程升级设计](#29-agent-远程升级设计)
@@ -347,6 +348,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 79 | 新增 27.13 非 root 安装（用户模式）：家目录安装，systemd 用户服务（需 linger）或 crontab + keepalive 保活，运行锁保证单实例；安装页提示不带 sudo 的命令 | 27.13 |
 | 78 | 386 构建改为软浮点（GO386=softfloat），不依赖 SSE2；CI 在较老的 CPU 型号上运行 386 / armv6 / armv7 / arm64 构建 | 27.5.4 |
 | 77 | Web 导航“首页”改名为“仪表板”（标签页标题、节点详情返回链接同步） | 41.6 |
 | 76 | 云账户第三步：腾讯云国内站与国际站（TC3 签名、账单与余额、CVM / 轻量实例与到期、轻量流量包）；服务商改用下拉选择；CommandBlock 支持按原样显示多行内容 | 44.3、44.4、44.7 |
@@ -6914,6 +6916,34 @@ OpenRC 已支持（`vpsmon-agent install` 自动识别，systemd 优先）：
 ```
 
 CI 在 alpine 容器中运行真实采集器的集成测试，并用 OpenRC 完整执行安装 → 运行 → 首次上报 → 卸载（scripts/alpine-check.sh）。
+
+## 27.13 非 root 安装（用户模式）
+
+没有 root 权限的主机（共享主机、受限账号、容器内的普通用户）也能安装、运行与保活 Agent：
+不带 sudo 执行同一条安装命令即可，安装脚本与 `vpsmon-agent install` 按当前用户自动选择用户模式。
+
+```text
+文件      程序 ~/.local/bin/vpsmon-agent
+          配置 ~/.config/vpsmon-agent/{token,env}（目录 0700，文件 0600）
+          状态 ~/.local/state/vpsmon-agent/{status.json,queue.json,agent.lock,agent.log}
+保活      按顺序自动选择：
+          1. systemd 用户服务（~/.config/systemd/user/vpsmon-agent.service，Type=notify、WatchdogSec=120、Restart=always）
+             只在已开启 linger 时使用：未开启时退出登录即停止、开机也不启动（开启：sudo loginctl enable-linger 用户名）
+          2. crontab：@reboot 与每 2 分钟一次的 vpsmon-agent keepalive；keepalive 发现 Agent 未运行时在新会话中后台启动
+             （输出写入 agent.log，超过 5 MB 轮转）。Agent 运行期间持有 agent.lock 的排他锁（flock），同一时间只有一个实例；
+             锁中记录进程号，status / uninstall / 升级据此找到进程
+          3. 都不可用：在后台启动一次，并说明重启后需执行 vpsmon-agent keepalive
+存活      与 root 安装相同：主循环 3 分钟未转动时自行退出，由 systemd 用户服务或下一次 keepalive 拉起（43.5）
+命令      status / uninstall / upgrade 在非 root 时自动使用用户模式路径；不需要 sudo
+升级      不支持从面板远程升级（没有特权 updater，上报 remote_upgrade=false，面板创建任务时直接说明原因，29.13.1）；
+          本机执行 vpsmon-agent upgrade：同样只安装官方签名、版本更高的版本，替换后重启并做健康检查，失败回滚
+采集      全部来自 /proc 与 /sys，普通用户可读；挂载了 hidepid 的主机上进程数可能偏少（采集项照常上报）
+安全      与 root 安装相同：下载 → 校验 → 执行（27.5）、只走 HTTPS、Token 只写入 0600 文件，
+          不出现在命令行、systemd 单元或 crontab 中（27.1）；用户模式不扩大任何权限
+```
+
+CI 在 Debian 容器中以普通用户执行完整流程：安装 → 首次上报 → crontab 条目 → 杀掉进程后由 keepalive 拉起 → 卸载
+（scripts/user-mode-check.sh）。
 
 ---
 

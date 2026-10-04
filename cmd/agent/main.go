@@ -7,7 +7,8 @@
 //
 // 子命令（设计 27.11）：
 //
-//	vpsmon-agent install --server URL --enroll ENR-…   注册并安装为 systemd 服务（需要 root）
+//	vpsmon-agent install --server URL --enroll ENR-…   注册并安装为系统服务（root）；非 root 时安装到当前用户（设计 27.13）
+//	vpsmon-agent keepalive                              用户模式：Agent 未运行时在后台启动（crontab 调用）
 //	vpsmon-agent status                                 服务状态与最近一次上报
 //	vpsmon-agent uninstall                              停止并删除，通知面板（需要 root）
 //	vpsmon-agent upgrade [--version vX]                 本机升级到官方签名的版本（需要 root，设计 29）
@@ -56,12 +57,18 @@ func main() {
 		case "install":
 			os.Exit(cmdInstall(os.Args[2:]))
 		case "status":
-			if err := setup.PrintStatus(setup.Options{Out: os.Stdout}); err != nil {
+			o := setup.Options{Out: os.Stdout}
+			if p, user := setup.CurrentPaths(); user && setup.IsUserInstall(p) {
+				o.Paths, o.UserSys = p, setup.RealUserSystem{}
+			}
+			if err := setup.PrintStatus(o); err != nil {
 				os.Exit(1)
 			}
 			return
 		case "uninstall":
 			os.Exit(cmdUninstall())
+		case "keepalive":
+			os.Exit(cmdKeepalive())
 		case "upgrade":
 			os.Exit(cmdUpgrade(os.Args[2:]))
 		case "updater":
@@ -96,8 +103,17 @@ func cmdInstall(args []string) int {
 		return 1
 	}
 	self, _ := os.Executable()
-	err := setup.Install(context.Background(), setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
-		NoRemoteUpgrade: *noRemote, Version: version, Self: self, Out: os.Stdout})
+	o := setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
+		NoRemoteUpgrade: *noRemote, Version: version, Self: self, Out: os.Stdout}
+	var err error
+	if p, user := setup.CurrentPaths(); user {
+		// 非 root：安装到当前用户的家目录（设计 27.13）
+		fmt.Println("· 非 root 用户：以用户模式安装到 ~/.local/bin，不创建系统服务（需要系统服务请用 sudo 执行）")
+		o.Paths = p
+		err = setup.InstallUser(context.Background(), o, setup.RealUserSystem{})
+	} else {
+		err = setup.Install(context.Background(), o)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1
@@ -117,6 +133,18 @@ func cmdUpgrade(args []string) int {
 		return 1
 	}
 	if os.Geteuid() != 0 {
+		// 用户模式（设计 27.13）：程序在自己的家目录下，不需要 root；同样只安装官方签名、版本更高的版本
+		if p, user := setup.CurrentPaths(); user && setup.IsUserInstall(p) {
+			us := setup.RealUserSystem{}
+			o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
+				Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, WorkDir: filepath.Join(p.StateDir, "upgrade"),
+				Out: os.Stdout, ReadStatus: readStatus(p), Restart: func() error { return setup.RestartUser(p, us) }}
+			if err := upgrade.Run(context.Background(), o); err != nil {
+				fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+				return 1
+			}
+			return 0
+		}
 		fmt.Fprintln(os.Stderr, "✗ 需要 root 权限：sudo vpsmon-agent upgrade")
 		return 1
 	}
@@ -259,9 +287,35 @@ func checkUpgradeOnce(o upgrade.RemoteOptions) {
 
 // cmdUninstall 执行 vpsmon-agent uninstall（设计 27.11），返回进程退出码。
 func cmdUninstall() int {
+	if p, user := setup.CurrentPaths(); user && setup.IsUserInstall(p) {
+		if err := setup.UninstallUser(context.Background(), setup.Options{Paths: p, Out: os.Stdout}, setup.RealUserSystem{}); err != nil {
+			fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+			return 1
+		}
+		return 0
+	}
 	if err := setup.Uninstall(context.Background(), setup.Options{Out: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
 		return 1
+	}
+	return 0
+}
+
+// cmdKeepalive 执行 vpsmon-agent keepalive（用户模式，设计 27.13）：Agent 未运行时在后台启动它。
+// 由 crontab 每 2 分钟与开机时调用；已在运行时什么也不做。
+func cmdKeepalive() int {
+	p, user := setup.CurrentPaths()
+	if !user {
+		fmt.Fprintln(os.Stderr, "✗ keepalive 用于非 root 的用户模式安装；root 安装由 systemd / OpenRC 保活")
+		return 1
+	}
+	started, err := setup.Keepalive(p, setup.RealUserSystem{})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	if started {
+		fmt.Println("✓ 已在后台启动 Agent")
 	}
 	return 0
 }
@@ -298,6 +352,7 @@ func run() {
 	allowHTTP := flag.Bool("allow-http", false, "allow plain HTTP to a non-loopback server (development only)")
 	ifaces := flag.String("interfaces", "", "comma-separated interfaces to count; empty = auto")
 	stateDir := flag.String("state-dir", "", "directory for status.json read by `vpsmon-agent status` (systemd: /var/lib/vpsmon-agent)")
+	lockFile := flag.String("lock-file", "", "hold an exclusive lock on this file while running; exit if another instance holds it (user mode, design 27.13)")
 	showVersion := flag.Bool("version", false, "print version")
 	flag.Parse()
 
@@ -315,6 +370,19 @@ func run() {
 	// 阻塞在系统调用中的 goroutine（如 statfs）会让出 P，不影响主循环。可用 GOMAXPROCS 环境变量覆盖。
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(1)
+	}
+
+	// 用户模式由 crontab 保活（设计 27.13）：运行期间持有锁，保证只有一个实例；已有实例时安静退出
+	if *lockFile != "" {
+		release, ok, err := setup.AcquireRunLock(*lockFile)
+		if err != nil {
+			log.Fatalf("lock %s: %v", *lockFile, err)
+		}
+		if !ok {
+			log.Printf("another vpsmon-agent is already running (%s); exiting", *lockFile)
+			return
+		}
+		defer release()
 	}
 
 	// OpenRC 服务脚本的参数是固定的，面板地址由这里从 env 文件读取，而不是由 shell source（设计 28）

@@ -93,6 +93,10 @@ jobs:
       - name: Alpine / OpenRC 兼容（设计 28）
         run: scripts/alpine-check.sh
 
+      # 非 root：普通用户安装、crontab 保活、被杀后由 keepalive 拉起、卸载（设计 27.13）
+      - name: 非 root 安装与保活（设计 27.13）
+        run: scripts/user-mode-check.sh
+
       # 限制内存的容器（LXC / Docker 型小鸡）：采集到的总内存应为容器上限而不是宿主机内存（设计 4.5）
       - name: 容器内存口径（设计 4.5）
         run: |
