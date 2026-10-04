@@ -282,6 +282,18 @@
   - [44.8 接口](#448-接口)
   - [44.9 实现与测试](#449-实现与测试)
   - [44.10 分期](#4410-分期)
+- [45. 开放接口：API Key 与公开状态页](#45-开放接口api-key-与公开状态页)
+  - [45.1 不采用的部分](#451-不采用的部分)
+  - [45.2 API Key](#452-api-key)
+  - [45.3 公开状态页（可选，默认关闭）](#453-公开状态页可选默认关闭)
+  - [45.4 分期](#454-分期)
+- [46. Agent 优化（参考 Komari）](#46-agent-优化参考-komari)
+  - [46.1 不采用的部分](#461-不采用的部分)
+  - [46.2 按需实时模式](#462-按需实时模式)
+  - [46.3 采集补充](#463-采集补充)
+  - [46.4 静态信息与实时数据分离](#464-静态信息与实时数据分离)
+  - [46.5 网络探测（Komari 的 ping 任务）](#465-网络探测komari-的-ping-任务)
+  - [46.6 分期](#466-分期)
 
 <!-- TOC:END -->
 
@@ -348,6 +360,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 80 | 新增第 45 章开放接口（只读 API Key、实时事件、可选公开状态页）与第 46 章 Agent 优化（按需实时模式、虚拟化类型、tcp / http 探测）；参考 Komari，列出因安全约束不采用的部分 | 20、42、45、46 |
 | 79 | 新增 27.13 非 root 安装（用户模式）：家目录安装，systemd 用户服务（需 linger）或 crontab + keepalive 保活，运行锁保证单实例；安装页提示不带 sudo 的命令 | 27.13 |
 | 78 | 386 构建改为软浮点（GO386=softfloat），不依赖 SSE2；CI 在较老的 CPU 型号上运行 386 / armv6 / armv7 / arm64 构建 | 27.5.4 |
 | 77 | Web 导航“首页”改名为“仪表板”（标签页标题、节点详情返回链接同步） | 41.6 |
@@ -10104,4 +10117,118 @@ PUT    /api/v1/cloud-instances/{id}/server       关联 / 取消关联节点
 第三步    腾讯云：余额、按月账单、CVM 实例到期、轻量应用服务器流量包
 第四步    Oracle Cloud：按月费用、出站数据量、实例
 第五步    实例与节点关联、到期提醒、可选的自动流量校准、云相关告警
+```
+
+---
+
+# 45. 开放接口：API Key 与公开状态页
+
+参考 Komari 的接口设计（https://www.komari.wiki/dev/api），按本项目的安全约束取舍：
+脚本、Home Assistant、Grafana、第三方面板可以**只读**获取节点与指标；可选的公开状态页供访客查看指定节点。
+
+## 45.1 不采用的部分
+
+```text
+远程执行、Web 终端、文件上传 / 下载 / 删除、数据库任意查询（admin:exec、terminal、file*、dbQuery / dbExec）
+                     违反约束 1（Agent 只采集与上报），也违反失败即关闭（43.1）
+凭证放在 URL 查询串（?token=）  会进入代理与访问日志（24.7、27.1）；只接受 Authorization 头
+JSON-RPC 与另一套响应信封      保持现有 REST 约定（19.0.2）：{items, next_cursor} 与统一错误格式
+主题 / 插件市场                 会在面板中运行第三方代码，不做
+```
+
+## 45.2 API Key
+
+```text
+格式      api_ + 32 位随机字符；创建时显示一次，只保存 SHA-256 哈希（约束 4）；日志按前缀脱敏（24.7）
+创建      Web“设置 → API Key”：名称、可访问的节点（全部 / 分组 / 指定节点）、有效期（可选）；需重新验证密码（17.4）
+权限      只读，固定为下列接口；不能修改任何配置、不能创建或吊销 Key、不能用于 /agent/* 与 /auth/*（约束 3）
+传递      只接受 Authorization: Bearer api_…；不接受查询串
+限流      每个 Key 每分钟 120 次，超过返回 429 rate_limited
+管理      列表显示名称、末 4 位、范围、创建 / 最近使用时间；可立即吊销；创建、吊销、首次使用记入审计日志
+```
+
+可用的接口（与 Web 相同的路径与格式，按 Key 的节点范围过滤）：
+
+```http
+GET /api/v1/servers                               节点列表与实时状态
+GET /api/v1/servers/{id}                          单个节点
+GET /api/v1/servers/{id}/metrics/history          历史指标
+GET /api/v1/servers/{id}/traffic/current|daily|monthly
+GET /api/v1/alerts                                告警事件
+GET /api/v1/version                               面板版本（新增，任何凭证均可）
+WS  /ws                                           实时事件；非浏览器客户端用 Authorization 头认证（不需要 Origin）
+```
+
+实时事件（第 20 章）增加 `server.metrics`（每份上报后推送精简指标：CPU、内存、磁盘、网速、在线状态）、
+`server.online` / `server.offline`、`alert.triggered` / `alert.recovered`；Web 节点列表随之由 3 秒轮询改为事件更新。
+
+## 45.3 公开状态页（可选，默认关闭）
+
+```text
+开启      Web“设置 → 公开状态页”；每个节点单独选择是否公开（默认不公开）
+地址      /status 页面 + GET /api/v1/public/servers（无需凭证）
+内容      只含：显示名称、国旗、在线状态、CPU / 内存 / 磁盘使用率、网速、运行时间、本周期流量百分比（可选）
+          【安全】不含 IP、主机名、服务商、价格、到期、端口与任何内部 ID（访客可见的数据必须是用户主动选择公开的）
+限流      按 IP 每分钟 60 次；服务端缓存 5 秒
+```
+
+## 45.4 分期
+
+```text
+第一步    API Key（创建 / 吊销 / 审计 / 限流 / 节点范围）+ 只读接口 + /api/v1/version；权限矩阵增加 API Key 主体
+第二步    WebSocket 事件 server.metrics / online / offline / alert.*；Web 节点列表改为事件更新；API Key 可订阅
+第三步    公开状态页（如需要）
+```
+
+---
+
+# 46. Agent 优化（参考 Komari）
+
+参考 Komari Agent（https://www.komari.wiki/dev/agent），只吸收与“只采集、只上报”一致的部分。
+
+## 46.1 不采用的部分
+
+```text
+远程执行（agent.exec）、Web 终端、文件管理   违反约束 1
+--ignore-unsafe-cert                          违反约束 6：从不关闭证书校验；自签证书请用面板内置 HTTPS（25）
+Token 放在 URL 查询串                         违反 27.1
+常驻 WebSocket + 1 秒上报                     流量与面板负载随节点数线性增长；改为 46.2 的按需实时模式
+```
+
+## 46.2 按需实时模式
+
+```text
+有人打开节点详情页时，面板通过上报响应头 X-Report-Interval（已有，6.1）把该节点的采样间隔临时降为 2 秒；
+页面关闭或 2 分钟无人查看后恢复原间隔。没有人看时与现在完全相同，不增加任何流量。
+详情页的实时曲线由 WebSocket 事件 server.metrics 更新（45.2），不再单独轮询。
+```
+
+## 46.3 采集补充
+
+```text
+虚拟化类型   kvm / xen / vmware / hyper-v / openvz / lxc / docker / podman / wsl / 物理机
+            来自 /sys/class/dmi/id、/proc/cpuinfo 的 hypervisor 标志、/proc/vz、/run/.containerenv、/.dockerenv、
+            /proc/self/cgroup；普通用户可读（27.13）。节点详情显示，便于识别 OpenVZ / LXC 小鸡的内存与流量口径
+GPU          不采集：只能通过执行 nvidia-smi 等外部程序获得
+公网 IP      不由 Agent 查询外部服务（会把节点信息交给第三方，1.6）；面板记录连接来源 IP
+```
+
+## 46.4 静态信息与实时数据分离
+
+```text
+Komari 把基础信息（系统、型号、容量）与实时数据分开上报。本项目每 10 秒一次、已 gzip 压缩，
+静态部分压缩后约 100 字节，收益很小；且需要协商避免新 Agent 对旧面板发送不完整的数据。暂不做，保留为后续优化。
+```
+
+## 46.5 网络探测（Komari 的 ping 任务）
+
+按第 42 章执行：Agent 只执行内置的 tcp / http / icmp 探测，硬性上限写在 Agent 代码中，禁止探测内网，
+节点本地可关闭（42.6）。第一步只做 tcp 与 http（不需要 CAP_NET_RAW，约束 8），结果用于节点详情的延迟曲线与告警。
+
+## 46.6 分期
+
+```text
+第一步    虚拟化类型（46.3）
+第二步    按需实时模式（46.2，依赖 45.4 第二步的 server.metrics 事件）
+第三步    tcp / http 探测（46.5，按第 42 章的安全约束）
 ```
