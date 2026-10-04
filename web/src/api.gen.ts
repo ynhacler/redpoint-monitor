@@ -396,6 +396,8 @@ export interface Report {
     cpu_model?: string
     /** 可选：内核网卡计数器位数；32 位时面板按回绕补算流量（设计 5.5） */
     counter_bits?: 32 | 64
+    /** 可选：本机是否启用了远程升级（设计 29.13）；省略表示旧版 Agent、未知 */
+    remote_upgrade?: boolean
   }
   cpu: {
     usage: number

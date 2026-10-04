@@ -121,7 +121,8 @@ func TestReleaseMirror(t *testing.T) {
 
 	// 远程升级：已镜像的版本带 mirror_path
 	_, res := enroll(h, v.EnrollCode, "hk-1", "m1")
-	do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(`{"agent_version":"0.2.0","system":{"boot_id":"b"}}`))
+	// 版本号留空：本用例只关心下载地址；“v0.3.0 之前不支持远程升级”的检查见 TestUpgradeBlockers
+	do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(`{"system":{"boot_id":"b"}}`))
 	if rec := do(h, "POST", "/api/v1/upgrade-tasks", admin, []byte(`{"server_ids":[`+itoa(v.ServerID)+`],"version":"0.3.0"}`)); rec.Code != 201 {
 		t.Fatalf("创建任务：%d %s", rec.Code, rec.Body)
 	}

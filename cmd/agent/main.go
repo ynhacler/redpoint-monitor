@@ -499,6 +499,11 @@ func collect(col collector.Collector, final bool) (rep protocol.Report, ok bool)
 	rep.Timestamp = time.Now().Unix()
 	rep.AgentVersion = version
 	rep.Final = final
+	// 告诉面板本机是否启用了远程升级，未启用时面板创建任务会直接说明原因（设计 29.13）；只在 Linux 上有意义
+	if runtime.GOOS == "linux" {
+		on := remoteUpgradeEnabled()
+		rep.System.RemoteUpgrade = &on
+	}
 	return rep, true
 }
 

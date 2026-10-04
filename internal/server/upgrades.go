@@ -30,8 +30,26 @@ const (
 	UpgradeCancelled  = "cancelled"
 )
 
-// upgradeTaskTimeout：超过 1 小时仍未结束的任务判为失败（Agent 离线、未开启远程升级等）。
-const upgradeTaskTimeout = time.Hour
+// upgradeTaskTimeout：超过 1 小时仍未结束的任务判为失败（Agent 离线、下载过慢等）。
+// upgradeClaimTimeout：Agent 每 5 分钟检查一次任务，15 分钟仍未领取说明它不会来取（离线、未启用远程升级或版本过旧）。
+const (
+	upgradeTaskTimeout  = time.Hour
+	upgradeClaimTimeout = 15 * time.Minute
+)
+
+// minRemoteUpgradeVersion 是支持远程升级的最低 Agent 版本：更早的版本不会查询升级任务（设计 29.13）。
+var minRemoteUpgradeVersion, _ = release.ParseVersion("0.3.0")
+
+// remoteUpgradeBlocker 说明节点为什么不能远程升级；能升级（或无法判断）时返回空。
+func remoteUpgradeBlocker(cur string, enabled *bool) string {
+	if cv, err := release.ParseVersion(cur); err == nil && cv.Compare(minRemoteUpgradeVersion) < 0 {
+		return "Agent " + cur + " 不支持远程升级（v0.3.0 起支持）：请在主机上执行 sudo vpsmon-agent upgrade 升级一次"
+	}
+	if enabled != nil && !*enabled {
+		return "主机未启用远程升级：在主机上执行 sudo vpsmon-agent enable-remote-upgrade，或用 sudo vpsmon-agent upgrade 本机升级"
+	}
+	return ""
+}
 
 func upgradeActive(status string) bool {
 	return status == UpgradePending || status == UpgradeDelivered || status == UpgradeStaged
@@ -129,14 +147,25 @@ func (s *Store) SetUpgradeStatus(id, serverID int64, status, reason string, now 
 }
 
 // ExpireUpgradeTasks 把超时仍未结束的任务判为失败。
+// 15 分钟没有被领取的任务单独判为失败并说明原因：Agent 不会来取，没有必要等满 1 小时。
 func (s *Store) ExpireUpgradeTasks(now time.Time) (int64, error) {
 	res, err := s.DB.Exec(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
-		WHERE status IN (?,?,?) AND updated_at < ?`, UpgradeFailed, "超时：1 小时内没有完成（节点离线或未开启远程升级）", now.Unix(),
-		UpgradePending, UpgradeDelivered, UpgradeStaged, now.Add(-upgradeTaskTimeout).Unix())
+		WHERE status = ? AND updated_at < ?`, UpgradeFailed,
+		"Agent 15 分钟内没有领取任务：节点离线、主机未启用远程升级（sudo vpsmon-agent enable-remote-upgrade），"+
+			"或 Agent 版本过旧（v0.3.0 之前不支持远程升级，请在主机上执行 sudo vpsmon-agent upgrade）",
+		now.Unix(), UpgradePending, now.Add(-upgradeClaimTimeout).Unix())
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	claimed, _ := res.RowsAffected()
+	res, err = s.DB.Exec(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
+		WHERE status IN (?,?) AND updated_at < ?`, UpgradeFailed, "超时：1 小时内没有完成（节点离线或下载失败）", now.Unix(),
+		UpgradeDelivered, UpgradeStaged, now.Add(-upgradeTaskTimeout).Unix())
+	if err != nil {
+		return claimed, err
+	}
+	n, _ := res.RowsAffected()
+	return claimed + n, nil
 }
 
 var (
@@ -161,6 +190,16 @@ func (s *Server) releaseByVersion(version string) (*agentRelease, []byte, []byte
 		return nil, nil, nil, errReleaseUnknown
 	}
 	return &agentRelease{Version: m.Version, Channel: m.Channel, Mirrored: mirrored > 0 && s.mirrorRoot != ""}, data, []byte(sig), nil
+}
+
+// agentUpgradeInfo 返回节点最新上报的 Agent 版本与“是否启用远程升级”（旧版 Agent 不报为 nil）。
+func (s *Server) agentUpgradeInfo(id int64) (string, *bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sn := s.latest[id]; sn != nil {
+		return sn.Report.AgentVersion, sn.Report.System.RemoteUpgrade
+	}
+	return "", nil
 }
 
 // currentAgentVersion 返回节点最新上报的 Agent 版本；没有上报时为空。
@@ -239,9 +278,13 @@ func (s *Server) handleCreateUpgradeTasks(w http.ResponseWriter, r *http.Request
 			skips = append(skips, skipped{id, "尚未安装 Agent"})
 			continue
 		}
-		cur := s.currentAgentVersion(id)
+		cur, remote := s.agentUpgradeInfo(id)
 		if cv, err := release.ParseVersion(cur); err == nil && cv.Compare(v) >= 0 {
 			skips = append(skips, skipped{id, "当前版本 " + cur + " 不低于目标版本"})
+			continue
+		}
+		if why := remoteUpgradeBlocker(cur, remote); why != "" {
+			skips = append(skips, skipped{id, why})
 			continue
 		}
 		tid, err := s.store.CreateUpgradeTask(id, rel.Version, cur, by, now)

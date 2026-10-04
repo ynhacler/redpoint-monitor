@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 73 | 升级任务：v0.3.0 之前的 Agent 与未启用远程升级的主机在创建时跳过并说明原因；Agent 上报 system.remote_upgrade；15 分钟未领取即失败 | 29.13.1 |
 | 72 | 云账户第一步（AWS）：凭证加密、账户接口与 Web 页面、同步任务；费用同步间隔可选 6 / 12 / 24 小时（默认 12） | 44.4 |
 | 71 | WebSocket /ws 实现：同源 Origin 校验、会话定时校验、连接上限与慢连接断开；安装命令页改用 server.enrolled 事件（断线时退回轮询） | 19.11、20 |
 | 70 | Web 请求类型由 OpenAPI 契约生成（api.gen.ts，CI 检查一致）；统一错误处理：401 统一回到登录页、errorText 文案、全局错误边界；契约补充 required 与 unsupported_encoding | 19.0.1、43.4、43.6 |
@@ -7574,6 +7575,9 @@ updater（root）
 第一阶段实现（迁移 13 upgrade_tasks）：任务按节点创建，字段为 id、server_id、target_version、from_version、
 status（pending → delivered → staged → success / failed / rolled_back，或 cancelled）、reason、created_by、
 created_at、updated_at。每个节点同时只有一个进行中的任务；超过 1 小时未结束判为失败；pending / delivered 可取消。
+不能远程升级的节点在创建任务时直接跳过并说明原因（修订第 73 条）：Agent 版本低于 v0.3.0（v0.2.0 只有本机升级，从不查询任务），
+或上报的 system.remote_upgrade 为 false（未装 updater 或存在 no-remote-upgrade；OpenRC 安装默认不启用）。
+旧版 Agent 不上报该字段，无法事先判断：15 分钟仍未被领取的任务（Agent 每 5 分钟检查一次）直接判为失败并说明可能原因，不再等满 1 小时。
 目标版本只能是已同步并验签的官方版本，不高于节点当前版本的节点被跳过。Web 在节点详情的 Agent 一栏显示
 “升级到 vX”与任务进度；“Agent 升级”页（/upgrades，首页右上角进入）列出各节点当前版本，可按分组筛选、
 全选可升级的节点批量创建任务，并显示最近任务与取消。按标签批量随标签功能提供。
