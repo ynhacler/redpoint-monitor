@@ -18,7 +18,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 返回列表 */
   back: []
-  /** Token 失效，需要重新输入 */
 }>()
 
 const view = ref<EnrollCodeView | undefined>(props.initial)
