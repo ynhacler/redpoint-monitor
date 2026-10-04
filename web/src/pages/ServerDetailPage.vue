@@ -180,7 +180,7 @@ const charts = computed(() => [
 <template>
   <main class="page">
     <div class="nav-row">
-      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />节点</RouterLink>
+      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />首页</RouterLink>
       <div v-if="s" class="actions-row">
         <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
         <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary"><Icon name="edit" />编辑</RouterLink>
