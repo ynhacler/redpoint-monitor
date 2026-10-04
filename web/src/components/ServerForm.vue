@@ -4,8 +4,7 @@
 // 编辑模式下提供删除（设计 19.5），需输入节点名称确认。
 import { computed, reactive, ref } from 'vue'
 import {
-  ApiError, createServer, deleteServer, reauth, revokeAgentToken, updateServer, UnauthorizedError,
-  type CreateServerInput, type EnrollCodeView, type ServerView, type TrafficUnit,
+  ApiError, createServer, deleteServer, errorText, reauth, revokeAgentToken, updateServer, type CreateServerInput, type EnrollCodeView, type ServerView, type TrafficUnit,
 } from '../api'
 import { countryOptions } from '../countries'
 import { bytesToGB, fmtBytes } from '../format'
@@ -26,8 +25,6 @@ const emit = defineEmits<{
   deleted: []
   /** 取消，返回列表 */
   cancel: []
-  /** Token 失效，需要重新输入 */
-  unauthorized: []
 }>()
 const editing = computed(() => !!props.server)
 
@@ -107,7 +104,7 @@ function buildInput(): CreateServerInput {
     region: text(f.region),
     country: f.country || undefined,
     bandwidth_mbps: num(f.bandwidth_mbps),
-    report_interval_s: num(f.report_interval_s),
+    report_interval_s: num(f.report_interval_s) as CreateServerInput['report_interval_s'],
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_timezone: f.traffic_timezone.trim(),
@@ -116,7 +113,7 @@ function buildInput(): CreateServerInput {
     traffic_count_mode: f.traffic_count_mode as CreateServerInput['traffic_count_mode'],
     price,
     currency: price ? text(f.currency) : undefined, // 不填价格时不提交币种，避免无意义的数据
-    billing_period: f.billing_period || undefined,
+    billing_period: (f.billing_period || undefined) as CreateServerInput['billing_period'],
     expire_date: text(f.expire_date),
     enroll_ttl: f.enroll_ttl as CreateServerInput['enroll_ttl'],
     verify_mode: f.verify_mode as CreateServerInput['verify_mode'],
@@ -139,9 +136,7 @@ async function submit() {
       emit('created', await createServer(buildInput()))
     }
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      emit('unauthorized')
-    } else if (e instanceof ApiError && e.details.length) {
+    if (e instanceof ApiError && e.details.length) {
       // 422 / 409：在对应字段下显示错误；VPS 信息组有错误时自动展开
       fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
       const verifyFields = ['expected_hostname', 'expected_ipv4', 'expected_ipv6', 'verify_mode']
@@ -149,8 +144,8 @@ async function submit() {
       if (e.details.some((d) => ![...verifyFields, 'name', 'country', 'group', 'note'].includes(d.field))) {
         showVps.value = true
       }
-    } else if (e instanceof ApiError) {
-      formError.value = e.requestId ? `${e.message}（编号 ${e.requestId}）` : e.message
+    } else {
+      formError.value = errorText(e)
     }
   } finally {
     submitting.value = false
@@ -171,8 +166,7 @@ async function revoke() {
     await revokeAgentToken(props.server.id)
     revokeDone.value = true
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) revokeError.value = e.details[0]?.message ?? e.message
+    revokeError.value = errorText(e)
   } finally {
     revokePassword.value = ''
     revoking.value = false
@@ -192,8 +186,7 @@ async function remove() {
     await deleteServer(props.server.id)
     emit('deleted')
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) deleteError.value = e.details[0]?.message ?? e.message
+    deleteError.value = errorText(e)
   } finally {
     deletePassword.value = ''
     deleting.value = false

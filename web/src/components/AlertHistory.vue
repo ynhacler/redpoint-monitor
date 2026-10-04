@@ -2,7 +2,7 @@
 // 节点的告警记录（设计 1.5.7、16.3）：进行中的在前，其后是最近已恢复的，显示触发时间与持续时长。
 // 每分钟刷新一次；进行中的告警的当前值随节点列表每 3 秒更新（见节点卡片与横幅）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { listAlerts, UnauthorizedError, type AlertEvent } from '../api'
+import { errorText, listAlerts, type AlertEvent } from '../api'
 import { fmtDateTime, fmtDuration } from '../format'
 
 const props = defineProps<{
@@ -11,7 +11,6 @@ const props = defineProps<{
   /** 节点活动告警与维护状态的摘要；变化时立即刷新（告警触发 / 恢复、开始维护后不必等 1 分钟） */
   version?: string
 }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const items = ref<AlertEvent[]>([])
 const loaded = ref(false)
@@ -23,8 +22,7 @@ async function load() {
     items.value = (await listAlerts({ state: 'all', server_id: props.serverId, limit: 20 })).items
     error.value = ''
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else error.value = '告警记录加载失败'
+    error.value = errorText(e, '告警记录加载失败')
   } finally {
     loaded.value = true
   }

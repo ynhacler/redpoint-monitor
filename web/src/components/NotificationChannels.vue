@@ -3,14 +3,12 @@
 // 凭证只在填写时提交，之后只显示脱敏后的值；修改时留空表示保持原值。
 import { onMounted, reactive, ref } from 'vue'
 import {
-  ApiError, createChannel, deleteChannel, listChannels, listDeliveries, testChannel, UnauthorizedError, updateChannel,
-  type ChannelType, type Delivery, type NotifyChannel, type NotifyChannelInput,
+  ApiError, createChannel, deleteChannel, errorText, listChannels, listDeliveries, testChannel, updateChannel, type ChannelType, type Delivery, type NotifyChannel, type NotifyChannelInput,
 } from '../api'
 import { severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
 import QuietHoursSettings from './QuietHoursSettings.vue'
 
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const channels = ref<NotifyChannel[]>([])
 const deliveries = ref<Delivery[]>([])
@@ -18,8 +16,7 @@ const error = ref('')
 const loaded = ref(false)
 
 function fail(e: unknown) {
-  if (e instanceof UnauthorizedError) emit('unauthorized')
-  else error.value = e instanceof ApiError ? e.message : '操作失败，请稍后重试'
+  error.value = errorText(e)
 }
 
 async function load() {
@@ -131,7 +128,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
-    <QuietHoursSettings @unauthorized="emit('unauthorized')" />
+    <QuietHoursSettings />
 
     <div class="actions">
       <button type="button" @click="openNew('telegram')">添加 Telegram</button>

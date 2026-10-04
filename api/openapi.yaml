@@ -1,5 +1,5 @@
 # 面板接口契约（设计 19.0.1）：新增或修改接口时先改这里，再写实现。
-# Web（TypeScript）与 App（Dart）的请求类型将由本文件生成（TODO(B)）；
+# Web 的请求类型由本文件生成（make api-types → web/src/api.gen.ts，CI 检查一致）；App（Dart）随阶段 C；
 # 服务端测试校验响应与契约一致（TODO(A0)）。
 openapi: 3.1.0
 info:
@@ -155,6 +155,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [id, created_at, last_seen_at, expires_at, client_ip, user_agent, current]
                       properties:
                         id: { type: integer }
                         created_at: { type: integer }
@@ -202,7 +203,7 @@ paths:
           description: 节点为严格核对模式且主机信息不一致（设计 27.6.3），或 server_id 与注册码所属节点不符；注册码保持可用
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema: { $ref: '#/components/schemas/ErrorBody' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /agent/report:
@@ -433,10 +434,11 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [matching, total, items]
                 properties:
                   matching: { type: integer }
                   total: { type: integer, description: 由此规则决定的节点数 }
-                  items: { type: array, items: { type: object, properties: { server_id: { type: integer }, name: { type: string }, value: { type: number }, detail: { type: string } } } }
+                  items: { type: array, items: { type: object, required: [server_id, name, value], properties: { server_id: { type: integer }, name: { type: string }, value: { type: number }, detail: { type: string } } } }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
@@ -447,7 +449,7 @@ paths:
       responses:
         '200':
           description: 版本列表
-          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string }, mirror: { type: boolean, description: 是否开启 --release-mirror } } } } }
+          content: { application/json: { schema: { type: object, required: [next_cursor, items, auto_sync, source, mirror], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } }, auto_sync: { type: boolean }, source: { type: string }, mirror: { type: boolean, description: 是否开启 --release-mirror } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
   /agent-releases/sync:
@@ -455,7 +457,7 @@ paths:
       tags: [servers]
       summary: 立即从官方发布地址同步最新版本并验签；验签失败的版本不会被记录
       responses:
-        '200': { description: 同步到的版本, content: { application/json: { schema: { type: object, properties: { version: { type: string }, channel: { type: string } } } } } }
+        '200': { description: 同步到的版本, content: { application/json: { schema: { type: object, required: [version, channel], properties: { version: { type: string }, channel: { type: string } } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
 
@@ -468,7 +470,7 @@ paths:
       responses:
         '200':
           description: 任务列表
-          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } } } } } }
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
     post:
@@ -494,9 +496,10 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [created, skipped]
                 properties:
                   created: { type: array, items: { $ref: '#/components/schemas/UpgradeTask' } }
-                  skipped: { type: array, items: { type: object, properties: { server_id: { type: integer }, reason: { type: string } } } }
+                  skipped: { type: array, items: { type: object, required: [server_id, reason], properties: { server_id: { type: integer }, reason: { type: string } } } }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
@@ -541,7 +544,7 @@ paths:
       responses:
         '200':
           description: 渠道列表
-          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/NotifyChannel' } } } } } }
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/NotifyChannel' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
     post:
       tags: [alerts]
@@ -588,7 +591,7 @@ paths:
       responses:
         '200':
           description: 发送结果；失败原因不含请求地址与凭证
-          content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, error: { type: string } } } } }
+          content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean }, error: { type: string } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
@@ -602,7 +605,7 @@ paths:
       responses:
         '200':
           description: 投递记录
-          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
   /silences:
@@ -612,7 +615,7 @@ paths:
       responses:
         '200':
           description: 静音与维护
-          content: { application/json: { schema: { type: object, properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Silence' } } } } } }
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Silence' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
     post:
       tags: [alerts]
@@ -673,6 +676,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [id, ts, actor_type, actor_id, action, target_type, target_id, target_name, result, client_ip, user_agent, details]
                       properties:
                         id: { type: integer }
                         ts: { type: integer }
@@ -875,7 +879,7 @@ paths:
                 required: [range, resolution, items, next_cursor]
                 properties:
                   next_cursor: { type: string, description: 按时间范围一次返回，恒为空（设计 19.0.2） }
-                  range: { type: string }
+                  range: { type: string, enum: ['1h', '6h', '24h', '7d', '30d'] }
                   resolution: { type: integer, description: 点的间隔，秒 }
                   items:
                     type: array
@@ -919,6 +923,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [day, rx, tx, used]
                       properties:
                         day: { type: string, format: date }
                         rx: { type: integer }
@@ -949,6 +954,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [cycle_start, cycle_end, rx, tx, adjustment, used, limit]
                       properties:
                         cycle_start: { type: string, format: date }
                         cycle_end: { type: string, format: date, description: 下一周期开始日（不含） }
@@ -1007,6 +1013,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [id, cycle_start, measured_bytes, reported_bytes, adjustment_bytes, note, created_at]
                       properties:
                         id: { type: integer }
                         cycle_start: { type: string, format: date }
@@ -1042,18 +1049,18 @@ components:
       schema: { type: integer, minimum: 1 }
 
   responses:
-    Error:
+    ErrorBody:
       description: 统一错误响应（设计 43.4）
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: '#/components/schemas/ErrorBody' }
     RateLimited:
       description: 请求过于频繁
       headers:
         Retry-After: { schema: { type: integer }, description: 建议等待的秒数 }
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: '#/components/schemas/ErrorBody' }
 
   schemas:
     ErrorCode:
@@ -1061,9 +1068,9 @@ components:
       description: 稳定的错误码，一经发布不再改名（设计 43.4）
       enum: [validation_failed, bad_request, unauthorized, token_revoked, forbidden, not_found, conflict,
              payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal,
-             password_change_required, reauth_required, captcha_failed]
+             password_change_required, reauth_required, captcha_failed, unsupported_encoding]
 
-    Error:
+    ErrorBody:
       type: object
       required: [error]
       properties:
@@ -1158,7 +1165,7 @@ components:
 
     InstallCommand:
       type: object
-      required: [mode, command, server]
+      required: [mode, command, server, manual_command, rotate_command, release]
       properties:
         mode:
           type: string
@@ -1175,6 +1182,7 @@ components:
     AgentRelease:
       type: object
       description: 已同步并验签的官方 Agent 版本（设计 29.1）；每次读取都重新验签清单原文
+      required: [version, channel, key_id, installer_file, installer_sha256, released_at, synced_at, mirrored]
       properties:
         version: { type: string }
         channel: { type: string, enum: [stable, beta] }
@@ -1184,12 +1192,12 @@ components:
         released_at: { type: string }
         synced_at: { type: integer }
         notes: { type: string }
-        artifacts: { type: array, items: { type: object, properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
+        artifacts: { type: array, items: { type: object, required: [file, size, sha256], properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
         mirrored: { type: boolean, description: 全部文件已校验并保存在本面板（设计 27.5.3） }
 
     QuietHours:
       type: object
-      required: [enabled, start, end, critical]
+      required: [enabled, start, end, critical, timezone]
       properties:
         enabled: { type: boolean }
         start: { type: string, example: '23:00', description: 'HH:MM；晚于 end 表示跨午夜' }
@@ -1201,6 +1209,7 @@ components:
       allOf:
         - { $ref: '#/components/schemas/QuietHours' }
         - type: object
+          required: [active, effective_timezone, held]
           properties:
             active: { type: boolean, description: 当前是否处于免打扰 }
             effective_timezone: { type: string }
@@ -1209,6 +1218,7 @@ components:
     NotifyChannel:
       type: object
       description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥只返回是否已设置
+      required: [id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at]
       properties:
         id: { type: integer }
         type: { type: string, enum: [telegram, webhook] }
@@ -1247,6 +1257,7 @@ components:
 
     Delivery:
       type: object
+      required: [id, channel_id, channel_name, channel_type, event_id, server_name, kind, title, status, attempts, last_error, created_at, sent_at]
       properties:
         id: { type: integer }
         channel_id: { type: integer }
@@ -1265,6 +1276,7 @@ components:
     UpgradeTask:
       type: object
       description: 远程升级任务（设计 29.10、29.13）
+      required: [id, server_id, server_name, target_version, from_version, status, reason, created_by, created_at, updated_at]
       properties:
         id: { type: integer }
         server_id: { type: integer }
@@ -1292,6 +1304,7 @@ components:
 
     ServerView:
       type: object
+      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, price_cents, currency, billing_period, expire_date, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -1301,7 +1314,7 @@ components:
         expected_hostname: { type: string }
         expected_ipv4: { type: string }
         expected_ipv6: { type: string }
-        verify_mode: { type: string }
+        verify_mode: { type: string, enum: [warn, strict] }
         hostname: { type: string }
         ipv4: { type: string }
         ipv6: { type: string }
@@ -1321,7 +1334,7 @@ components:
         expire_date: { type: string }
         traffic_limit_bytes: { type: integer }
         traffic_reset_day: { type: integer }
-        traffic_count_mode: { type: string }
+        traffic_count_mode: { type: string, enum: [sum, rx, tx, max] }
         created_at: { type: integer }
         latest: { $ref: '#/components/schemas/Report' }
         traffic_unit: { type: string, enum: [decimal, binary] }
@@ -1332,6 +1345,7 @@ components:
           description: 活动告警（firing），严重在前；同一类型只保留最严重的一条；节点离线时只有离线告警（设计 16.4）
           items:
             type: object
+            required: [event_id, rule_key, type, severity, message, value, fired_at, silenced]
             properties:
               event_id: { type: integer }
               rule_key: { type: string }
@@ -1346,6 +1360,7 @@ components:
 
     Silence:
       type: object
+      required: [id, scope_type, scope_id, kind, reason, starts_at, ends_at, created_by]
       properties:
         id: { type: integer }
         scope_type: { type: string, enum: [server, group, rule, global] }
@@ -1358,6 +1373,7 @@ components:
 
     AlertRule:
       type: object
+      required: [id, rule_key, scope_type, scope_id, type, operator, threshold, recover_threshold, duration_s, recover_duration_s, severity, repeat_interval_s, enabled]
       properties:
         id: { type: integer }
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
@@ -1375,6 +1391,7 @@ components:
 
     AlertEvent:
       type: object
+      required: [id, rule_key, server_id, server_name, type, severity, state, value, threshold, message, started_at, fired_at]
       properties:
         id: { type: integer }
         rule_id: { type: integer }
@@ -1395,6 +1412,7 @@ components:
     TrafficView:
       type: object
       description: 本计费周期流量（设计 5.7、5.8、32）。字节数均为整数，GB 换算由客户端按 unit 完成。
+      required: [cycle_start, cycle_end, rx, tx, measured, adjustment, used, limit, unit, factor]
       properties:
         cycle_start: { type: string, format: date }
         cycle_end: { type: string, format: date, description: 下一周期开始日（不含） }
@@ -1410,6 +1428,7 @@ components:
         forecast:
           type: object
           description: 周期结束时的预计用量；周期开始不足 3 天时省略（设计 32）
+          required: [daily, total, over]
           properties:
             daily: { type: integer, description: 采用的日均 }
             total: { type: integer }
@@ -1419,6 +1438,7 @@ components:
     Report:
       type: object
       description: Agent 上报，定义见 internal/protocol（设计 6.2）；只做向后兼容的新增
+      required: [timestamp, agent_version, system, cpu, memory, swap, disk, network]
       properties:
         timestamp: { type: integer }
         agent_version: { type: string }
@@ -1426,6 +1446,7 @@ components:
         sent_at: { type: integer, description: 可选：发送时刻的 Agent 时钟（Unix 秒），面板据此计算时钟偏差（设计 43.5） }
         system:
           type: object
+          required: [hostname, os, os_version, kernel, arch, uptime]
           properties:
             hostname: { type: string }
             os: { type: string }
@@ -1438,6 +1459,7 @@ components:
             counter_bits: { type: integer, enum: [32, 64], description: 可选：内核网卡计数器位数；32 位时面板按回绕补算流量（设计 5.5） }
         cpu:
           type: object
+          required: [usage, cores, load1]
           properties:
             usage: { type: number }
             cores: { type: integer }
@@ -1447,6 +1469,7 @@ components:
             breakdown:
               type: object
               description: 可选：两次采样之间各类时间占比 0～100（设计 4.4）
+              required: [user, nice, system, iowait, irq, softirq, steal, idle]
               properties:
                 user: { type: number }
                 nice: { type: number }
@@ -1460,6 +1483,7 @@ components:
             temp_c: { type: number, description: 可选，CPU 温度 ℃ }
         memory:
           type: object
+          required: [total, used, usage]
           properties:
             total: { type: integer }
             used: { type: integer, description: MemTotal − MemAvailable }
@@ -1468,16 +1492,23 @@ components:
             free: { type: integer, description: 可选 }
             buffers: { type: integer, description: 可选 }
             cached: { type: integer, description: 可选：Cached + SReclaimable }
-        swap: { type: object }
+        swap:
+          type: object
+          required: [total, used]
+          properties:
+            total: { type: integer }
+            used: { type: integer }
         processes:
           type: object
           description: 可选（设计 4.9）
+          required: [total, running]
           properties:
             total: { type: integer }
             running: { type: integer }
         conns:
           type: object
           description: 可选（设计 4.9）：sockstat 的 inuse，IPv4 + IPv6
+          required: [tcp, udp, time_wait]
           properties:
             tcp: { type: integer }
             udp: { type: integer }
@@ -1498,6 +1529,7 @@ components:
           description: 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次
           items:
             type: object
+            required: [mount, total, used, usage]
             properties:
               mount: { type: string }
               total: { type: integer }
@@ -1506,12 +1538,31 @@ components:
               fstype: { type: string }
               device: { type: string }
               available: { type: integer }
-        network: { type: array, items: { type: object } }
+        network:
+          type: array
+          description: 每块网卡；rx/tx_bytes 为内核累计字节数，rx/tx_speed 为 Agent 计算的字节/秒
+          items:
+            type: object
+            required: [interface, rx_bytes, tx_bytes, rx_speed, tx_speed]
+            properties:
+              interface: { type: string }
+              ifindex: { type: integer }
+              rx_bytes: { type: integer }
+              tx_bytes: { type: integer }
+              rx_speed: { type: integer }
+              tx_speed: { type: integer }
+              rx_pps: { type: number, description: 可选：包速率（设计 4.10） }
+              tx_pps: { type: number }
+              rx_errors: { type: integer, description: 可选：开机以来的错误、丢包累计 }
+              tx_errors: { type: integer }
+              rx_dropped: { type: integer }
+              tx_dropped: { type: integer }
         disk_io:
           type: array
           description: 可选，整块磁盘的 IO（设计 4.7）
           items:
             type: object
+            required: [device, read_speed, write_speed]
             properties:
               device: { type: string }
               read_bytes: { type: integer }
@@ -1531,6 +1582,7 @@ components:
           description: 可选：本轮失败的采集项及原因，对应字段留空，其余照常（设计 43.5）
           items:
             type: object
+            required: [item, message]
             properties:
               item: { type: string, enum: [system, cpu, memory, disk, disk_io, network, processes, conns, ports, extra] }
               message: { type: string }
@@ -1552,6 +1604,7 @@ components:
 
     MetricPoint:
       type: object
+      required: [ts, cpu, cpu_max, load1, mem_used, mem_total, swap_used, disk_used, disk_total, rx_speed, rx_speed_max, tx_speed, tx_speed_max, disk_read, disk_read_max, disk_write, disk_write_max, steal, steal_max, iowait, iowait_max, tcp, tcp_max]
       properties:
         ts: { type: integer, description: 桶起点，Unix 秒 }
         cpu: { type: number }

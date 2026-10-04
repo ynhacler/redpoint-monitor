@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 70 | Web 请求类型由 OpenAPI 契约生成（api.gen.ts，CI 检查一致）；统一错误处理：401 统一回到登录页、errorText 文案、全局错误边界；契约补充 required 与 unsupported_encoding | 19.0.1、43.4、43.6 |
 | 69 | 图标定为 Lucide，Web 使用 @lucide/vue（经 Icon.vue 按需引用） | 41.4.3 |
 | 68 | 新增第 44 章：云厂商账户（AWS、阿里云国内站 / 国际站、腾讯云、Oracle Cloud）的费用、流量与实例；只读凭证、AES-256-GCM 加密保存、签名自行实现不引入 SDK；DMIT 无公开 API 暂不接入 | 44 |
 | 67 | 审计日志按主体、操作、时间筛选与 CSV 导出（BOM、防 CSV 注入、导出记入日志）；登录会话列表与踢出（auth.session_revoke 归入登录日志）；Web 日志页筛选与导出、账号页“登录中的设备” | 24.8 |
@@ -5397,6 +5398,8 @@ API Prefix：
 api/openapi.yaml 是接口的唯一契约，随代码一起提交
 新增或修改接口：先改 openapi.yaml，再写实现
 Web（TypeScript）与 App（Dart）的请求类型由契约生成，不手写
+  Web：scripts/gen-api-types.rb（只用 Ruby 标准库）→ web/src/api.gen.ts，make api-types；
+  生成结果提交到仓库，CI 检查与契约一致；总是返回的字段必须列入 required，否则生成为可选
 服务端测试校验响应与契约一致
 ```
 
@@ -9833,6 +9836,7 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
   500 → 提示“出错了”，附“复制错误编号”按钮（request_id），便于对照日志
 不向用户展示原始错误、堆栈
 全局错误边界：单个组件渲染出错时显示占位，不让整个页面白屏
+实现：api.ts 的 request() 统一转换错误；onUnauthorized 统一处理 401；errorText() 统一生成提示文案
 每个页面都有：加载中、空状态、错误三种状态（设计 41.7）
 ```
 

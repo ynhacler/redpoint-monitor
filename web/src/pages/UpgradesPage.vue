@@ -3,12 +3,11 @@
 // 【安全】只能选择面板已同步并验签的官方版本；节点上的 Agent 与 updater 独立验签并拒绝降级（设计 29.13）。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  ApiError, cancelUpgradeTask, createUpgradeTasks, listReleases, listUpgradeTasks, syncReleases, UnauthorizedError,
-  type AgentRelease, type ServerView, type UpgradeTask,
+  cancelUpgradeTask, createUpgradeTasks, errorText, listReleases, listUpgradeTasks, syncReleases, type AgentRelease, type ServerView, type UpgradeTask,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtDateTime } from '../format'
-import { logout, state } from '../store'
+import { state } from '../store'
 import { compareVersions } from '../versions'
 
 const latest = ref<AgentRelease | null>(null)
@@ -27,8 +26,7 @@ const statusNames: Record<string, string> = {
 const isActive = (t: UpgradeTask) => t.status === 'pending' || t.status === 'delivered' || t.status === 'staged'
 
 function handle(e: unknown) {
-  if (e instanceof UnauthorizedError) logout()
-  else error.value = e instanceof ApiError ? e.message : '操作失败，请稍后重试'
+  error.value = errorText(e)
 }
 
 let timer: number | undefined

@@ -3,7 +3,7 @@
 // 修改成功后，该账号在其他浏览器上的会话全部失效。
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ApiError, changePassword } from '../api'
+import { ApiError, changePassword, errorText } from '../api'
 import SessionsPanel from '../components/SessionsPanel.vue'
 import { passwordChanged, state } from '../store'
 
@@ -32,8 +32,8 @@ async function submit() {
   } catch (e) {
     if (e instanceof ApiError && e.details.length) {
       errors.value = Object.fromEntries(e.details.map((d) => [d.field === 'new_password' ? 'next' : d.field === 'current_password' ? 'current' : d.field, d.message]))
-    } else if (e instanceof ApiError) {
-      message.value = e.message
+    } else {
+      message.value = errorText(e)
     }
   } finally {
     busy.value = false

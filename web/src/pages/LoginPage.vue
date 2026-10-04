@@ -3,7 +3,7 @@
 // 登录成功后回到原来要访问的页面；使用初始密码时先去修改密码（设计 17.4）。
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, type CaptchaAnswer } from '../api'
+import { errorText, type CaptchaAnswer } from '../api'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
 import { login, state } from '../store'
 
@@ -42,7 +42,7 @@ async function submit() {
       router.replace(r)
     }
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '登录失败'
+    error.value = errorText(e, '登录失败')
     password.value = ''
     answer.value = undefined
     captchaRef.value?.reload()

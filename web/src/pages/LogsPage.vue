@@ -4,10 +4,9 @@
 // 筛选条件都在地址中（tab / result / actor / action / from / to），可刷新、可分享。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, auditExportURL, listAuditLogs, UnauthorizedError, type AuditLog, type AuditQuery } from '../api'
+import { auditExportURL, errorText, listAuditLogs, type AuditLog, type AuditQuery } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtDateTime, uaSummary } from '../format'
-import { logout } from '../store'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,8 +52,7 @@ async function load(more = false) {
     items.value = more ? [...items.value, ...p.items] : p.items
     cursor.value = p.next_cursor
   } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    else error.value = e instanceof ApiError ? e.message : '加载失败，请稍后重试'
+    error.value = errorText(e, '加载失败，请稍后重试')
   } finally {
     loading.value = false
   }

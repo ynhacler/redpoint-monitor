@@ -2,7 +2,9 @@
 // 节点安装命令页（设计 27.3.4）：展示命令，并等待主机注册结果。
 // TODO(B): 改为 WebSocket 事件 server.enrolled 实时更新（设计 19.11、20），目前每 3 秒轮询一次。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ApiError, getInstallCommand, regenerateEnrollCode, syncReleases, UnauthorizedError, type EnrollCodeView } from '../api'
+import {
+  errorText, getInstallCommand, regenerateEnrollCode, syncReleases, UnauthorizedError, type EnrollCodeView,
+} from '../api'
 import { fmtTime } from '../format'
 import CommandBlock from './CommandBlock.vue'
 import StatusDot from './StatusDot.vue'
@@ -16,8 +18,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 返回列表 */
   back: []
-  /** Token 失效，需要重新输入 */
-  unauthorized: []
 }>()
 
 const view = ref<EnrollCodeView | undefined>(props.initial)
@@ -49,8 +49,7 @@ async function sync() {
     syncMsg.value = `已同步并验签 v${r.version}`
     await refresh()
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else syncMsg.value = e instanceof ApiError ? e.message : '同步失败'
+    syncMsg.value = errorText(e, '同步失败')
   } finally {
     syncing.value = false
   }
@@ -70,12 +69,8 @@ async function refresh() {
     // 已注册、过期或撤销后不再需要轮询
     if (v.enroll_status !== 'ACTIVE') stop()
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      stop()
-      emit('unauthorized')
-    } else if (e instanceof ApiError) {
-      error.value = e.message // 网络错误时保留已显示的命令，继续重试（设计 43.6）
-    }
+    if (e instanceof UnauthorizedError) stop()
+    else error.value = errorText(e) // 网络错误时保留已显示的命令，继续重试（设计 43.6）
   }
 }
 
@@ -97,8 +92,7 @@ async function regenerate() {
     fullCode.value = v.enroll_code ?? ''
     start()
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) error.value = e.message
+    error.value = errorText(e)
   } finally {
     busy.value = false
   }

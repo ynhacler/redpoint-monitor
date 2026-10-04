@@ -5,15 +5,14 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSilence, deleteAlertRule, endSilence, listAlertRules, listAlerts, listSilences, UnauthorizedError, updateAlertRule,
-  type AlertEvent, type AlertRule, type Silence,
+  createSilence, deleteAlertRule, endSilence, errorText, listAlertRules, listAlerts, listSilences, updateAlertRule, type AlertEvent, type AlertRule, type Silence,
 } from '../api'
 import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
 import NotificationChannels from '../components/NotificationChannels.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
-import { installed, logout } from '../store'
+import { installed } from '../store'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,8 +20,7 @@ const tab = computed(() => (route.query.tab === 'rules' || route.query.tab === '
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
-  if (e instanceof UnauthorizedError) logout()
-  else set(e instanceof ApiError ? e.message : '加载失败，请稍后重试')
+  set(errorText(e, '加载失败，请稍后重试'))
 }
 
 // ---- 告警 ----
@@ -112,7 +110,7 @@ async function addSilence(duration: '' | '1h' | '8h' | '24h') {
     sil.value.reason = ''
     await loadSilences()
   } catch (e) {
-    fail(e, (m) => (silencesError.value = e instanceof ApiError ? e.details[0]?.message ?? m : m))
+    fail(e, (m) => (silencesError.value = m))
   }
 }
 async function stopSilence(x: Silence) {
@@ -171,7 +169,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
     </template>
 
     <!-- 通知渠道（设计 16.5） -->
-    <NotificationChannels v-else-if="tab === 'notify'" @unauthorized="logout" />
+    <NotificationChannels v-else-if="tab === 'notify'" />
 
     <!-- 静音与维护 -->
     <template v-else-if="tab === 'silences'">
@@ -242,7 +240,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
               </div>
               <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? '收起' : '编辑' }}</button>
             </div>
-            <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" @unauthorized="logout" />
+            <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" />
           </li>
         </ul>
       </section>
@@ -280,7 +278,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
           </div>
           <p v-if="addTaken" class="small warn-text">该对象已有这条规则的覆盖，请在下方列表中直接修改。</p>
           <AlertRuleEditor v-if="addBase && add.scopeId && !addTaken" :key="`${add.ruleKey}-${add.scopeType}-${add.scopeId}`"
-            :rule="addBase" :scope="{ type: add.scopeType, id: add.scopeId }" @saved="saved" @cancel="adding = false" @unauthorized="logout" />
+            :rule="addBase" :scope="{ type: add.scopeType, id: add.scopeId }" @saved="saved" @cancel="adding = false" />
           <div v-else class="add-cancel"><button type="button" class="secondary" @click="adding = false">取消</button></div>
         </div>
         <p v-if="!overrides.length && !adding" class="muted small">还没有覆盖。例如：为“落地”分组把流量阈值改为 70%，或为某台机器关闭 CPU 告警。</p>
@@ -298,7 +296,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
               <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? '收起' : '编辑' }}</button>
               <button type="button" class="text danger-text" @click="remove(r)">删除</button>
             </div>
-            <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" @unauthorized="logout" />
+            <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" />
           </li>
         </ul>
       </section>
