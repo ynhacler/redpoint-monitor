@@ -228,7 +228,9 @@ func (s *Store) ReplaceCloudInstances(accountID int64, insts []cloud.Instance, n
 			public_ipv6, plan, expire_at, traffic_limit_bytes, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT (account_id, instance_id) DO UPDATE SET name = excluded.name, region = excluded.region,
 			kind = excluded.kind, state = excluded.state, public_ipv4 = excluded.public_ipv4, public_ipv6 = excluded.public_ipv6,
-			plan = excluded.plan, expire_at = excluded.expire_at, traffic_limit_bytes = excluded.traffic_limit_bytes,
+			plan = excluded.plan, expire_at = excluded.expire_at,
+			-- 实例列表不含流量包额度时（阿里云轻量）保留流量同步得到的值
+			traffic_limit_bytes = CASE WHEN excluded.traffic_limit_bytes > 0 THEN excluded.traffic_limit_bytes ELSE cloud_instances.traffic_limit_bytes END,
 			updated_at = excluded.updated_at`, accountID, in.ID, in.Name, in.Region, in.Kind, in.State, in.IPv4, in.IPv6,
 			in.Plan, in.ExpireAt, int64(in.TrafficLimit), now.Unix()); err != nil {
 			return err
@@ -256,9 +258,9 @@ func (s *Store) SaveCloudTraffic(accountID int64, insts []cloud.Instance, now ti
 		if in.TrafficPeriodStart == "" {
 			continue
 		}
-		if _, err := tx.Exec(`UPDATE cloud_instances SET traffic_used_bytes = ?, traffic_period_start = ?, updated_at = ?
-			WHERE account_id = ? AND instance_id = ?`, int64(in.TrafficUsed), in.TrafficPeriodStart, now.Unix(),
-			accountID, in.ID); err != nil {
+		if _, err := tx.Exec(`UPDATE cloud_instances SET traffic_used_bytes = ?, traffic_limit_bytes = ?, traffic_period_start = ?,
+			updated_at = ? WHERE account_id = ? AND instance_id = ?`, int64(in.TrafficUsed), int64(in.TrafficLimit),
+			in.TrafficPeriodStart, now.Unix(), accountID, in.ID); err != nil {
 			return err
 		}
 	}

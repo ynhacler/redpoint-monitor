@@ -535,18 +535,21 @@ export interface Report {
 
 /** 添加时 provider、name、credential 必填；修改时 provider 不可更改，credential 留空表示不变 */
 export interface CloudAccountInput {
-  /** 目前支持 AWS；阿里云、腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10） */
-  provider?: 'aws'
+  /** aliyun_cn：阿里云国内站（aliyun.com）；aliyun_intl：国际站（alibabacloud.com）。腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10） */
+  provider?: 'aws' | 'aliyun_cn' | 'aliyun_intl'
   name: string
   /** 只同步这些区域；空表示全部已启用的区域 */
   regions?: string[]
   /** 只读凭证（设计 44.3 列出最小权限）。只写不读：响应中只有 credential_hint */
   credential?: {
-    /** AWS IAM 用户的 Access Key ID（AKIA…） */
+    /** AWS：IAM 用户的 Access Key ID（AKIA…）；阿里云：RAM 用户的 AccessKey ID（LTAI…） */
     access_key_id?: string
+    /** AWS */
     secret_access_key?: string
+    /** 阿里云 */
+    access_key_secret?: string
   }
-  /** 月度预算（账户币种）；0 表示不设 */
+  /** 月度预算（账户币种：AWS 为 USD，阿里云国内站 CNY、国际站多为 USD）；0 表示不设 */
   budget?: number
   /** 费用同步间隔，小时；AWS 每次同步约 0.02 美元 */
   cost_interval_h?: 6 | 12 | 24
@@ -557,7 +560,7 @@ export interface CloudAccountInput {
 
 export interface CloudAccount {
   id: number
-  provider: 'aws'
+  provider: 'aws' | 'aliyun_cn' | 'aliyun_intl'
   name: string
   regions: string[]
   /** 如 AKIA…WXYZ；完整凭证不返回 */
@@ -609,7 +612,7 @@ export interface CloudInstance {
   instance_id: string
   name: string
   region: string
-  /** ec2 / lightsail / … */
+  /** ec2 / lightsail / ecs / swas（阿里云轻量应用服务器） */
   kind: string
   /** 云厂商原样，如 running / stopped */
   state: string

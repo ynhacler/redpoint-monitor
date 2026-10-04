@@ -87,6 +87,14 @@ export function fmtDateTime(unix: number | null | undefined): string {
 }
 
 /** 时长：“4 分钟”“2 小时”“3 天”，用于离线时长与运行时间（设计 41.4.1） */
+/** 日期：YYYY-MM-DD（本地时区），用于到期日等（设计 41.4.1） */
+export function fmtDate(unix: number | null | undefined): string {
+  if (!unix) return DASH
+  const d = new Date(unix * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH
   if (seconds < 60) return `${Math.floor(seconds)} 秒`
