@@ -1315,6 +1315,10 @@ export interface Paths {
       params: {
         id: number
       }
+      query?: {
+        /** 按需实时模式（设计 46.2）：Web 详情页可见时带 live=1，节点在随后 30 秒内以 2 秒采样；API Key 带此参数无效 */
+        live?: 1
+      }
       response: ServerView
     }
     /** 修改节点信息（设计 19.5） */

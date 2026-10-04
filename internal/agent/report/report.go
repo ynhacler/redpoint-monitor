@@ -331,9 +331,10 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 }
 
 // 面板可下发的采样间隔范围（设计 1.6.8 受限配置）：Agent 端的硬性限制，面板给出范围外的值时忽略。
+// 下限 2 秒只用于按需实时模式：有人打开节点详情页时面板临时下发，页面关闭后恢复（设计 46.2）。
 // 上限不超过 systemd WatchdogSec（120 秒）的一半，否则主循环喂狗不及时会被误判为卡死。
 const (
-	MinInterval = 5 * time.Second
+	MinInterval = 2 * time.Second
 	MaxInterval = 60 * time.Second
 )
 

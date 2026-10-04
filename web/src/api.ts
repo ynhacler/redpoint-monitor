@@ -198,8 +198,9 @@ export function createServer(input: CreateServerInput) {
   return request('post', '/servers', { body: input })
 }
 
-export function getServer(id: number) {
-  return request('get', '/servers/{id}', { params: { id } })
+/** live 为真时请求按需实时模式：节点随后 30 秒内以 2 秒采样（设计 46.2）；只在详情页可见时使用 */
+export function getServer(id: number, live = false) {
+  return request('get', '/servers/{id}', { params: { id }, query: live ? { live: 1 } : undefined })
 }
 
 /** 修改节点信息（整体替换，未提供的可选字段视为清空），返回最新节点。 */

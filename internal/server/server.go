@@ -77,6 +77,7 @@ type Server struct {
 	counters  map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
 	nodeConfs map[int64]nodeConf            // 各节点的采样间隔与计费时区缓存，避免每份上报都查库；节点修改后清除（interval.go）
 	traffic   trafficCache                  // 本周期流量的短期缓存（traffic_cache.go）
+	watched   map[int64]time.Time           // 按需实时模式：正在被查看的节点及其到期时间（设计 46.2，interval.go）
 	pending   []pendingWrite                // 等待批量写入的上报
 }
 
@@ -120,7 +121,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState()}
+		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState()}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -321,7 +322,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	// 声明接受 gzip 压缩的上报（RFC 7694）：新版 Agent 看到后才压缩，旧版面板不声明，新旧组合都兼容（设计 6.1）
 	w.Header().Set("Accept-Encoding", "gzip")
 	conf, confOK := s.nodeConfOf(sid)
-	s.setIntervalHeader(w, conf, confOK)
+	s.setIntervalHeader(w, sid, conf, confOK)
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)

@@ -957,6 +957,8 @@ paths:
     parameters: [{ $ref: '#/components/parameters/ServerID' }]
     get:
       security: [{ session: [] }, { apiKey: [] }]
+      parameters:
+        - { name: live, in: query, schema: { type: integer, enum: [1] }, description: '按需实时模式（设计 46.2）：Web 详情页可见时带 live=1，节点在随后 30 秒内以 2 秒采样；API Key 带此参数无效' }
       tags: [servers]
       summary: 单个节点（格式同列表中的一项）
       responses:

@@ -336,8 +336,9 @@ func TestPanelInterval(t *testing.T) {
 		want time.Duration
 	}{
 		{"30", 30 * time.Second},
+		{"2", 2 * time.Second},   // 按需实时模式（设计 46.2）
+		{"1", 2 * time.Second},   // 低于下限：忽略
 		{"5", 5 * time.Second},
-		{"1", 5 * time.Second},   // 低于下限：忽略
 		{"300", 5 * time.Second}, // 高于上限（超过 watchdog 的一半）：忽略
 		{"abc", 5 * time.Second}, // 格式错误：忽略
 		{"60", 60 * time.Second},
