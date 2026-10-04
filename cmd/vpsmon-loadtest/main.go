@@ -206,14 +206,17 @@ func probeList(server, user, pass string, stop chan struct{}, st *stats) {
 	defer t.Stop()
 	for {
 		start := time.Now()
-		resp, err := c.Get(server + "/api/v1/servers")
-		d := time.Since(start)
+		// 显式声明 gzip：Transport 不再自动解压，读到的就是实际传输的字节数
+		req, _ := http.NewRequest(http.MethodGet, server+"/api/v1/servers", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := c.Do(req)
 		ok := err == nil && resp.StatusCode == 200
 		if err == nil {
-			io.Copy(io.Discard, resp.Body)
+			n, _ := io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
+			st.bytes.Add(n)
 		}
-		st.add(d, ok)
+		st.add(time.Since(start), ok)
 		select {
 		case <-stop:
 			return
@@ -223,9 +226,10 @@ func probeList(server, user, pass string, stop chan struct{}, st *stats) {
 }
 
 type stats struct {
-	mu   sync.Mutex
-	lat  []time.Duration
-	errs atomic.Int64
+	mu    sync.Mutex
+	lat   []time.Duration
+	errs  atomic.Int64
+	bytes atomic.Int64 // 响应体传输字节数（只统计节点列表）
 }
 
 func (s *stats) add(d time.Duration, ok bool) {
@@ -247,8 +251,12 @@ func (s *stats) print(name string, over time.Duration) {
 	p := func(q float64) time.Duration {
 		return s.lat[min(len(s.lat)-1, int(q*float64(len(s.lat))))].Round(10 * time.Microsecond)
 	}
-	fmt.Printf("%-14s n=%-6d %6.1f req/s  p50 %-9s p95 %-9s p99 %-9s max %-9s errors %d\n", name, len(s.lat),
+	fmt.Printf("%-14s n=%-6d %6.1f req/s  p50 %-9s p95 %-9s p99 %-9s max %-9s errors %d", name, len(s.lat),
 		float64(len(s.lat))/over.Seconds(), p(0.5), p(0.95), p(0.99), s.lat[len(s.lat)-1].Round(10*time.Microsecond), s.errs.Load())
+	if b := s.bytes.Load(); b > 0 {
+		fmt.Printf("  body %.1f KB/req", float64(b)/float64(len(s.lat))/1024)
+	}
+	fmt.Println()
 }
 
 // procSampler 每秒用 ps 采样一次面板进程的 CPU 与常驻内存（macOS / Linux 通用）。

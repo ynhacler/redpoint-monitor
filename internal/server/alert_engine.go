@@ -200,6 +200,7 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 		_, hasSnap := snaps[row.ID]
 		if refreshTraffic {
 			if tv, err := s.trafficOf(row, now); err == nil {
+				s.storeTraffic(row, tv, now) // 告警引擎刚算过的结果供列表复用
 				e.mu.Lock()
 				e.traffic[row.ID] = &tv
 				e.mu.Unlock()

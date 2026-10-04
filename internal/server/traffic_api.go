@@ -278,6 +278,7 @@ func (s *Server) handleCalibrate(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	s.storeTraffic(*row, v, now) // 校准后列表与详情立即显示新值
 	writeJSON(w, v)
 }
 

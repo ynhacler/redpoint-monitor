@@ -384,6 +384,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.forgetInterval(id)
+	s.forgetTraffic(id)
 	name, err := s.store.DeleteServer(id)
 	if errors.Is(err, errNoServer) {
 		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
