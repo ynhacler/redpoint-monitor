@@ -336,6 +336,7 @@
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
 | 60 | MIPS 构建：mips / mipsle（软浮点），安装脚本按 ELF 头判断字节序，端口解析按主机字节序；CI 以 qemu 模拟运行 | 27.5.4 |
+| 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证 | 27.12、28、43.5 |
 | 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
 | 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
@@ -6752,6 +6753,21 @@ OpenRC（Alpine）/ SysVinit / runit：
   不安装特权 updater，节点详情提示“需手动升级”
 ```
 
+OpenRC 已支持（`vpsmon-agent install` 自动识别，systemd 优先）：
+
+```text
+用户      有 useradd 用 useradd；只有 BusyBox 时用 addgroup -S / adduser -S -D -H；nologin 取 /usr/sbin 或 /sbin 下存在的
+服务      /etc/init.d/vpsmon-agent（deploy/openrc），supervise-daemon 托管，退出即重启（respawn_max=0）；
+          日志经 logger 写入 syslog，不写日志文件；状态目录由 start_pre 的 checkpath 创建
+参数      固定写在脚本中；面板地址由 Agent 以 --env-file 从 /etc/vpsmon-agent/env 读取。
+          【安全】脚本不 source env 文件：其中的节点名来自面板，交给 shell 执行就等于远程执行
+存活      没有 systemd watchdog：Agent 主循环 3 分钟未转动时自行退出，由 supervise-daemon 重启（见 43.5）
+升级      不启用远程升级（写入 no-remote-upgrade），提示 sudo vpsmon-agent upgrade；本机升级后用 rc-service 重启
+命令      status / uninstall / refresh-unit / rotate-token 都按已安装的服务文件选择 systemctl 或 rc-service
+```
+
+CI 在 alpine 容器中运行真实采集器的集成测试，并用 OpenRC 完整执行安装 → 运行 → 首次上报 → 卸载（scripts/alpine-check.sh）。
+
 ---
 
 # 28. 服务管理兼容
@@ -9677,7 +9693,7 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | 429 | 按 Retry-After 等待 |
 | 单个采集项失败 | 照常上报其他指标，失败项留空，原因写入上报的 `collect_errors`（最多 16 条，每条 ≤ 200 字节），节点详情页显示 |
 | 采集代码 panic | 按采集项捕获，该项本轮留空，其余正常；同一采集项只在第一次打印调用栈。采集入口再兜底一层，任何 panic 都不让 Agent 退出 |
-| Agent 卡死（未退出） | systemd 单元 Type=notify + WatchdogSec=120：Agent 首次采样后报告就绪，主循环每轮喂看门狗，超时由 systemd 重启；StartLimitIntervalSec=0，无论退出多频繁都继续重启；后台 goroutine 的 panic 也被捕获。已安装的节点用 `sudo vpsmon-agent refresh-unit` 更新单元，本机升级后自动执行（远程升级不执行，设计 29.13） |
+| Agent 卡死（未退出） | 主循环 3 分钟未转动时 Agent 自行退出（任何 init 下都生效）；一轮发送最多 20 秒，剩余的留到下一轮，主循环不会被慢面板拖住。systemd 单元 Type=notify + WatchdogSec=120：Agent 首次采样后报告就绪，主循环每轮喂看门狗，超时由 systemd 重启；StartLimitIntervalSec=0，无论退出多频繁都继续重启；后台 goroutine 的 panic 也被捕获。已安装的节点用 `sudo vpsmon-agent refresh-unit` 更新单元，本机升级后自动执行（远程升级不执行，设计 29.13） |
 | Agent 重启时有未发出的上报 | 落盘到 queue.json，重启后先补发（见 1.6.14） |
 | 磁盘 statfs 阻塞 | 整轮限时 2 秒，超时的挂载点本轮留空；仍未返回的挂载点后续直接跳过（见 4.6） |
 | 时钟偏差 | 上报带发送时刻 `sent_at`，面板按“sent_at − 收到时间”计算偏差（快慢都能识别，补发的旧数据也能测），由默认规则“Agent 时钟偏差”产生提示（> 60 秒持续 5 分钟触发，< 30 秒持续 5 分钟恢复）；Agent 用响应的 Date 头比对，偏差 > 60 秒时每小时最多记录一次 WARN，`status` 中显示 |

@@ -1,0 +1,27 @@
+#!/sbin/openrc-run
+# VPS Monitor agent for OpenRC (Alpine etc., design 28). Written by `vpsmon-agent install`.
+#
+# supervise-daemon restarts the agent whenever it exits; the agent exits by itself if its main loop
+# stalls, so a hung agent is restarted too (design 43.5). Arguments are fixed: the panel URL is read
+# by the agent from /etc/vpsmon-agent/env (--env-file), never sourced by the shell.
+name="vpsmon-agent"
+description="VPS Monitor agent"
+supervisor=supervise-daemon
+command="/usr/local/bin/vpsmon-agent"
+command_args="--env-file /etc/vpsmon-agent/env --token-file /etc/vpsmon-agent/token --state-dir /var/lib/vpsmon-agent"
+command_user="vpsmon-agent:vpsmon-agent"
+respawn_delay=5
+respawn_max=0
+# Logs go to syslog; no log files on disk (design 4.1)
+error_logger="logger -t vpsmon-agent -p daemon.notice"
+# Final report on stop (design 5.5) needs a moment
+retry="TERM/5/KILL/2"
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	checkpath -d -m 0750 -o vpsmon-agent:vpsmon-agent /var/lib/vpsmon-agent
+}

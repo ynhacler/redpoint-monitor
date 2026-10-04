@@ -59,6 +59,10 @@ func ReadStatus(path string) (*Status, error) {
 	return &st, json.Unmarshal(b, &st)
 }
 
+// ReadEnv 读取 env 文件（KEY=VALUE）。供 OpenRC 下的 --env-file 使用：由 Go 解析而不是由 shell source，
+// 文件中的值（如来自面板的节点名）不会被当作命令执行（设计 28）。
+func ReadEnv(path string) map[string]string { return readEnv(path) }
+
 // readEnv 读取 install 写入的 env 文件（KEY=VALUE，每行一项）。
 func readEnv(path string) map[string]string {
 	out := map[string]string{}
@@ -82,13 +86,13 @@ func readEnv(path string) map[string]string {
 func PrintStatus(o Options) error {
 	o.defaults()
 	p := o.Paths
-	if _, err := os.Stat(p.Unit); err != nil {
-		fmt.Fprintln(o.Out, "未安装：找不到 "+p.Unit)
+	k := installedInit(p)
+	if k == "" {
+		fmt.Fprintf(o.Out, "未安装：找不到 %s 或 %s\n", p.Unit, p.InitScript)
 		return errors.New("not installed")
 	}
 	env := readEnv(p.envFile())
-	active, _ := o.Sys.Run("systemctl", "is-active", serviceName)
-	fmt.Fprintf(o.Out, "服务：    %s\n", strings.TrimSpace(active))
+	fmt.Fprintf(o.Out, "服务：    %s\n", serviceState(o.Sys, k))
 	fmt.Fprintf(o.Out, "面板：    %s\n", orUnknown(env["VPSMON_SERVER"]))
 	fmt.Fprintf(o.Out, "节点：    %s（ID %s）\n", orUnknown(env["VPSMON_NODE_NAME"]), orUnknown(env["VPSMON_SERVER_ID"]))
 	st, err := ReadStatus(p.statusFile())
@@ -129,7 +133,8 @@ func Uninstall(ctx context.Context, o Options) error {
 		return errors.New("需要 root 权限，请使用 sudo 执行")
 	}
 
-	o.Sys.Run("systemctl", "disable", "--now", serviceName)
+	k := installedInit(p)
+	stopAndDisable(o.Sys, k)
 	removeUpdater(o)
 	say("✓ 已停止服务")
 
@@ -142,19 +147,21 @@ func Uninstall(ctx context.Context, o Options) error {
 		}
 	}
 
-	for _, f := range []string{p.Unit, p.Bin} {
+	for _, f := range []string{p.Unit, p.InitScript, p.Bin} {
 		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
 			say("! 删除 %s 失败：%v", f, err)
 		}
 	}
-	o.Sys.Run("systemctl", "daemon-reload")
+	if k == initSystemd {
+		o.Sys.Run("systemctl", "daemon-reload")
+	}
 	for _, d := range []string{p.ConfDir, p.StateDir} {
 		if err := os.RemoveAll(d); err != nil {
 			say("! 删除 %s 失败：%v", d, err)
 		}
 	}
 	if o.Sys.UserExists(userName) {
-		o.Sys.Run("userdel", userName)
+		deleteUser(o.Sys)
 	}
 	say("✓ 已删除程序、配置与用户 %s", userName)
 	return nil
@@ -190,6 +197,21 @@ func (realSystem) IsRoot() bool { return os.Geteuid() == 0 }
 func (realSystem) HasSystemd() bool {
 	fi, err := os.Stat("/run/systemd/system")
 	return err == nil && fi.IsDir()
+}
+
+// HasOpenRC 判断 OpenRC：openrc-run 存在（Alpine 等，设计 28）。
+func (realSystem) HasOpenRC() bool {
+	for _, p := range []string{"/sbin/openrc-run", "/usr/sbin/openrc-run"} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (realSystem) Has(cmd string) bool {
+	_, err := exec.LookPath(cmd)
+	return err == nil
 }
 
 func (realSystem) UserExists(name string) bool {

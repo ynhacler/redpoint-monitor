@@ -42,6 +42,10 @@ const (
 	maxCarryAge   = 7 * 24 * time.Hour
 )
 
+// flushBudget：一轮发送的时间预算。面板响应很慢时不再继续补发，剩余的留到下一轮，
+// 保证主循环每轮足够短，不会被看门狗误判为卡死（设计 43.5）。测试中可缩短。
+var flushBudget = 20 * time.Second
+
 // Status 是供 vpsmon-agent status 显示的上报状态（设计 24.5）。
 type Status struct {
 	LastAttempt int64 // Unix 秒
@@ -167,7 +171,8 @@ func (r *Reporter) Status() Status {
 
 // Flush 按时间顺序发送缓存的上报，遇到失败即停止。force 为 true 时忽略退避时间（退出前补报，设计 5.5）。
 func (r *Reporter) Flush(ctx context.Context, force bool) {
-	for i := 0; i < maxPerFlush; i++ {
+	start := time.Now()
+	for i := 0; i < maxPerFlush && time.Since(start) < flushBudget; i++ {
 		r.mu.Lock()
 		if len(r.queue) == 0 || (!force && r.now().Before(r.nextAttempt)) {
 			r.mu.Unlock()
