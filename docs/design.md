@@ -337,6 +337,7 @@
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
 | 61 | 节点列表：响应 gzip 压缩（认证接口除外），500 个节点时 680 KB → 52 KB；本周期流量 10 秒缓存，列表 p50 51 → 16 ms；压测工具统计响应大小 | 3.2 |
 | 60 | MIPS 构建：mips / mipsle（软浮点），安装脚本按 ELF 头判断字节序，端口解析按主机字节序；CI 以 qemu 模拟运行 | 27.5.4 |
+| 59 | 容器内存口径：未挂 lxcfs 的容器按根 cgroup 的上限与用量（扣除非活跃文件页）计算内存；CI 在限制内存的容器中验证 | 4.5 |
 | 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证；容器中 “/” 总是上报、排除绑定挂载的文件 | 4.6、27.12、28、43.5 |
 | 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
@@ -2940,6 +2941,19 @@ swap_usage_percent
 
 MemAvailable 从内核 3.14 开始提供。更旧的内核与部分 OpenVZ 容器没有它，按 MemFree + Buffers + Cached + SReclaimable 估算，
 否则会显示 100% 并误触发内存告警；LXC 中偶见 MemAvailable > MemTotal，截断为 MemTotal。
+
+容器（LXC / Docker 型 VPS）没有挂载 lxcfs 时，/proc/meminfo 显示宿主机内存（如 512 MB 的容器显示 64 GB）。
+此时改用容器根 cgroup 的口径：
+
+```text
+上限      v2 /sys/fs/cgroup/memory.max；v1 /sys/fs/cgroup/memory/memory.limit_in_bytes（接近 2^63 视为不限）
+条件      上限小于 /proc/meminfo 的 MemTotal 才替换；挂了 lxcfs（总量已等于上限）、VM、物理机都不变
+已用      用量（memory.current / usage_in_bytes）− 非活跃文件页（inactive_file / total_inactive_file），
+          与 docker stats 一致；页缓存可回收，不算已用
+其他      Cached 取 cgroup 的文件缓存；Free / Buffers 无法从 cgroup 得到，留空；上限每 10 分钟重读
+```
+
+CI 在 docker run --memory=256m 的容器中运行采集器集成测试，要求总量为 256 MB。
 
 Linux 可从：
 

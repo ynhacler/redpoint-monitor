@@ -8,6 +8,7 @@ package collector
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -35,10 +36,18 @@ func TestLinuxCollect(t *testing.T) {
 		t.Errorf("CPU 不合理：%+v", r.CPU)
 	}
 
-	// 内存：总量与 /proc/meminfo 一致，已用不超过总量
+	// 内存：总量与 /proc/meminfo 一致；容器的内存上限更小时为该上限（设计 4.5），已用不超过总量
 	m := parseMeminfo(readFile("/proc/meminfo"))
-	if r.Memory.Total != m["MemTotal"] || r.Memory.Used > r.Memory.Total || r.Memory.Usage <= 0 || r.Memory.Usage > 100 {
-		t.Errorf("内存不合理：%+v（MemTotal %d）", r.Memory, m["MemTotal"])
+	wantTotal := m["MemTotal"]
+	if lim := readCgroupLimit().limit; lim > 0 && lim < wantTotal {
+		wantTotal = lim
+	}
+	if r.Memory.Total != wantTotal || r.Memory.Used > r.Memory.Total || r.Memory.Usage <= 0 || r.Memory.Usage > 100 {
+		t.Errorf("内存不合理：%+v（应为 %d）", r.Memory, wantTotal)
+	}
+	// CI 在 docker run --memory=… 的容器中运行时指定期望值，确认确实按容器上限而不是宿主机内存计算
+	if want := os.Getenv("VPSMON_EXPECT_MEM_LIMIT"); want != "" && strconv.FormatUint(r.Memory.Total, 10) != want {
+		t.Errorf("容器内存上限为 %s，采集到的总量为 %d（应按 cgroup 计算）", want, r.Memory.Total)
 	}
 
 	// 磁盘：“/” 在最前，总量与 statfs 一致
