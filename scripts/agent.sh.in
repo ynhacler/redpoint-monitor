@@ -3,11 +3,12 @@
 #
 # 用法（面板生成的安装命令会先校验本脚本的 SHA256，再执行；不使用 curl | sh）：
 #   sudo sh agent-@VERSION@.sh --server https://monitor.example.com --enroll ENR-XXXX-XXXX-XXXX-XXXX
+#   sh agent-@VERSION@.sh --server … --enroll …       没有 root 权限：安装到当前用户（~/.local/bin，设计 27.13）
 #   sh agent-@VERSION@.sh --download-only            只下载、校验、试运行，不安装
 #   --mirror https://monitor.example.com/releases     从面板镜像下载（仍按内置 SHA256 校验）
 #
 # 步骤：识别系统与架构 → 下载对应构建 → 按内置 SHA256 校验 → （装有 minisign 时）校验官方签名
-#       → 试运行 → 安装到 /usr/local/bin/vpsmon-agent → exec vpsmon-agent install（注册与服务安装）
+#       → 试运行 → 安装到 /usr/local/bin（非 root：~/.local/bin）→ exec vpsmon-agent install（注册与保活）
 # 只依赖 uname、awk、curl 或 wget、sha256sum / shasum / openssl 之一；兼容 bash、dash、busybox ash。
 set -eu
 
@@ -57,8 +58,12 @@ if [ -d /run/systemd/system ]; then INIT=systemd; elif command -v openrc-run >/d
 OS_NAME="$( (. /etc/os-release 2>/dev/null && printf '%s %s' "${ID:-linux}" "${VERSION_ID:-}") || echo linux)"
 say "✓ 系统 $OS_NAME · linux/$ARCH · init: $INIT"
 
+# 非 root：安装到当前用户的家目录，由 vpsmon-agent install 选择 systemd 用户服务或 crontab 保活（设计 27.13）
+BIN_DIR=/usr/local/bin
 if [ "$DOWNLOAD_ONLY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
-  die "需要 root 权限：请用 sudo sh $0 ..."
+  [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "非 root 安装需要家目录（\$HOME）；或改用 sudo sh $0 ..."
+  BIN_DIR="$HOME/.local/bin"
+  say "· 非 root：安装到 $BIN_DIR（用户模式）；需要系统服务请改用 sudo sh $0 ..."
 fi
 
 # ---- 工具 ----
@@ -111,9 +116,10 @@ if [ "$DOWNLOAD_ONLY" -eq 1 ]; then
 fi
 
 # ---- 安装并交给 vpsmon-agent install（注册、配置、服务管理不在脚本中，设计 27.5.1） ----
-install -m 0755 "$TMP/vpsmon-agent" /usr/local/bin/vpsmon-agent.new
-mv -f /usr/local/bin/vpsmon-agent.new /usr/local/bin/vpsmon-agent
-say "✓ 已安装 /usr/local/bin/vpsmon-agent"
+mkdir -p "$BIN_DIR"
+install -m 0755 "$TMP/vpsmon-agent" "$BIN_DIR/vpsmon-agent.new"
+mv -f "$BIN_DIR/vpsmon-agent.new" "$BIN_DIR/vpsmon-agent"
+say "✓ 已安装 $BIN_DIR/vpsmon-agent"
 rm -rf "$TMP"
 trap - EXIT INT TERM
-eval "exec /usr/local/bin/vpsmon-agent install $PASS"
+eval "exec \"\$BIN_DIR/vpsmon-agent\" install $PASS"

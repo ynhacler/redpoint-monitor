@@ -86,13 +86,28 @@ func readEnv(path string) map[string]string {
 func PrintStatus(o Options) error {
 	o.defaults()
 	p := o.Paths
-	k := installedInit(p)
-	if k == "" {
-		fmt.Fprintf(o.Out, "未安装：找不到 %s 或 %s\n", p.Unit, p.InitScript)
-		return errors.New("not installed")
-	}
 	env := readEnv(p.envFile())
-	fmt.Fprintf(o.Out, "服务：    %s\n", serviceState(o.Sys, k))
+	if o.UserSys != nil {
+		// 用户模式（设计 27.13）：显示保活方式与运行中的进程
+		if !IsUserInstall(p) {
+			fmt.Fprintf(o.Out, "未安装：找不到 %s\n", p.tokenFile())
+			return errors.New("not installed")
+		}
+		state := "未运行"
+		if pid := runningPID(p); pid > 0 {
+			state = "运行中（PID " + strconv.Itoa(pid) + "）"
+		}
+		names := map[keepMethod]string{keepSystemdUser: "systemd 用户服务", keepCron: "crontab", keepNone: "无（重启后需手动启动）"}
+		fmt.Fprintf(o.Out, "模式：    非 root（用户模式），保活：%s\n", names[UserKeepMethod(p, o.UserSys)])
+		fmt.Fprintf(o.Out, "进程：    %s\n", state)
+	} else {
+		k := installedInit(p)
+		if k == "" {
+			fmt.Fprintf(o.Out, "未安装：找不到 %s 或 %s\n", p.Unit, p.InitScript)
+			return errors.New("not installed")
+		}
+		fmt.Fprintf(o.Out, "服务：    %s\n", serviceState(o.Sys, k))
+	}
 	fmt.Fprintf(o.Out, "面板：    %s\n", orUnknown(env["VPSMON_SERVER"]))
 	fmt.Fprintf(o.Out, "节点：    %s（ID %s）\n", orUnknown(env["VPSMON_NODE_NAME"]), orUnknown(env["VPSMON_SERVER_ID"]))
 	st, err := ReadStatus(p.statusFile())

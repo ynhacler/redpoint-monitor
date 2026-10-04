@@ -107,6 +107,8 @@ type Options struct {
 	Out             io.Writer     // 进度输出
 	WaitFirst       time.Duration // 等待首次上报成功的时长，默认 20 秒
 	HostInfoRoot    string        // 读取 /etc/hostname 等文件的根目录，测试用；默认 "/"
+	// UserSys 不为空表示用户模式（非 root，设计 27.13）：status 按用户模式显示保活方式与进程
+	UserSys UserSystem
 }
 
 func (o *Options) defaults() {
