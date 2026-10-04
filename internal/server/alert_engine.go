@@ -309,6 +309,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 		}
 		s.log.Info("alert firing", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey,
 			"severity", r.Severity, "value", v)
+		s.publishAlert(evAlertTriggered, row, r, id, v, ev.Message, now)
 	case alertResolved:
 		if err := s.store.ResolveAlertEvent(st.EventID, now, v); err != nil {
 			s.log.Error("alert event resolve failed", "component", "alert", "event_id", st.EventID, "err", err)
@@ -317,6 +318,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 			s.emit(k, s.alertNotice(NotifyResolved, row, r, st, v, detail, now), now)
 		}
 		s.log.Info("alert resolved", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey, "value", v)
+		s.publishAlert(evAlertRecovered, row, r, st.EventID, v, alertMessage(r, v, detail), now)
 	case alertNone:
 		// 仍在 firing：到达重复间隔时再提醒一次（设计 16.4）。静音期间跳过但照样推进计时
 		if next != nil && next.State == StateFiring && r.RepeatIntervalS > 0 {

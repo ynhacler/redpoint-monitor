@@ -150,6 +150,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "maintenance", s.maintenance)
 	go s.runTask(ctx, "alerts", s.alertLoop)
 	go s.runTask(ctx, "cloud", s.cloudLoop)
+	go s.runTask(ctx, "ws-status", s.statusLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -231,7 +232,7 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/api-keys/{id}", accessAdmin, s.handleRevokeAPIKey)
 	handle("GET /api/v1/version", accessRead, s.handleVersion)
 	// 实时事件（设计 20）：只推送，不接收指令
-	handle("GET /ws", accessAdmin, s.handleWS)
+	handle("GET /ws", accessRead, s.handleWS)
 
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
@@ -348,6 +349,10 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 	w.WriteHeader(http.StatusNoContent)
+	// 实时事件（设计 45.2）：补发的旧数据不改变实时状态，不推送
+	if !old {
+		s.publishMetrics(sid, now)
+	}
 }
 
 // reportBody 返回上报正文的读取器：按 Content-Encoding 解压，原始与解压后的大小都受 maxReportSize 限制，
@@ -719,14 +724,7 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// 列表每 3 秒轮询一次：每核使用率、监听端口与扩展指标只在详情页使用，列表中省略以减小响应
-		if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil || v.Latest.Extra != nil) {
-			rep := *v.Latest
-			rep.CPU.PerCore = nil
-			rep.Ports = nil
-			rep.Extra = nil
-			v.Latest = &rep
-		}
-		out = append(out, v)
+		out = append(out, listView(v))
 	}
 	writeList(w, out, "", nil)
 }

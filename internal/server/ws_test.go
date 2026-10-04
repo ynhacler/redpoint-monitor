@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -28,7 +29,9 @@ func wsDial(t *testing.T, srv *httptest.Server, token, origin string) (net.Conn,
 	if origin != "" {
 		req += "Origin: " + origin + "\r\n"
 	}
-	if token != "" {
+	if strings.HasPrefix(token, PrefixAPIKey) {
+		req += "Authorization: Bearer " + token + "\r\n"
+	} else if token != "" {
 		req += "Cookie: " + sessionCookie + "=" + token + "\r\n"
 	}
 	if _, err := conn.Write([]byte(req + "\r\n")); err != nil {
@@ -212,7 +215,7 @@ func TestWebSocketClosesOnSessionEnd(t *testing.T) {
 // 慢连接：发送队列满时断开，不阻塞其他连接与推送方
 func TestWebSocketSlowClientDropped(t *testing.T) {
 	hub := newWSHub()
-	slow := hub.add()
+	slow := hub.add(nil)
 	for i := 0; i < wsSendQueue+1; i++ {
 		hub.publish(wsEvent{Type: "test"})
 	}
@@ -235,4 +238,136 @@ func waitFor(t *testing.T, ok func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("等待超时")
+}
+
+// wsNextEvent 读取下一条事件（跳过 ping）。
+func wsNextEvent(t *testing.T, conn net.Conn, br *bufio.Reader) map[string]any {
+	t.Helper()
+	for {
+		op, p := wsServerFrame(t, conn, br)
+		if op == 0x9 {
+			continue
+		}
+		if op != 0x1 {
+			t.Fatalf("期望文本帧，得到 op=%d", op)
+		}
+		var ev map[string]any
+		json.Unmarshal(p, &ev)
+		return ev
+	}
+}
+
+// 上报后推送 server.metrics（格式同节点列表的一项，不含每核与端口）；API Key 只收到范围内节点的事件（设计 45.2）
+func TestWebSocketMetricsAndScope(t *testing.T) {
+	s, h, _ := testServer(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	admin := adminToken(t, s)
+	_, a, _ := createNode(t, h, admin, `{"name":"hk-1","group":"亚洲"}`)
+	_, b, _ := createNode(t, h, admin, `{"name":"us-1","group":"美洲"}`)
+	_, ra := enroll(h, a.EnrollCode, "hk-1", "m-a")
+	_, rb := enroll(h, b.EnrollCode, "us-1", "m-b")
+	key, _ := s.store.CreateAPIKey(&APIKey{Name: "asia", ScopeType: "group", ScopeValue: "亚洲"}, time.Now())
+
+	adminConn, adminBR, res := wsDial(t, srv, admin, srv.URL)
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("管理员握手 %d", res.StatusCode)
+	}
+	// API Key：Authorization 头认证，不需要 Origin
+	keyConn, keyBR, res := wsDial(t, srv, key, "")
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("API Key 握手 %d", res.StatusCode)
+	}
+
+	report := func(tok string) {
+		body := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"cpu":{"usage":42,"per_core":[40,44]},"ports":[{"proto":"tcp","port":22,"addrs":["0.0.0.0"]}]}`, time.Now().Unix())
+		if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(body)); rec.Code != 204 {
+			t.Fatalf("上报 %d", rec.Code)
+		}
+	}
+	report(rb.AgentToken) // 美洲：管理员收到，API Key 收不到
+	report(ra.AgentToken) // 亚洲：两者都收到
+
+	ev := wsNextEvent(t, adminConn, adminBR)
+	if ev["type"] != evServerMetrics || int64(ev["server_id"].(float64)) != int64(b.ServerID) {
+		t.Fatalf("管理员第一条事件 %v", ev)
+	}
+	data := ev["data"].(map[string]any)
+	latest := data["latest"].(map[string]any)
+	if data["status"] != "online" || latest["ports"] != nil || latest["cpu"].(map[string]any)["per_core"] != nil {
+		t.Fatalf("事件数据应同节点列表（在线，不含每核与端口）：%v", data)
+	}
+	if ev := wsNextEvent(t, adminConn, adminBR); int64(ev["server_id"].(float64)) != int64(a.ServerID) {
+		t.Fatalf("管理员第二条事件 %v", ev)
+	}
+	// API Key 的第一条就是亚洲节点：美洲节点的事件被过滤
+	if ev := wsNextEvent(t, keyConn, keyBR); ev["type"] != evServerMetrics || int64(ev["server_id"].(float64)) != int64(a.ServerID) {
+		t.Fatalf("API Key 只应收到范围内节点的事件：%v", ev)
+	}
+	// 不针对节点的事件（注册）不发给 API Key
+	c := &wsClient{scope: &apiScope{Type: "group", Group: "亚洲"}}
+	if c.allows(wsEvent{Type: evServerEnrolled}) || !(&wsClient{}).allows(wsEvent{Type: evServerEnrolled}) {
+		t.Fatal("注册事件只发给 Web 管理员")
+	}
+}
+
+// 【安全】API Key 被吊销后，已建立的连接在下一次校验时关闭（1008）
+func TestWebSocketAPIKeyRevoked(t *testing.T) {
+	old := wsPingInterval
+	wsPingInterval = 50 * time.Millisecond
+	defer func() { wsPingInterval = old }()
+	s, h, _ := testServer(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	k := APIKey{Name: "x", ScopeType: "all"}
+	key, _ := s.store.CreateAPIKey(&k, time.Now())
+	conn, br, res := wsDial(t, srv, key, "")
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("握手 %d", res.StatusCode)
+	}
+	s.store.RevokeAPIKey(k.ID, time.Now())
+	for {
+		op, p := wsServerFrame(t, conn, br)
+		if op == 0x9 {
+			continue
+		}
+		if op != 0x8 || binary.BigEndian.Uint16(p) != 1008 {
+			t.Fatalf("期望 1008，得到 op=%d %v", op, p)
+		}
+		break
+	}
+	// 吊销的 Key 无法再建立连接
+	if _, _, res := wsDial(t, srv, key, ""); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("吊销后握手应为 401，得到 %d", res.StatusCode)
+	}
+}
+
+// 上下线：第一轮只记录状态；之后状态变化才推送
+func TestStatusScan(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, a, _ := createNode(t, h, admin, `{"name":"hk-1"}`)
+	_, ra := enroll(h, a.EnrollCode, "hk-1", "m-a")
+	do(h, "POST", "/api/v1/agent/report", ra.AgentToken, []byte(fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"}}`, time.Now().Unix())))
+	c := s.ws.add(nil)
+	defer s.ws.remove(c)
+	last := map[int64]string{}
+	now := time.Now()
+	s.scanStatus(now, last)
+	if len(c.send) != 0 || last[int64(a.ServerID)] != "online" {
+		t.Fatalf("第一轮不应推送：%d %v", len(c.send), last)
+	}
+	s.scanStatus(now.Add(10*time.Minute), last) // 很久没有上报：离线
+	if len(c.send) != 1 {
+		t.Fatalf("应推送一次离线，得到 %d", len(c.send))
+	}
+	var ev map[string]any
+	json.Unmarshal(<-c.send, &ev)
+	if ev["type"] != evServerOffline {
+		t.Fatalf("事件 %v", ev)
+	}
+	s.scanStatus(now.Add(10*time.Minute), last) // 没有变化：不再推送
+	if len(c.send) != 0 {
+		t.Fatal("状态不变时不应推送")
+	}
 }
