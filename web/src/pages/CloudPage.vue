@@ -60,23 +60,36 @@ interface ProviderInfo {
   regionExample: string
   /** 费用查询是否收费（AWS Cost Explorer） */
   paidCostApi: boolean
+  /** 密钥从哪里获取：简短步骤与控制台地址 */
+  keySteps: string
+  keyURL: string
 }
 const providers: Record<Provider, ProviderInfo> = {
   aws: { label: 'AWS', currency: 'USD', idLabel: 'Access Key ID', idPlaceholder: 'AKIA…', secretLabel: 'Secret Access Key',
     idField: 'access_key_id', secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true,
-    trafficName: 'Lightsail', billingTZ: '按 UTC 自然月' },
+    trafficName: 'Lightsail', billingTZ: '按 UTC 自然月',
+    keySteps: 'IAM 控制台 → 用户 → 创建用户（附加下面的只读策略）→ 安全凭证 → 创建访问密钥（用途选“第三方服务”）',
+    keyURL: 'https://console.aws.amazon.com/iam/home#/users' },
   aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
     idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false,
-    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
+    keySteps: 'RAM 访问控制 → 用户 → 创建用户（勾选“使用永久 AccessKey 访问”）→ 添加权限（三个只读策略）→ 保存 AccessKey',
+    keyURL: 'https://ram.console.aliyun.com/users' },
   aliyun_intl: { label: '阿里云国际', currency: 'USD', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
     idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false,
-    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
+    keySteps: 'RAM 控制台 → Users → Create User（勾选 Using permanent AccessKey）→ Add Permissions（三个只读策略）→ 保存 AccessKey',
+    keyURL: 'https://ram.console.alibabacloud.com/users' },
   tencent_cn: { label: '腾讯云', currency: 'CNY', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
     idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-hongkong, ap-guangzhou', paidCostApi: false,
-    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
+    keySteps: '访问管理 CAM → 用户 → 新建用户（自定义创建，访问方式选“编程访问”）→ 关联下面的自定义策略 → 保存 SecretId / SecretKey',
+    keyURL: 'https://console.cloud.tencent.com/cam' },
   tencent_intl: { label: '腾讯云国际', currency: 'USD', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
     idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-singapore, ap-tokyo', paidCostApi: false,
-    trafficName: 'Lighthouse', billingTZ: '按北京时间自然月' },
+    trafficName: 'Lighthouse', billingTZ: '按北京时间自然月',
+    keySteps: 'CAM 控制台 → Users → Create User（Custom，Programmatic access）→ 关联下面的自定义策略 → 保存 SecretId / SecretKey',
+    keyURL: 'https://console.tencentcloud.com/cam' },
 }
 const providerOf = (p: string) => providers[p as Provider] ?? providers.aws
 
@@ -294,6 +307,12 @@ function expireTone(i: CloudInstance): string {
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
       </p>
       <CommandBlock v-if="showPolicy" :command="policyFor(form.provider)" plain class="policy" />
+      <!-- 密钥从哪里获取（用户最常问的问题）：一行步骤 + 控制台链接 -->
+      <p class="key-help small">
+        <b>{{ info.idLabel }} 从哪里获取：</b>{{ info.keySteps }}。
+        <a :href="info.keyURL" target="_blank" rel="noopener noreferrer">打开控制台</a>
+        <br><span class="muted">密钥只显示一次，请立即复制；不要使用主账号（根账号）的密钥。</span>
+      </p>
       <div class="fields">
         <label>名称
           <input v-model="form.name" maxlength="64" :placeholder="`如 ${info.label} 主账户`" />
@@ -471,6 +490,8 @@ function expireTone(i: CloudInstance): string {
   padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
 .list li:last-child { border-bottom: 0; }
 .state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.key-help { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--surface-2);
+  border-radius: var(--radius-sm); line-height: var(--line-md); }
 .provider-pick { display: flex; flex-direction: column; gap: var(--space-1); max-width: 240px; margin: var(--space-2) 0 var(--space-3); }
 .inst-main { min-width: 0; }
 .meta { margin-left: var(--space-2); }
