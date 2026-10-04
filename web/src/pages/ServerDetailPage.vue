@@ -70,12 +70,13 @@ async function seedSamples() {
 }
 
 // ---- 实时详情 ----
-// 列表接口省略每核使用率等只在详情显示的字段，详情页单独轮询本节点（与全局列表同为 3 秒）
+// 列表接口省略每核使用率等只在详情显示的字段，详情页单独每 2 秒刷新本节点。
+// 按需实时模式（设计 46.2）：页面可见时请求带 live=1，节点临时以 2 秒采样；切到后台或关闭后不再续期，30 秒内恢复
 const detail = ref<ServerView | null>(null)
 let liveTimer: number | undefined
 async function loadDetail() {
   try {
-    detail.value = await getServer(sid.value)
+    detail.value = await getServer(sid.value, document.visibilityState === 'visible')
     addSample(detail.value)
   } catch {
     // 忽略：实时区块退回使用全局列表中的数据；401 由统一处理回到登录页
@@ -87,7 +88,7 @@ watch(sid, () => {
   seedSamples()
   loadDetail()
   if (liveTimer) clearInterval(liveTimer)
-  liveTimer = window.setInterval(loadDetail, 3000)
+  liveTimer = window.setInterval(loadDetail, 2000)
 }, { immediate: true })
 onBeforeUnmount(() => liveTimer && clearInterval(liveTimer))
 

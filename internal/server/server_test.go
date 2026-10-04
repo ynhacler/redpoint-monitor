@@ -543,3 +543,38 @@ func TestExtraCarriedForward(t *testing.T) {
 		t.Fatalf("最新上报 %+v，应沿用上一次的扩展指标", v.Latest)
 	}
 }
+
+// 按需实时模式（设计 46.2）：详情页带 live=1 时节点临时以 2 秒采样；API Key 不能触发；到期后恢复
+func TestLiveMode(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, n, _ := createNode(t, h, admin, `{"name":"live"}`)
+	_, res := enroll(h, n.EnrollCode, "live", "m-live")
+	id := itoa(n.ServerID)
+	report := func() string {
+		rec := do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"}}`, time.Now().Unix())))
+		return rec.Header().Get("X-Report-Interval")
+	}
+	if got := report(); got != "10" {
+		t.Fatalf("默认间隔 %q", got)
+	}
+	// API Key 带 live=1 不触发
+	key, _ := s.store.CreateAPIKey(&APIKey{Name: "x", ScopeType: "all"}, time.Now())
+	do(h, "GET", "/api/v1/servers/"+id+"?live=1", key, nil)
+	if got := report(); got != "10" {
+		t.Fatalf("API Key 不应触发实时模式：%q", got)
+	}
+	// Web 详情页可见：实时模式
+	do(h, "GET", "/api/v1/servers/"+id+"?live=1", admin, nil)
+	if got := report(); got != "2" {
+		t.Fatalf("实时模式应下发 2 秒：%q", got)
+	}
+	// 不带 live 的请求不续期；到期后恢复
+	s.mu.Lock()
+	s.watched[int64(n.ServerID)] = time.Now().Add(-time.Second)
+	s.mu.Unlock()
+	do(h, "GET", "/api/v1/servers/"+id, admin, nil)
+	if got := report(); got != "10" {
+		t.Fatalf("到期后应恢复：%q", got)
+	}
+}

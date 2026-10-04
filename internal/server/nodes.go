@@ -322,6 +322,11 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	// 按需实时模式（设计 46.2）：详情页可见时带 live=1，节点临时以 2 秒采样。只接受 Web 会话：
+	// API Key 的脚本若一直带 live=1，会让节点长期高频上报
+	if r.URL.Query().Get("live") == "1" && info(r).apiScope == nil {
+		s.markWatched(id, time.Now())
+	}
 	row, err := s.store.GetServer(id)
 	if errors.Is(err, errNoServer) || (err == nil && !scopeAllows(r, *row)) { // 范围外按不存在处理（设计 45.2）
 		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))

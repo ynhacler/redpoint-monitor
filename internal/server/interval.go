@@ -69,11 +69,45 @@ func (s *Server) nodeConfOf(sid int64) (nodeConf, bool) {
 	return c, true
 }
 
-// setIntervalHeader 在上报响应中告诉 Agent 采样间隔；节点信息读取失败时不设置（Agent 保持当前间隔）。
-func (s *Server) setIntervalHeader(w http.ResponseWriter, c nodeConf, ok bool) {
-	if ok {
-		w.Header().Set("X-Report-Interval", strconv.Itoa(int(c.interval/time.Second)))
+// 按需实时模式（设计 46.2）：有人打开节点详情页时，详情页的刷新请求带 live=1，节点在随后 liveWatchFor 内
+// 以 liveInterval 采样；页面关闭（或切到后台）后不再续期，到期即恢复节点自己的间隔。没有人看时不增加任何流量。
+// 旧版 Agent 的下限是 5 秒，会忽略 2 秒并保持原间隔。
+const (
+	liveInterval = 2 * time.Second
+	liveWatchFor = 30 * time.Second
+)
+
+// markWatched 记录节点正被查看（续期 liveWatchFor）。
+func (s *Server) markWatched(sid int64, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watched[sid] = now.Add(liveWatchFor)
+	for id, until := range s.watched { // 顺带清理已到期的
+		if now.After(until) {
+			delete(s.watched, id)
+		}
 	}
+}
+
+// isWatched 判断节点此刻是否处于实时模式。
+func (s *Server) isWatched(sid int64, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	until, ok := s.watched[sid]
+	return ok && now.Before(until)
+}
+
+// setIntervalHeader 在上报响应中告诉 Agent 采样间隔；节点信息读取失败时不设置（Agent 保持当前间隔）。
+// 节点处于实时模式时下发 2 秒（比节点自己的间隔短时）。
+func (s *Server) setIntervalHeader(w http.ResponseWriter, sid int64, c nodeConf, ok bool) {
+	if !ok {
+		return
+	}
+	iv := c.interval
+	if iv > liveInterval && s.isWatched(sid, time.Now()) {
+		iv = liveInterval
+	}
+	w.Header().Set("X-Report-Interval", strconv.Itoa(int(iv/time.Second)))
 }
 
 // forgetInterval 在节点修改或删除后清除缓存的节点设置，下一份上报重新读取。
