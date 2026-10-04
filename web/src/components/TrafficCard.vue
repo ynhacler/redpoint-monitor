@@ -2,7 +2,7 @@
 // 流量套餐卡片（设计 41.3 TrafficCard、1.5.8）：已用 / 总量、剩余、距离重置、日均、预计，以及手动校准（设计 5.7）
 // 和最近 30 天每日流量。已用、预计都由面板计算（含系数与校准），这里只负责显示，App 与 Web 口径一致。
 import { computed, onMounted, ref, watch } from 'vue'
-import { ApiError, calibrateTraffic, getTrafficDaily, UnauthorizedError, type ServerView, type TrafficDay } from '../api'
+import { calibrateTraffic, errorText, getTrafficDaily, type ServerView, type TrafficDay } from '../api'
 import { countModeNames, DASH, fmtPct, fmtTraffic } from '../format'
 import { daysToReset, trafficPct } from '../metrics'
 import { refresh } from '../store'
@@ -13,7 +13,6 @@ const props = defineProps<{
   /** 节点 */
   server: ServerView
 }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const t = computed(() => props.server.traffic)
 const fmt = (n: number | null | undefined) => fmtTraffic(n, t.value.unit)
@@ -42,8 +41,7 @@ async function loadDaily() {
     days.value = await getTrafficDaily(props.server.id, 30)
     dailyError.value = ''
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else dailyError.value = '每日流量加载失败'
+    dailyError.value = errorText(e, '每日流量加载失败')
   }
 }
 onMounted(loadDaily)
@@ -78,8 +76,7 @@ async function saveCalibrate() {
     calibrating.value = false
     await refresh() // 列表、卡片立即显示校准后的值
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) calError.value = e.details[0]?.message ?? e.message
+    calError.value = errorText(e)
   } finally {
     saving.value = false
   }

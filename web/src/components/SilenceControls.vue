@@ -2,7 +2,7 @@
 // 节点的静音与维护（设计 1.5.14、1.5.15、16.6）：详情页顶部的按钮与状态横幅。
 // 静音：照常评估与记录，不通知、不计入“需要关注”；维护：继续采集，不产生告警（10 秒内生效）。
 import { computed, ref } from 'vue'
-import { ApiError, createSilence, endSilence, UnauthorizedError, type ServerView, type Silence } from '../api'
+import { createSilence, endSilence, errorText, type ServerView, type Silence } from '../api'
 import { fmtTime } from '../format'
 import { refresh } from '../store'
 
@@ -10,7 +10,6 @@ const props = defineProps<{
   /** 节点 */
   server: ServerView
 }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const busy = ref(false)
 const error = ref('')
@@ -30,8 +29,7 @@ async function run(f: () => Promise<unknown>) {
     reason.value = ''
     await refresh()
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else error.value = e instanceof ApiError ? e.details[0]?.message ?? e.message : '操作失败'
+    error.value = errorText(e)
   } finally {
     busy.value = false
   }

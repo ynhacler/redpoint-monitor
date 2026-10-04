@@ -3,14 +3,12 @@
 // 【安全】这里只能选择面板已同步并验签的官方版本；节点上的 Agent 与 updater 会独立验签并拒绝降级。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
-  ApiError, cancelUpgradeTask, createUpgradeTasks, listReleases, listUpgradeTasks, UnauthorizedError,
-  type AgentRelease, type UpgradeTask,
+  cancelUpgradeTask, createUpgradeTasks, errorText, listReleases, listUpgradeTasks, type AgentRelease, type UpgradeTask,
 } from '../api'
 import { DASH, fmtTime } from '../format'
 import { compareVersions } from '../versions'
 
 const props = defineProps<{ serverId: number; current?: string }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const latest = ref<AgentRelease | null>(null)
 const task = ref<UpgradeTask | null>(null)
@@ -36,8 +34,7 @@ const statusText: Record<string, string> = {
 
 let timer: number | undefined
 function handle(e: unknown) {
-  if (e instanceof UnauthorizedError) emit('unauthorized')
-  else error.value = e instanceof ApiError ? e.message : '操作失败'
+  error.value = errorText(e)
 }
 
 async function load() {

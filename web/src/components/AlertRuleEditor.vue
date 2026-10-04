@@ -4,8 +4,7 @@
 // 时间在界面上以分钟 / 小时输入，提交时换算为秒。
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
-  ApiError, createAlertRule, previewAlertRule, updateAlertRule, UnauthorizedError,
-  type AlertRule, type AlertRuleInput,
+  ApiError, createAlertRule, errorText, previewAlertRule, UnauthorizedError, updateAlertRule, type AlertRule, type AlertRuleInput,
 } from '../api'
 import { ruleNames, severityNames, thresholdRange, thresholdUnit } from '../alertRules'
 
@@ -15,7 +14,7 @@ const props = defineProps<{
   /** 新增覆盖时的层级与对象；省略表示修改 rule 本身 */
   scope?: { type: 'group' | 'server'; id: string }
 }>()
-const emit = defineEmits<{ saved: [AlertRule]; cancel: []; unauthorized: [] }>()
+const emit = defineEmits<{ saved: [AlertRule]; cancel: [] }>()
 
 const r = props.rule
 const f = reactive({
@@ -52,7 +51,6 @@ watch(f, () => {
         : { ...input(), id: r.id })
       preview.value = { matching: p.matching, total: p.total, names: p.items.slice(0, 5).map((x) => x.name).join('、') }
     } catch (e) {
-      if (e instanceof UnauthorizedError) emit('unauthorized')
       preview.value = null
     }
   }, 300)
@@ -70,10 +68,8 @@ async function save() {
       : await updateAlertRule(r.id, input())
     emit('saved', saved)
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError) {
-      errors.value = e.details.length ? Object.fromEntries(e.details.map((d) => [d.field, d.message])) : { form: e.message }
-    }
+    if (e instanceof ApiError && e.details.length) errors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
+    else if (!(e instanceof UnauthorizedError)) errors.value = { form: errorText(e) }
   } finally {
     saving.value = false
   }

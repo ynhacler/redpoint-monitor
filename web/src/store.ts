@@ -2,7 +2,7 @@
 // 页面还少，用 Vue 的 reactive 即可；TODO(B): 状态变复杂后考虑 Pinia（设计 3.3，需先确认依赖）。
 import { computed, reactive } from 'vue'
 import {
-  getMe, listServers, login as apiLogin, logoutSession, UnauthorizedError,
+  errorText, getMe, listServers, login as apiLogin, logoutSession, onUnauthorized,
   type CaptchaAnswer, type EnrollCodeView, type Me, type ServerView,
 } from './api'
 
@@ -26,7 +26,12 @@ export function setSignedOutHandler(f: () => void) {
   onSignedOut = f
 }
 
-/** 拉取一次节点列表。401（会话失效）时停止轮询并回到登录页。 */
+// 任何接口返回 401（会话失效）：停止轮询、清空数据并回到登录页，登录后回到原页面（设计 43.6）
+onUnauthorized(() => {
+  if (state.me) signedOut()
+})
+
+/** 拉取一次节点列表；失败时保留上一次的数据并在顶部提示（设计 43.6）。 */
 export async function refresh() {
   try {
     state.servers = await listServers()
@@ -34,8 +39,7 @@ export async function refresh() {
     state.error = ''
     state.loaded = true
   } catch (e) {
-    if (e instanceof UnauthorizedError) signedOut()
-    else state.error = '无法连接面板，正在重试'
+    state.error = errorText(e, '无法连接面板，正在重试')
   }
 }
 

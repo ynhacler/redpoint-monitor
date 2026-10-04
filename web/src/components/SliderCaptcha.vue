@@ -2,7 +2,7 @@
 // 滑动拼图验证码（设计 17.4）：拖动滑块把拼图块移到缺口处。图片由面板生成，正确位置只在服务端，
 // 这里只上报拼图块位置与拖动用时，由服务端判断是否通过。支持鼠标与触摸（Pointer Events）。
 import { onMounted, ref } from 'vue'
-import { ApiError, getCaptcha, type Captcha, type CaptchaAnswer } from '../api'
+import { ApiError, errorText, getCaptcha, type Captcha, type CaptchaAnswer } from '../api'
 
 const emit = defineEmits<{
   /** 拖动完成，交给父组件随登录一起提交 */
@@ -28,7 +28,7 @@ async function reload() {
     cap.value = await getCaptcha()
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) emit('disabled')
-    else error.value = e instanceof ApiError ? e.message : '验证码加载失败'
+    else error.value = errorText(e, '验证码加载失败')
   }
 }
 defineExpose({ reload })

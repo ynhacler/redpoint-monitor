@@ -1,9 +1,8 @@
 <script setup lang="ts">
 // 免打扰时段（设计 16.5）：严重告警默认仍通知；警告暂存，结束后汇总为一条；提示不发送。
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ApiError, getQuietHours, saveQuietHours, UnauthorizedError, type QuietHoursView } from '../api'
+import { ApiError, errorText, getQuietHours, saveQuietHours, type QuietHoursView } from '../api'
 
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const view = ref<QuietHoursView | null>(null)
 const form = reactive({ enabled: false, start: '23:00', end: '08:00', timezone: '', critical: 'notify' as 'notify' | 'summary' })
@@ -27,8 +26,7 @@ onMounted(async () => {
   try {
     fill(await getQuietHours())
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else error.value = e instanceof ApiError ? e.message : '加载失败'
+    error.value = errorText(e, '加载失败')
   }
 })
 
@@ -41,9 +39,8 @@ async function save() {
     fill(await saveQuietHours({ ...form }))
     saved.value = true
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else if (e instanceof ApiError && e.details.length) errors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-    else error.value = e instanceof ApiError ? e.message : '保存失败'
+    if (e instanceof ApiError && e.details.length) errors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
+    else error.value = errorText(e, '保存失败')
   } finally {
     saving.value = false
   }

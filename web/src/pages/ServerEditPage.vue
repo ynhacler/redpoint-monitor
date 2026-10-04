@@ -2,10 +2,10 @@
 // 新建 / 编辑节点页（设计 27.2、19.5）。表单本身在 ServerForm 中；这里负责加载节点与页面跳转。
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ApiError, getServer, UnauthorizedError, type EnrollCodeView, type ServerView } from '../api'
+import { errorText, getServer, type EnrollCodeView, type ServerView } from '../api'
 import Icon from '../components/Icon.vue'
 import ServerForm from '../components/ServerForm.vue'
-import { logout, refresh, stashCreated } from '../store'
+import { refresh, stashCreated } from '../store'
 
 const props = defineProps<{
   /** 编辑时为节点 ID；新建时为空 */
@@ -22,8 +22,7 @@ onMounted(async () => {
   try {
     server.value = await getServer(Number(props.id))
   } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    else if (e instanceof ApiError) error.value = e.message
+    error.value = errorText(e)
   } finally {
     loading.value = false
   }
@@ -57,7 +56,7 @@ function deleted() {
       @done="done"
       @deleted="deleted"
       @cancel="router.back()"
-      @unauthorized="logout"
+     
     />
   </main>
 </template>

@@ -2,7 +2,7 @@
 // 节点详情（设计 11）。自上而下：概况 → 指标速览与实时网速 → CPU → 内存 → 磁盘 → 网络 → 流量 → 历史 → 系统与资产，
 // 指标顺序与 App 一致（设计 41.6）。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ApiError, getHistory, getServer, UnauthorizedError, type HistoryRange, type HistoryView, type ServerView } from '../api'
+import { errorText, getHistory, getServer, type HistoryRange, type HistoryView, type ServerView } from '../api'
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import Icon from '../components/Icon.vue'
@@ -14,7 +14,7 @@ import TrafficCard from '../components/TrafficCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
-import { logout, serverById, state } from '../store'
+import { serverById, state } from '../store'
 
 const props = defineProps<{
   /** 路由参数中的节点 ID */
@@ -77,9 +77,8 @@ async function loadDetail() {
   try {
     detail.value = await getServer(sid.value)
     addSample(detail.value)
-  } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    // 其他错误忽略：实时区块退回使用全局列表中的数据
+  } catch {
+    // 忽略：实时区块退回使用全局列表中的数据；401 由统一处理回到登录页
   }
 }
 watch(sid, () => {
@@ -115,8 +114,7 @@ async function loadHistory() {
     history.value = await getHistory(sid.value, range.value)
     historyError.value = ''
   } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    else if (e instanceof ApiError) historyError.value = e.message
+    historyError.value = errorText(e)
   }
 }
 // 短范围每 30 秒刷新一次，长范围每 5 分钟（粒度粗，变化慢）
@@ -202,10 +200,10 @@ const charts = computed(() => [
       </div>
 
       <!-- 静音与维护（设计 16.6） -->
-      <SilenceControls v-if="s.status !== 'pending'" :server="s" class="section-tight" @unauthorized="logout" />
+      <SilenceControls v-if="s.status !== 'pending'" :server="s" class="section-tight" />
 
       <!-- 概况（设计 11.1） -->
-      <ServerSummary :server="liveServer ?? s" :live="live" @unauthorized="logout" />
+      <ServerSummary :server="liveServer ?? s" :live="live" />
 
       <!-- 实时：速览 → CPU → 内存 → 磁盘 → 网络；离线时不显示旧数值（设计 43.6） -->
       <template v-if="live && liveServer?.latest">
@@ -226,13 +224,13 @@ const charts = computed(() => [
 
       <!-- 流量 -->
       <section class="section">
-        <TrafficCard :server="s" @unauthorized="logout" />
-        <TrafficHistory :server="s" class="section-tight" @unauthorized="logout" />
+        <TrafficCard :server="s" />
+        <TrafficHistory :server="s" class="section-tight" />
       </section>
 
       <!-- 告警记录（设计 16） -->
       <section v-if="s.status !== 'pending'" class="section">
-        <AlertHistory :server-id="s.id" :version="`${s.alerts.map((a) => a.event_id).join(',')}|${s.maintenance?.id ?? ''}`" @unauthorized="logout" />
+        <AlertHistory :server-id="s.id" :version="`${s.alerts.map((a) => a.event_id).join(',')}|${s.maintenance?.id ?? ''}`" />
       </section>
 
       <!-- 历史曲线（设计 11.2、41.5） -->

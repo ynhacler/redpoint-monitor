@@ -1,9 +1,8 @@
 <script setup lang="ts">
 // 登录中的设备（设计 24.8、17.4）：当前账号的会话列表，可踢出其他浏览器。踢出记入登录日志。
 import { onMounted, ref } from 'vue'
-import { ApiError, listSessions, revokeSession, UnauthorizedError, type LoginSession } from '../api'
+import { errorText, listSessions, revokeSession, type LoginSession } from '../api'
 import { DASH, fmtDateTime, fmtTime, uaSummary } from '../format'
-import { logout } from '../store'
 
 const sessions = ref<LoginSession[]>([])
 const error = ref('')
@@ -14,8 +13,7 @@ async function load() {
     sessions.value = await listSessions()
     error.value = ''
   } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    else error.value = '登录会话加载失败'
+    error.value = errorText(e, '登录会话加载失败')
   }
 }
 onMounted(load)
@@ -27,8 +25,7 @@ async function kick(s: LoginSession) {
     await revokeSession(s.id)
     await load()
   } catch (e) {
-    if (e instanceof UnauthorizedError) logout()
-    else error.value = e instanceof ApiError ? e.message : '操作失败，请稍后重试'
+    error.value = errorText(e)
   } finally {
     busy.value = null
   }

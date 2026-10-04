@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -46,5 +48,32 @@ func TestListEnvelope(t *testing.T) {
 	}
 	if lists < 10 {
 		t.Errorf("只检查到 %d 个列表接口，路由表遍历可能有误", lists)
+	}
+}
+
+// 错误码在 OpenAPI 契约（ErrorCode 枚举）中统一定义（设计 43.4）：apierror.go 中的每个 Code 都必须列在契约里，
+// 否则由契约生成的 Web 类型（api.gen.ts）会缺少这个错误码。
+func TestErrorCodesInContract(t *testing.T) {
+	src, err := os.ReadFile("apierror.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := os.ReadFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, enum, ok := strings.Cut(string(spec), "    ErrorCode:")
+	if !ok {
+		t.Fatal("契约中没有 ErrorCode")
+	}
+	enum, _, _ = strings.Cut(enum, "]")
+	codes := regexp.MustCompile(`Code\s*=\s*"([a-z_]+)"`).FindAllStringSubmatch(string(src), -1)
+	if len(codes) < 10 {
+		t.Fatalf("只在 apierror.go 中找到 %d 个错误码，解析方式可能已失效", len(codes))
+	}
+	for _, m := range codes {
+		if !regexp.MustCompile(`\b` + m[1] + `\b`).MatchString(enum) {
+			t.Errorf("错误码 %s 没有列入 api/openapi.yaml 的 ErrorCode", m[1])
+		}
 	}
 }

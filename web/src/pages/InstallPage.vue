@@ -3,7 +3,7 @@
 import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
 import InstallCommand from '../components/InstallCommand.vue'
-import { logout, refresh, takeCreated } from '../store'
+import { refresh, takeCreated } from '../store'
 
 const props = defineProps<{
   /** 节点 ID */
@@ -21,7 +21,7 @@ function back() {
 <template>
   <main class="page">
     <RouterLink :to="`/servers/${id}`" class="back muted small"><Icon name="arrow-left" :size="14" />节点详情</RouterLink>
-    <InstallCommand :server-id="Number(id)" :initial="initial" @back="back" @unauthorized="logout" />
+    <InstallCommand :server-id="Number(id)" :initial="initial" @back="back" />
   </main>
 </template>
 

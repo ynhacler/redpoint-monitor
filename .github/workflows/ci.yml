@@ -103,6 +103,8 @@ jobs:
       - run: make check-design
       # OpenAPI 契约：严格 YAML 解析、列表接口声明 next_cursor（runner 自带 Ruby / libyaml）；完整的契约校验见 TODO(A0)
       - run: ruby scripts/check-openapi.rb api/openapi.yaml
+      # Web 请求类型由契约生成（设计 19.0.1）：生成结果必须已提交且与契约一致
+      - run: ruby scripts/gen-api-types.rb --check
 
   shellcheck:
     name: shellcheck

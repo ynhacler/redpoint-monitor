@@ -13,7 +13,7 @@ VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design web build build-linux \
+.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux \
         vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
@@ -63,6 +63,10 @@ lint: web/node_modules/.package-lock.json ## go vet + Web type-check
 
 check-design: ## Check design doc numbering and section references (design 40.9.3)
 	python3 scripts/check_design_refs.py
+
+api-types: ## Regenerate web/src/api.gen.ts from api/openapi.yaml (design 19.0.1)
+	ruby scripts/check-openapi.rb api/openapi.yaml
+	ruby scripts/gen-api-types.rb
 
 # ---------- builds ----------
 

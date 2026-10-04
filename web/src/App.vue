@@ -3,6 +3,7 @@
 // 登录状态与节点数据由 store 统一管理，各页面共用（设计 41.6）；未登录时由路由守卫带到 /login。
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
 import { activeAlertCount } from './metrics'
 import { logout, state, stopPolling } from './store'
@@ -48,7 +49,9 @@ onUnmounted(stopPolling)
   <div v-if="state.error && signedIn" class="page banner-wrap">
     <div class="banner">{{ state.error }}</div>
   </div>
-  <RouterView v-if="state.authChecked" />
+  <ErrorBoundary>
+    <RouterView v-if="state.authChecked" />
+  </ErrorBoundary>
 </template>
 
 <style scoped>

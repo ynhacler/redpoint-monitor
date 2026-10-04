@@ -18,7 +18,6 @@ const props = defineProps<{
   /** 是否在线；离线时不显示负载等实时值 */
   live: boolean
 }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const s = computed(() => props.server)
 const r = computed(() => s.value.latest)
@@ -125,7 +124,7 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
     <dl class="facts">
       <div v-if="s.status !== 'pending'" class="fact">
         <dt>Agent</dt>
-        <dd><AgentUpgrade :server-id="s.id" :current="r?.agent_version" @unauthorized="emit('unauthorized')" /></dd>
+        <dd><AgentUpgrade :server-id="s.id" :current="r?.agent_version" /></dd>
       </div>
       <div v-for="f in facts" :key="f.k" class="fact" :class="{ wide: f.wide }">
         <dt>{{ f.k }}</dt>

@@ -2,8 +2,7 @@
 // 流量记录（设计 19.8、5.7）：按计费周期的月度流量与手动校准历史。放在流量卡片下方；校准后自动刷新。
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  getTrafficAdjustments, getTrafficMonthly, UnauthorizedError,
-  type ServerView, type TrafficAdjustment, type TrafficCycle,
+  errorText, getTrafficAdjustments, getTrafficMonthly, type ServerView, type TrafficAdjustment, type TrafficCycle,
 } from '../api'
 import { DASH, fmtDateTime, fmtPct, fmtTraffic } from '../format'
 import EmptyState from './EmptyState.vue'
@@ -12,7 +11,6 @@ const props = defineProps<{
   /** 节点 */
   server: ServerView
 }>()
-const emit = defineEmits<{ unauthorized: [] }>()
 
 const tab = ref<'cycles' | 'adjustments'>('cycles')
 const cycles = ref<TrafficCycle[]>([])
@@ -29,8 +27,7 @@ async function load() {
     ])
     error.value = ''
   } catch (e) {
-    if (e instanceof UnauthorizedError) emit('unauthorized')
-    else error.value = '流量记录加载失败'
+    error.value = errorText(e, '流量记录加载失败')
   } finally {
     loaded.value = true
   }
