@@ -15,7 +15,7 @@ import (
 
 // trafficView 是节点本计费周期的流量。字节数均为整数；GB 换算由客户端按 unit 口径完成（设计 5.8）。
 type trafficView struct {
-	CycleStart   string        `json:"cycle_start"` // YYYY-MM-DD，面板本地时区
+	CycleStart   string        `json:"cycle_start"` // YYYY-MM-DD，节点的计费时区（设计 5.4）
 	CycleEnd     string        `json:"cycle_end"`   // 下一周期开始日（不含）
 	Rx           uint64        `json:"rx"`
 	Tx           uint64        `json:"tx"`
@@ -39,6 +39,7 @@ type forecastView struct {
 
 // trafficOf 计算节点本周期的流量、校准与预测。
 func (s *Server) trafficOf(row ServerRow, now time.Time) (trafficView, error) {
+	now = now.In(trafficLocation(row)) // 计费周期与按天汇总都按节点的计费时区（设计 5.4）
 	start := CycleStart(now, row.ResetDay)
 	end := CycleEnd(start, row.ResetDay)
 	rx, tx, err := s.store.TrafficSince(row.ID, start)
@@ -154,7 +155,7 @@ func (s *Server) handleTrafficDaily(w http.ResponseWriter, r *http.Request) {
 	if row == nil {
 		return
 	}
-	today := dayStart(time.Now())
+	today := dayStart(time.Now().In(trafficLocation(*row)))
 	from := today.AddDate(0, 0, -(days - 1))
 	rows, err := s.store.DailyTraffic(row.ID, from, today.AddDate(0, 0, 1))
 	if err != nil {
@@ -198,7 +199,7 @@ func (s *Server) handleTrafficMonthly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items := make([]cycleItem, 0, n)
-	start := CycleStart(time.Now(), row.ResetDay)
+	start := CycleStart(time.Now().In(trafficLocation(*row)), row.ResetDay)
 	for i := 0; i < n; i++ {
 		end := CycleEnd(start, row.ResetDay)
 		rx, tx, err := s.store.TrafficBetween(row.ID, start, end)

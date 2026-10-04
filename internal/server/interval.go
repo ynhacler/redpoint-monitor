@@ -43,27 +43,42 @@ func ruleForInterval(r AlertRule, iv time.Duration) AlertRule {
 	return r
 }
 
-// setIntervalHeader 在上报响应中告诉 Agent 采样间隔；节点信息读取失败时不设置（Agent 保持当前间隔）。
-func (s *Server) setIntervalHeader(w http.ResponseWriter, sid int64) {
-	s.mu.Lock()
-	iv, ok := s.intervals[sid]
-	s.mu.Unlock()
-	if !ok {
-		row, err := s.store.GetServer(sid)
-		if err != nil {
-			return
-		}
-		iv = reportInterval(*row)
-		s.mu.Lock()
-		s.intervals[sid] = iv
-		s.mu.Unlock()
-	}
-	w.Header().Set("X-Report-Interval", strconv.Itoa(int(iv/time.Second)))
+// nodeConf 是处理上报时需要的节点设置：采样间隔与计费时区（设计 6.1、5.4）。
+// 缓存在内存中，避免每份上报都查库；节点修改或删除后清除。
+type nodeConf struct {
+	interval time.Duration
+	loc      *time.Location
 }
 
-// forgetInterval 在节点修改或删除后清除缓存的采样间隔，下一份上报重新读取。
+// nodeConfOf 返回节点的上报设置；读取失败时 ok 为 false（调用方按默认处理）。
+func (s *Server) nodeConfOf(sid int64) (nodeConf, bool) {
+	s.mu.Lock()
+	c, ok := s.nodeConfs[sid]
+	s.mu.Unlock()
+	if ok {
+		return c, true
+	}
+	row, err := s.store.GetServer(sid)
+	if err != nil {
+		return nodeConf{interval: DefaultReportInterval, loc: time.Local}, false
+	}
+	c = nodeConf{interval: reportInterval(*row), loc: trafficLocation(*row)}
+	s.mu.Lock()
+	s.nodeConfs[sid] = c
+	s.mu.Unlock()
+	return c, true
+}
+
+// setIntervalHeader 在上报响应中告诉 Agent 采样间隔；节点信息读取失败时不设置（Agent 保持当前间隔）。
+func (s *Server) setIntervalHeader(w http.ResponseWriter, c nodeConf, ok bool) {
+	if ok {
+		w.Header().Set("X-Report-Interval", strconv.Itoa(int(c.interval/time.Second)))
+	}
+}
+
+// forgetInterval 在节点修改或删除后清除缓存的节点设置，下一份上报重新读取。
 func (s *Server) forgetInterval(sid int64) {
 	s.mu.Lock()
-	delete(s.intervals, sid)
+	delete(s.nodeConfs, sid)
 	s.mu.Unlock()
 }

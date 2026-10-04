@@ -42,6 +42,7 @@ type createServerBody struct {
 	Country          string   `json:"country"`           // ISO 3166-1 两位代码，大小写不敏感
 	BandwidthMbps    *int     `json:"bandwidth_mbps"`    // 标称带宽 Mbps；空或 0 表示未填
 	ReportIntervalS  *int     `json:"report_interval_s"` // 采样间隔秒数：5 / 10 / 15 / 30 / 60；空或 0 表示默认 10 秒
+	TrafficTimezone  string   `json:"traffic_timezone"`  // 计费时区（IANA 名称）；空表示面板时区（设计 5.4）
 	TrafficLimitGB   *float64 `json:"traffic_limit_gb"`  // 按 traffic_unit 口径的 GB / GiB；空或 0 表示不限
 	TrafficUnit      string   `json:"traffic_unit"`      // decimal（默认）/ binary（设计 5.8）
 	TrafficFactor    *float64 `json:"traffic_factor"`    // 统计系数 0.5～2，默认 1（设计 5.7）
@@ -141,6 +142,13 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		in.Factor = *b.TrafficFactor
 		if in.Factor < 0.5 || in.Factor > 2 || math.IsNaN(in.Factor) {
 			bad("traffic_factor", "统计系数应在 0.5～2 之间")
+		}
+	}
+	if tz := strings.TrimSpace(b.TrafficTimezone); tz != "" {
+		if !validTimezone(tz) {
+			bad("traffic_timezone", "时区无效，应为 IANA 名称，如 Asia/Shanghai、America/Los_Angeles")
+		} else {
+			in.TrafficTimezone = tz
 		}
 	}
 	if b.ReportIntervalS != nil && *b.ReportIntervalS != 0 {
