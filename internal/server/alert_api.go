@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,19 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
+	}
+	// API Key 只看到其范围内节点的告警（设计 45.2）
+	if info(r).apiScope != nil {
+		rows, err := s.store.ListServers()
+		if err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		allowed := map[int64]bool{}
+		for _, row := range rows {
+			allowed[row.ID] = scopeAllows(r, row)
+		}
+		items = slices.DeleteFunc(items, func(e AlertEvent) bool { return !allowed[e.ServerID] })
 	}
 	writeList(w, items, cursorOf(next), nil)
 }

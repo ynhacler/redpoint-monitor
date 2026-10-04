@@ -14,11 +14,11 @@ import (
 
 // 【安全】按前缀识别凭证（设计 24.7）：
 //
-//	ses_ / agt_ / dev_ / rt_   小写 base32 Token（auth.go 的 NewToken）；adm_ 为已移除的旧开发 token，仍按凭证处理
+//	ses_ / agt_ / api_ / dev_ / rt_   小写 base32 Token（auth.go 的 NewToken）；adm_ 为已移除的旧开发 token，仍按凭证处理
 //	MNT- / ENR-                AK 与注册码，大写分组格式（设计 8.4、27.4）
 //
 // 前缀前要求不是字母或数字，避免误伤 “redemption_” 之类的普通单词。
-var credential = regexp.MustCompile(`(^|[^A-Za-z0-9])((?:adm|ses|agt|dev|rt)_[a-z0-9]{8,}|(?:MNT|ENR)-[A-Z0-9][A-Z0-9-]{7,})`)
+var credential = regexp.MustCompile(`(^|[^A-Za-z0-9])((?:adm|ses|agt|api|dev|rt)_[a-z0-9]{8,}|(?:MNT|ENR)-[A-Z0-9][A-Z0-9-]{7,})`)
 
 // botToken 是 Telegram Bot Token（数字 ID + 冒号 + 30 位以上密钥，通知渠道使用，设计 16.5）。
 // 只保留 ID 与末 4 位：123456789:…sawQ

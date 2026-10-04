@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, APIKey, APIKeyInput, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
 } from './api.gen'
 
@@ -405,6 +405,21 @@ export async function listCloudCosts(id: number) {
 
 export async function listCloudInstances(accountId?: number) {
   return (await request('get', '/cloud-instances', { query: { account_id: accountId } })).items
+}
+
+// ---- 只读 API Key（设计 45.2） ----
+
+export async function listAPIKeys() {
+  return (await request('get', '/api-keys')).items
+}
+
+/** 创建只读 API Key；需先重新验证密码。返回的 key 只出现这一次 */
+export function createAPIKey(v: G.APIKeyInput) {
+  return request('post', '/api-keys', { body: v })
+}
+
+export function revokeAPIKey(id: number) {
+  return request('delete', '/api-keys/{id}', { params: { id } })
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----

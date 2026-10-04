@@ -511,6 +511,22 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL,
 		UNIQUE (account_id, instance_id)
 	);`,
+
+	// 迁移 23：只读 API Key（设计 45.2）。只保存 SHA-256 哈希（约束 4），hint 为末 4 位；
+	// scope_type：all / group / servers，scope_value 为分组名或逗号分隔的节点 ID。
+	`CREATE TABLE api_keys (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		hint TEXT NOT NULL,
+		scope_type TEXT NOT NULL DEFAULT 'all',
+		scope_value TEXT NOT NULL DEFAULT '',
+		expires_at INTEGER NOT NULL DEFAULT 0,
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		last_used_at INTEGER NOT NULL DEFAULT 0,
+		revoked_at INTEGER NOT NULL DEFAULT 0
+	);`,
 }
 
 func (s *Store) migrate() error {

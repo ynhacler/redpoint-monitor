@@ -22,7 +22,7 @@ func (s *Server) auditQueryFrom(w http.ResponseWriter, r *http.Request) (AuditQu
 		fe = append(fe, FieldError{Field: "result", Message: "result 只能是 success 或 failure"})
 	}
 	switch q.Actor {
-	case "", "admin", "agent", "cli", "system":
+	case "", "admin", "agent", "apikey", "cli", "system":
 	default:
 		fe = append(fe, FieldError{Field: "actor", Message: "actor 只能是 admin、agent、cli 或 system"})
 	}

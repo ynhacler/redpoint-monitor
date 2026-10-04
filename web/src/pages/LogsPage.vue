@@ -13,7 +13,7 @@ const router = useRouter()
 const tab = computed(() => (route.query.tab === 'operation' ? 'operation' : 'login'))
 const result = computed(() => (route.query.result === 'success' || route.query.result === 'failure' ? route.query.result : ''))
 const qstr = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '')
-const actorQ = computed(() => (['admin', 'agent', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
+const actorQ = computed(() => (['admin', 'agent', 'apikey', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
 const actionQ = computed(() => qstr('action'))
 const fromQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('from')) ? qstr('from') : ''))
 const toQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('to')) ? qstr('to') : ''))
@@ -74,6 +74,9 @@ const actionNames: Record<string, string> = {
   'alert_rule.delete': '删除告警规则', 'silence.create': '静音 / 维护', 'silence.end': '结束静音 / 维护',
   'notification_channel.create': '新增通知渠道', 'notification_channel.update': '修改通知渠道',
   'notification_channel.delete': '删除通知渠道', 'notification_channel.test': '测试通知渠道', 'setting.update': '修改系统设置',
+  'api_key.create': '创建 API Key', 'api_key.revoke': '吊销 API Key', 'api_key.first_use': 'API Key 首次使用',
+  'cloud_account.create': '添加云账户', 'cloud_account.update': '修改云账户', 'cloud_account.delete': '删除云账户',
+  'cloud_account.sync': '同步云账户',
 }
 // 当前标签可选的操作（登录日志只有几种，操作日志为其余全部）
 const loginActionSet = new Set(['auth.login', 'auth.logout', 'auth.reauth', 'auth.session_revoke'])
@@ -86,6 +89,7 @@ const reasonNames: Record<string, string> = {
 function actor(l: AuditLog) {
   if (l.actor_type === 'agent') return l.actor_id ? `Agent（${l.actor_id}）` : 'Agent'
   if (l.actor_type === 'cli') return '命令行'
+  if (l.actor_type === 'apikey') return `API Key #${l.actor_id}`
   if (l.actor_type === 'system') return '系统'
   return l.actor_id || DASH
 }
@@ -124,6 +128,7 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
         <option value="">全部主体</option>
         <option value="admin">管理员</option>
         <option value="agent">Agent</option>
+        <option value="apikey">API Key</option>
         <option value="cli">命令行</option>
         <option value="system">系统</option>
       </select>

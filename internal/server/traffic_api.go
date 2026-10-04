@@ -112,7 +112,7 @@ func (s *Server) nodeOr404(w http.ResponseWriter, r *http.Request) *ServerRow {
 		return nil
 	}
 	row, err := s.store.GetServer(id)
-	if errors.Is(err, errNoServer) {
+	if errors.Is(err, errNoServer) || (err == nil && !scopeAllows(r, *row)) { // 范围外按不存在处理（设计 45.2）
 		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
 		return nil
 	}

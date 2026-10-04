@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -61,12 +62,13 @@ type Server struct {
 	releaseMirror bool         // 同步后自动镜像
 	mirrorHTTP    *http.Client // 下载构建用，超时更长
 	mirrorCache   mirrorCache
-	notify        *notifier   // 告警通知（设计 16.5）
-	noise         *alertNoise // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
-	quiet         *quietState // 免打扰时段（设计 16.5）
-	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
-	ws            *wsHub      // WebSocket 事件推送（设计 20）
-	cloud         *cloudState // 云厂商账户同步（设计 44）
+	notify        *notifier     // 告警通知（设计 16.5）
+	noise         *alertNoise   // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
+	quiet         *quietState   // 免打扰时段（设计 16.5）
+	routeTable    []routeSpec   // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+	ws            *wsHub        // WebSocket 事件推送（设计 20）
+	cloud         *cloudState   // 云厂商账户同步（设计 44）
+	apiKeys       apiKeyLimiter // 只读 API Key 的限流（设计 45.2）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -160,6 +162,7 @@ const (
 	accessPublic access = "public" // 无需凭证：健康检查、静态页面
 	accessEnroll access = "enroll" // 凭请求体中的注册码认证，由处理函数校验并单独限流（设计 27.6）
 	accessAdmin  access = "admin"  // Web 管理员
+	accessRead   access = "read"   // Web 管理员或只读 API Key（设计 45.2）：只用于读取类接口
 	accessAgent  access = "agent"  // Agent Token，只能操作 Token 绑定的节点
 )
 
@@ -190,6 +193,8 @@ func (s *Server) routes() http.Handler {
 			wrapped = h
 		case accessAdmin:
 			wrapped = s.admin(h)
+		case accessRead:
+			wrapped = s.read(h)
 		case accessAgent:
 			wrapped = s.agent(h)
 		default:
@@ -220,6 +225,11 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/cloud-accounts/{id}/sync", accessAdmin, s.handleSyncCloudAccount)
 	handle("GET /api/v1/cloud-accounts/{id}/costs", accessAdmin, s.handleCloudCosts)
 	handle("GET /api/v1/cloud-instances", accessAdmin, s.handleCloudInstances)
+	// 只读 API Key 的管理（设计 45.2）：只有 Web 管理员可以创建、查看、吊销；创建需重新验证密码
+	handle("GET /api/v1/api-keys", accessAdmin, s.handleAPIKeys)
+	handle("POST /api/v1/api-keys", accessAdmin, s.handleCreateAPIKey)
+	handle("DELETE /api/v1/api-keys/{id}", accessAdmin, s.handleRevokeAPIKey)
+	handle("GET /api/v1/version", accessRead, s.handleVersion)
 	// 实时事件（设计 20）：只推送，不接收指令
 	handle("GET /ws", accessAdmin, s.handleWS)
 
@@ -233,7 +243,7 @@ func (s *Server) routes() http.Handler {
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
 	handle("GET /api/v1/audit-logs/export", accessAdmin, s.handleAuditExport)
-	handle("GET /api/v1/alerts", accessAdmin, s.handleAlerts)
+	handle("GET /api/v1/alerts", accessRead, s.handleAlerts)
 	handle("GET /api/v1/alert-rules", accessAdmin, s.handleAlertRules)
 	handle("POST /api/v1/alert-rules", accessAdmin, s.handleCreateAlertRule)
 	handle("POST /api/v1/alert-rules/preview", accessAdmin, s.handlePreviewAlertRule)
@@ -255,19 +265,19 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
 	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
 	handle("DELETE /api/v1/silences/{id}", accessAdmin, s.handleEndSilence)
-	handle("GET /api/v1/servers", accessAdmin, s.handleListServers)
+	handle("GET /api/v1/servers", accessRead, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
-	handle("GET /api/v1/servers/{id}", accessAdmin, s.handleGetServer)
+	handle("GET /api/v1/servers/{id}", accessRead, s.handleGetServer)
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
 	handle("POST /api/v1/servers/{id}/revoke-agent-token", accessAdmin, s.handleRevokeAgentToken)
-	handle("GET /api/v1/servers/{id}/metrics/history", accessAdmin, s.handleHistory)
+	handle("GET /api/v1/servers/{id}/metrics/history", accessRead, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
 	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
-	handle("GET /api/v1/servers/{id}/traffic/current", accessAdmin, s.handleTrafficCurrent)
-	handle("GET /api/v1/servers/{id}/traffic/daily", accessAdmin, s.handleTrafficDaily)
-	handle("GET /api/v1/servers/{id}/traffic/monthly", accessAdmin, s.handleTrafficMonthly)
+	handle("GET /api/v1/servers/{id}/traffic/current", accessRead, s.handleTrafficCurrent)
+	handle("GET /api/v1/servers/{id}/traffic/daily", accessRead, s.handleTrafficDaily)
+	handle("GET /api/v1/servers/{id}/traffic/monthly", accessRead, s.handleTrafficMonthly)
 	handle("GET /api/v1/servers/{id}/traffic/adjustments", accessAdmin, s.handleAdjustments)
 	handle("POST /api/v1/servers/{id}/traffic/calibrate", accessAdmin, s.handleCalibrate)
 
@@ -698,6 +708,8 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	// API Key 只看到其范围内的节点（设计 45.2）
+	rows = slices.DeleteFunc(rows, func(row ServerRow) bool { return !scopeAllows(r, row) })
 	now := time.Now()
 	out := make([]serverView, 0, len(rows))
 	for _, row := range rows {
@@ -780,6 +792,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		s.writeError(w, r, err)
+		return
+	}
+	if !s.requireServerInScope(w, r, id) {
 		return
 	}
 	name := r.URL.Query().Get("range")

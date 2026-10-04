@@ -4,6 +4,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, changePassword, errorText } from '../api'
+import ApiKeysPanel from '../components/ApiKeysPanel.vue'
 import SessionsPanel from '../components/SessionsPanel.vue'
 import { passwordChanged, state } from '../store'
 
@@ -66,6 +67,7 @@ async function submit() {
       <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
     </form>
     <SessionsPanel v-if="!forced" />
+    <ApiKeysPanel v-if="!forced" />
     <p v-if="!forced" class="account-links small muted">
       发现异常登录？查看<RouterLink to="/logs?tab=login">登录日志</RouterLink>，修改密码后其他设备会被退出。
     </p>
