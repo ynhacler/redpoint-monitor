@@ -47,6 +47,7 @@ usage:
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
                            [--public-url https://monitor.example.com] [--release-mirror] [--no-release-sync]
+                           [--domain monitor.example.com [--acme-email EMAIL] [--https-listen :443] [--http-listen :80]]
   vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
   vpsmon-server audit      --data DIR [--category login|operation] [--result success|failure] [--action NAME|PREFIX.]
                            [--limit 50] [--json]   view the audit log (newest first)
@@ -203,7 +204,22 @@ func main() {
 		noReleaseSync := fsx.Bool("no-release-sync", false, "do not sync official agent releases from GitHub automatically (offline panels; manual sync in the Web UI still works)")
 		releaseMirror := fsx.Bool("release-mirror", false, "also mirror every file of synced official releases into DATA/releases and serve them at /releases (hosts that cannot reach GitHub)")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
+		domain := fsx.String("domain", "", "built-in HTTPS: obtain certificates via ACME (Let's Encrypt) for these comma-separated domains; implies accepting the CA's terms (design 25)")
+		acmeEmail := fsx.String("acme-email", "", "with --domain: contact email for certificate notices (optional)")
+		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address")
+		httpListen := fsx.String("http-listen", ":80", "with --domain: HTTP listen address for ACME http-01 and redirects to HTTPS (empty = disabled)")
+		acmeDir := fsx.String("acme-directory", "", "with --domain: ACME directory URL (default: Let's Encrypt production)")
 		_ = fsx.Parse(args)
+		var domains []string
+		if *domain != "" {
+			var err error
+			if domains, err = server.ParseDomains(*domain); err != nil {
+				log.Fatal(err)
+			}
+			if *publicURL == "" {
+				*publicURL = "https://" + domains[0] // 安装命令中的面板地址
+			}
+		}
 		level, err := logging.ParseLevel(*logLevel)
 		if err != nil {
 			log.Fatal(err)
@@ -213,7 +229,9 @@ func main() {
 			log.Fatal(err)
 		}
 		slog.SetDefault(logger)
-		warnIfPublic(logger, *listen)
+		if domains == nil {
+			warnIfPublic(logger, *listen)
+		}
 		// 运行期间锁定数据目录：restore 据此拒绝在面板运行时替换数据库；同一数据目录也不能启动两个面板
 		unlock, err := server.LockDataDir(*data)
 		if err != nil {
@@ -232,8 +250,12 @@ func main() {
 				"component", "auth")
 		}
 		// 启动时记录版本、数据目录、监听地址、数据库与迁移版本、HTTPS 模式（设计 24.6）
-		logger.Info("starting", "component", "server", "version", version, "data", *data, "listen", *listen,
-			"db", "sqlite", "schema_version", schema, "https", "off (reverse proxy)")
+		httpsMode, listenAddr := "off (reverse proxy)", *listen
+		if domains != nil {
+			httpsMode, listenAddr = "acme "+strings.Join(domains, ","), *httpsListen
+		}
+		logger.Info("starting", "component", "server", "version", version, "data", *data, "listen", listenAddr,
+			"db", "sqlite", "schema_version", schema, "https", httpsMode)
 		// 【安全】安装命令中的面板地址必须是 HTTPS：Agent 会拒绝向非回环地址明文上报（设计 23.1）
 		if *publicURL != "" && !strings.HasPrefix(*publicURL, "https://") {
 			log.Fatal("--public-url must start with https://")
@@ -246,7 +268,16 @@ func main() {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
-		if err := srv.Run(ctx, *listen); err != nil {
+		if domains != nil {
+			// 内置 HTTPS（设计 25）：证书缓存在 DATA/certs，重启后不重复申请
+			m := server.NewCertManager(server.ACMEOptions{Domains: domains, Email: *acmeEmail,
+				CacheDir: filepath.Join(*data, "certs"), Directory: *acmeDir})
+			err = srv.RunHTTPS(ctx, server.HTTPSOptions{TLSListen: *httpsListen, HTTPListen: *httpListen,
+				TLS: server.TLSConfigFor(m), HTTPHandler: m.HTTPHandler})
+		} else {
+			err = srv.Run(ctx, *listen)
+		}
+		if err != nil {
 			log.Fatal(err)
 		}
 

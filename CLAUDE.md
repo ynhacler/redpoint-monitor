@@ -129,7 +129,7 @@ token is gone. Forgot password: `vpsmon-server admin reset-password --data DIR` 
 Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` and the Web pages are next.
 Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
 --server … --enroll …` and the binary must already be on the host (design 27.3.1).
-Not yet: login, alerts, push, downsampling, calibration, built-in HTTPS. See TODO.md.
+Not yet: push, App pairing (phase C). See TODO.md.
 
 ## Dev environment notes (design 40)
 

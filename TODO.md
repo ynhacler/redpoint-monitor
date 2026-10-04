@@ -97,7 +97,7 @@
 
 ### A6 部署与运维
 
-- [ ] 内置 HTTPS（ACME，`--domain`）（设计 25）
+- [x] 内置 HTTPS（ACME，`--domain`）（设计 25）；systemd drop-in deploy/systemd/vpsmon-server-https.conf
 - [x] 请求日志记录真实客户端 IP：只信任回环代理的 X-Forwarded-For（设计 24.6、26）
 - [x] `vpsmon-server backup / restore`、`diag`（设计 25、24.10）；Web 下载备份随系统设置页（阶段 B）
 
