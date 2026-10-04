@@ -900,6 +900,7 @@ paths:
       summary: 云厂商的实例列表
       parameters:
         - { name: account_id, in: query, schema: { type: integer }, description: 只看某个账户 }
+        - { name: server_id, in: query, schema: { type: integer }, description: 只看关联到该节点的实例（节点详情） }
       responses:
         '200':
           description: 实例列表
@@ -912,6 +913,41 @@ paths:
                   next_cursor: { type: string, description: 空表示没有更多 }
                   items: { type: array, items: { $ref: '#/components/schemas/CloudInstance' } }
         '401': { $ref: '#/components/responses/Error' }
+
+  /cloud-instances/{id}/server:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [cloud]
+      summary: 关联或取消关联节点（设计 44.5）；记入审计
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [server_id], properties: { server_id: { type: [integer, 'null'], description: null 表示取消关联 } } }
+      responses:
+        '200':
+          description: 关联后的实例
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CloudInstance' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /cloud-instances/{id}/apply-expire:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [cloud]
+      summary: 把关联实例的到期时间写入节点的到期日（按节点的计费时区取日期）；记入审计
+      responses:
+        '200':
+          description: 写入的到期日
+          content:
+            application/json:
+              schema: { type: object, required: [expire_date], properties: { expire_date: { type: string, description: YYYY-MM-DD } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 
   /servers:
     get:
@@ -1890,7 +1926,8 @@ components:
     CloudInstance:
       type: object
       required: [id, account_id, account_name, provider, instance_id, name, region, kind, state, public_ipv4, public_ipv6, plan,
-                 expire_at, renew_price_cents, traffic_limit_bytes, traffic_used_bytes, traffic_period_start, server_id, updated_at]
+                 expire_at, renew_price_cents, traffic_limit_bytes, traffic_used_bytes, traffic_period_start, server_id, updated_at,
+                 suggested_server_id]
       properties:
         id: { type: integer }
         account_id: { type: integer }
@@ -1909,7 +1946,8 @@ components:
         traffic_limit_bytes: { type: integer, description: 流量包额度，字节；0 表示没有流量包 }
         traffic_used_bytes: { type: integer, description: 本周期已用（云厂商口径，有数小时延迟） }
         traffic_period_start: { type: string, description: YYYY-MM-DD }
-        server_id: { type: [integer, 'null'], description: 关联的节点（设计 44.5，随第五步） }
+        server_id: { type: [integer, 'null'], description: 关联的节点（设计 44.5） }
+        suggested_server_id: { type: [integer, 'null'], description: 未关联时，公网 IP 与之唯一匹配的节点（建议关联，需用户确认） }
         updated_at: { type: integer }
 
     APIKeyInput:

@@ -391,3 +391,87 @@ func TestCloudTencentSync(t *testing.T) {
 		t.Fatalf("SecretId 校验 %d %+v", code, e)
 	}
 }
+
+// 实例与节点关联（设计 44.5）：按公网 IP 建议、确认关联、到期日写入节点、删除节点后取消关联
+func TestCloudInstanceLink(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, v, _ := createCloudAccount(t, h, admin, awsAccountBody)
+	_, a, _ := createNode(t, h, admin, `{"name":"tokyo","expected_ipv4":"203.0.113.5","traffic_timezone":"Asia/Tokyo"}`)
+	_, b, _ := createNode(t, h, admin, `{"name":"dup-1","expected_ipv4":"198.51.100.9"}`)
+	_, c, _ := createNode(t, h, admin, `{"name":"dup-2","expected_ipv4":"198.51.100.9"}`)
+	_ = b
+	_ = c
+	exp := time.Date(2026, 12, 1, 16, 0, 0, 0, time.UTC) // 东京时间 12 月 2 日
+	if err := s.store.ReplaceCloudInstances(v.ID, []cloud.Instance{
+		{ID: "i-tokyo", Kind: "ec2", IPv4: "203.0.113.5", ExpireAt: exp.Unix()},
+		{ID: "i-dup", Kind: "ec2", IPv4: "198.51.100.9"}, // 两个节点同 IP：不建议
+		{ID: "i-none", Kind: "ec2", IPv4: "192.0.2.1"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	list := func(q string) []CloudInstance {
+		var l struct{ Items []CloudInstance }
+		json.Unmarshal(do(h, "GET", "/api/v1/cloud-instances"+q, admin, nil).Body.Bytes(), &l)
+		return l.Items
+	}
+	by := map[string]CloudInstance{}
+	for _, in := range list("") {
+		by[in.InstanceID] = in
+	}
+	if s := by["i-tokyo"].SuggestedServerID; s == nil || *s != int64(a.ServerID) {
+		t.Fatalf("应建议关联到 tokyo：%+v", by["i-tokyo"])
+	}
+	if by["i-dup"].SuggestedServerID != nil || by["i-none"].SuggestedServerID != nil {
+		t.Fatal("IP 不唯一或没有匹配时不建议")
+	}
+
+	// 尚未关联：不能写入到期日
+	iid := itoa(by["i-tokyo"].ID)
+	if rec := do(h, "POST", "/api/v1/cloud-instances/"+iid+"/apply-expire", admin, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("未关联时应为 409，得到 %d", rec.Code)
+	}
+	rec := do(h, "PUT", "/api/v1/cloud-instances/"+iid+"/server", admin, []byte(`{"server_id":`+itoa(a.ServerID)+`}`))
+	if rec.Code != 200 {
+		t.Fatalf("关联 %d %s", rec.Code, rec.Body)
+	}
+	if got := list("?server_id=" + itoa(a.ServerID)); len(got) != 1 || got[0].InstanceID != "i-tokyo" || got[0].SuggestedServerID != nil {
+		t.Fatalf("按节点筛选 %+v", got)
+	}
+	// 到期日按节点的计费时区（东京）取日期
+	rec = do(h, "POST", "/api/v1/cloud-instances/"+iid+"/apply-expire", admin, nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "2026-12-02") {
+		t.Fatalf("写入到期日 %d %s", rec.Code, rec.Body)
+	}
+	row, _ := s.store.GetServer(int64(a.ServerID))
+	if row.ExpireDate != "2026-12-02" {
+		t.Fatalf("节点到期日 %q", row.ExpireDate)
+	}
+	var n int
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action IN ('cloud_instance.link', 'server.update')`).Scan(&n)
+	if n < 2 {
+		t.Fatalf("关联与写入应记入审计：%d", n)
+	}
+	// 重新同步实例：保留关联
+	s.store.ReplaceCloudInstances(v.ID, []cloud.Instance{{ID: "i-tokyo", Kind: "ec2", IPv4: "203.0.113.5"}}, time.Now())
+	if got := list("?server_id=" + itoa(a.ServerID)); len(got) != 1 {
+		t.Fatal("重新同步后应保留关联")
+	}
+	// 关联到不存在的节点
+	if rec := do(h, "PUT", "/api/v1/cloud-instances/"+iid+"/server", admin, []byte(`{"server_id":9999}`)); rec.Code != 422 {
+		t.Fatalf("不存在的节点应为 422，得到 %d", rec.Code)
+	}
+	// 删除节点：关联自动取消
+	do(h, "DELETE", "/api/v1/servers/"+itoa(a.ServerID), admin, nil)
+	if got, _ := s.store.CloudInstanceByID(by["i-tokyo"].ID); got.ServerID != nil {
+		t.Fatal("删除节点后应取消关联")
+	}
+	// 取消关联
+	do(h, "PUT", "/api/v1/cloud-instances/"+iid+"/server", admin, []byte(`{"server_id":`+itoa(b.ServerID)+`}`))
+	if rec := do(h, "PUT", "/api/v1/cloud-instances/"+iid+"/server", admin, []byte(`{"server_id":null}`)); rec.Code != 200 {
+		t.Fatalf("取消关联 %d", rec.Code)
+	}
+	if got, _ := s.store.CloudInstanceByID(by["i-tokyo"].ID); got.ServerID != nil {
+		t.Fatal("应已取消关联")
+	}
+}

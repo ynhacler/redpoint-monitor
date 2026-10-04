@@ -639,8 +639,10 @@ export interface CloudInstance {
   traffic_used_bytes: number
   /** YYYY-MM-DD */
   traffic_period_start: string
-  /** 关联的节点（设计 44.5，随第五步） */
+  /** 关联的节点（设计 44.5） */
   server_id: number | null
+  /** 未关联时，公网 IP 与之唯一匹配的节点（建议关联，需用户确认） */
+  suggested_server_id: number | null
   updated_at: number
 }
 
@@ -1286,11 +1288,38 @@ export interface Paths {
       query?: {
         /** 只看某个账户 */
         account_id?: number
+        /** 只看关联到该节点的实例（节点详情） */
+        server_id?: number
       }
       response: {
         /** 空表示没有更多 */
         next_cursor: string
         items: CloudInstance[]
+      }
+    }
+  }
+  '/cloud-instances/{id}/server': {
+    /** 关联或取消关联节点（设计 44.5）；记入审计 */
+    put: {
+      params: {
+        id: number
+      }
+      body: {
+        /** null 表示取消关联 */
+        server_id: number | null
+      }
+      response: CloudInstance
+    }
+  }
+  '/cloud-instances/{id}/apply-expire': {
+    /** 把关联实例的到期时间写入节点的到期日（按节点的计费时区取日期）；记入审计 */
+    post: {
+      params: {
+        id: number
+      }
+      response: {
+        /** YYYY-MM-DD */
+        expire_date: string
       }
     }
   }
