@@ -41,20 +41,50 @@ type wsEvent struct {
 	ServerID int64  `json:"server_id,omitempty"`
 	TS       int64  `json:"ts"`
 	Data     any    `json:"data,omitempty"`
+	// group 是节点所属分组，只用于按 API Key 的范围过滤（设计 45.2），不发送给客户端
+	group string
 }
 
 // 事件类型
 const (
 	evServerEnrolled = "server.enrolled" // 主机已用注册码注册（设计 19.11、27.6）
+	evServerMetrics  = "server.metrics"  // 收到一份上报：节点的最新状态（格式同节点列表的一项，设计 45.2）
+	evServerOnline   = "server.online"   // 节点恢复上报
+	evServerOffline  = "server.offline"  // 节点停止上报（超过在线判定窗口，设计 22）
+	evAlertTriggered = "alert.triggered" // 告警触发（设计 16）
+	evAlertRecovered = "alert.recovered" // 告警恢复
 )
 
 type wsClient struct {
-	send chan []byte
-	done chan struct{}
-	once sync.Once
+	send  chan []byte
+	done  chan struct{}
+	once  sync.Once
+	scope *apiScope // 以 API Key 连接时的节点范围；Web 管理员为 nil（全部）
+}
+
+// allows 判断事件是否在连接的范围内：不针对节点的事件（如注册）只发给 Web 管理员。
+func (c *wsClient) allows(ev wsEvent) bool {
+	sc := c.scope
+	if sc == nil || sc.Type == "all" {
+		return true
+	}
+	if ev.ServerID == 0 {
+		return false
+	}
+	if sc.Type == "group" {
+		return ev.group == sc.Group
+	}
+	return sc.IDs[ev.ServerID]
 }
 
 func (c *wsClient) close() { c.once.Do(func() { close(c.done) }) }
+
+// hasClients 判断是否有连接：没有时不必组装事件（例如每份上报的节点状态）。
+func (h *wsHub) hasClients() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients) > 0
+}
 
 // wsHub 管理全部连接，把事件广播给每个连接。
 type wsHub struct {
@@ -64,13 +94,13 @@ type wsHub struct {
 
 func newWSHub() *wsHub { return &wsHub{clients: map[*wsClient]struct{}{}} }
 
-func (h *wsHub) add() *wsClient {
+func (h *wsHub) add(scope *apiScope) *wsClient {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if len(h.clients) >= wsMaxClients {
 		return nil
 	}
-	c := &wsClient{send: make(chan []byte, wsSendQueue), done: make(chan struct{})}
+	c := &wsClient{send: make(chan []byte, wsSendQueue), done: make(chan struct{}), scope: scope}
 	h.clients[c] = struct{}{}
 	return c
 }
@@ -110,6 +140,9 @@ func (h *wsHub) publish(ev wsEvent) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for c := range h.clients {
+		if !c.allows(ev) {
+			continue
+		}
 		select {
 		case c.send <- b:
 		default:
@@ -167,12 +200,19 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, errorf(CodeBadRequest, "WebSocket 握手不正确"))
 		return
 	}
-	if !s.sameOrigin(r) {
+	// 【安全】Origin 校验只针对 Cookie 认证：浏览器跨站发起时会自动带上 Cookie。
+	// API Key 只能放在 Authorization 头中，浏览器跨站时无法附带，因此不需要（也通常没有）Origin（设计 45.2）
+	ri := info(r)
+	if ri.apiScope == nil && !s.sameOrigin(r) {
 		s.writeError(w, r, errorf(CodeForbidden, ""))
 		return
 	}
-	token := info(r).sessionToken
-	c := s.ws.add()
+	token := ri.sessionToken
+	apiKeyTok := ""
+	if ri.apiScope != nil {
+		apiKeyTok = bearer(r)
+	}
+	c := s.ws.add(ri.apiScope)
 	if c == nil {
 		s.writeError(w, r, errorf(CodeUnavailable, "实时连接过多，请稍后再试"))
 		return
@@ -242,8 +282,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-tick.C:
-			// 【安全】会话已退出、被踢出或过期（或无法确认）：关闭连接（1008 违反策略），页面重连时按 401 回到登录页
-			if se, err := s.store.LookupSession(token, time.Now()); err != nil || se == nil {
+			// 【安全】会话或 API Key 已失效（退出、被踢出、吊销、过期，或无法确认）：关闭连接（1008 违反策略）
+			if apiKeyTok != "" {
+				if k, err := s.store.LookupAPIKey(apiKeyTok, time.Now()); err != nil || k == nil {
+					write(0x8, wsClosePayload(1008, "api key revoked"))
+					return
+				}
+			} else if se, err := s.store.LookupSession(token, time.Now()); err != nil || se == nil {
 				write(0x8, wsClosePayload(1008, "session expired"))
 				return
 			}

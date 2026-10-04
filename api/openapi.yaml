@@ -247,9 +247,11 @@ paths:
     servers: [{ url: / }]
     get:
       tags: [events]
-      summary: 实时事件（WebSocket，设计 20）；面板只推送，不接收指令
+      summary: 实时事件（WebSocket，设计 20、45.2）；面板只推送，不接收指令
+      security: [{ session: [] }, { apiKey: [] }]
       description: |
-        凭会话 Cookie 认证；Origin 必须是面板自身（防止跨站 WebSocket 劫持），缺少 Origin 时拒绝。
+        Web：会话 Cookie 认证，Origin 必须是面板自身（防止跨站 WebSocket 劫持），缺少 Origin 时拒绝。
+        脚本：Authorization: Bearer api_… 认证（不需要 Origin），只收到 API Key 范围内节点的事件；Key 吊销后以 1008 关闭。
         握手成功后每条消息是一个 WsEvent（JSON 文本帧）。面板每 30 秒 ping 一次并重新校验会话，
         会话失效时以 1008 关闭；页面断线后自动重连，重连后应重新拉取数据（断线期间的事件不补发）。
       responses:
@@ -1935,18 +1937,34 @@ components:
 
     WsEvent:
       type: object
-      description: WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type
+      description: WebSocket 推送的事件（设计 20、45.2）；未来新增类型，页面应忽略不认识的 type。API Key 只收到其范围内节点的事件
       required: [type, ts]
       properties:
-        type: { type: string, enum: [server.enrolled], description: 'server.enrolled：主机已用注册码注册（设计 19.11）' }
+        type:
+          type: string
+          enum: [server.enrolled, server.metrics, server.online, server.offline, alert.triggered, alert.recovered]
+          description: |
+            server.enrolled：主机已用注册码注册（只发给 Web 管理员）；server.metrics：收到一份上报，data 为 ServerView（同节点列表的一项）；
+            server.online / server.offline：上下线（每 10 秒检查一次）；alert.triggered / alert.recovered：告警触发 / 恢复
         server_id: { type: integer }
         ts: { type: integer, description: 事件时间，Unix 秒 }
         data:
-          type: object
-          description: 'server.enrolled：{server_name, warnings}；不含任何凭证'
-          properties:
-            server_name: { type: string }
-            warnings: { type: array, items: { type: string } }
+          oneOf:
+            - { $ref: '#/components/schemas/ServerView' }
+            - { $ref: '#/components/schemas/WsEventInfo' }
+
+    WsEventInfo:
+      type: object
+      description: 除 server.metrics 以外的事件数据；不含任何凭证
+      properties:
+        server_name: { type: string }
+        warnings: { type: array, items: { type: string }, description: server.enrolled：主机名 / IP 与填写值不一致的提示 }
+        event_id: { type: integer, description: 告警事件 }
+        rule_key: { type: string }
+        type: { type: string, description: 告警类型 }
+        severity: { type: string, enum: [info, warning, critical] }
+        value: { type: number }
+        message: { type: string }
 
     MetricPoint:
       type: object

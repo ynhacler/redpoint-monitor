@@ -1,10 +1,11 @@
 // 全局状态：登录状态与节点列表的轮询。总览、列表、详情共用同一份数据，避免各页面重复请求。
 // 页面还少，用 Vue 的 reactive 即可；TODO(B): 状态变复杂后考虑 Pinia（设计 3.3，需先确认依赖）。
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import {
   errorText, getMe, listServers, login as apiLogin, logoutSession, onUnauthorized,
   type CaptchaAnswer, type EnrollCodeView, type Me, type ServerView,
 } from './api'
+import { connected, subscribe } from './ws'
 
 export const state = reactive({
   /** 当前登录账号；null 表示未登录（设计 19.1） */
@@ -43,16 +44,58 @@ export async function refresh() {
   }
 }
 
-/** 开始每 3 秒轮询；面板从内存返回实时状态，不读数据库。TODO(B): 改为 WebSocket（设计 20）。 */
-export function startPolling() {
-  stopPolling()
-  refresh()
-  timer = window.setInterval(refresh, 3000)
+// 实时更新（设计 45.2）：WebSocket 推送 server.metrics 时直接替换该节点；上下线与告警事件触发一次完整刷新。
+// 连接正常时只需每 30 秒兜底刷新一次（流量、静音等没有事件的变化）；连接断开时退回每 3 秒轮询。
+let unsubs: (() => void)[] = []
+let refreshSoon: number | undefined
+
+function scheduleRefresh() {
+  if (refreshSoon) return
+  refreshSoon = window.setTimeout(() => {
+    refreshSoon = undefined
+    refresh()
+  }, 500) // 合并短时间内的多个事件（如批量离线）
 }
 
+function tick() {
+  timer = window.setTimeout(async () => {
+    await refresh()
+    if (timer) tick()
+  }, connected.value ? 30_000 : 3000)
+}
+
+/** 开始实时更新：订阅事件，并按连接状态轮询；面板从内存返回实时状态，不读数据库。 */
+export function startPolling() {
+  stopPolling()
+  unsubs = [
+    subscribe('server.metrics', (ev) => {
+      const v = ev.data as ServerView | undefined
+      const i = state.servers.findIndex((s) => s.id === ev.server_id)
+      if (!v || i < 0) {
+        scheduleRefresh() // 新节点等：完整刷新
+        return
+      }
+      state.servers[i] = v
+      state.updatedAt = new Date()
+    }),
+    ...(['server.online', 'server.offline', 'alert.triggered', 'alert.recovered'] as const).map((t) => subscribe(t, scheduleRefresh)),
+  ]
+  refresh()
+  tick()
+}
+
+// 重新连上时补一次完整刷新（断线期间的事件不补发）
+watch(connected, (on) => {
+  if (on && timer) refresh()
+})
+
 export function stopPolling() {
-  if (timer) window.clearInterval(timer)
+  if (timer) window.clearTimeout(timer)
   timer = undefined
+  if (refreshSoon) window.clearTimeout(refreshSoon)
+  refreshSoon = undefined
+  unsubs.forEach((u) => u())
+  unsubs = []
 }
 
 /** 页面加载时恢复登录状态：会话 Cookie 仍有效则直接进入，否则留在登录页。 */

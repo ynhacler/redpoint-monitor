@@ -155,7 +155,7 @@
 ## 开放接口与 Agent 优化（设计 45、46，用户要求插入，参考 Komari）
 
 - [x] 45 第一步：只读 API Key（api_ 前缀、节点范围、限流、审计）+ /api/v1/version；权限矩阵增加 API Key 主体
-- [ ] 45 第二步：WebSocket 事件 server.metrics / online / offline / alert.*；节点列表改为事件更新
+- [x] 45 第二步：WebSocket 事件 server.metrics / online / offline / alert.*；节点列表改为事件更新
 - 45 第三步：公开状态页——用户确认暂不做
 - [x] 46 第一步：虚拟化类型采集与显示
 - [ ] 46 第二步：按需实时模式（有人查看详情页时采样间隔临时降为 2 秒）

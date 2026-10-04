@@ -673,18 +673,29 @@ export interface APIKey {
   revoked_at: number
 }
 
-/** WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type */
+/** WebSocket 推送的事件（设计 20、45.2）；未来新增类型，页面应忽略不认识的 type。API Key 只收到其范围内节点的事件 */
 export interface WsEvent {
-  /** server.enrolled：主机已用注册码注册（设计 19.11） */
-  type: 'server.enrolled'
+  /** server.enrolled：主机已用注册码注册（只发给 Web 管理员）；server.metrics：收到一份上报，data 为 ServerView（同节点列表的一项）； server.online / server.offline：上下线（每 10 秒检查一次）；alert.triggered / alert.recovered：告警触发 / 恢复 */
+  type: 'server.enrolled' | 'server.metrics' | 'server.online' | 'server.offline' | 'alert.triggered' | 'alert.recovered'
   server_id?: number
   /** 事件时间，Unix 秒 */
   ts: number
-  /** server.enrolled：{server_name, warnings}；不含任何凭证 */
-  data?: {
-    server_name?: string
-    warnings?: string[]
-  }
+  data?: ServerView | WsEventInfo
+}
+
+/** 除 server.metrics 以外的事件数据；不含任何凭证 */
+export interface WsEventInfo {
+  server_name?: string
+  /** server.enrolled：主机名 / IP 与填写值不一致的提示 */
+  warnings?: string[]
+  /** 告警事件 */
+  event_id?: number
+  rule_key?: string
+  /** 告警类型 */
+  type?: string
+  severity?: 'info' | 'warning' | 'critical'
+  value?: number
+  message?: string
 }
 
 export interface MetricPoint {
@@ -849,7 +860,7 @@ export interface Paths {
     }
   }
   '/ws': {
-    /** 实时事件（WebSocket，设计 20）；面板只推送，不接收指令 */
+    /** 实时事件（WebSocket，设计 20、45.2）；面板只推送，不接收指令 */
     get: {
       response: void
     }
