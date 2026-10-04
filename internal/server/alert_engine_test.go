@@ -63,9 +63,12 @@ func TestAlertEngine(t *testing.T) {
 	}
 
 	// 节点列表带上活动告警
-	var list []serverView
+	var list struct{ Items []serverView }
 	json.Unmarshal(do(h, "GET", "/api/v1/servers", admin, nil).Body.Bytes(), &list)
-	for _, sv := range list {
+	if len(list.Items) == 0 {
+		t.Fatal("节点列表为空：响应应为 {items, next_cursor}")
+	}
+	for _, sv := range list.Items {
 		if sv.ID == id && (len(sv.Alerts) != 1 || sv.Alerts[0].Type != AlertCPU) {
 			t.Errorf("节点列表应带活动告警：%+v", sv.Alerts)
 		}

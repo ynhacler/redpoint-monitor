@@ -33,7 +33,7 @@
 - [ ] CI 补充注释检查：revive exported 规则、eslint-plugin-jsdoc（设计 39.7）
 - [x] `api/openapi.yaml` 契约骨架，覆盖现有接口（设计 19.0.1）
 - [ ] 服务端测试校验响应与契约一致（设计 19.0.1）
-- [ ] 列表接口改为 `{"items", "next_cursor"}`，Web 与 App 同步修改（设计 19.0.2）
+- [x] 列表接口改为 `{"items", "next_cursor"}`，Web 与 App 同步修改（设计 19.0.2）；契约测试遍历全部列表接口
 - [x] 统一错误响应 `{"error":{"code","message","request_id","details"}}`、`X-Request-ID`、panic 恢复中间件（设计 19.0.2、43.3、43.4）
 - [x] `log/slog` JSON 日志、统一脱敏函数及测试（设计 24.3、24.7）
 - [x] 路由默认拒绝：每个路由声明允许的主体；权限矩阵表驱动测试（设计 17.5）

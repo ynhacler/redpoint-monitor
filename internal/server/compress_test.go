@@ -39,9 +39,9 @@ func TestResponseCompression(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(zr)
-	var a, b []serverView
-	if json.Unmarshal(body, &a) != nil || json.Unmarshal(plain.Body.Bytes(), &b) != nil || len(a) != 20 || len(a) != len(b) {
-		t.Fatalf("解压后应与未压缩的响应一致：%d / %d", len(a), len(b))
+	var a, b struct{ Items []serverView }
+	if json.Unmarshal(body, &a) != nil || json.Unmarshal(plain.Body.Bytes(), &b) != nil || len(a.Items) != 20 || len(a.Items) != len(b.Items) {
+		t.Fatalf("解压后应与未压缩的响应一致：%d / %d", len(a.Items), len(b.Items))
 	}
 	if rec.Body.Len()*2 > plain.Body.Len() {
 		t.Errorf("压缩效果不明显：%d → %d 字节", plain.Body.Len(), rec.Body.Len())

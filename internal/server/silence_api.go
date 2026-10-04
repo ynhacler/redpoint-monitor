@@ -21,7 +21,7 @@ func (s *Server) handleSilences(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeJSON(w, map[string]any{"items": list})
+	writeList(w, list, "", nil)
 }
 
 // handleCreateSilence：POST /api/v1/silences，admin。
