@@ -266,6 +266,9 @@ func cmdUninstall() int {
 	return 0
 }
 
+// firstReportDelay：预采样与首次上报之间的间隔，足以得到有意义的 CPU 使用率与网速。
+const firstReportDelay = time.Second
+
 // stallLimit：主循环超过这么久没有转动视为卡死。主循环每轮最长约为采样间隔上限（60 秒）
 // 加一次发送的时间预算与请求超时；取 3 分钟，systemd 下 WatchdogSec=120 会先生效。
 const stallLimit = 3 * time.Minute
@@ -430,9 +433,21 @@ func run() {
 		}
 	}
 
+	// 首次上报不等满一个采样间隔：预采样 1 秒后即可算出 CPU 与网速，安装或重启后节点尽快显示在线，
+	// install 也更快确认首次上报（设计 27.6.1）。之后按定时器上报。
+	first := time.NewTimer(firstReportDelay)
+	defer first.Stop()
+
 	// 上报同步执行：面板变慢时推迟下一次，而不是堆积并发请求（延迟受 http.Client 超时约束）。
 	for {
 		select {
+		case <-first.C:
+			if rep, ok := collect(col, false); ok {
+				r.Enqueue(rep)
+			}
+			flush(context.Background(), false)
+			applyInterval()
+			alive()
 		case <-tick.C:
 			if rep, ok := collect(col, false); ok {
 				r.Enqueue(rep)

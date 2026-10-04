@@ -3,6 +3,9 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
+# -trimpath：不嵌入编译机上的绝对路径（不泄露用户名），同一提交、同一 Go 版本在任何机器上构建出逐字节相同的二进制，
+# 用户可自行构建并与官方签名发布的文件比对（设计 29.7）
+GOBUILD := go build -trimpath
 DEV     := .dev
 DATA    := $(DEV)/data
 LISTEN  ?= 127.0.0.1:8080
@@ -72,8 +75,8 @@ web: web/node_modules/.package-lock.json ## Build Web into web/dist (embedded by
 	cd web && npm run build
 
 build: web ## Build server + agent for this machine into bin/
-	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-server ./cmd/server
-	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-agent ./cmd/agent
+	CGO_ENABLED=0 $(GOBUILD) -ldflags "$(LDFLAGS)" -o bin/vpsmon-server ./cmd/server
+	CGO_ENABLED=0 $(GOBUILD) -ldflags "$(LDFLAGS)" -o bin/vpsmon-agent ./cmd/agent
 
 # Agent 覆盖安装脚本支持的全部架构，构建名与设计 27.5.4 一致（armv7 / armv6 即 GOARCH=arm + GOARM；
 # mips / mipsle 为软浮点，路由器等多数 MIPS 设备没有 FPU）。
@@ -88,11 +91,11 @@ build-linux: web ## Cross-compile agent (8 arches) + server (amd64/arm64) into d
 	  goarch=$$arch; goarm=; gomips=; \
 	  case $$arch in armv7) goarch=arm; goarm=7;; armv6) goarch=arm; goarm=6;; mips|mipsle) gomips=softfloat;; esac; \
 	  echo "→ agent  linux/$$arch"; \
-	  CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm GOMIPS=$$gomips go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm GOMIPS=$$gomips $(GOBUILD) -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
 	done
 	@for arch in $(SERVER_ARCHS); do \
 	  echo "→ server linux/$$arch"; \
-	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-server-linux-$$arch ./cmd/server || exit 1; \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GOBUILD) -ldflags "$(LDFLAGS)" -o dist/vpsmon-server-linux-$$arch ./cmd/server || exit 1; \
 	done
 	@cd dist && shasum -a 256 vpsmon-* > SHA256SUMS && echo "dist/SHA256SUMS written"
 
