@@ -11,7 +11,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c -o "$work/setup.test" ./internal/agent/setup
 cp dist/vpsmon-agent-linux-amd64 "$work/vpsmon-agent"
-chmod 0755 "$work/setup.test" "$work/vpsmon-agent"
+# mktemp 的目录是 0700：容器中的普通用户需要能进入并执行其中的程序
+chmod 0755 "$work" "$work/setup.test" "$work/vpsmon-agent"
 
 docker run --rm -v "$work:/w:ro" "$image" sh -euc '
   apt-get update -qq >/dev/null && apt-get install -y -qq cron procps >/dev/null

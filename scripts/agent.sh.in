@@ -61,7 +61,9 @@ say "✓ 系统 $OS_NAME · linux/$ARCH · init: $INIT"
 # 非 root：安装到当前用户的家目录，由 vpsmon-agent install 选择 systemd 用户服务或 crontab 保活（设计 27.13）
 BIN_DIR=/usr/local/bin
 if [ "$DOWNLOAD_ONLY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
-  [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "非 root 安装需要家目录（\$HOME）；或改用 sudo sh $0 ..."
+  if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+    die "非 root 安装需要家目录（\$HOME）；或改用 sudo sh $0 ..."
+  fi
   BIN_DIR="$HOME/.local/bin"
   say "· 非 root：安装到 $BIN_DIR（用户模式）；需要系统服务请改用 sudo sh $0 ..."
 fi
