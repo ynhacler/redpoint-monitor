@@ -644,6 +644,35 @@ export interface CloudInstance {
   updated_at: number
 }
 
+export interface APIKeyInput {
+  name: string
+  scope_type?: 'all' | 'group' | 'servers'
+  /** scope_type 为 group 时的分组名 */
+  group?: string
+  /** scope_type 为 servers 时的节点 */
+  server_ids?: number[]
+  /** 0 表示不过期 */
+  expires_in_days?: number
+}
+
+export interface APIKey {
+  id: number
+  name: string
+  /** Key 的末 4 位 */
+  hint: string
+  scope_type: 'all' | 'group' | 'servers'
+  /** 分组名，或逗号分隔的节点 ID */
+  scope_value: string
+  /** 过期时间，Unix 秒；0 表示不过期 */
+  expires_at: number
+  created_by: string
+  created_at: number
+  /** 最近使用时间（每分钟最多更新一次）；0 表示从未使用 */
+  last_used_at: number
+  /** 吊销时间；0 表示有效 */
+  revoked_at: number
+}
+
 /** WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type */
 export interface WsEvent {
   /** server.enrolled：主机已用注册码注册（设计 19.11） */
@@ -776,6 +805,42 @@ export interface Paths {
   }
   '/auth/sessions/{id}': {
     /** 踢出一个会话（该浏览器需要重新登录）；只能操作当前账号的会话，记入审计日志 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/version': {
+    /** 面板版本（Web 会话或 API Key） */
+    get: {
+      response: {
+        version: string
+      }
+    }
+  }
+  '/api-keys': {
+    /** 只读 API Key 列表（设计 45.2）；不含完整 Key */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: APIKey[]
+      }
+    }
+    /** 创建只读 API Key（需在 10 分钟内重新验证过密码）；完整 Key 只在响应中出现这一次 */
+    post: {
+      body: APIKeyInput
+      response: {
+        /** api_…，只显示这一次 */
+        key: string
+        api_key: APIKey
+      }
+    }
+  }
+  '/api-keys/{id}': {
+    /** 吊销 API Key（立即生效，记录保留） */
     delete: {
       params: {
         id: number
@@ -1102,7 +1167,7 @@ export interface Paths {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
         /** 主体类型 */
-        actor?: 'admin' | 'agent' | 'cli' | 'system'
+        actor?: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
         /** 操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.） */
         action?: string
         /** 起始时间（含），Unix 秒 */
@@ -1119,7 +1184,7 @@ export interface Paths {
         items: ({
           id: number
           ts: number
-          actor_type: 'admin' | 'agent' | 'cli' | 'system'
+          actor_type: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
           /** 管理员用户名（登录失败时为填写的用户名）或节点 ID */
           actor_id: string
           action: string
@@ -1142,7 +1207,7 @@ export interface Paths {
       query?: {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
-        actor?: 'admin' | 'agent' | 'cli' | 'system'
+        actor?: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
         action?: string
         from?: number
         to?: number

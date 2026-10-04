@@ -181,6 +181,68 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /version:
+    get:
+      tags: [auth]
+      summary: 面板版本（Web 会话或 API Key）
+      security: [{ session: [] }, { apiKey: [] }]
+      responses:
+        '200':
+          description: 版本
+          content:
+            application/json:
+              schema: { type: object, required: [version], properties: { version: { type: string } } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api-keys:
+    get:
+      tags: [auth]
+      summary: 只读 API Key 列表（设计 45.2）；不含完整 Key
+      responses:
+        '200':
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next_cursor, items]
+                properties:
+                  next_cursor: { type: string, description: 空表示没有更多 }
+                  items: { type: array, items: { $ref: '#/components/schemas/APIKey' } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [auth]
+      summary: 创建只读 API Key（需在 10 分钟内重新验证过密码）；完整 Key 只在响应中出现这一次
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/APIKeyInput' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, api_key]
+                properties:
+                  key: { type: string, description: 'api_…，只显示这一次' }
+                  api_key: { $ref: '#/components/schemas/APIKey' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /api-keys/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    delete:
+      tags: [auth]
+      summary: 吊销 API Key（立即生效，记录保留）
+      responses:
+        '204': { description: 已吊销 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /ws:
     servers: [{ url: / }]
     get:
@@ -337,6 +399,7 @@ paths:
 
   /alerts:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [alerts]
       summary: 告警事件，按时间倒序（设计 19.9）
       parameters:
@@ -676,7 +739,7 @@ paths:
       parameters:
         - { name: category, in: query, schema: { type: string, enum: [login, operation] }, description: 'login：登录、退出、二次验证；operation：其他操作；省略为全部' }
         - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
-        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, cli, system] }, description: 主体类型 }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, cli, system] }, description: 主体类型 }
         - { name: action, in: query, schema: { type: string }, description: '操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.）' }
         - { name: from, in: query, schema: { type: integer }, description: 起始时间（含），Unix 秒 }
         - { name: to, in: query, schema: { type: integer }, description: 结束时间（不含），Unix 秒 }
@@ -700,7 +763,7 @@ paths:
                       properties:
                         id: { type: integer }
                         ts: { type: integer }
-                        actor_type: { type: string, enum: [admin, agent, cli, system] }
+                        actor_type: { type: string, enum: [admin, agent, apikey, cli, system] }
                         actor_id: { type: string, description: 管理员用户名（登录失败时为填写的用户名）或节点 ID }
                         action: { type: string, example: server.create }
                         target_type: { type: string }
@@ -722,7 +785,7 @@ paths:
       parameters:
         - { name: category, in: query, schema: { type: string, enum: [login, operation] } }
         - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
-        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, cli, system] } }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, cli, system] } }
         - { name: action, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: integer } }
         - { name: to, in: query, schema: { type: integer } }
@@ -850,6 +913,7 @@ paths:
 
   /servers:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [servers]
       summary: 节点列表（实时状态取自内存）
       description: >-
@@ -890,6 +954,7 @@ paths:
   /servers/{id}:
     parameters: [{ $ref: '#/components/parameters/ServerID' }]
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [servers]
       summary: 单个节点（格式同列表中的一项）
       responses:
@@ -993,6 +1058,7 @@ paths:
 
   /servers/{id}/metrics/history:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [servers]
       summary: 节点历史指标（设计 19.7）
       description: |
@@ -1024,6 +1090,7 @@ paths:
 
   /servers/{id}/traffic/current:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [traffic]
       summary: 本计费周期流量、校准与预测（设计 19.8、5.7、32）；与节点中的 traffic 字段相同
       parameters: [{ $ref: '#/components/parameters/ServerID' }]
@@ -1038,6 +1105,7 @@ paths:
 
   /servers/{id}/traffic/daily:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [traffic]
       summary: 最近 N 天每日流量，按日期升序，无数据的日期补 0
       parameters:
@@ -1069,6 +1137,7 @@ paths:
 
   /servers/{id}/traffic/monthly:
     get:
+      security: [{ session: [] }, { apiKey: [] }]
       tags: [traffic]
       summary: 最近 N 个计费周期（含当前），最新在前；历史周期按当前的计费模式、系数与额度计算
       parameters:
@@ -1170,6 +1239,12 @@ components:
       description: |
         Web 管理员会话 Cookie（设计 8.2、17.4）。修改类请求（非 GET / HEAD）还必须带 X-CSRF-Token 头，
         值来自登录或 /auth/me 响应中的 csrf_token，否则 403。
+    apiKey:
+      type: http
+      scheme: bearer
+      description: |
+        只读 API Key（api_…，设计 45.2）：Web“账号 → API Key”中创建，只显示一次。只能访问标注了 apiKey 的读取类接口；
+        可限定节点范围（范围外的节点按不存在处理，返回 404）；每个 Key 每分钟 120 次。只接受 Authorization 头。
     agentToken:
       type: http
       scheme: bearer
@@ -1832,6 +1907,31 @@ components:
         traffic_period_start: { type: string, description: YYYY-MM-DD }
         server_id: { type: [integer, 'null'], description: 关联的节点（设计 44.5，随第五步） }
         updated_at: { type: integer }
+
+    APIKeyInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 64 }
+        scope_type: { type: string, enum: [all, group, servers], default: all }
+        group: { type: string, description: scope_type 为 group 时的分组名 }
+        server_ids: { type: array, items: { type: integer }, maxItems: 1000, description: scope_type 为 servers 时的节点 }
+        expires_in_days: { type: integer, minimum: 0, maximum: 3650, description: 0 表示不过期 }
+
+    APIKey:
+      type: object
+      required: [id, name, hint, scope_type, scope_value, expires_at, created_by, created_at, last_used_at, revoked_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        hint: { type: string, description: Key 的末 4 位 }
+        scope_type: { type: string, enum: [all, group, servers] }
+        scope_value: { type: string, description: 分组名，或逗号分隔的节点 ID }
+        expires_at: { type: integer, description: 过期时间，Unix 秒；0 表示不过期 }
+        created_by: { type: string }
+        created_at: { type: integer }
+        last_used_at: { type: integer, description: 最近使用时间（每分钟最多更新一次）；0 表示从未使用 }
+        revoked_at: { type: integer, description: 吊销时间；0 表示有效 }
 
     WsEvent:
       type: object

@@ -32,6 +32,8 @@ type reqInfo struct {
 	sessionToken string
 	// hijacked：连接已被接管（WebSocket），日志记为 101，持续时间是连接时长而不是慢请求
 	hijacked bool
+	// apiScope：以只读 API Key 认证时的节点范围（设计 45.2）；Web 管理员为 nil，表示全部
+	apiScope *apiScope
 }
 
 type ctxKey struct{}

@@ -73,7 +73,7 @@ These are the product's core promise. If a request conflicts with one, stop and 
    Agent/updater verify with embedded public keys and refuse downgrades.
 3. **Separate credentials.** Web admin, App device token, Agent token, enroll code are never
    interchangeable (design 17.1). Agent tokens can only report for their own server; an enroll code can
-   only claim its own node. Prefixes: `ses_` (Web session), `agt_`, `ENR-`, future `dev_`/`rt_`/`MNT-`.
+   only claim its own node. Prefixes: `ses_` (Web session), `agt_`, `api_` (read-only API key, design 45.2), `ENR-`, future `dev_`/`rt_`/`MNT-`.
    Web admin = username + Argon2id password → HttpOnly session cookie + `X-CSRF-Token` on writes (design 17.4).
 4. **Store hashes, show once.** Tokens, AKs and enroll codes are shown once; only SHA-256 hashes are
    stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).

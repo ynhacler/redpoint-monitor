@@ -400,11 +400,17 @@ func TestPermissionMatrix(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
 	_, agentTok, _ := s.store.CreateServer("matrix", 0, 1)
-	creds := map[string]string{"无凭证": "", "伪造": "agt_forgedforgedforged", "admin": admin, "agent": agentTok}
+	apiKey, err := s.store.CreateAPIKey(&APIKey{Name: "matrix", ScopeType: "all"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds := map[string]string{"无凭证": "", "伪造": "agt_forgedforgedforged", "伪造 API Key": "api_forgedforgedforged",
+		"admin": admin, "agent": agentTok, "apikey": apiKey}
 	allowed := map[access][]string{
-		accessPublic: {"无凭证", "伪造", "admin", "agent"},
-		accessEnroll: {"无凭证", "伪造", "admin", "agent"}, // 凭请求体中的注册码认证
+		accessPublic: {"无凭证", "伪造", "伪造 API Key", "admin", "agent", "apikey"},
+		accessEnroll: {"无凭证", "伪造", "伪造 API Key", "admin", "agent", "apikey"}, // 凭请求体中的注册码认证
 		accessAdmin:  {"admin"},
+		accessRead:   {"admin", "apikey"}, // 【安全】API Key 只能访问读取类接口（设计 45.2）
 		accessAgent:  {"agent"},
 	}
 	// 期望表独立于实现，按设计 17.2 手写：路由声明的主体必须与之完全一致。
@@ -421,6 +427,10 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/auth/sessions":                    accessAdmin,
 		"DELETE /api/v1/auth/sessions/{id}":            accessAdmin,
 		"GET /ws":                                      accessAdmin,
+		"GET /api/v1/api-keys":                         accessAdmin,
+		"POST /api/v1/api-keys":                        accessAdmin,
+		"DELETE /api/v1/api-keys/{id}":                 accessAdmin,
+		"GET /api/v1/version":                          accessRead,
 		"GET /api/v1/cloud-accounts":                   accessAdmin,
 		"POST /api/v1/cloud-accounts":                  accessAdmin,
 		"PUT /api/v1/cloud-accounts/{id}":              accessAdmin,
@@ -435,7 +445,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/agent/upgrade/status":            accessAgent,
 		"GET /api/v1/audit-logs":                       accessAdmin,
 		"GET /api/v1/audit-logs/export":                accessAdmin,
-		"GET /api/v1/alerts":                           accessAdmin,
+		"GET /api/v1/alerts":                           accessRead,
 		"GET /api/v1/alert-rules":                      accessAdmin,
 		"POST /api/v1/alert-rules":                     accessAdmin,
 		"POST /api/v1/alert-rules/preview":             accessAdmin,
@@ -457,19 +467,19 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/silences":                         accessAdmin,
 		"POST /api/v1/silences":                        accessAdmin,
 		"DELETE /api/v1/silences/{id}":                 accessAdmin,
-		"GET /api/v1/servers":                          accessAdmin,
+		"GET /api/v1/servers":                          accessRead,
 		"POST /api/v1/servers":                         accessAdmin,
-		"GET /api/v1/servers/{id}":                     accessAdmin,
+		"GET /api/v1/servers/{id}":                     accessRead,
 		"PUT /api/v1/servers/{id}":                     accessAdmin,
 		"DELETE /api/v1/servers/{id}":                  accessAdmin,
 		"POST /api/v1/servers/{id}/revoke-agent-token": accessAdmin,
-		"GET /api/v1/servers/{id}/metrics/history":     accessAdmin,
+		"GET /api/v1/servers/{id}/metrics/history":     accessRead,
 		"GET /api/v1/servers/{id}/install-command":     accessAdmin,
 		"POST /api/v1/servers/{id}/enroll-code":        accessAdmin,
 		"DELETE /api/v1/servers/{id}/enroll-code":      accessAdmin,
-		"GET /api/v1/servers/{id}/traffic/current":     accessAdmin,
-		"GET /api/v1/servers/{id}/traffic/daily":       accessAdmin,
-		"GET /api/v1/servers/{id}/traffic/monthly":     accessAdmin,
+		"GET /api/v1/servers/{id}/traffic/current":     accessRead,
+		"GET /api/v1/servers/{id}/traffic/daily":       accessRead,
+		"GET /api/v1/servers/{id}/traffic/monthly":     accessRead,
 		"GET /api/v1/servers/{id}/traffic/adjustments": accessAdmin,
 		"POST /api/v1/servers/{id}/traffic/calibrate":  accessAdmin,
 		"/api/": accessPublic,
@@ -498,6 +508,10 @@ func TestPermissionMatrix(t *testing.T) {
 		for name, tok := range creds {
 			if name == "admin" {
 				tok = adminToken(t, s) // 每次用新会话：矩阵中的 /auth/logout 会注销当前会话
+			}
+			if name == "apikey" {
+				// 每次用新 Key：矩阵中的 DELETE /api-keys/{id} 会吊销编号为 1 的 Key
+				tok, _ = s.store.CreateAPIKey(&APIKey{Name: "matrix", ScopeType: "all"}, time.Now())
 			}
 			rec := do(h, method, path, tok, []byte(`{}`))
 			if rt.pattern == "POST /api/v1/auth/login" {
