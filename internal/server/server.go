@@ -152,6 +152,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "alerts", s.alertLoop)
 	go s.runTask(ctx, "cloud", s.cloudLoop)
 	go s.runTask(ctx, "ws-status", s.statusLoop)
+	go s.runTask(ctx, "reminders", s.reminderLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}

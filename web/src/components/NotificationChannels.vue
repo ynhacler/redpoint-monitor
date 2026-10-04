@@ -113,7 +113,7 @@ async function test(c: NotifyChannel) {
 
 const kindNames: Record<Delivery['kind'], string> = {
   firing: '告警', resolved: '恢复', repeat: '重复提醒', test: '测试',
-  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总',
+  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总', reminder: '提醒',
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
 const typeNames: Record<ChannelType, string> = { telegram: 'Telegram', webhook: 'Webhook' }
@@ -124,6 +124,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
   <div>
     <p class="muted small intro">
       告警触发、恢复以及严重告警未恢复时的重复提醒，会发送到下列渠道；已静音的告警不发送。
+      节点到期（剩 30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包用到 90% / 95%、同步失败）也从这里发送，各发一次。
       同时有 5 台以上节点离线会合并为一条；状态频繁变化的告警只提醒一次；全部节点同时停止上报时发面板告警。渠道由本面板直接发送，凭证只保存在本面板。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>

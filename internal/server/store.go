@@ -527,6 +527,12 @@ var migrations = []string{
 		last_used_at INTEGER NOT NULL DEFAULT 0,
 		revoked_at INTEGER NOT NULL DEFAULT 0
 	);`,
+
+	// 迁移 24：已发送的提醒（设计 1.2.5、44.6）：按去重键记录，每个里程碑只发一次
+	`CREATE TABLE reminders_sent (
+		key TEXT PRIMARY KEY,
+		sent_at INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {

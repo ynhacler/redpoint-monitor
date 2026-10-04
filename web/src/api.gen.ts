@@ -197,8 +197,8 @@ export interface Delivery {
   /** 测试通知为 0 */
   event_id: number
   server_name: string
-  /** quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4） */
-  kind: 'firing' | 'resolved' | 'repeat' | 'test' | 'flapping' | 'still_firing' | 'panel_down' | 'panel_up' | 'quiet_summary'
+  /** reminder：到期 / 云账户提醒（设计 1.2.5、44.6）；quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4） */
+  kind: 'firing' | 'resolved' | 'repeat' | 'test' | 'flapping' | 'still_firing' | 'panel_down' | 'panel_up' | 'quiet_summary' | 'reminder'
   title: string
   status: 'sent' | 'failed' | 'retrying'
   attempts: number
