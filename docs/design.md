@@ -336,7 +336,6 @@
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
 | 60 | MIPS 构建：mips / mipsle（软浮点），安装脚本按 ELF 头判断字节序，端口解析按主机字节序；CI 以 qemu 模拟运行 | 27.5.4 |
-| 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证 | 27.12、28、43.5 |
 | 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证；容器中 “/” 总是上报、排除绑定挂载的文件 | 4.6、27.12、28、43.5 |
 | 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
