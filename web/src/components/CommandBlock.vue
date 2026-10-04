@@ -5,6 +5,8 @@ import { ref } from 'vue'
 const props = defineProps<{
   /** 要展示与复制的命令 */
   command: string
+  /** 按原样显示（不按词折行，过长时横向滚动），用于多行 JSON 等非命令内容 */
+  plain?: boolean
 }>()
 
 const copied = ref(false)
@@ -31,7 +33,8 @@ async function copy() {
 <template>
   <div class="cmd">
     <!-- 每个词整体不换行，只在空格处折行：注册码、URL 中的连字符不会被拆开 -->
-    <pre ref="pre"><template v-for="(w, i) in command.split(' ')" :key="i"><span class="word">{{ w }}</span>{{ ' ' }}</template></pre>
+    <pre v-if="plain" ref="pre" class="plain">{{ command }}</pre>
+    <pre v-else ref="pre"><template v-for="(w, i) in command.split(' ')" :key="i"><span class="word">{{ w }}</span>{{ ' ' }}</template></pre>
     <button type="button" class="secondary" @click="copy">{{ copied ? '已复制' : '复制' }}</button>
   </div>
 </template>
@@ -43,5 +46,6 @@ pre {
   font-family: var(--font-mono); font-size: var(--font-sm); line-height: var(--line-md);
 }
 .word { white-space: nowrap; }
+pre.plain { white-space: pre; }
 button { position: absolute; top: var(--space-2); right: var(--space-2); padding: var(--space-1) var(--space-3); font-size: var(--font-sm); }
 </style>

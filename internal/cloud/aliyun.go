@@ -241,8 +241,8 @@ func (c *aliyunClient) ecsRegions(ctx context.Context) ([]string, error) {
 	return rs, nil
 }
 
-// parseAliyunTime 解析到期时间：ECS 为 “2017-12-10T04:04Z”，轻量应用服务器为 ISO 8601（可能带毫秒、时区不带冒号）。
-func parseAliyunTime(s string) int64 {
+// parseCloudTime 解析云厂商的时间（阿里云、腾讯云）：ECS 为 “2017-12-10T04:04Z”，轻量应用服务器为 ISO 8601（可能带毫秒、时区不带冒号）。
+func parseCloudTime(s string) int64 {
 	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04Z", "2006-01-02T15:04:05.000-0700",
 		"2006-01-02T15:04:05-0700", "2006-01-02T15:04:05Z"} {
 		if t, err := time.Parse(layout, s); err == nil {
@@ -305,7 +305,7 @@ func (c *aliyunClient) ecsInstances(ctx context.Context, region string) ([]Insta
 			}
 			// 只有包年包月有到期时间；按量付费的 ExpiredTime 是很远的占位值
 			if x.ChargeType == "PrePaid" {
-				in.ExpireAt = parseAliyunTime(x.ExpiredTime)
+				in.ExpireAt = parseCloudTime(x.ExpiredTime)
 			}
 			all = append(all, in)
 		}
@@ -354,7 +354,7 @@ func (c *aliyunClient) swasInstances(ctx context.Context, region string) ([]Inst
 		}
 		for _, x := range out.Instances {
 			all = append(all, Instance{ID: x.ID, Name: x.Name, Region: region, Kind: "swas", State: x.Status,
-				IPv4: x.PublicIP, Plan: x.PlanID, ExpireAt: parseAliyunTime(x.ExpiredTime)})
+				IPv4: x.PublicIP, Plan: x.PlanID, ExpireAt: parseCloudTime(x.ExpiredTime)})
 		}
 		if len(out.Instances) < 100 || len(all) >= out.TotalCount {
 			break

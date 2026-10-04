@@ -18,11 +18,11 @@ import (
 // 服务商（cloud_accounts.provider）
 const (
 	ProviderAWS = "aws"
-	// 阿里云见 aliyun.go；腾讯云、Oracle Cloud 随第三、四步实现（设计 44.10）
+	// 阿里云见 aliyun.go，腾讯云见 tencent.go；Oracle Cloud 随第四步实现（设计 44.10）
 )
 
 // Providers 是当前已实现的服务商。
-var Providers = []string{ProviderAWS, ProviderAliyunCN, ProviderAliyunIntl}
+var Providers = []string{ProviderAWS, ProviderAliyunCN, ProviderAliyunIntl, ProviderTencentCN, ProviderTencentIntl}
 
 // Costs 是一个账户本月的费用（设计 44.7 cloud_costs）。金额以“分”为整数；没有的项为 nil。
 type Costs struct {
@@ -82,6 +82,12 @@ func NewClient(provider string, cred []byte, regions []string, o Options) (Clien
 			return nil, errors.New("阿里云凭证不完整")
 		}
 		return &aliyunClient{cred: c, intl: provider == ProviderAliyunIntl, regions: regions, o: o}, nil
+	case ProviderTencentCN, ProviderTencentIntl:
+		var c TencentCredentials
+		if err := json.Unmarshal(cred, &c); err != nil || c.SecretID == "" || c.SecretKey == "" {
+			return nil, errors.New("腾讯云凭证不完整")
+		}
+		return &tencentClient{cred: c, intl: provider == ProviderTencentIntl, regions: regions, o: o}, nil
 	}
 	return nil, fmt.Errorf("不支持的服务商 %q", provider)
 }
@@ -152,10 +158,10 @@ func toCents(s string) (int64, error) {
 	return int64(math.Round(f * 100)), nil
 }
 
-// BillingMonth 返回服务商账单口径下 now 所在的月份（YYYY-MM）：AWS 为 UTC，阿里云为北京时间。
+// BillingMonth 返回服务商账单口径下 now 所在的月份（YYYY-MM）：AWS 为 UTC，阿里云、腾讯云为北京时间。
 func BillingMonth(provider string, now time.Time) string {
 	switch provider {
-	case ProviderAliyunCN, ProviderAliyunIntl:
+	case ProviderAliyunCN, ProviderAliyunIntl, ProviderTencentCN, ProviderTencentIntl:
 		return now.In(aliyunTZ).Format("2006-01")
 	}
 	return now.UTC().Format("2006-01")

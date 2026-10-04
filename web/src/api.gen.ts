@@ -535,8 +535,8 @@ export interface Report {
 
 /** 添加时 provider、name、credential 必填；修改时 provider 不可更改，credential 留空表示不变 */
 export interface CloudAccountInput {
-  /** aliyun_cn：阿里云国内站（aliyun.com）；aliyun_intl：国际站（alibabacloud.com）。腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10） */
-  provider?: 'aws' | 'aliyun_cn' | 'aliyun_intl'
+  /** aliyun_cn / aliyun_intl：阿里云国内站（aliyun.com）/ 国际站（alibabacloud.com）；tencent_cn / tencent_intl：腾讯云国内站（cloud.tencent.com）/ 国际站（tencentcloud.com）。Oracle Cloud 随后续步骤加入（设计 44.10） */
+  provider?: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl'
   name: string
   /** 只同步这些区域；空表示全部已启用的区域 */
   regions?: string[]
@@ -548,6 +548,10 @@ export interface CloudAccountInput {
     secret_access_key?: string
     /** 阿里云 */
     access_key_secret?: string
+    /** 腾讯云 CAM 子用户的 SecretId（AKID…） */
+    secret_id?: string
+    /** 腾讯云 */
+    secret_key?: string
   }
   /** 月度预算（账户币种：AWS 为 USD，阿里云国内站 CNY、国际站多为 USD）；0 表示不设 */
   budget?: number
@@ -560,7 +564,7 @@ export interface CloudAccountInput {
 
 export interface CloudAccount {
   id: number
-  provider: 'aws' | 'aliyun_cn' | 'aliyun_intl'
+  provider: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl'
   name: string
   regions: string[]
   /** 如 AKIA…WXYZ；完整凭证不返回 */
@@ -612,7 +616,7 @@ export interface CloudInstance {
   instance_id: string
   name: string
   region: string
-  /** ec2 / lightsail / ecs / swas（阿里云轻量应用服务器） */
+  /** ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量） */
   kind: string
   /** 云厂商原样，如 running / stopped */
   state: string

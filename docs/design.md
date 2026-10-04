@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 76 | 云账户第三步：腾讯云国内站与国际站（TC3 签名、账单与余额、CVM / 轻量实例与到期、轻量流量包）；服务商改用下拉选择；CommandBlock 支持按原样显示多行内容 | 44.3、44.4、44.7 |
 | 75 | Web 导航“节点”改名为“首页”（首页即节点列表；节点详情的返回链接同步改名） | 41.6 |
 | 74 | 云账户第二步：阿里云国内站与国际站（ACS3 签名、账单与余额、ECS / 轻量实例与到期、轻量流量包）；账单月份按服务商时区 | 44.4 |
 | 73 | 升级任务：v0.3.0 之前的 Agent 与未启用远程升级的主机在创建时跳过并说明原因；Agent 上报 system.remote_upgrade；15 分钟未领取即失败 | 29.13.1 |
@@ -9948,7 +9949,7 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 | AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get* |
 | 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
 | 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上 | 同上（国际站控制台中的同名策略） |
-| 腾讯云 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、按月账单汇总；国内站人民币、国际站美元（同一 API 地址，币种随账户） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
+| 腾讯云国内站 / 国际站 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、DescribeBillSummaryByProduct；国内站 <产品>.tencentcloudapi.com、人民币，国际站 <产品>.intl.tencentcloudapi.com、美元（两种账户类型，修订第 76 条） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
 | Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … to read usage-reports in tenancy；inspect instances |
 
 ## 44.4 同步频率与费用
@@ -9990,6 +9991,20 @@ AWS 实现说明（第一步，修订第 72 条）：
 备份      secret.key 不在 backup 生成的文件中；backup 命令会提示单独复制。缺少 secret.key 时停止同步并提示重新填写凭证
 ```
 
+腾讯云实现说明（第三步，修订第 76 条）：
+
+```text
+签名      TC3-HMAC-SHA256，签名头固定 content-type;host；用官方文档示例核对请求体哈希与规范请求串哈希
+          （文档的密钥已打码，完整签名用按文档算法独立计算的值测试）
+站点      国内站与国际站分为两种账户类型：接入点不同（.intl.），余额接口不返回币种，币种按站点（CNY / USD）
+费用      DescribeBillSummaryByProduct 本月 RealTotalCost（折扣后，月份为 YYYY-MM）+ DescribeAccountBalance 余额（单位分）；
+          没有费用预测；余额需要单独授权，只有余额无权限时照常显示费用，不判为凭证失效
+错误      以 HTTP 200 返回在 Response.Error 中；AuthFailure.* / UnauthorizedOperation 视为凭证失效
+实例      CVM（包年包月有到期时间）、轻量 Lighthouse；按 Offset / Limit 分页
+流量      轻量 DescribeInstancesTrafficPackages：额度与已用量（字节），周期起点取流量包开始时间
+权限      Web 中给出只列出上述 7 个接口的自定义策略，可直接复制
+```
+
 ## 44.5 与节点关联
 
 ```text
@@ -10014,7 +10029,7 @@ cloud_sync      连续 24 小时同步失败或凭证失效               提示
 ## 44.7 数据表
 
 ```text
-cloud_accounts    id、provider（aws / aliyun_cn / aliyun_intl / tencent / oci）、name、regions、credential_enc、credential_hint（末 4 位）、
+cloud_accounts    id、provider（aws / aliyun_cn / aliyun_intl / tencent_cn / tencent_intl / oci）、name、regions、credential_enc、credential_hint（末 4 位）、
                   budget_cents、currency、enabled、sync_cost / sync_traffic（开关）、last_sync_at、last_error、created_at
 cloud_costs       account_id、period（YYYY-MM）、amount_cents、forecast_cents、balance_cents、currency、updated_at
 cloud_instances   account_id、instance_id、name、region、kind（ec2 / lightsail / ecs / swas / cvm / lighthouse / oci）、public_ipv4、public_ipv6、
