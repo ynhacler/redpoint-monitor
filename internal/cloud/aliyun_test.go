@@ -179,14 +179,14 @@ func TestAliyunInstancesAndTraffic(t *testing.T) {
 	}
 }
 
-func TestParseAliyunTime(t *testing.T) {
+func TestParseCloudTime(t *testing.T) {
 	want := time.Date(2026, 11, 8, 16, 0, 0, 0, time.UTC).Unix()
 	for _, s := range []string{"2026-11-08T16:00Z", "2026-11-08T16:00:00Z", "2026-11-08T16:00:00.000+0000", "2026-11-09T00:00:00+08:00"} {
-		if got := parseAliyunTime(s); got != want {
-			t.Errorf("parseAliyunTime(%q) = %d", s, got)
+		if got := parseCloudTime(s); got != want {
+			t.Errorf("parseCloudTime(%q) = %d", s, got)
 		}
 	}
-	if parseAliyunTime("") != 0 {
+	if parseCloudTime("") != 0 {
 		t.Error("空值应为 0")
 	}
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 云账户页（设计 44）：接入用户自己的云账户，查看本月费用、预估与预算，云厂商口径的实例与流量包用量。
-// 已支持 AWS、阿里云国内站与国际站；腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10）。
+// 已支持 AWS、阿里云与腾讯云（各分国内站、国际站）；Oracle Cloud 随后续步骤加入（设计 44.10）。
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
@@ -50,19 +50,33 @@ interface ProviderInfo {
   idLabel: string
   idPlaceholder: string
   secretLabel: string
-  /** 凭证中密钥字段的名称（与接口一致） */
-  secretField: 'secret_access_key' | 'access_key_secret'
+  /** 凭证中 ID 与密钥字段的名称（与接口一致） */
+  idField: 'access_key_id' | 'secret_id'
+  secretField: 'secret_access_key' | 'access_key_secret' | 'secret_key'
+  /** 轻量 / 套餐流量包的名称 */
+  trafficName: string
+  /** 账单时区说明 */
+  billingTZ: string
   regionExample: string
   /** 费用查询是否收费（AWS Cost Explorer） */
   paidCostApi: boolean
 }
 const providers: Record<Provider, ProviderInfo> = {
   aws: { label: 'AWS', currency: 'USD', idLabel: 'Access Key ID', idPlaceholder: 'AKIA…', secretLabel: 'Secret Access Key',
-    secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true },
+    idField: 'access_key_id', secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true,
+    trafficName: 'Lightsail', billingTZ: '按 UTC 自然月' },
   aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
-    secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false },
+    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false,
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
   aliyun_intl: { label: '阿里云国际', currency: 'USD', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
-    secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false },
+    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false,
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
+  tencent_cn: { label: '腾讯云', currency: 'CNY', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
+    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-hongkong, ap-guangzhou', paidCostApi: false,
+    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月' },
+  tencent_intl: { label: '腾讯云国际', currency: 'USD', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
+    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-singapore, ap-tokyo', paidCostApi: false,
+    trafficName: 'Lighthouse', billingTZ: '按北京时间自然月' },
 }
 const providerOf = (p: string) => providers[p as Provider] ?? providers.aws
 
@@ -175,7 +189,7 @@ async function save() {
     sync_cost: f.sync_cost, sync_traffic: f.sync_traffic, enabled: f.enabled,
   }
   if (changingCred.value) {
-    body.credential = { access_key_id: f.access_key_id.trim(), [info.value.secretField]: f.secret.trim() }
+    body.credential = { [info.value.idField]: f.access_key_id.trim(), [info.value.secretField]: f.secret.trim() }
   }
   saving.value = true
   try {
@@ -188,7 +202,8 @@ async function save() {
     if (e instanceof ApiError && e.details.length) {
       // credential.access_key_id → access_key_id；两家的密钥字段都显示在“密钥”输入框下
       fieldErrors.value = Object.fromEntries(e.details.map((d) => [
-        d.field.replace(/^credential\./, '').replace(/^(secret_access_key|access_key_secret)$/, 'secret'), d.message]))
+        d.field.replace(/^credential\./, '').replace(/^(secret_access_key|access_key_secret|secret_key)$/, 'secret')
+          .replace(/^secret_id$/, 'access_key_id'), d.message]))
     } else {
       formError.value = errorText(e)
     }
@@ -215,12 +230,26 @@ const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: 
 // 阿里云：在 RAM 中创建用户，只授予这三个系统只读策略
 const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess'
 
+// 腾讯云：自定义策略，只列出用到的只读接口（也可改用预设策略 QcloudFinanceBillReadOnlyAccess、
+// QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess，余额另需 DescribeAccountBalance 授权）
+const tencentPolicy = JSON.stringify({
+  version: '2.0',
+  statement: [{
+    effect: 'allow',
+    action: ['billing:DescribeBillSummaryByProduct', 'billing:DescribeAccountBalance', 'cvm:DescribeRegions',
+      'cvm:DescribeInstances', 'lighthouse:DescribeRegions', 'lighthouse:DescribeInstances',
+      'lighthouse:DescribeInstancesTrafficPackages'],
+    resource: ['*'],
+  }],
+}, null, 2)
+const policyFor = (p: Provider) => (p === 'aws' ? awsPolicy : p.startsWith('tencent') ? tencentPolicy : aliyunPolicies)
+
 // ---- 实例 ----
 
 function trafficPct(i: CloudInstance): number {
   return i.traffic_limit_bytes ? (i.traffic_used_bytes / i.traffic_limit_bytes) * 100 : 0
 }
-const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量' }
+const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量' }
 
 /** 到期提示：30 天内为 warn，已过期为 bad */
 function expireTone(i: CloudInstance): string {
@@ -237,30 +266,37 @@ function expireTone(i: CloudInstance): string {
     </div>
     <p class="muted small intro">
       接入你自己的云账户，查看本月费用与预估、云厂商口径的实例与流量包用量。只需只读权限；凭证加密保存在本面板，
-      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS 与阿里云（国内站、国际站），腾讯云、Oracle Cloud 将陆续支持。
+      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS、阿里云与腾讯云（国内站、国际站），Oracle Cloud 将陆续支持。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <!-- 添加 / 编辑 -->
     <form v-if="editing !== null" class="panel editor" novalidate @submit.prevent="save">
       <h2>{{ editing === 'new' ? '添加云账户' : `编辑 ${form.name}` }}</h2>
-      <div v-if="editing === 'new'" class="segmented providers" role="radiogroup" aria-label="服务商">
-        <button v-for="(p, key) in providers" :key="key" type="button" role="radio" :aria-checked="form.provider === key"
-          :class="{ active: form.provider === key }" @click="form.provider = key; showPolicy = false">{{ p.label }}</button>
-      </div>
+      <!-- 服务商较多，用下拉而不是分段按钮，窄屏也不溢出 -->
+      <label v-if="editing === 'new'" class="provider-pick small">服务商
+        <select v-model="form.provider" @change="showPolicy = false">
+          <option v-for="(p, key) in providers" :key="key" :value="key">{{ p.label }}</option>
+        </select>
+      </label>
       <p v-if="form.provider === 'aws'" class="muted small">
         在 IAM 中创建一个专用用户，只附加下面的只读策略，再为它创建访问密钥。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
       </p>
-      <p v-else class="muted small">
+      <p v-else-if="form.provider.startsWith('aliyun')" class="muted small">
         在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
         只授予三个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '查看策略名称' }}</button>
       </p>
-      <CommandBlock v-if="showPolicy" :command="form.provider === 'aws' ? awsPolicy : aliyunPolicies" class="policy" />
+      <p v-else class="muted small">
+        在{{ form.provider === 'tencent_cn' ? '腾讯云（cloud.tencent.com）' : '腾讯云国际站（tencentcloud.com）' }}访问管理 CAM 中创建子用户，
+        关联下面的自定义只读策略，再为它创建 API 密钥。国内站与国际站是两套账号，请按账号所在站点选择。
+        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
+      </p>
+      <CommandBlock v-if="showPolicy" :command="policyFor(form.provider)" plain class="policy" />
       <div class="fields">
         <label>名称
-          <input v-model="form.name" maxlength="64" placeholder="如 AWS 主账户" />
+          <input v-model="form.name" maxlength="64" :placeholder="`如 ${info.label} 主账户`" />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
         </label>
         <label>{{ info.idLabel }}
@@ -292,7 +328,7 @@ function expireTone(i: CloudInstance): string {
           <small v-else class="muted">账单与余额接口免费</small>
         </label>
         <label class="check"><input v-model="form.sync_cost" type="checkbox" />同步费用</label>
-        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />同步流量包（{{ form.provider === 'aws' ? 'Lightsail' : '轻量应用服务器' }}，每小时）</label>
+        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />同步流量包（{{ info.trafficName }}，每小时）</label>
         <label class="check"><input v-model="form.enabled" type="checkbox" />启用</label>
         <label v-if="changingCred">当前登录密码
           <input v-model="form.password" type="password" autocomplete="current-password" />
@@ -361,7 +397,7 @@ function expireTone(i: CloudInstance): string {
         <p class="muted small">
           {{ a.regions.length ? `区域：${a.regions.join('、')}` : '全部已启用的区域' }} ·
           费用每 {{ a.cost_interval_h }} 小时{{ a.sync_cost ? '' : '（已关闭）' }} ·
-          {{ a.provider === 'aws' ? '按 UTC 自然月' : '按北京时间自然月' }}，数据有数小时延迟
+          {{ providerOf(a.provider).billingTZ }}，数据有数小时延迟
         </p>
 
         <form v-if="deleting === a.id" class="confirm" @submit.prevent="remove(a)">
@@ -396,7 +432,7 @@ function expireTone(i: CloudInstance): string {
         </li>
       </ul>
       <p class="muted small">
-        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云轻量为本月（北京时间）流量包用量。
+        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量。
         与节点关联、自动校准与到期提醒将在后续版本加入。
       </p>
     </section>
@@ -435,7 +471,7 @@ function expireTone(i: CloudInstance): string {
   padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
 .list li:last-child { border-bottom: 0; }
 .state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
-.providers { margin: var(--space-2) 0 var(--space-3); }
+.provider-pick { display: flex; flex-direction: column; gap: var(--space-1); max-width: 240px; margin: var(--space-2) 0 var(--space-3); }
 .inst-main { min-width: 0; }
 .meta { margin-left: var(--space-2); }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

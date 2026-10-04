@@ -340,3 +340,54 @@ func TestCloudAliyunSync(t *testing.T) {
 		t.Fatalf("费用 %+v", costs)
 	}
 }
+
+// tencentTestID 是测试用的假 SecretId，分两段书写以免被 GitHub 推送保护当作真实密钥
+const tencentTestID = "AKID" + "testidtestidtestidtestidtestid12"
+
+// 腾讯云（国际站）：凭证字段、余额（分）、轻量流量包
+func TestCloudTencentSync(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("X-TC-Action") {
+		case "DescribeBillSummaryByProduct":
+			io.WriteString(w, `{"Response":{"SummaryTotal":{"RealTotalCost":"9.99"}}}`)
+		case "DescribeAccountBalance":
+			io.WriteString(w, `{"Response":{"Balance":500}}`)
+		case "DescribeRegions":
+			io.WriteString(w, `{"Response":{"RegionSet":[{"Region":"ap-singapore","RegionState":"AVAILABLE"}]}}`)
+		case "DescribeInstances":
+			if strings.Contains(r.URL.Path, "lighthouse") {
+				io.WriteString(w, `{"Response":{"TotalCount":1,"InstanceSet":[{"InstanceId":"lhins-1","InstanceState":"RUNNING","PublicAddresses":["1.2.3.4"]}]}}`)
+			} else {
+				io.WriteString(w, `{"Response":{"TotalCount":0,"InstanceSet":[]}}`)
+			}
+		case "DescribeInstancesTrafficPackages":
+			io.WriteString(w, `{"Response":{"InstanceTrafficPackageSet":[{"InstanceId":"lhins-1","TrafficPackageSet":[{"TrafficUsed":100,"TrafficPackageTotal":1000}]}]}}`)
+		}
+	}))
+	defer srv.Close()
+	s.cloud.opts = cloud.Options{Endpoint: func(service, _ string) string { return srv.URL + "/" + service + "/" }}
+
+	code, v, e := createCloudAccount(t, h, admin, `{"provider":"tencent_intl","name":"腾讯云","credential":{"secret_id":"`+tencentTestID+`","secret_key":"testkeytestkeytestkeytestkey1234"}}`)
+	if code != http.StatusCreated || v.CredentialHint != "AKID…id12" {
+		t.Fatalf("添加 %d %+v %+v", code, v, e)
+	}
+	a, _ := s.store.GetCloudAccount(v.ID)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{cost: true, instances: true, traffic: true}, time.Now())
+	a, _ = s.store.GetCloudAccount(v.ID)
+	if a.LastError != "" {
+		t.Fatalf("同步失败 %s", a.LastError)
+	}
+	insts, _ := s.store.CloudInstances(v.ID)
+	costs, _ := s.store.CloudCosts(v.ID, 1)
+	if len(insts) != 1 || insts[0].Kind != "lighthouse" || insts[0].TrafficLimitBytes != 1000 || insts[0].TrafficUsedBytes != 100 {
+		t.Fatalf("实例 %+v", insts)
+	}
+	if len(costs) != 1 || costs[0].AmountCents != 999 || *costs[0].BalanceCents != 500 || costs[0].Currency != "USD" {
+		t.Fatalf("费用 %+v", costs)
+	}
+	if code, _, e := createCloudAccount(t, h, admin, `{"provider":"tencent_cn","name":"x","credential":{"secret_id":"bad","secret_key":"testkeytestkeytestkeytestkey1234"}}`); code != 422 || e.Details[0].Field != "credential.secret_id" {
+		t.Fatalf("SecretId 校验 %d %+v", code, e)
+	}
+}

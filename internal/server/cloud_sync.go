@@ -241,6 +241,18 @@ func (s *Server) sealCredential(provider string, cred map[string]string) ([]byte
 	var fe []FieldError
 	var hint string
 	switch provider {
+	case cloud.ProviderTencentCN, cloud.ProviderTencentIntl:
+		id, secret := cred["secret_id"], cred["secret_key"]
+		if !tencentSecretID.MatchString(id) {
+			fe = append(fe, FieldError{Field: "credential.secret_id", Message: "SecretId 格式不正确（如 AKID…）"})
+		}
+		if len(secret) < 20 || len(secret) > 64 {
+			fe = append(fe, FieldError{Field: "credential.secret_key", Message: "SecretKey 格式不正确"})
+		}
+		if len(fe) == 0 {
+			hint = id[:4] + "…" + id[len(id)-4:]
+		}
+		cred = map[string]string{"secret_id": id, "secret_key": secret}
 	case cloud.ProviderAliyunCN, cloud.ProviderAliyunIntl:
 		id, secret := cred["access_key_id"], cred["access_key_secret"]
 		if !aliyunKeyID.MatchString(id) {
