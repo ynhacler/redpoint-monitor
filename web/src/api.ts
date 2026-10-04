@@ -630,15 +630,53 @@ export interface AuditLog {
 export interface AuditQuery {
   category?: 'login' | 'operation'
   result?: 'success' | 'failure'
+  /** 主体类型 */
+  actor?: 'admin' | 'agent' | 'cli' | 'system'
+  /** 操作：精确匹配；以“.”结尾时按前缀匹配 */
+  action?: string
+  /** 时间范围 [from, to)，Unix 秒 */
+  from?: number
+  to?: number
   cursor?: string
   limit?: number
 }
 
-/** 审计日志，按时间倒序；next_cursor 为空表示没有更多 */
-export function listAuditLogs(q: AuditQuery): Promise<{ items: AuditLog[]; next_cursor: string }> {
+function auditQS(q: AuditQuery): string {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') qs.set(k, String(v))
-  return request('GET', `/audit-logs?${qs}`)
+  return qs.toString()
+}
+
+/** CSV 导出地址（同源 GET，凭会话 Cookie 下载）；筛选条件同列表，最多 10000 条 */
+export function auditExportURL(q: AuditQuery): string {
+  return '/api/v1/audit-logs/export?' + auditQS({ ...q, cursor: undefined, limit: undefined })
+}
+
+/** 一个登录会话（设计 24.8） */
+export interface LoginSession {
+  id: number
+  created_at: number
+  last_seen_at: number
+  expires_at: number
+  client_ip: string
+  user_agent: string
+  /** 是否为当前浏览器 */
+  current: boolean
+}
+
+/** 当前账号的登录会话，最近活动在前 */
+export async function listSessions(): Promise<LoginSession[]> {
+  return (await request<ListPage<LoginSession>>('GET', '/auth/sessions')).items
+}
+
+/** 踢出一个会话（该浏览器需要重新登录） */
+export function revokeSession(id: number): Promise<void> {
+  return request('DELETE', `/auth/sessions/${id}`)
+}
+
+/** 审计日志，按时间倒序；next_cursor 为空表示没有更多 */
+export function listAuditLogs(q: AuditQuery): Promise<{ items: AuditLog[]; next_cursor: string }> {
+  return request('GET', `/audit-logs?${auditQS(q)}`)
 }
 
 /** 查看安装命令；不含完整注册码。 */

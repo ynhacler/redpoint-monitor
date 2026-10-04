@@ -207,6 +207,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/auth/logout", accessAdmin, s.handleLogout)
 	handle("POST /api/v1/auth/password", accessAdmin, s.handleChangePassword)
 	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
+	handle("GET /api/v1/auth/sessions", accessAdmin, s.handleSessions)
+	handle("DELETE /api/v1/auth/sessions/{id}", accessAdmin, s.handleRevokeSession)
 
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)
@@ -217,6 +219,7 @@ func (s *Server) routes() http.Handler {
 
 	// 节点（设计 19.5、19.11）
 	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
+	handle("GET /api/v1/audit-logs/export", accessAdmin, s.handleAuditExport)
 	handle("GET /api/v1/alerts", accessAdmin, s.handleAlerts)
 	handle("GET /api/v1/alert-rules", accessAdmin, s.handleAlertRules)
 	handle("POST /api/v1/alert-rules", accessAdmin, s.handleCreateAlertRule)

@@ -336,6 +336,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 67 | 审计日志按主体、操作、时间筛选与 CSV 导出（BOM、防 CSV 注入、导出记入日志）；登录会话列表与踢出（auth.session_revoke 归入登录日志）；Web 日志页筛选与导出、账号页“登录中的设备” | 24.8 |
 | 66 | 内置 HTTPS：--domain（autocert，仅限指定域名，证书缓存 DATA/certs）、:80 重定向与 HTTP-01、TLS 1.2 起、HSTS；systemd drop-in 只授予 CAP_NET_BIND_SERVICE；新增依赖 golang.org/x/net（autocert 所需） | 25、23.1 |
 | 65 | 节点计费时区（迁移 21，traffic_timezone）：流量按节点时区归日，周期与汇总按该时区计算；内嵌 time/tzdata | 5.4 |
 | 64 | vpsmon-server backup（VACUUM INTO 在线备份、--keep）/ restore（数据目录锁、校验、保留旧库、沿用属主）/ diag（只含汇总、日志脱敏与 IP 掩码）；run 持有数据目录锁 | 24.10、25 |
@@ -6092,7 +6093,13 @@ MVP 记录上面列出的、已实现功能对应的操作，写入数据库。W
 
 接口 `GET /api/v1/audit-logs?category=login|operation&result=&cursor=&limit=`（admin，返回 `{"items", "next_cursor"}`）。
 管理员操作的主体 ID 记录会话用户名；登录失败时为请求中填写的用户名（截断到 64 字节并脱敏）。
-按主体、操作的筛选与 CSV 导出在第二批提供（设计 36.2）。
+筛选与导出（已实现）：`actor`（主体类型）、`action`（精确匹配，以 “.” 结尾时按前缀匹配）、`from` / `to`（Unix 秒）；
+`GET /api/v1/audit-logs/export` 按同样的筛选导出 CSV，最多 10000 条，UTF-8 带 BOM（Excel 可直接打开中文）；
+【安全】以 = + - @ 等开头的单元格前加单引号，防止 CSV 注入（节点名等可能由他人填写）。导出本身记入操作日志（audit.export）。
+
+登录会话：`GET /api/v1/auth/sessions` 列出当前账号仍有效的会话（IP、浏览器、登录与最近活动时间，标出当前浏览器），
+`DELETE /api/v1/auth/sessions/{id}` 踢出（只能操作自己账号的会话；踢出当前会话等同退出登录），记入登录日志（auth.session_revoke）。
+Web 的账号页显示“登录中的设备”。
 
 规则：
 

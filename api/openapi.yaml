@@ -136,6 +136,44 @@ paths:
         '204': { description: 已验证 }
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+
+  /auth/sessions:
+    get:
+      tags: [auth]
+      summary: 当前账号的登录会话（设计 24.8、17.4），最近活动在前
+      responses:
+        '200':
+          description: 会话列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  next_cursor: { type: string, description: 空表示没有更多（此列表不分页，恒为空） }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        created_at: { type: integer }
+                        last_seen_at: { type: integer }
+                        expires_at: { type: integer }
+                        client_ip: { type: string }
+                        user_agent: { type: string }
+                        current: { type: boolean, description: 是否为发出本次请求的会话 }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /auth/sessions/{id}:
+    delete:
+      tags: [auth]
+      summary: 踢出一个会话（该浏览器需要重新登录）；只能操作当前账号的会话，记入审计日志
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '204': { description: 已踢出 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /agent/enroll:
@@ -615,6 +653,10 @@ paths:
       parameters:
         - { name: category, in: query, schema: { type: string, enum: [login, operation] }, description: 'login：登录、退出、二次验证；operation：其他操作；省略为全部' }
         - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, cli, system] }, description: 主体类型 }
+        - { name: action, in: query, schema: { type: string }, description: '操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.）' }
+        - { name: from, in: query, schema: { type: integer }, description: 起始时间（含），Unix 秒 }
+        - { name: to, in: query, schema: { type: integer }, description: 结束时间（不含），Unix 秒 }
         - { name: cursor, in: query, schema: { type: string }, description: 上一页返回的 next_cursor }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
       responses:
@@ -644,6 +686,27 @@ paths:
                         client_ip: { type: string }
                         user_agent: { type: string }
                         details: { type: object, description: 已脱敏（设计 24.7） }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /audit-logs/export:
+    get:
+      tags: [audit]
+      summary: 导出审计日志为 CSV（设计 24.8），筛选参数同 /audit-logs，最多 10000 条，按时间倒序
+      description: >-
+        UTF-8（带 BOM，Excel 可直接打开中文）。以 = + - @ 开头的单元格前加单引号，防止表格软件把内容当作公式执行。
+      parameters:
+        - { name: category, in: query, schema: { type: string, enum: [login, operation] } }
+        - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, cli, system] } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: integer } }
+        - { name: to, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: CSV 文件
+          content:
+            text/csv: { schema: { type: string } }
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 

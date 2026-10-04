@@ -1,20 +1,43 @@
 <script setup lang="ts">
 // 日志页（设计 24.8）：登录日志（登录、退出、二次验证）与操作日志（节点、注册码、校准、改密码、Agent 注册等）。
-// 审计日志只读，按时间倒序，分页加载；地址中的 tab / result 可刷新、可分享。
+// 审计日志只读，按时间倒序，分页加载；可按结果、主体、操作与日期筛选并导出 CSV。
+// 筛选条件都在地址中（tab / result / actor / action / from / to），可刷新、可分享。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, listAuditLogs, UnauthorizedError, type AuditLog } from '../api'
+import { ApiError, auditExportURL, listAuditLogs, UnauthorizedError, type AuditLog, type AuditQuery } from '../api'
 import EmptyState from '../components/EmptyState.vue'
-import { DASH, fmtDateTime } from '../format'
+import { DASH, fmtDateTime, uaSummary } from '../format'
 import { logout } from '../store'
 
 const route = useRoute()
 const router = useRouter()
 const tab = computed(() => (route.query.tab === 'operation' ? 'operation' : 'login'))
 const result = computed(() => (route.query.result === 'success' || route.query.result === 'failure' ? route.query.result : ''))
+const qstr = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '')
+const actorQ = computed(() => (['admin', 'agent', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
+const actionQ = computed(() => qstr('action'))
+const fromQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('from')) ? qstr('from') : ''))
+const toQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('to')) ? qstr('to') : ''))
 function setQuery(q: Record<string, string>) {
-  router.replace({ query: { ...route.query, ...q } })
+  // 空值从地址中去掉；切换标签时操作筛选不再适用
+  const next: Record<string, string | undefined> = { ...(route.query as Record<string, string>), ...q }
+  if (q.tab !== undefined && q.tab !== tab.value) next.action = undefined
+  for (const k of Object.keys(next)) if (!next[k]) delete next[k]
+  router.replace({ query: next })
 }
+
+// 日期按浏览器本地时区：from 为当天 0 点，to 为所选日期的次日 0 点（含当天）
+const dayStart = (d: string) => Math.floor(new Date(d + 'T00:00:00').getTime() / 1000)
+const query = computed<AuditQuery>(() => ({
+  category: tab.value,
+  result: (result.value || undefined) as AuditQuery['result'],
+  actor: (actorQ.value || undefined) as AuditQuery['actor'],
+  action: actionQ.value || undefined,
+  from: fromQ.value ? dayStart(fromQ.value) : undefined,
+  to: toQ.value ? dayStart(toQ.value) + 86400 : undefined,
+}))
+const exportURL = computed(() => auditExportURL(query.value))
+const filtered = computed(() => !!(result.value || actorQ.value || actionQ.value || fromQ.value || toQ.value))
 
 const items = ref<AuditLog[]>([])
 const cursor = ref('')
@@ -26,9 +49,7 @@ async function load(more = false) {
   loading.value = true
   error.value = ''
   try {
-    const p = await listAuditLogs({
-      category: tab.value, result: result.value || undefined, cursor: more ? cursor.value : undefined, limit: 50,
-    })
+    const p = await listAuditLogs({ ...query.value, cursor: more ? cursor.value : undefined, limit: 50 })
     items.value = more ? [...items.value, ...p.items] : p.items
     cursor.value = p.next_cursor
   } catch (e) {
@@ -38,7 +59,7 @@ async function load(more = false) {
     loading.value = false
   }
 }
-watch([tab, result], () => {
+watch(query, () => {
   open.value = null
   load()
 }, { immediate: true })
@@ -50,8 +71,16 @@ const actionNames: Record<string, string> = {
   'enroll_code.regenerate': '重新生成注册码', 'enroll_code.revoke': '撤销注册码',
   'agent.enroll': 'Agent 注册', 'agent.unregister': 'Agent 卸载', 'agent_token.revoke': '吊销 Agent Token', 'traffic.calibrate': '校准流量',
   'release.sync': '同步官方版本', 'upgrade_task.create': '创建升级任务', 'upgrade_task.cancel': '取消升级任务',
-  'upgrade_task.result': 'Agent 升级结果',
+  'upgrade_task.result': 'Agent 升级结果', 'auth.session_revoke': '踢出登录会话', 'audit.export': '导出日志',
+  'admin.reset_password': '命令行重置密码', 'alert_rule.create': '新增告警规则', 'alert_rule.update': '修改告警规则',
+  'alert_rule.delete': '删除告警规则', 'silence.create': '静音 / 维护', 'silence.end': '结束静音 / 维护',
+  'notification_channel.create': '新增通知渠道', 'notification_channel.update': '修改通知渠道',
+  'notification_channel.delete': '删除通知渠道', 'notification_channel.test': '测试通知渠道', 'setting.update': '修改系统设置',
 }
+// 当前标签可选的操作（登录日志只有几种，操作日志为其余全部）
+const loginActionSet = new Set(['auth.login', 'auth.logout', 'auth.reauth', 'auth.session_revoke'])
+const actionOptions = computed(() =>
+  Object.entries(actionNames).filter(([k]) => loginActionSet.has(k) === (tab.value === 'login')))
 const reasonNames: Record<string, string> = {
   captcha: '验证码未通过', unknown_user: '用户名不存在', bad_password: '密码错误', password_too_long: '密码过长',
 }
@@ -73,15 +102,7 @@ function summary(l: AuditLog) {
   if (l.action === 'auth.login' && d.remember) return '记住登录 7 天'
   return ''
 }
-// User-Agent 粗略识别为 “浏览器 · 系统”，完整内容在详情中
-function device(ua: string) {
-  if (!ua) return ''
-  const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox'
-    : /Safari\//.test(ua) ? 'Safari' : /curl|Go-http|vpsmon/i.test(ua) ? ua.split(/[ /]/)[0] : ''
-  const o = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS'
-    : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
-  return [b, o].filter(Boolean).join(' · ') || ua.slice(0, 40)
-}
+const device = uaSummary
 const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.user_agent
 </script>
 
@@ -93,11 +114,28 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
         <button type="button" :class="{ active: tab === 'login' }" @click="setQuery({ tab: 'login' })">登录日志</button>
         <button type="button" :class="{ active: tab === 'operation' }" @click="setQuery({ tab: 'operation' })">操作日志</button>
       </div>
+      <a class="btn secondary" :href="exportURL" download title="按当前筛选导出，最多 10000 条">导出 CSV</a>
+    </div>
+    <div class="filters">
       <select :value="result" aria-label="结果" @change="setQuery({ result: ($event.target as HTMLSelectElement).value })">
         <option value="">全部结果</option>
         <option value="success">成功</option>
         <option value="failure">失败</option>
       </select>
+      <select :value="actorQ" aria-label="主体" @change="setQuery({ actor: ($event.target as HTMLSelectElement).value })">
+        <option value="">全部主体</option>
+        <option value="admin">管理员</option>
+        <option value="agent">Agent</option>
+        <option value="cli">命令行</option>
+        <option value="system">系统</option>
+      </select>
+      <select :value="actionQ" aria-label="操作" @change="setQuery({ action: ($event.target as HTMLSelectElement).value })">
+        <option value="">全部操作</option>
+        <option v-for="[k, name] in actionOptions" :key="k" :value="k">{{ name }}</option>
+      </select>
+      <label class="date small muted">从 <input type="date" :value="fromQ" @change="setQuery({ from: ($event.target as HTMLInputElement).value })" /></label>
+      <label class="date small muted">到 <input type="date" :value="toQ" @change="setQuery({ to: ($event.target as HTMLInputElement).value })" /></label>
+      <button v-if="filtered" type="button" class="text small" @click="setQuery({ result: '', actor: '', action: '', from: '', to: '' })">清除筛选</button>
     </div>
     <p class="muted small">
       {{ tab === 'login' ? '登录、退出与敏感操作前的密码验证。' : '节点、注册码、流量校准、修改密码与 Agent 注册等操作。' }}
@@ -139,7 +177,10 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
 <style scoped>
 .head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .head h1 { margin: 0 auto 0 0; }
-.head select { width: auto; }
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.filters select { width: auto; }
+.date { display: inline-flex; align-items: center; gap: var(--space-1); }
+.date input { width: auto; }
 .list { list-style: none; margin: var(--space-4) 0 0; padding: 0; }
 .list li + li { border-top: 1px solid var(--border); }
 .row { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; align-items: baseline;
