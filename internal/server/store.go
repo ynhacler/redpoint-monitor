@@ -444,6 +444,9 @@ var migrations = []string{
 	`INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('agent_clock', 'agent_clock', '>', 60, 30, 300, 300, 'info', 0, 1, unixepoch(), unixepoch());`,
+
+	// 迁移 20：节点的采样（上报）间隔，秒；0 表示默认 10 秒（设计 4.2、6.1）
+	`ALTER TABLE servers ADD COLUMN report_interval_s INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
@@ -538,20 +541,22 @@ type ServerRow struct {
 	EnrolledAt       int64  `json:"enrolled_at"`
 
 	// VPS 信息（设计 1.2.3、27.2）
-	Group         string  `json:"group"`
-	Note          string  `json:"note"`
-	Provider      string  `json:"provider"`
-	Plan          string  `json:"plan"`
-	Region        string  `json:"region"`
-	Country       string  `json:"country"`        // ISO 3166-1 两位代码（大写），空表示未填
-	BandwidthMbps int     `json:"bandwidth_mbps"` // 服务商标称带宽（端口速率），Mbps；0 表示未填
-	TrafficUnit   string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
-	TrafficFactor float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
-	PriceCents    int64   `json:"price_cents"`    // 续费价格 × 100
-	Currency      string  `json:"currency"`
-	BillingPeriod string  `json:"billing_period"`
-	ExpireDate    string  `json:"expire_date"` // YYYY-MM-DD，空表示未填
-	CreatedAt     int64   `json:"created_at"`
+	Group         string `json:"group"`
+	Note          string `json:"note"`
+	Provider      string `json:"provider"`
+	Plan          string `json:"plan"`
+	Region        string `json:"region"`
+	Country       string `json:"country"`        // ISO 3166-1 两位代码（大写），空表示未填
+	BandwidthMbps int    `json:"bandwidth_mbps"` // 服务商标称带宽（端口速率），Mbps；0 表示未填
+	// ReportIntervalS 是采样（上报）间隔，秒；0 表示默认 10 秒（设计 4.2、6.1）
+	ReportIntervalS int     `json:"report_interval_s"`
+	TrafficUnit     string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
+	TrafficFactor   float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
+	PriceCents      int64   `json:"price_cents"`    // 续费价格 × 100
+	Currency        string  `json:"currency"`
+	BillingPeriod   string  `json:"billing_period"`
+	ExpireDate      string  `json:"expire_date"` // YYYY-MM-DD，空表示未填
+	CreatedAt       int64   `json:"created_at"`
 }
 
 // ListServers 返回全部节点，按名称排序。

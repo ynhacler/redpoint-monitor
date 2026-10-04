@@ -456,3 +456,60 @@ func TestGzipReport(t *testing.T) {
 		t.Errorf("不认识的编码应返回 415：%d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestReportInterval(t *testing.T) {
+	for s, ok := range map[int]bool{5: true, 10: true, 60: true, 0: false, 7: false, 120: false} {
+		if ValidReportInterval(s) != ok {
+			t.Errorf("ValidReportInterval(%d) 应为 %v", s, ok)
+		}
+	}
+	cases := []struct {
+		iv              time.Duration
+		online, unknown time.Duration
+		offline         float64
+	}{
+		{10 * time.Second, 30 * time.Second, 120 * time.Second, 120}, // 默认：与原来一致
+		{5 * time.Second, 30 * time.Second, 120 * time.Second, 120},
+		{30 * time.Second, 90 * time.Second, 180 * time.Second, 120},
+		{60 * time.Second, 180 * time.Second, 360 * time.Second, 180}, // 漏一次上报（120 秒）不算离线
+	}
+	for _, c := range cases {
+		on, unk := statusWindows(c.iv)
+		r := ruleForInterval(AlertRule{Type: AlertOffline, Threshold: 120}, c.iv)
+		if on != c.online || unk != c.unknown || r.Threshold != c.offline {
+			t.Errorf("%s：在线 %s / 未知 %s / 离线阈值 %v，应为 %s / %s / %v", c.iv, on, unk, r.Threshold, c.online, c.unknown, c.offline)
+		}
+	}
+	if r := ruleForInterval(AlertRule{Type: AlertCPU, Threshold: 90}, time.Minute); r.Threshold != 90 {
+		t.Error("其他规则不受采样间隔影响")
+	}
+}
+
+// 采样间隔随上报响应下发；修改节点后下一份上报即生效（设计 6.1）。
+func TestReportIntervalHeader(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, n, _ := createNode(t, h, admin, `{"name":"iv-1","report_interval_s":30}`)
+	_, res := enroll(h, n.EnrollCode, "iv-host", "iv-machine")
+	report := func() string {
+		rec := do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(`{"system":{"boot_id":"b"}}`))
+		return rec.Header().Get("X-Report-Interval")
+	}
+	if got := report(); got != "30" {
+		t.Fatalf("应下发节点的采样间隔 30：%q", got)
+	}
+	base := "/api/v1/servers/" + itoa(n.ServerID)
+	if rec := do(h, "PUT", base, admin, []byte(`{"name":"iv-1","report_interval_s":60}`)); rec.Code != 200 {
+		t.Fatalf("修改失败：%d %s", rec.Code, rec.Body)
+	}
+	if got := report(); got != "60" {
+		t.Errorf("修改后下一份上报应下发新间隔：%q", got)
+	}
+	do(h, "PUT", base, admin, []byte(`{"name":"iv-1"}`))
+	if got := report(); got != "10" {
+		t.Errorf("恢复默认后应下发 10：%q", got)
+	}
+	if rec := do(h, "PUT", base, admin, []byte(`{"name":"iv-1","report_interval_s":7}`)); rec.Code != 422 {
+		t.Errorf("不在可选范围的间隔应返回 422：%d", rec.Code)
+	}
+}

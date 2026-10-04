@@ -68,10 +68,11 @@ type Server struct {
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
-	mu       sync.Mutex
-	latest   map[int64]*snapshot           // 各节点最新上报，实时读取只走内存，不查数据库（设计 3.5）
-	counters map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
-	pending  []pendingWrite                // 等待批量写入的上报
+	mu        sync.Mutex
+	latest    map[int64]*snapshot           // 各节点最新上报，实时读取只走内存，不查数据库（设计 3.5）
+	counters  map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
+	intervals map[int64]time.Duration       // 各节点的采样间隔缓存，避免每份上报都查库；节点修改后清除
+	pending   []pendingWrite                // 等待批量写入的上报
 }
 
 type snapshot struct {
@@ -113,7 +114,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, captcha: captchaFor(opts)}
+		latest: map[int64]*snapshot{}, counters: c, intervals: map[int64]time.Duration{}, captcha: captchaFor(opts)}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -293,6 +294,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	sid := info(r).principalID
 	// 声明接受 gzip 压缩的上报（RFC 7694）：新版 Agent 看到后才压缩，旧版面板不声明，新旧组合都兼容（设计 6.1）
 	w.Header().Set("Accept-Encoding", "gzip")
+	s.setIntervalHeader(w, sid)
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -707,10 +709,11 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 	s.mu.Unlock()
 	if v.LastSeenAt > 0 && row.EnrollState != enrollPending {
 		age := now.Sub(time.Unix(v.LastSeenAt, 0))
+		online, unknown := statusWindows(reportInterval(row)) // 按节点的采样间隔放宽（设计 22）
 		switch {
-		case age <= onlineWithin:
+		case age <= online:
 			v.Status = "online"
-		case age <= unknownWithin:
+		case age <= unknown:
 			v.Status = "unknown"
 		}
 	}

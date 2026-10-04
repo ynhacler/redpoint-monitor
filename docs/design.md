@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
 | 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
 | 54 | Agent 存活与占用：systemd watchdog（Type=notify、WatchdogSec=120、StartLimitIntervalSec=0）、`refresh-unit` 子命令；GOMAXPROCS 默认 1；/proc 读取复用缓冲区 | 4.2、43.5 |
 | 53 | Agent 时钟偏差：上报新增可选字段 sent_at；默认规则 agent_clock（迁移 19，提示级）；Agent 按响应 Date 头记录 WARN 并在 status 中显示 | 6.2、16.1、43.5 |
@@ -3417,6 +3418,16 @@ Agent   看到声明后才压缩（BestSpeed，压缩器复用，避免每份上
         例如面板回退到旧版本）时关闭压缩并立即改发未压缩的版本，上报不丢弃
 ```
 
+采样间隔（受限配置，设计 1.6.8）：
+
+```text
+面板    Web 编辑节点时可选 5 / 10 / 15 / 30 / 60 秒（servers.report_interval_s，0 为默认 10 秒）；
+        上报响应头 X-Report-Interval 返回该节点的间隔，修改后下一份上报即下发
+Agent   启动时用 --interval（默认 10 秒），之后以面板下发的为准；只接受 5～60 秒，范围外或格式错误时忽略。
+        上限不超过 systemd WatchdogSec（120 秒）的一半，避免主循环喂狗不及时被误判为卡死
+旧版本  旧版面板不返回该头，Agent 保持 --interval；旧版 Agent 忽略该头
+```
+
 ---
 
 ## 6.2 上报示例
@@ -5675,7 +5686,13 @@ Unknown
 Offline
 ```
 
-可配置。
+采样间隔可按节点设置为 5 / 10 / 15 / 30 / 60 秒（见 6.1）。间隔变长时按周期数放宽，取较大者：
+
+```text
+Online    ≤ max(30 秒, 3 个周期)
+Unknown   ≤ max(120 秒, 6 个周期)
+离线告警  阈值至少为 3 个周期（60 秒间隔时偶尔漏一次上报不算离线）
+```
 
 ---
 
