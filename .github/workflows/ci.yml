@@ -87,6 +87,13 @@ jobs:
       - name: Alpine / OpenRC 兼容（设计 28）
         run: scripts/alpine-check.sh
 
+      # 限制内存的容器（LXC / Docker 型小鸡）：采集到的总内存应为容器上限而不是宿主机内存（设计 4.5）
+      - name: 容器内存口径（设计 4.5）
+        run: |
+          CGO_ENABLED=0 go test -c -o /tmp/collector.test ./internal/agent/collector
+          docker run --rm --memory=256m -e VPSMON_EXPECT_MEM_LIMIT=268435456 -v /tmp/collector.test:/collector.test:ro \
+            alpine:3.20 /collector.test -test.run TestLinuxCollect -test.v
+
   design-doc:
     name: 设计文档校验
     runs-on: ubuntu-latest

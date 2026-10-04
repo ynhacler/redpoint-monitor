@@ -45,6 +45,8 @@ type linux struct {
 	bootID    string
 	sensors   cached[[]sensorFile]    // 可信 CPU 温度传感器的文件；VPS 上通常为空，此后每轮不再扫描 /sys
 	wholeDisk cached[map[string]bool] // /proc/diskstats 中的整块磁盘（/sys/block 下存在的设备）
+	cgLimit   cached[cgroupLimit]     // 容器根 cgroup 的内存上限；VM / 物理机为 0，此后每轮不再读取用量（设计 4.5）
+	cgLogged  bool                    // 已记录过“按容器 cgroup 计算内存”的日志
 }
 
 // sensorFile 是一个可信 CPU 温度传感器的读数文件。
@@ -251,7 +253,36 @@ func (c *linux) collectMemory(errs *errorList) (protocol.Memory, protocol.Swap) 
 		c.memEstimate = true
 		log.Println("collect memory: MemAvailable not provided by this kernel, estimating from MemFree + Buffers + Cached")
 	}
+	if lim := c.cgLimit.get(time.Now(), refreshEvery, readCgroupLimit); lim.limit > 0 {
+		inactive, cache := parseCgroupStat(readFile(lim.dir + "/memory.stat"))
+		usage, _ := strconv.ParseUint(strings.TrimSpace(readFile(lim.dir+"/"+lim.usageFile)), 10, 64)
+		var applied bool
+		mem, applied = applyCgroupMemory(mem, cgroupMemory{Limit: lim.limit, Usage: usage, Inactive: inactive, Cache: cache})
+		if applied && !c.cgLogged {
+			c.cgLogged = true
+			log.Printf("collect memory: container memory limit %d MiB is below /proc/meminfo, using cgroup accounting", lim.limit>>20)
+		}
+	}
 	return mem, swapFrom(m)
+}
+
+// cgroupLimit 是容器根 cgroup 的内存上限与读取用量的文件位置。
+type cgroupLimit struct {
+	limit     uint64
+	dir       string // /sys/fs/cgroup（v2）或 /sys/fs/cgroup/memory（v1）
+	usageFile string // memory.current（v2）或 memory.usage_in_bytes（v1）
+}
+
+// readCgroupLimit 读取当前 cgroup 命名空间根的内存上限（设计 4.5）。容器内看到的根就是容器自身的 cgroup；
+// VM 与物理机的根 cgroup 没有 memory.max（v2）或为不限（v1），返回 0。
+func readCgroupLimit() cgroupLimit {
+	if v := parseCgroupLimit(readFile("/sys/fs/cgroup/memory.max")); v > 0 {
+		return cgroupLimit{limit: v, dir: "/sys/fs/cgroup", usageFile: "memory.current"}
+	}
+	if v := parseCgroupLimit(readFile("/sys/fs/cgroup/memory/memory.limit_in_bytes")); v > 0 {
+		return cgroupLimit{limit: v, dir: "/sys/fs/cgroup/memory", usageFile: "memory.usage_in_bytes"}
+	}
+	return cgroupLimit{}
 }
 
 // collectDisks 采集本地块设备文件系统各挂载点的容量（设计 4.6）。读不到挂载表时退回只采集 “/”。
