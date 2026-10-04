@@ -80,7 +80,7 @@
 - [x] 手动校准 traffic_adjustments、校准历史（设计 5.7、18.12）
 - [x] 流量预测：不足 3 天不预测、满 7 天用最近 7 天日均（设计 32）
 - [x] 接口 traffic/current、daily、monthly、calibrate、adjustments（设计 19.8）
-- [ ] 按节点时区的计费日（目前按面板时区）
+- [x] 按节点时区的计费日（迁移 21，改时区只影响之后的流量）
 - [x] 多次校准偏差稳定时提示设置系数；校准以服务商数值为锚点，改系数 / 计费模式不重复修正（设计 5.7）
 - [ ] 预测超限推送：Telegram / Webhook 已由告警规则 traffic_forecast 覆盖，App 推送随阶段 C
 

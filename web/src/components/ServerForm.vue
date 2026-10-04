@@ -42,11 +42,16 @@ const f = reactive({
   traffic_limit_gb: sv?.traffic_limit_bytes ? String(+bytesToGB(sv.traffic_limit_bytes, sv.traffic_unit).toFixed(3)) : '',
   traffic_unit: sv?.traffic_unit ?? 'decimal', traffic_factor: String(sv?.traffic_factor ?? 1),
   traffic_reset_day: String(sv?.traffic_reset_day ?? 1), traffic_count_mode: sv?.traffic_count_mode ?? 'sum',
+  traffic_timezone: sv?.traffic_timezone ?? '',
   price: sv?.price_cents ? (sv.price_cents / 100).toFixed(2) : '', currency: sv?.currency || 'USD',
   billing_period: sv?.billing_period ?? '', expire_date: sv?.expire_date ?? '',
   enroll_ttl: '24h', verify_mode: sv?.verify_mode ?? 'warn',
   report_interval_s: String(sv?.report_interval_s || 10),
 })
+// 常见的服务商计费时区（设计 5.4），也可以输入其他 IANA 时区名
+const commonTimezones = ['UTC', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Seoul',
+  'America/Los_Angeles', 'America/New_York', 'America/Chicago', 'Europe/London', 'Europe/Amsterdam', 'Europe/Berlin',
+  'Europe/Paris', 'Australia/Sydney']
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const submitting = ref(false)
@@ -105,6 +110,7 @@ function buildInput(): CreateServerInput {
     report_interval_s: num(f.report_interval_s),
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
+    traffic_timezone: f.traffic_timezone.trim(),
     traffic_unit: f.traffic_unit as TrafficUnit,
     traffic_factor: num(f.traffic_factor),
     traffic_count_mode: f.traffic_count_mode as CreateServerInput['traffic_count_mode'],
@@ -285,6 +291,15 @@ async function remove() {
         <label>流量重置日
           <input v-model="f.traffic_reset_day" type="number" min="1" max="31" />
           <small v-if="fieldErrors.traffic_reset_day" class="err">{{ fieldErrors.traffic_reset_day }}</small>
+        </label>
+        <!-- 计费时区（设计 5.4）：服务商按自己的时区换月与计日；只影响之后的流量 -->
+        <label>计费时区
+          <input v-model="f.traffic_timezone" list="tz-list" placeholder="留空 = 面板时区" autocomplete="off" />
+          <datalist id="tz-list">
+            <option v-for="tz in commonTimezones" :key="tz" :value="tz" />
+          </datalist>
+          <small v-if="fieldErrors.traffic_timezone" class="err">{{ fieldErrors.traffic_timezone }}</small>
+          <small v-else class="muted">如 America/Los_Angeles；修改后只影响之后的流量</small>
         </label>
         <label>计费模式
           <select v-model="f.traffic_count_mode">

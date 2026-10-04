@@ -91,7 +91,7 @@ async function saveCalibrate() {
     <div class="top">
       <h3>本周期流量</h3>
       <span class="muted small">
-        {{ countModeNames[server.traffic_count_mode] ?? server.traffic_count_mode }} · 每月 {{ server.traffic_reset_day }} 日重置
+        {{ countModeNames[server.traffic_count_mode] ?? server.traffic_count_mode }} · 每月 {{ server.traffic_reset_day }} 日重置<template v-if="server.traffic_timezone">（{{ server.traffic_timezone }}）</template>
         <template v-if="t.factor !== 1"> · 系数 {{ t.factor }}</template>
       </span>
     </div>

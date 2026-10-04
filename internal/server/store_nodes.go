@@ -53,6 +53,7 @@ type NodeInput struct {
 	Country          string  // ISO 3166-1 两位代码（大写）
 	BandwidthMbps    int     // 标称带宽，Mbps；0 = 未填
 	ReportIntervalS  int     // 采样间隔，秒；0 = 默认
+	TrafficTimezone  string  // 计费时区（IANA），空 = 面板时区
 	Unit             string  // decimal / binary（设计 5.8）
 	Factor           float64 // 统计系数（设计 5.7）
 	LimitBytes       int64   // 月流量额度，字节；0 = 不限
@@ -85,12 +86,12 @@ func (s *Store) CreatePendingServer(in NodeInput, code newCode, now time.Time) (
 	res, err := tx.Exec(`INSERT INTO servers (name, enroll_state, expected_hostname, expected_ipv4, expected_ipv6,
 			verify_mode, group_name, note, provider, plan, region, traffic_limit_bytes, traffic_reset_day,
 			traffic_count_mode, price_cents, currency, billing_period, expire_date, created_at, updated_at, country,
-			traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		in.Name, enrollPending, in.ExpectedHostname, in.ExpectedIPv4, in.ExpectedIPv6, in.VerifyMode,
 		in.Group, in.Note, in.Provider, in.Plan, in.Region, in.LimitBytes, in.ResetDay, in.CountMode,
 		in.PriceCents, in.Currency, in.BillingPeriod, in.ExpireDate, now.Unix(), now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps,
-		in.ReportIntervalS)
+		in.ReportIntervalS, in.TrafficTimezone)
 	if isUniqueName(err) {
 		return 0, errNameTaken
 	}
@@ -116,10 +117,10 @@ func (s *Store) UpdateServer(id int64, in NodeInput, now time.Time) error {
 			verify_mode = ?, group_name = ?, note = ?, provider = ?, plan = ?, region = ?, traffic_limit_bytes = ?,
 			traffic_reset_day = ?, traffic_count_mode = ?, price_cents = ?, currency = ?, billing_period = ?,
 			expire_date = ?, updated_at = ?, country = ?, traffic_unit = ?, traffic_factor = ?, bandwidth_mbps = ?,
-			report_interval_s = ? WHERE id = ?`,
+			report_interval_s = ?, traffic_timezone = ? WHERE id = ?`,
 		in.Name, in.ExpectedHostname, in.ExpectedIPv4, in.ExpectedIPv6, in.VerifyMode, in.Group, in.Note,
 		in.Provider, in.Plan, in.Region, in.LimitBytes, in.ResetDay, in.CountMode, in.PriceCents, in.Currency,
-		in.BillingPeriod, in.ExpireDate, now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps, in.ReportIntervalS, id)
+		in.BillingPeriod, in.ExpireDate, now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps, in.ReportIntervalS, in.TrafficTimezone, id)
 	if isUniqueName(err) {
 		return errNameTaken
 	}
@@ -363,7 +364,7 @@ func splitIP(ip string) (string, string) {
 const serverColumns = `id, name, traffic_limit_bytes, traffic_reset_day, traffic_count_mode, last_seen_at,
 	enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, hostname, ipv4, ipv6,
 	machine_id_hash, enrolled_at, group_name, note, provider, plan, region, price_cents, currency,
-	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s`
+	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -373,7 +374,7 @@ func scanServer(row scanner) (*ServerRow, error) {
 		&r.EnrollState, &r.ExpectedHostname, &r.ExpectedIPv4, &r.ExpectedIPv6, &r.VerifyMode, &r.Hostname,
 		&r.IPv4, &r.IPv6, &r.MachineIDHash, &r.EnrolledAt, &r.Group, &r.Note, &r.Provider, &r.Plan, &r.Region,
 		&r.PriceCents, &r.Currency, &r.BillingPeriod, &r.ExpireDate, &r.CreatedAt, &r.Country, &r.TrafficUnit, &r.TrafficFactor,
-		&r.BandwidthMbps, &r.ReportIntervalS)
+		&r.BandwidthMbps, &r.ReportIntervalS, &r.TrafficTimezone)
 	return &r, err
 }
 

@@ -132,6 +132,8 @@ export interface ServerView {
   expire_date: string
   traffic_limit_bytes: number
   traffic_reset_day: number
+  /** 计费时区（IANA）；空表示面板时区（设计 5.4） */
+  traffic_timezone: string
   traffic_count_mode: 'sum' | 'rx' | 'tx' | 'max'
   /** 计量单位口径（设计 5.8） */
   traffic_unit: TrafficUnit
@@ -351,6 +353,7 @@ export interface CreateServerInput {
   traffic_factor?: number
   /** 流量重置日 1～31 */
   traffic_reset_day?: number
+  traffic_timezone?: string
   traffic_count_mode?: 'sum' | 'rx' | 'tx' | 'max'
   /** 续费价格 */
   price?: number

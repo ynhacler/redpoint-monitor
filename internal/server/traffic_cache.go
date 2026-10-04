@@ -25,7 +25,8 @@ type trafficCache struct {
 
 // trafficKey 是影响流量计算结果的节点设置。
 func trafficKey(row ServerRow) string {
-	return fmt.Sprintf("%d|%s|%g|%d|%s", row.ResetDay, row.CountMode, row.TrafficFactor, row.LimitBytes, row.TrafficUnit)
+	return fmt.Sprintf("%d|%s|%g|%d|%s|%s", row.ResetDay, row.CountMode, row.TrafficFactor, row.LimitBytes, row.TrafficUnit,
+		row.TrafficTimezone)
 }
 
 // trafficCached 返回 10 秒内计算过的本周期流量；没有、过期或节点设置已变时重新计算。

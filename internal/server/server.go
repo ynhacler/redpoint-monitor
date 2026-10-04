@@ -71,7 +71,7 @@ type Server struct {
 	mu        sync.Mutex
 	latest    map[int64]*snapshot           // 各节点最新上报，实时读取只走内存，不查数据库（设计 3.5）
 	counters  map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
-	intervals map[int64]time.Duration       // 各节点的采样间隔缓存，避免每份上报都查库；节点修改后清除
+	nodeConfs map[int64]nodeConf // 各节点的采样间隔与计费时区缓存，避免每份上报都查库；节点修改后清除（interval.go）
 	traffic   trafficCache                  // 本周期流量的短期缓存（traffic_cache.go）
 	pending   []pendingWrite                // 等待批量写入的上报
 }
@@ -93,6 +93,7 @@ type pendingWrite struct {
 	counters map[string]Counter
 	// trafficOnly：超过补发期限的旧上报只计流量，不写历史指标点（设计 1.6.14）
 	trafficOnly bool
+	loc         *time.Location // 节点的计费时区，决定流量归入哪一天（设计 5.4）
 }
 
 // New 创建面板服务：从数据库恢复各网卡的上一次计数，保证重启面板后流量增量连续（设计 5.5）。
@@ -115,7 +116,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, intervals: map[int64]time.Duration{}, captcha: captchaFor(opts)}
+		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts)}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -295,7 +296,8 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	sid := info(r).principalID
 	// 声明接受 gzip 压缩的上报（RFC 7694）：新版 Agent 看到后才压缩，旧版面板不声明，新旧组合都兼容（设计 6.1）
 	w.Header().Set("Accept-Encoding", "gzip")
-	s.setIntervalHeader(w, sid)
+	conf, confOK := s.nodeConfOf(sid)
+	s.setIntervalHeader(w, conf, confOK)
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -313,7 +315,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	at, _, old := pointTime(rep, now)
-	s.ingest(sid, rep, at, now, old)
+	s.ingest(sid, rep, at, now, old, conf.loc)
 	// 时钟偏差由告警引擎按“Agent 时钟偏差”规则评估（设计 16.1），这里只记录测量值
 	if skew, ok := clockSkew(rep, now); ok {
 		s.mu.Lock()
@@ -410,7 +412,7 @@ func clockSkew(rep protocol.Report, now time.Time) (float64, bool) {
 // ingest 把一份上报写入内存状态并排队等待批量写库。at 为指标点时间，now 为收到时间。
 // 补发的旧数据不会覆盖更新的实时状态；同一时间点重复上报在写库时覆盖（主键去重），
 // 流量增量为 0，不会重复计算。trafficOnly 的上报只更新网卡计数与流量，不改实时状态、不写指标点。
-func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, trafficOnly bool) {
+func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, trafficOnly bool, loc *time.Location) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -433,7 +435,7 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 	if s.counters[sid] == nil {
 		s.counters[sid] = map[string]*Counter{}
 	}
-	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}, trafficOnly: trafficOnly}
+	pw := pendingWrite{serverID: sid, at: at, seen: now, rep: rep, counters: map[string]Counter{}, trafficOnly: trafficOnly, loc: loc}
 	// 乱序补发仍写入历史指标，但不能回退累计计数基线，否则后续上报会重复计费。
 	for _, ni := range rep.Network {
 		if stale {
@@ -548,10 +550,14 @@ func (s *Server) flush() {
 			}
 		}
 		if p.rx > 0 || p.tx > 0 {
-			// 按面板本地时区划分日期。TODO(A4): 按节点设置计费时区（设计 1.2.4）。
+			// 按节点的计费时区划分日期（设计 5.4）；未设置时为面板本地时区
+			day := p.at
+			if p.loc != nil {
+				day = day.In(p.loc)
+			}
 			if _, err := tx.Exec(`INSERT INTO traffic_daily (server_id, day, rx, tx) VALUES (?,?,?,?)
 				ON CONFLICT(server_id, day) DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx`,
-				p.serverID, p.at.Format("2006-01-02"), p.rx, p.tx); err != nil {
+				p.serverID, day.Format("2006-01-02"), p.rx, p.tx); err != nil {
 				s.log.Error("flush traffic failed", "component", "store", "err", err)
 				return
 			}

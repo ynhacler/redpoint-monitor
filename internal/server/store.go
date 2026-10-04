@@ -450,6 +450,10 @@ var migrations = []string{
 
 	// 迁移 20：节点的采样（上报）间隔，秒；0 表示默认 10 秒（设计 4.2、6.1）
 	`ALTER TABLE servers ADD COLUMN report_interval_s INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 21：节点的计费时区（IANA 名称，如 America/Los_Angeles）；空表示面板本地时区（设计 5.4）。
+	// 只影响之后写入的每日流量：已有的按天汇总不重新划分。
+	`ALTER TABLE servers ADD COLUMN traffic_timezone TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
@@ -552,7 +556,9 @@ type ServerRow struct {
 	Country       string `json:"country"`        // ISO 3166-1 两位代码（大写），空表示未填
 	BandwidthMbps int    `json:"bandwidth_mbps"` // 服务商标称带宽（端口速率），Mbps；0 表示未填
 	// ReportIntervalS 是采样（上报）间隔，秒；0 表示默认 10 秒（设计 4.2、6.1）
-	ReportIntervalS int     `json:"report_interval_s"`
+	ReportIntervalS int `json:"report_interval_s"`
+	// TrafficTimezone 是计费时区（IANA 名称）；空表示面板本地时区（设计 5.4）
+	TrafficTimezone string  `json:"traffic_timezone"`
 	TrafficUnit     string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
 	TrafficFactor   float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
 	PriceCents      int64   `json:"price_cents"`    // 续费价格 × 100
