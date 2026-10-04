@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // 节点安装命令页（设计 27.3.4）：展示命令，并等待主机注册结果。
-// TODO(B): 改为 WebSocket 事件 server.enrolled 实时更新（设计 19.11、20），目前每 3 秒轮询一次。
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+// 注册结果由 WebSocket 事件 server.enrolled 实时推送（设计 19.11、20）；实时连接断开时退回每 3 秒轮询，
+// 连接正常时每 30 秒兜底刷新一次（注册码过期等状态变化没有事件）。
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   errorText, getInstallCommand, regenerateEnrollCode, syncReleases, UnauthorizedError, type EnrollCodeView,
 } from '../api'
 import { fmtTime } from '../format'
+import { connected, subscribe } from '../ws'
 import CommandBlock from './CommandBlock.vue'
 import StatusDot from './StatusDot.vue'
 
@@ -61,7 +63,9 @@ const expiresText = computed(() => {
   return at ? new Date(at * 1000).toLocaleString() : ''
 })
 
+let lastRefresh = 0
 async function refresh() {
+  lastRefresh = Date.now()
   try {
     const v = await getInstallCommand(props.serverId)
     view.value = v
@@ -74,9 +78,13 @@ async function refresh() {
   }
 }
 
+// 等待注册期间：实时连接正常时只做 30 秒一次的兜底刷新，断开时每 3 秒轮询
+function tick() {
+  if (!connected.value || Date.now() - lastRefresh >= 30_000) refresh()
+}
 function start() {
   stop()
-  timer = window.setInterval(refresh, 3000)
+  timer = window.setInterval(tick, 3000)
 }
 function stop() {
   if (timer) window.clearInterval(timer)
@@ -98,11 +106,22 @@ async function regenerate() {
   }
 }
 
+// 收到本节点的注册事件立即刷新；重新连上时也补一次（断线期间的事件不补发）
+const unsubscribe = subscribe('server.enrolled', (ev) => {
+  if (ev.server_id === props.serverId && timer) refresh()
+})
+watch(connected, (on) => {
+  if (on && timer) refresh()
+})
+
 onMounted(() => {
   if (!view.value) refresh()
   start()
 })
-onUnmounted(stop)
+onUnmounted(() => {
+  stop()
+  unsubscribe()
+})
 </script>
 
 <template>

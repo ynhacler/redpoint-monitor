@@ -125,6 +125,7 @@ func (s *Server) serveUntil(ctx context.Context, errc chan error, servers ...*ht
 	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	s.ws.closeAll() // Shutdown 不管已接管的连接：WebSocket 单独关闭，页面会自动重连
 	for _, srv := range servers {
 		_ = srv.Shutdown(shutdown)
 	}

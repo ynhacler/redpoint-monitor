@@ -65,13 +65,14 @@ type Server struct {
 	noise         *alertNoise // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
 	quiet         *quietState // 免打扰时段（设计 16.5）
 	routeTable    []routeSpec // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+	ws            *wsHub      // WebSocket 事件推送（设计 20）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
 	mu        sync.Mutex
 	latest    map[int64]*snapshot           // 各节点最新上报，实时读取只走内存，不查数据库（设计 3.5）
 	counters  map[int64]map[string]*Counter // 各节点各网卡上一次的内核累计计数（设计 5.5）
-	nodeConfs map[int64]nodeConf // 各节点的采样间隔与计费时区缓存，避免每份上报都查库；节点修改后清除（interval.go）
+	nodeConfs map[int64]nodeConf            // 各节点的采样间隔与计费时区缓存，避免每份上报都查库；节点修改后清除（interval.go）
 	traffic   trafficCache                  // 本周期流量的短期缓存（traffic_cache.go）
 	pending   []pendingWrite                // 等待批量写入的上报
 }
@@ -116,7 +117,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts)}
+		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, captcha: captchaFor(opts), ws: newWSHub()}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -209,6 +210,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
 	handle("GET /api/v1/auth/sessions", accessAdmin, s.handleSessions)
 	handle("DELETE /api/v1/auth/sessions/{id}", accessAdmin, s.handleRevokeSession)
+	// 实时事件（设计 20）：只推送，不接收指令
+	handle("GET /ws", accessAdmin, s.handleWS)
 
 	// Agent（设计 19.10）
 	handle("POST /api/v1/agent/enroll", accessEnroll, s.handleEnroll)

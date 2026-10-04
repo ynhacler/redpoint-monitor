@@ -134,6 +134,9 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if res.Warnings == nil {
 		res.Warnings = []string{}
 	}
+	// 通知正在显示安装命令的页面（设计 19.11）；不含 Token
+	s.ws.publish(wsEvent{Type: evServerEnrolled, ServerID: res.ServerID,
+		Data: map[string]any{"server_name": res.ServerName, "warnings": res.Warnings}})
 	writeJSON(w, enrollResponse{ServerID: res.ServerID, ServerName: res.ServerName, AgentToken: res.Token, Warnings: res.Warnings})
 }
 

@@ -531,6 +531,20 @@ export interface Report {
   }
 }
 
+/** WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type */
+export interface WsEvent {
+  /** server.enrolled：主机已用注册码注册（设计 19.11） */
+  type: 'server.enrolled'
+  server_id?: number
+  /** 事件时间，Unix 秒 */
+  ts: number
+  /** server.enrolled：{server_name, warnings}；不含任何凭证 */
+  data?: {
+    server_name?: string
+    warnings?: string[]
+  }
+}
+
 export interface MetricPoint {
   /** 桶起点，Unix 秒 */
   ts: number
@@ -653,6 +667,12 @@ export interface Paths {
       params: {
         id: number
       }
+      response: void
+    }
+  }
+  '/ws': {
+    /** 实时事件（WebSocket，设计 20）；面板只推送，不接收指令 */
+    get: {
       response: void
     }
   }

@@ -30,6 +30,8 @@ type reqInfo struct {
 	// Web 管理员的会话与令牌（仅 admin 主体）；令牌只用于派生 CSRF，不记录日志
 	session      *session
 	sessionToken string
+	// hijacked：连接已被接管（WebSocket），日志记为 101，持续时间是连接时长而不是慢请求
+	hijacked bool
 }
 
 type ctxKey struct{}
@@ -118,6 +120,9 @@ func (s *Server) logRequest(r *http.Request, ri *reqInfo, status int, dur time.D
 	if status == 0 {
 		status = http.StatusOK
 	}
+	if ri.hijacked {
+		status = http.StatusSwitchingProtocols
+	}
 	route := r.Pattern // 例如 "GET /api/v1/servers/{id}/metrics"；未匹配时为空
 	if route == "" {
 		route = r.Method + " (unmatched)"
@@ -126,7 +131,7 @@ func (s *Server) logRequest(r *http.Request, ri *reqInfo, status int, dur time.D
 	switch {
 	case status >= 500:
 		level = slog.LevelError
-	case status == http.StatusUnauthorized || dur > slowRequest:
+	case status == http.StatusUnauthorized || (dur > slowRequest && !ri.hijacked):
 		// 认证失败可能是攻击或配置错误；慢请求说明面板有压力（设计 24.4、24.6）
 		level = slog.LevelWarn
 	case ri.principal == "agent" && status < 300:
