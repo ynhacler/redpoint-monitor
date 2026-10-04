@@ -79,6 +79,11 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		ri := &reqInfo{id: newRequestID()}
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, ri))
 		w.Header().Set("X-Request-ID", ri.id)
+		if r.TLS != nil {
+			// 面板直接提供 HTTPS（内置 HTTPS，设计 25）时要求浏览器以后只用 HTTPS 访问；
+			// 在反向代理后面时由代理决定，这里不加
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		if wantsGzip(r) {
 			gz := &gzipWriter{ResponseWriter: w}
 			defer gz.close() // 最后执行：panic 时下面写出的错误响应也会被完整压缩

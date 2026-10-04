@@ -336,6 +336,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 66 | 内置 HTTPS：--domain（autocert，仅限指定域名，证书缓存 DATA/certs）、:80 重定向与 HTTP-01、TLS 1.2 起、HSTS；systemd drop-in 只授予 CAP_NET_BIND_SERVICE；新增依赖 golang.org/x/net（autocert 所需） | 25、23.1 |
 | 65 | 节点计费时区（迁移 21，traffic_timezone）：流量按节点时区归日，周期与汇总按该时区计算；内嵌 time/tzdata | 5.4 |
 | 64 | vpsmon-server backup（VACUUM INTO 在线备份、--keep）/ restore（数据目录锁、校验、保留旧库、沿用属主）/ diag（只含汇总、日志脱敏与 IP 掩码）；run 持有数据目录锁 | 24.10、25 |
 | 63 | 扩展指标（新增 4.10）：系统活动、vmstat、PSI、meminfo 细项、TCP 重传与建连、文件句柄、conntrack、时钟同步、运行环境、网卡包数与错误、inode、IO 队列深度；extra 每分钟附带一次；修复 OpenAPI 中两处无法解析的 YAML 并在 CI 检查 | 4.10、19.0.1 |
@@ -6145,6 +6146,17 @@ monitor-server run  --data /var/lib/monitor-server --domain monitor.example.com
 ```
 
 `--domain` 启用内置自动 HTTPS（ACME）。已有反向代理时省略该参数，监听本地端口即可。
+
+内置 HTTPS 的实现：
+
+```text
+证书      golang.org/x/crypto/acme/autocert，默认 Let's Encrypt；只为 --domain 列出的域名申请（其他 SNI 拒绝，
+          避免被利用耗尽申请配额）；缓存在 DATA/certs（0700），重启不重复申请；使用 --domain 即同意 CA 的服务条款
+监听      :443 HTTPS（TLS 1.2 起，亦完成 TLS-ALPN-01）；:80 完成 HTTP-01，其余请求 308 重定向到 HTTPS（--http-listen "" 关闭）
+其他      直接提供 HTTPS 时加 HSTS（反向代理后面时由代理决定）；未指定 --public-url 时安装命令使用 https://第一个域名；
+          --acme-email 联系邮箱，--acme-directory 可指定 staging 等其他 ACME 服务
+systemd   以非 root 运行，用 drop-in（deploy/systemd/vpsmon-server-https.conf）只授予 CAP_NET_BIND_SERVICE 以绑定 80 / 443
+```
 
 数据目录：
 

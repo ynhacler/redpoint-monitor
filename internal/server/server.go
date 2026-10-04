@@ -126,31 +126,28 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 
 // Run starts background loops and the HTTP server; blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context, listen string) error {
+	s.startBackground(ctx)
+	srv := &http.Server{
+		Addr:              listen,
+		Handler:           s.routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	errc := make(chan error, 1)
+	go func() {
+		s.log.Info("listening", "component", "http", "addr", listen)
+		errc <- srv.ListenAndServe()
+	}()
+	return s.serveUntil(ctx, errc, srv)
+}
+
+// startBackground 启动批量写入、维护、告警与版本同步等后台任务。
+func (s *Server) startBackground(ctx context.Context) {
 	go s.flushLoop(ctx)
 	go s.runTask(ctx, "maintenance", s.maintenance)
 	go s.runTask(ctx, "alerts", s.alertLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
-
-	srv := &http.Server{
-		Addr:              listen,
-		Handler:           s.routes(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdown)
-	}()
-	s.log.Info("listening", "component", "http", "addr", listen)
-	err := srv.ListenAndServe()
-	s.flush() // persist what is buffered
-	if err == http.ErrServerClosed {
-		return nil
-	}
-	return err
 }
 
 // access 是路由允许的主体（设计 17.1、17.2）。
