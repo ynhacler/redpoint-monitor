@@ -512,6 +512,43 @@ export function getHistory(id: number, range: HistoryRange): Promise<HistoryView
 }
 
 /** 最近 days 天的每日流量，按日期升序，无数据的日期为 0（设计 19.8） */
+/** 一个计费周期的流量（设计 19.8）；used 含系数与该周期的校准 */
+export interface TrafficCycle {
+  cycle_start: string
+  /** 下一周期开始日（不含） */
+  cycle_end: string
+  rx: number
+  tx: number
+  adjustment: number
+  used: number
+  /** 字节，0 表示不限；历史周期按当前额度计算 */
+  limit: number
+}
+
+/** 获取最近 cycles 个计费周期的流量，最新在前 */
+export async function getTrafficMonthly(id: number, cycles = 12): Promise<TrafficCycle[]> {
+  return (await request<ListPage<TrafficCycle>>('GET', `/servers/${id}/traffic/monthly?cycles=${cycles}`)).items
+}
+
+/** 一条手动校准记录（设计 5.7、18.12） */
+export interface TrafficAdjustment {
+  id: number
+  cycle_start: string
+  /** 校准时的统计值（已乘系数） */
+  measured_bytes: number
+  /** 填写的服务商数值 */
+  reported_bytes: number
+  /** 校准时的偏差 = 服务商数值 − 统计值 */
+  adjustment_bytes: number
+  note: string
+  created_at: number
+}
+
+/** 获取校准历史（最近 50 条，最新在前） */
+export async function getTrafficAdjustments(id: number): Promise<TrafficAdjustment[]> {
+  return (await request<ListPage<TrafficAdjustment>>('GET', `/servers/${id}/traffic/adjustments`)).items
+}
+
 export async function getTrafficDaily(id: number, days = 30): Promise<TrafficDay[]> {
   return (await request<{ items: TrafficDay[] }>('GET', `/servers/${id}/traffic/daily?days=${days}`)).items
 }

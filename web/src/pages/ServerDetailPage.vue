@@ -11,6 +11,7 @@ import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
+import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
 import { logout, serverById, state } from '../store'
@@ -226,6 +227,7 @@ const charts = computed(() => [
       <!-- 流量 -->
       <section class="section">
         <TrafficCard :server="s" @unauthorized="logout" />
+        <TrafficHistory :server="s" class="section-tight" @unauthorized="logout" />
       </section>
 
       <!-- 告警记录（设计 16） -->
