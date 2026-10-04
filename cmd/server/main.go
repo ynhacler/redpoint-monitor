@@ -4,12 +4,17 @@
 //	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
 //	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
 //	vpsmon-server run         --data DIR --listen ADDR [--log-format json|text] [--log-level info]
+//	vpsmon-server backup      --data DIR [--out FILE] [--keep N]   在线备份（设计 25）
+//	vpsmon-server restore     --data DIR --from FILE               离线恢复，须先停止面板
+//	vpsmon-server diag        --data DIR [--out FILE] [--log-file FILE]   生成诊断包（设计 24.10）
 //
 // 【安全】密码与 Token 只在 stdout 输出一次，数据库只保存哈希（设计 23.2、23.4）。
 // 本地 CLI 需要面板主机的 root / 数据目录权限，这是最高信任边界（设计 17.2）。
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"flag"
@@ -18,6 +23,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -44,6 +50,9 @@ usage:
   vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
   vpsmon-server audit      --data DIR [--category login|operation] [--result success|failure] [--action NAME|PREFIX.]
                            [--limit 50] [--json]   view the audit log (newest first)
+  vpsmon-server backup     --data DIR [--out FILE] [--keep N]   online backup (default DATA/backups/monitor-TIME.db)
+  vpsmon-server restore    --data DIR --from FILE   restore a backup (stop the panel first)
+  vpsmon-server diag       --data DIR [--out FILE] [--log-file FILE]   write a local diagnostics bundle (nothing is uploaded)
   vpsmon-server version
 `, version)
 	os.Exit(2)
@@ -126,6 +135,66 @@ func main() {
 		fmt.Fprintf(os.Stderr, "server %q created (id %d) — agent token (shown once):\n", *name, id)
 		fmt.Println(tok)
 
+	case "backup":
+		// 在线备份：不停服务，不运行迁移（设计 25）
+		out := fsx.String("out", "", "backup file (default: DATA/backups/monitor-YYYYMMDD-HHMMSS.db)")
+		keep := fsx.Int("keep", 0, "with the default location, keep only the newest N backups (0 = keep all)")
+		_ = fsx.Parse(args)
+		path := *out
+		if path == "" {
+			path = server.DefaultBackupPath(*data, time.Now())
+		}
+		info, err := server.Backup(*data, path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("✓ backup written: %s (%d bytes, schema %d, %d servers)\n", info.Path, info.Size, info.SchemaVersion, info.Servers)
+		fmt.Println("  contains password and token hashes and notification secrets: store it like a credential (mode 0600)")
+		if *out == "" && *keep > 0 {
+			removed, err := server.PruneBackups(filepath.Join(*data, "backups"), *keep)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, f := range removed {
+				fmt.Println("  removed old backup", f)
+			}
+		}
+
+	case "restore":
+		from := fsx.String("from", "", "backup file to restore")
+		_ = fsx.Parse(args)
+		if *from == "" {
+			fmt.Fprintln(os.Stderr, "--from is required; backups in the default location:")
+			for _, f := range server.BackupsIn(filepath.Join(*data, "backups")) {
+				fmt.Fprintln(os.Stderr, "  "+f)
+			}
+			os.Exit(2)
+		}
+		prev, err := server.Restore(*data, *from, time.Now())
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("✓ restored %s\n", *from)
+		if prev != "" {
+			fmt.Printf("  previous database kept as %s (delete it once the panel works)\n", prev)
+		}
+		fmt.Println("  start the panel again, e.g. systemctl start vpsmon-server; newer migrations run automatically")
+
+	case "diag":
+		out := fsx.String("out", "", "bundle path (default: ./vpsmon-diag-YYYYMMDD-HHMMSS.tar.gz)")
+		logFile := fsx.String("log-file", "", "read logs from this file instead of journalctl")
+		_ = fsx.Parse(args)
+		now := time.Now()
+		path := *out
+		if path == "" {
+			path = "vpsmon-diag-" + now.Format("20060102-150405") + ".tar.gz"
+		}
+		if err := writeDiag(path, server.Diagnose(*data, version, recentLogs(*logFile), now)); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("✓ diagnostics bundle written: %s\n", path)
+		fmt.Println("  nothing was uploaded; credentials are removed and IPs masked — review it before attaching to an issue")
+
 	case "run":
 		listen := fsx.String("listen", "127.0.0.1:8080", "listen address")
 		logFormat := fsx.String("log-format", "json", "log format: json or text (design 24.3)")
@@ -145,6 +214,13 @@ func main() {
 		}
 		slog.SetDefault(logger)
 		warnIfPublic(logger, *listen)
+		// 运行期间锁定数据目录：restore 据此拒绝在面板运行时替换数据库；同一数据目录也不能启动两个面板
+		unlock, err := server.LockDataDir(*data)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "✗ "+err.Error()) // 此时 log 已接到 slog（INFO 级别），直接写 stderr 更清楚
+			os.Exit(1)
+		}
+		defer unlock()
 		st := open(*data)
 		schema, err := st.SchemaVersion()
 		if err != nil {
@@ -262,4 +338,48 @@ func printAudit(st *server.Store, q server.AuditQuery, asJSON bool) {
 			l.Result, actor, l.Action, target, l.ClientIP, details)
 	}
 	_ = tw.Flush()
+}
+
+// recentLogs 返回最近 1000 行日志：指定文件时取其末尾，否则尝试 journalctl（systemd 部署，设计 24.3）。读不到时返回空。
+func recentLogs(file string) string {
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return ""
+		}
+		lines := strings.Split(string(b), "\n")
+		if len(lines) > 1000 {
+			lines = lines[len(lines)-1000:]
+		}
+		return strings.Join(lines, "\n")
+	}
+	out, err := exec.Command("journalctl", "-u", "vpsmon-server", "-n", "1000", "--no-pager", "-o", "cat").Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// writeDiag 把诊断包写成 tar.gz（0600，不覆盖已有文件）。
+func writeDiag(path string, files []server.DiagFile) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	now := time.Now()
+	for _, df := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: "vpsmon-diag/" + df.Name, Mode: 0o600, Size: int64(len(df.Data)), ModTime: now}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(df.Data); err != nil {
+			return err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	return gz.Close()
 }

@@ -336,6 +336,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 64 | vpsmon-server backup（VACUUM INTO 在线备份、--keep）/ restore（数据目录锁、校验、保留旧库、沿用属主）/ diag（只含汇总、日志脱敏与 IP 掩码）；run 持有数据目录锁 | 24.10、25 |
 | 63 | 扩展指标（新增 4.10）：系统活动、vmstat、PSI、meminfo 细项、TCP 重传与建连、文件句柄、conntrack、时钟同步、运行环境、网卡包数与错误、inode、IO 队列深度；extra 每分钟附带一次；修复 OpenAPI 中两处无法解析的 YAML 并在 CI 检查 | 4.10、19.0.1 |
 | 62 | Agent 首次上报在预采样 1 秒后发出（约 10 秒 → 2 秒）；构建加 -trimpath（不嵌入本机路径，可复现构建）；说明二进制体积构成 | 4.2、29.7 |
 | 61 | 节点列表：响应 gzip 压缩（认证接口除外），500 个节点时 680 KB → 52 KB；本周期流量 10 秒缓存，列表 p50 51 → 16 ms；压测工具统计响应大小 | 3.2 |
@@ -6120,6 +6121,11 @@ monitor-agent doctor --bundle   生成 Agent 诊断包
 
 诊断包保存在本地，由用户自行决定是否附加到 GitHub Issue，程序不自动上传。
 
+`vpsmon-server diag` 已实现（tar.gz，0600）：README、版本与系统、数据库统计（文件大小、页数、quick_check、各表行数）、
+节点与配置概况（只有数量：节点、待安装、活动告警、通知渠道按类型、已同步的 Agent 版本、已修改的设置项名称）、
+最近 1000 行日志（journalctl，或 --log-file）。诊断包可能被公开：不含节点名、主机名、IP、通知渠道地址与凭证；
+日志经脱敏函数去除凭证，IPv4 掩码为前两段、IPv6 只保留第一组。Agent 的 doctor --bundle 尚未实现。
+
 ---
 
 # 25. 服务部署
@@ -6172,6 +6178,19 @@ systemd：安装器自动生成 monitor-server.service，以非 root 用户运�
 ```bash
 monitor-server backup --out /path/backup-20261002.db   # 在线备份，不停服务
 monitor-server restore --from /path/backup-20261002.db
+```
+
+实现：
+
+```text
+backup    VACUUM INTO 生成一致的快照（含 WAL 中已提交的数据），不停服务；直接打开数据库文件、不运行迁移，
+          命令行与运行中的面板版本不同也不会修改数据库。默认写入 DATA/backups/monitor-YYYYMMDD-HHMMSS.db，
+          --keep N 只保留最近 N 份；写入后校验。文件 0600：含密码哈希、Token 哈希与通知渠道密钥
+restore   面板运行时持有数据目录锁（DATA/.lock，flock，进程退出即释放），restore 拿不到锁就拒绝；
+          先校验备份（完整性检查、是本面板的数据库、数据库版本不高于本程序），当前数据库合并 WAL 后保留为
+          monitor.db.before-restore-时间戳，再原子替换；新文件沿用原数据库的属主（restore 常以 root 执行）。
+          恢复较旧版本的备份后，下次启动自动运行后续迁移
+同一数据目录不能同时运行两个面板（同一把锁）
 ```
 
 ---
