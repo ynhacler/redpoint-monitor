@@ -18,6 +18,12 @@ docker run --rm -v "$work:/w:ro" "$image" sh -euc '
   cat /etc/alpine-release | sed "s/^/alpine /"
   /w/collector.test -test.run TestLinuxCollect -test.v
   apk add --no-cache openrc >/dev/null
-  mkdir -p /run/openrc && touch /run/openrc/softlevel
+  # 容器里的 OpenRC 没有经过开机初始化：补上 /run/openrc 的状态目录（缺少 exclusive 时 rc-service 误报
+  # “already starting”），并声明运行在容器中
+  sed -i "s/^#*rc_sys=.*/rc_sys=\"docker\"/" /etc/rc.conf
+  for d in exclusive started starting stopping inactive wasinactive failed hotplugged daemons options scheduled tmp; do
+    mkdir -p /run/openrc/$d
+  done
+  touch /run/openrc/softlevel
   VPSMON_E2E_OPENRC=1 AGENT_BIN=/w/vpsmon-agent /w/setup.test -test.run OpenRCE2E -test.v
 '
