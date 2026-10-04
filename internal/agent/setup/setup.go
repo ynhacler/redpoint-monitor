@@ -48,8 +48,10 @@ const (
 type Paths struct {
 	Bin      string // /usr/local/bin/vpsmon-agent
 	ConfDir  string // /etc/vpsmon-agent：token 与 env
-	StateDir string // /var/lib/vpsmon-agent：status.json，由 systemd StateDirectory 创建
+	StateDir string // /var/lib/vpsmon-agent：status.json，由 systemd StateDirectory 或 OpenRC 脚本创建
 	Unit     string // /etc/systemd/system/vpsmon-agent.service
+	// InitScript 是 OpenRC 的服务脚本（设计 28）
+	InitScript string // /etc/init.d/vpsmon-agent
 	// 远程升级（设计 29.13）
 	Updater        string // /usr/local/lib/vpsmon-agent/updater：updater 的独立副本，不随远程升级替换
 	UpdaterPath    string // /etc/systemd/system/vpsmon-agent-updater.path
@@ -58,10 +60,11 @@ type Paths struct {
 
 // DefaultPaths 是 Linux 主机上的默认路径。
 var DefaultPaths = Paths{
-	Bin:      "/usr/local/bin/vpsmon-agent",
-	ConfDir:  "/etc/vpsmon-agent",
-	StateDir: "/var/lib/vpsmon-agent",
-	Unit:     "/etc/systemd/system/vpsmon-agent.service",
+	Bin:        "/usr/local/bin/vpsmon-agent",
+	ConfDir:    "/etc/vpsmon-agent",
+	StateDir:   "/var/lib/vpsmon-agent",
+	Unit:       "/etc/systemd/system/vpsmon-agent.service",
+	InitScript: "/etc/init.d/vpsmon-agent",
 
 	Updater:        "/usr/local/lib/vpsmon-agent/updater",
 	UpdaterPath:    "/etc/systemd/system/vpsmon-agent-updater.path",
@@ -79,6 +82,9 @@ func (p Paths) NoRemoteUpgradeFile() string { return filepath.Join(p.ConfDir, "n
 type System interface {
 	IsRoot() bool
 	HasSystemd() bool
+	HasOpenRC() bool
+	// Has 判断命令是否存在（useradd 与 BusyBox adduser 二选一，设计 28）
+	Has(cmd string) bool
 	UserExists(name string) bool
 	// IDs 返回用户的 uid 与 gid。
 	IDs(name string) (uid, gid int, err error)
@@ -163,8 +169,9 @@ func Install(ctx context.Context, o Options) error {
 	if !o.Sys.IsRoot() {
 		return errors.New("需要 root 权限，请使用 sudo 执行")
 	}
-	if !o.Sys.HasSystemd() {
-		return errors.New("未检测到 systemd：目前只支持 systemd 系统（OpenRC 等见设计 27.12，尚未支持）")
+	initSys, err := detectInit(o.Sys)
+	if err != nil {
+		return err
 	}
 	o.Server = strings.TrimRight(strings.TrimSpace(o.Server), "/")
 	if err := ValidateServerURL(o.Server, o.AllowHTTP); err != nil {
@@ -200,10 +207,11 @@ func Install(ctx context.Context, o Options) error {
 		return fmt.Errorf("%w\n已回滚本次安装。注册码在 10 分钟内仍可在本机重试同一命令", cause)
 	}
 	if !o.Sys.UserExists(userName) {
-		if out, err := o.Sys.Run("useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", userName); err != nil {
-			return rollback(fmt.Errorf("创建用户 %s 失败：%v %s", userName, err, out))
+		undoUser, err := createUser(o.Sys)
+		if err != nil {
+			return rollback(err)
 		}
-		undo = append(undo, func() { o.Sys.Run("userdel", userName) })
+		undo = append(undo, undoUser)
 	}
 	_, gid, err := o.Sys.IDs(userName)
 	if err != nil {
@@ -232,22 +240,32 @@ func Install(ctx context.Context, o Options) error {
 		undo = append(undo, func() { os.Remove(p.Bin) })
 	}
 	say("✓ 已安装 %s", p.Bin)
-	if err := os.WriteFile(p.Unit, []byte(unitFile), 0o644); err != nil {
+	svcPath, svcContent, svcMode := serviceFile(p, initSys)
+	if err := os.MkdirAll(filepath.Dir(svcPath), 0o755); err != nil {
+		return rollback(err)
+	}
+	if err := os.WriteFile(svcPath, []byte(svcContent), svcMode); err != nil {
 		return rollback(err)
 	}
 	undo = append(undo, func() {
-		o.Sys.Run("systemctl", "disable", "--now", serviceName)
-		os.Remove(p.Unit)
-		o.Sys.Run("systemctl", "daemon-reload")
+		stopAndDisable(o.Sys, initSys)
+		os.Remove(svcPath)
+		if initSys == initSystemd {
+			o.Sys.Run("systemctl", "daemon-reload")
+		}
 	})
-	if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
-		return rollback(fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out))
+	if initSys == initOpenRC && !o.NoRemoteUpgrade {
+		// 特权 updater 依赖 systemd path 单元（设计 29.13）：OpenRC 上不启用远程升级，改为本机手动升级（设计 27.12）
+		o.NoRemoteUpgrade = true
+		say("! OpenRC 上不支持从面板远程升级；升级请在本机执行 sudo vpsmon-agent upgrade")
 	}
 	if o.NoRemoteUpgrade {
 		if err := writeFile(o.Sys, p.NoRemoteUpgradeFile(), "# 存在时拒绝远程升级（设计 29.13）\n", 0o644, 0); err != nil {
 			return rollback(err)
 		}
-		say("✓ 未启用远程升级（启用：sudo vpsmon-agent enable-remote-upgrade）")
+		if initSys == initSystemd {
+			say("✓ 未启用远程升级（启用：sudo vpsmon-agent enable-remote-upgrade）")
+		}
 	} else {
 		undo = append(undo, func() { removeUpdater(o) })
 		if err := installUpdater(o); err != nil {
@@ -256,8 +274,8 @@ func Install(ctx context.Context, o Options) error {
 		say("✓ 已启用远程升级：只安装官方签名、版本更高的 Agent（关闭：sudo touch %s）", p.NoRemoteUpgradeFile())
 	}
 	started := time.Now()
-	if out, err := o.Sys.Run("systemctl", "enable", "--now", serviceName); err != nil {
-		return rollback(fmt.Errorf("启动服务失败：%v %s", err, out))
+	if err := enableAndStart(o.Sys, initSys); err != nil {
+		return rollback(err)
 	}
 
 	// 4. 等待首次上报（设计 27.6.1 第 8 步）。超时不算失败：服务已安装，可能只是网络慢
@@ -265,7 +283,7 @@ func Install(ctx context.Context, o Options) error {
 		say("✓ 服务已启动，首次上报成功")
 	} else if st != nil && st.LastError != "" {
 		say("! 服务已启动，但上报失败：%s", st.LastError)
-		say("  查看日志：journalctl -u %s -n 50", serviceName)
+		say("  查看日志：%s", logHint(initSys))
 	} else {
 		say("! 服务已启动，尚未确认首次上报；稍后用 vpsmon-agent status 查看")
 	}
@@ -307,7 +325,9 @@ func installUpdater(o Options) error {
 
 func removeUpdater(o Options) {
 	p := o.Paths
-	o.Sys.Run("systemctl", "disable", "--now", "vpsmon-agent-updater.path")
+	if _, err := os.Stat(p.UpdaterPath); err == nil {
+		o.Sys.Run("systemctl", "disable", "--now", "vpsmon-agent-updater.path")
+	}
 	for _, f := range []string{p.UpdaterPath, p.UpdaterService, p.Updater} {
 		os.Remove(f)
 	}
@@ -323,6 +343,9 @@ func EnableRemoteUpgrade(o Options) error {
 	if _, err := os.Stat(o.Paths.tokenFile()); err != nil {
 		return errors.New("本机尚未安装 Agent，请先执行面板中的安装命令")
 	}
+	if installedInit(o.Paths) == initOpenRC {
+		return errors.New("OpenRC 上不支持远程升级（特权 updater 依赖 systemd，设计 27.12）；升级请执行 sudo vpsmon-agent upgrade")
+	}
 	if err := installUpdater(o); err != nil {
 		return err
 	}
@@ -333,7 +356,7 @@ func EnableRemoteUpgrade(o Options) error {
 	return nil
 }
 
-// RefreshUnit 把已安装的 systemd 单元更新为当前二进制内嵌的版本（sudo vpsmon-agent refresh-unit）。
+// RefreshUnit 把已安装的服务文件（systemd 单元或 OpenRC 脚本）更新为当前二进制内嵌的版本（sudo vpsmon-agent refresh-unit）。
 //
 // 单元只在 install 时写入；新版本改进了单元（如 watchdog 存活检测，设计 43.5）时，已安装的节点用它更新。
 // 本机升级（sudo vpsmon-agent upgrade）成功后自动调用。远程升级不调用：updater 不以 root 执行新下载的代码（设计 29.13）。
@@ -343,26 +366,30 @@ func RefreshUnit(o Options) (bool, error) {
 	if !o.Sys.IsRoot() {
 		return false, errors.New("需要 root 权限，请使用 sudo 执行")
 	}
-	cur, err := os.ReadFile(o.Paths.Unit)
-	if errors.Is(err, os.ErrNotExist) {
+	k := installedInit(o.Paths)
+	if k == "" {
 		return false, errors.New("本机尚未安装 Agent 服务，请先执行面板中的安装命令")
 	}
+	path, content, mode := serviceFile(o.Paths, k)
+	cur, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
 	}
-	if string(cur) == unitFile {
+	if string(cur) == content {
 		return false, nil
 	}
-	if err := writeFile(o.Sys, o.Paths.Unit, unitFile, 0o644, 0); err != nil {
+	if err := writeFile(o.Sys, path, content, mode, 0); err != nil {
 		return false, err
 	}
-	if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
-		return false, fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out)
+	if k == initSystemd {
+		if out, err := o.Sys.Run("systemctl", "daemon-reload"); err != nil {
+			return false, fmt.Errorf("systemctl daemon-reload 失败：%v %s", err, out)
+		}
 	}
-	if out, err := o.Sys.Run("systemctl", "restart", serviceName); err != nil {
-		return false, fmt.Errorf("重启服务失败：%v %s", err, out)
+	if err := restartService(o.Sys, k); err != nil {
+		return false, err
 	}
-	fmt.Fprintf(o.Out, "✓ 已更新 %s 并重启服务\n", o.Paths.Unit)
+	fmt.Fprintf(o.Out, "✓ 已更新 %s 并重启服务\n", path)
 	return true, nil
 }
 
@@ -426,8 +453,8 @@ func RotateToken(ctx context.Context, o Options) error {
 	}
 	say("✓ 已从 %s 获取新 Token，节点：%s（旧 Token 已吊销）", server, res.ServerName)
 	started := time.Now()
-	if out, err := o.Sys.Run("systemctl", "restart", serviceName); err != nil {
-		return fmt.Errorf("重启服务失败：%v %s", err, out)
+	if err := restartService(o.Sys, installedInit(p)); err != nil {
+		return err
 	}
 	if _, ok := waitFirstReport(p.statusFile(), started, o.WaitFirst); ok {
 		say("✓ 服务已重启，使用新 Token 上报成功")

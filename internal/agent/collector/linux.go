@@ -4,13 +4,13 @@ package collector
 
 import (
 	"log"
-	"sync"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 

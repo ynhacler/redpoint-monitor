@@ -83,6 +83,10 @@ jobs:
           CGO_ENABLED=0 GOARCH=mips GOMIPS=softfloat go test -c -o /tmp/collector-mips.test ./internal/agent/collector
           qemu-mips /tmp/collector-mips.test -test.skip 'TestLinuxCollect|TestReadFileReusesBuffer|Benchmark'
 
+      # Alpine（musl、BusyBox、OpenRC）容器中：真实采集器集成测试 + OpenRC 安装、运行、卸载（设计 28）
+      - name: Alpine / OpenRC 兼容（设计 28）
+        run: scripts/alpine-check.sh
+
   design-doc:
     name: 设计文档校验
     runs-on: ubuntu-latest
@@ -99,3 +103,5 @@ jobs:
       # runner 自带 shellcheck；检查所有脚本，包括安装脚本模板 agent.sh.in（POSIX sh，设计 27.5）
       - run: shellcheck scripts/*.sh
       - run: shellcheck -s sh scripts/agent.sh.in
+      # OpenRC 服务脚本（设计 28）：变量由 openrc-run 读取，SC2034（未使用的变量）不适用
+      - run: shellcheck -s sh -e SC2034 deploy/openrc/vpsmon-agent

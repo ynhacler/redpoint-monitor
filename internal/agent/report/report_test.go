@@ -347,3 +347,28 @@ func TestPanelInterval(t *testing.T) {
 		}
 	}
 }
+
+// 面板响应很慢时，一轮发送不超过时间预算，剩余的留在队列中（设计 43.5：主循环不能被拖住）。
+func TestFlushBudget(t *testing.T) {
+	old := flushBudget
+	flushBudget = 100 * time.Millisecond
+	defer func() { flushBudget = old }()
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(40 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(slow)
+	defer srv.Close()
+	r := &Reporter{Endpoint: srv.URL, Token: "agt_test", Client: srv.Client(), Logf: func(string, ...any) {}}
+	for i := int64(0); i < 10; i++ {
+		r.Enqueue(protocol.Report{Timestamp: time.Now().Unix() + i})
+	}
+	start := time.Now()
+	r.Flush(context.Background(), false)
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Errorf("一轮发送应在预算内结束：%s", d)
+	}
+	if q := r.Status().Queued; q == 0 || q == 10 {
+		t.Errorf("应发出一部分、其余留在队列中：剩余 %d", q)
+	}
+}

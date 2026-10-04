@@ -18,14 +18,26 @@ import (
 // fakeSystem 记录执行的命令，不修改真实主机。
 type fakeSystem struct {
 	root, systemd bool
+	openrc        bool
+	busybox       bool // 只有 BusyBox 的 adduser / addgroup，没有 useradd（Alpine）
 	users         map[string]bool
 	cmds          []string
 	failOn        string // 执行到包含该字符串的命令时返回错误
 	onEnable      func() // 模拟服务启动后的行为（写 status.json）
 }
 
-func (f *fakeSystem) IsRoot() bool                 { return f.root }
-func (f *fakeSystem) HasSystemd() bool             { return f.systemd }
+func (f *fakeSystem) IsRoot() bool     { return f.root }
+func (f *fakeSystem) HasSystemd() bool { return f.systemd }
+func (f *fakeSystem) HasOpenRC() bool  { return f.openrc }
+func (f *fakeSystem) Has(cmd string) bool {
+	switch cmd {
+	case "useradd", "userdel":
+		return !f.busybox
+	case "adduser", "addgroup", "deluser", "delgroup":
+		return f.busybox
+	}
+	return true
+}
 func (f *fakeSystem) UserExists(n string) bool     { return f.users[n] }
 func (f *fakeSystem) IDs(string) (int, int, error) { return 990, 990, nil }
 func (f *fakeSystem) Chown(string, int, int) error { return nil }
@@ -36,11 +48,11 @@ func (f *fakeSystem) Run(name string, args ...string) (string, error) {
 		return "boom", errors.New("exit status 1")
 	}
 	switch {
-	case strings.HasPrefix(cmd, "useradd"):
+	case strings.HasPrefix(cmd, "useradd"), strings.HasPrefix(cmd, "adduser"):
 		f.users[userName] = true
-	case strings.HasPrefix(cmd, "userdel"):
+	case strings.HasPrefix(cmd, "userdel"), strings.HasPrefix(cmd, "deluser"):
 		delete(f.users, userName)
-	case strings.HasPrefix(cmd, "systemctl enable") && f.onEnable != nil:
+	case (strings.HasPrefix(cmd, "systemctl enable") || strings.HasPrefix(cmd, "rc-service vpsmon-agent start")) && f.onEnable != nil:
 		f.onEnable()
 	}
 	return "", nil
@@ -70,6 +82,7 @@ func testPaths(t *testing.T) (Paths, string) {
 	dir := t.TempDir()
 	p := Paths{Bin: filepath.Join(dir, "bin/vpsmon-agent"), ConfDir: filepath.Join(dir, "etc/vpsmon-agent"),
 		StateDir: filepath.Join(dir, "var/lib/vpsmon-agent"), Unit: filepath.Join(dir, "systemd/vpsmon-agent.service"),
+		InitScript:     filepath.Join(dir, "init.d/vpsmon-agent"),
 		Updater:        filepath.Join(dir, "lib/vpsmon-agent/updater"),
 		UpdaterPath:    filepath.Join(dir, "systemd/vpsmon-agent-updater.path"),
 		UpdaterService: filepath.Join(dir, "systemd/vpsmon-agent-updater.service")}
@@ -128,9 +141,9 @@ func TestInstallSuccess(t *testing.T) {
 	if b, _ := os.ReadFile(p.UpdaterPath); string(b) != updaterPathFile {
 		t.Error("应写入远程升级的 path 单元")
 	}
-	want := []string{"useradd --system --no-create-home --shell /usr/sbin/nologin vpsmon-agent",
-		"systemctl daemon-reload", "systemctl daemon-reload", "systemctl enable --now vpsmon-agent-updater.path",
-		"systemctl enable --now vpsmon-agent"}
+	want := []string{"useradd --system --no-create-home --shell " + nologinShell() + " vpsmon-agent",
+		"systemctl daemon-reload", "systemctl enable --now vpsmon-agent-updater.path",
+		"systemctl daemon-reload", "systemctl enable --now vpsmon-agent"}
 	if strings.Join(sys.cmds, "\n") != strings.Join(want, "\n") {
 		t.Errorf("执行的命令：\n%s\n应为：\n%s", strings.Join(sys.cmds, "\n"), strings.Join(want, "\n"))
 	}

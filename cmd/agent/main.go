@@ -35,6 +35,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -123,8 +124,8 @@ func cmdUpgrade(args []string) int {
 	o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
 		Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, WorkDir: upgrade.RootWorkDir, Out: os.Stdout,
 		ReadStatus: readStatus(p)}
-	// 只有安装了 systemd 服务时才重启并做健康检查；否则替换后由使用者自行重启
-	if _, err := os.Stat(p.Unit); err == nil {
+	// 只有安装了服务（systemd 或 OpenRC）时才重启并做健康检查；否则替换后由使用者自行重启
+	if setup.Installed(setup.Options{}) {
 		o.Restart = restartService
 	}
 	if err := upgrade.Run(context.Background(), o); err != nil {
@@ -135,8 +136,8 @@ func cmdUpgrade(args []string) int {
 	if err := setup.RefreshUpdater(setup.Options{}); err != nil {
 		fmt.Fprintln(os.Stderr, "! 刷新 updater 失败："+err.Error())
 	}
-	// 单元文件内嵌在二进制中：由刚安装的新版本写入它自己的单元（如新增的 watchdog，设计 43.5）
-	if _, err := os.Stat(p.Unit); err == nil {
+	// 服务文件内嵌在二进制中：由刚安装的新版本写入它自己的版本（如新增的 watchdog，设计 43.5）
+	if setup.Installed(setup.Options{}) {
 		cmd := exec.Command(p.Bin, "refresh-unit")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -205,7 +206,7 @@ func cmdEnableRemoteUpgrade() int {
 	return 0
 }
 
-func restartService() error { return exec.Command("systemctl", "restart", "vpsmon-agent").Run() }
+func restartService() error { return setup.RestartInstalled(setup.Options{}) }
 
 func readStatus(p setup.Paths) func() (string, int64, error) {
 	return func() (string, int64, error) {
@@ -265,6 +266,21 @@ func cmdUninstall() int {
 	return 0
 }
 
+// stallLimit：主循环超过这么久没有转动视为卡死。主循环每轮最长约为采样间隔上限（60 秒）
+// 加一次发送的时间预算与请求超时；取 3 分钟，systemd 下 WatchdogSec=120 会先生效。
+const stallLimit = 3 * time.Minute
+
+// stallGuard 每 15 秒检查一次主循环；卡住超过 limit 时记录原因并退出，由 systemd / supervise-daemon 重启（设计 43.5）。
+// 未发出的上报已按设计 1.6.14 定期落盘，重启后继续补发。
+func stallGuard(last *atomic.Int64, limit time.Duration) {
+	for range time.Tick(15 * time.Second) {
+		if d := time.Since(time.Unix(0, last.Load())); d > limit {
+			log.Printf("ERROR main loop stalled for %s; exiting so the service manager restarts the agent", d.Round(time.Second))
+			os.Exit(2)
+		}
+	}
+}
+
 // agentMemoryLimit 是 Go 运行时的软内存上限（只约束堆与运行时内存，不含程序代码段）。
 const agentMemoryLimit = 20 << 20
 
@@ -273,6 +289,7 @@ func run() {
 	server := flag.String("server", "", "server base URL, e.g. https://monitor.example.com")
 	token := flag.String("token", "", "agent token (prefer --token-file or MONITOR_AGENT_TOKEN)")
 	tokenFile := flag.String("token-file", "", "file containing the agent token")
+	envFile := flag.String("env-file", "", "read VPSMON_SERVER from this KEY=VALUE file when --server is empty (OpenRC service, design 28)")
 	interval := flag.Duration("interval", 10*time.Second, "report interval")
 	fake := flag.Bool("fake", false, "send fake metrics (for development)")
 	allowHTTP := flag.Bool("allow-http", false, "allow plain HTTP to a non-loopback server (development only)")
@@ -295,6 +312,11 @@ func run() {
 	// 阻塞在系统调用中的 goroutine（如 statfs）会让出 P，不影响主循环。可用 GOMAXPROCS 环境变量覆盖。
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(1)
+	}
+
+	// OpenRC 服务脚本的参数是固定的，面板地址由这里从 env 文件读取，而不是由 shell source（设计 28）
+	if *server == "" && *envFile != "" {
+		*server = setup.ReadEnv(*envFile)["VPSMON_SERVER"]
 	}
 
 	// 配置错误立即退出（设计 43.5）：启动后静默不上报，比让 systemd 显示失败更难发现。
@@ -352,7 +374,14 @@ func run() {
 	if wd := sdnotify.WatchdogInterval(); wd > 0 && wd < 2**interval {
 		log.Printf("WARN systemd WatchdogSec (%s) is shorter than two report intervals (%s); the agent may be restarted spuriously", wd, *interval)
 	}
-	alive := func() { _, _ = sdnotify.Notify("WATCHDOG=1") }
+	// 主循环卡死自检：OpenRC 等没有 systemd watchdog 的环境，卡住时由 Agent 自行退出，交给服务管理器重启（设计 43.5）
+	var lastLoop atomic.Int64
+	lastLoop.Store(time.Now().UnixNano())
+	go stallGuard(&lastLoop, stallLimit)
+	alive := func() {
+		lastLoop.Store(time.Now().UnixNano())
+		_, _ = sdnotify.Notify("WATCHDOG=1")
+	}
 
 	// systemctl stop 发送 SIGTERM，Ctrl-C 发送 SIGINT，两者都触发下面的补报。
 	sig := make(chan os.Signal, 1)
