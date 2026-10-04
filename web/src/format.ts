@@ -155,3 +155,13 @@ export const periodNames: Record<string, string> = {
 export const countModeNames: Record<string, string> = {
   sum: '入 + 出', max: '入、出取较大值', tx: '仅出站', rx: '仅入站',
 }
+
+/** User-Agent 粗略识别为“浏览器 · 系统”（日志与登录会话共用）；识别不出时返回前 40 个字符 */
+export function uaSummary(ua: string): string {
+  if (!ua) return ''
+  const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox'
+    : /Safari\//.test(ua) ? 'Safari' : /curl|Go-http|vpsmon/i.test(ua) ? ua.split(/[ /]/)[0] : ''
+  const o = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS'
+    : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
+  return [b, o].filter(Boolean).join(' · ') || ua.slice(0, 40)
+}

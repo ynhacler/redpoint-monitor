@@ -10,7 +10,7 @@ import (
 // 审计日志查询与清理（设计 24.8、18.16）。写入见 store_nodes.go 的 Audit。
 
 // loginActions 归入“登录日志”的操作；其余都属于“操作日志”。
-var loginActions = []string{"auth.login", "auth.logout", "auth.reauth"}
+var loginActions = []string{"auth.login", "auth.logout", "auth.reauth", "auth.session_revoke"}
 
 // auditRetention：审计日志保留 1 年（设计 24.8、24.9）。
 const auditRetention = 365 * 24 * time.Hour
@@ -36,6 +36,8 @@ type AuditQuery struct {
 	Category string // login / operation / 空表示全部
 	Result   string // success / failure / 空
 	Action   string // 操作：精确匹配；以 “.” 结尾时按前缀匹配（如 upgrade_task.）；空表示全部
+	Actor    string // 主体类型 admin / agent / cli / system；空表示全部
+	From, To int64  // 时间范围 [From, To)，Unix 秒；0 表示不限
 	Before   int64  // 游标：只返回 id 小于它的记录；0 表示从最新开始
 	Limit    int
 }
@@ -70,6 +72,18 @@ func (s *Store) ListAudit(q AuditQuery) ([]AuditLog, int64, error) {
 			where = append(where, "a.action = ?")
 			args = append(args, q.Action)
 		}
+	}
+	if q.Actor != "" {
+		where = append(where, "a.actor_type = ?")
+		args = append(args, q.Actor)
+	}
+	if q.From > 0 {
+		where = append(where, "a.ts >= ?")
+		args = append(args, q.From)
+	}
+	if q.To > 0 {
+		where = append(where, "a.ts < ?")
+		args = append(args, q.To)
 	}
 	if q.Before > 0 {
 		where = append(where, "a.id < ?")

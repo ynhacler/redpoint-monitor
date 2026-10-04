@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// 账号页：修改密码（设计 17.4）。使用初始 / 重置密码登录时会被强制带到这里，修改后才能使用其他页面。
+// 账号页：修改密码（设计 17.4）与登录中的设备（设计 24.8）。使用初始 / 重置密码登录时会被强制带到这里，修改后才能使用其他页面。
 // 修改成功后，该账号在其他浏览器上的会话全部失效。
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, changePassword } from '../api'
+import SessionsPanel from '../components/SessionsPanel.vue'
 import { passwordChanged, state } from '../store'
 
 const router = useRouter()
@@ -64,6 +65,7 @@ async function submit() {
       <p v-if="message" class="small" role="status">{{ message }}</p>
       <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
     </form>
+    <SessionsPanel v-if="!forced" />
     <p v-if="!forced" class="account-links small muted">
       发现异常登录？查看<RouterLink to="/logs?tab=login">登录日志</RouterLink>，修改密码后其他设备会被退出。
     </p>
