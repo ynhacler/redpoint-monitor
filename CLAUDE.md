@@ -19,6 +19,7 @@ make loadtest     # panel capacity: temp panel + 100 simulated agents (scripts/l
 make app-run      # Flutter app
 make deploy VPS=user@host                      # dev-only SSH deploy (design 27)
 make install-server / install-agent            # on a VPS checkout, after `make build`
+vpsmon-server backup --data DIR [--keep N]     # online backup; restore --from FILE (panel stopped); diag (local bundle)
 ```
 
 Before saying a task is done: `make test && make lint && make check-design` pass, and for UI changes,
