@@ -14,7 +14,7 @@ const Product = "vpsmon-agent"
 // Artifact 是发布中的一个文件。
 type Artifact struct {
 	OS     string `json:"os,omitempty"`   // 仅二进制：linux
-	Arch   string `json:"arch,omitempty"` // 仅二进制：amd64 / arm64 / armv7 / armv6 / 386 / riscv64（设计 27.5.4）
+	Arch   string `json:"arch,omitempty"` // 仅二进制：amd64 / arm64 / armv7 / armv6 / 386 / riscv64 / mips / mipsle（设计 27.5.4）
 	File   string `json:"file"`           // 发布中的文件名，如 vpsmon-agent-linux-amd64
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`

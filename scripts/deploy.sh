@@ -22,6 +22,9 @@ case "$arch" in
   armv6*) arch=armv6 ;;
   i386|i486|i586|i686|x86) arch=386 ;;
   riscv64) arch=riscv64 ;;
+  mips|mipsel|mipsle)
+    # uname -m 不区分 MIPS 字节序：读远端 /bin/sh 的 ELF 头 EI_DATA（1 为小端）
+    if [ "$(ssh "$vps" "dd if=/bin/sh bs=1 skip=5 count=1 2>/dev/null | od -An -tu1" | tr -d ' ')" = 1 ]; then arch=mipsle; else arch=mips; fi ;;
   *) echo "unsupported arch: $arch"; exit 1 ;;
 esac
 if [ "$role" = server ] && [ "$arch" != amd64 ] && [ "$arch" != arm64 ]; then

@@ -2,6 +2,7 @@ package collector
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/hex"
 	"io"
 	"net"
@@ -66,9 +67,16 @@ func parseListenSockets(r io.Reader, proto string) []listenSocket {
 	return out
 }
 
-// decodeEndpoint 解码 “0100007F:0016” 形式的地址与端口。地址按 32 位字以主机字节序存放；
-// 支持的架构（amd64 / arm64 / arm / 386 / riscv64）均为小端。
+// hostLittleEndian 表示本机为小端。/proc/net/tcp 中的地址按 32 位字以主机字节序写出：
+// 小端（x86、arm、riscv64、mipsle）需要翻转每个字，大端（mips）原样就是网络字节序。
+var hostLittleEndian = binary.NativeEndian.Uint16([]byte{1, 0}) == 1
+
+// decodeEndpoint 解码 “0100007F:0016” 形式的地址与端口，按本机字节序处理（见 hostLittleEndian）。
 func decodeEndpoint(s string) (string, int, bool) {
+	return decodeEndpointOrder(s, hostLittleEndian)
+}
+
+func decodeEndpointOrder(s string, littleEndian bool) (string, int, bool) {
 	i := strings.IndexByte(s, ':')
 	if i < 0 {
 		return "", 0, false
@@ -77,7 +85,7 @@ func decodeEndpoint(s string) (string, int, bool) {
 	if err != nil || (len(b) != 4 && len(b) != 16) {
 		return "", 0, false
 	}
-	for w := 0; w < len(b); w += 4 {
+	for w := 0; littleEndian && w < len(b); w += 4 {
 		b[w], b[w+1], b[w+2], b[w+3] = b[w+3], b[w+2], b[w+1], b[w]
 	}
 	port, err := strconv.ParseUint(s[i+1:], 16, 16)

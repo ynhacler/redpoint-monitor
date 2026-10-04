@@ -75,19 +75,20 @@ build: web ## Build server + agent for this machine into bin/
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-server ./cmd/server
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vpsmon-agent ./cmd/agent
 
-# Agent 覆盖安装脚本支持的全部架构，构建名与设计 27.5.4 一致（armv7 / armv6 即 GOARCH=arm + GOARM）。
+# Agent 覆盖安装脚本支持的全部架构，构建名与设计 27.5.4 一致（armv7 / armv6 即 GOARCH=arm + GOARM；
+# mips / mipsle 为软浮点，路由器等多数 MIPS 设备没有 FPU）。
 # 面板只构建 amd64 / arm64：面板机器通常是常见 VPS，其他架构按需再加。
 # 全部静态编译（CGO_ENABLED=0），不区分 glibc / musl。
-AGENT_ARCHS  := amd64 arm64 armv7 armv6 386 riscv64
+AGENT_ARCHS  := amd64 arm64 armv7 armv6 386 riscv64 mips mipsle
 SERVER_ARCHS := amd64 arm64
 
-build-linux: web ## Cross-compile agent (6 arches) + server (amd64/arm64) into dist/
+build-linux: web ## Cross-compile agent (8 arches) + server (amd64/arm64) into dist/
 	@mkdir -p dist && rm -f dist/vpsmon-* dist/SHA256SUMS
 	@for arch in $(AGENT_ARCHS); do \
-	  goarch=$$arch; goarm=; \
-	  case $$arch in armv7) goarch=arm; goarm=7;; armv6) goarch=arm; goarm=6;; esac; \
+	  goarch=$$arch; goarm=; gomips=; \
+	  case $$arch in armv7) goarch=arm; goarm=7;; armv6) goarch=arm; goarm=6;; mips|mipsle) gomips=softfloat;; esac; \
 	  echo "→ agent  linux/$$arch"; \
-	  CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm GOMIPS=$$gomips go build -ldflags "$(LDFLAGS)" -o dist/vpsmon-agent-linux-$$arch ./cmd/agent || exit 1; \
 	done
 	@for arch in $(SERVER_ARCHS); do \
 	  echo "→ server linux/$$arch"; \

@@ -73,6 +73,16 @@ jobs:
       - name: Agent systemd 存活检测（设计 43.5）
         run: scripts/agent-systemd-check.sh dist/vpsmon-agent-linux-amd64
 
+      # MIPS（OpenWrt 路由器等）：qemu 用户态模拟运行两种字节序的构建，并在大端上运行采集器的单元测试（设计 27.5.4）。
+      # 模拟下读到的是宿主机（小端）内核写出的 /proc，因此跳过真实采集的集成测试
+      - name: MIPS 构建（qemu 模拟）
+        run: |
+          sudo apt-get install -y -qq qemu-user >/dev/null
+          qemu-mips dist/vpsmon-agent-linux-mips version
+          qemu-mipsel dist/vpsmon-agent-linux-mipsle version
+          CGO_ENABLED=0 GOARCH=mips GOMIPS=softfloat go test -c -o /tmp/collector-mips.test ./internal/agent/collector
+          qemu-mips /tmp/collector-mips.test -test.skip 'TestLinuxCollect|TestReadFileReusesBuffer|Benchmark'
+
   design-doc:
     name: 设计文档校验
     runs-on: ubuntu-latest

@@ -335,6 +335,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 60 | MIPS 构建：mips / mipsle（软浮点），安装脚本按 ELF 头判断字节序，端口解析按主机字节序；CI 以 qemu 模拟运行 | 27.5.4 |
 | 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
 | 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
@@ -2547,7 +2548,11 @@ linux/armv7
 linux/armv6
 linux/386
 linux/riscv64
+linux/mips、linux/mipsle（软浮点，GOMIPS=softfloat；多数路由器没有 FPU）
 ```
+
+MIPS 构建约 8 MB，小闪存设备可放在 /tmp 或外接存储。/proc/net/tcp 的地址按主机字节序写出，端口采集在大端上不翻转字节；
+CI 用 qemu 用户态模拟运行两种字节序的构建，并在大端上运行采集器的单元测试。
 
 后续可选：
 
@@ -6414,7 +6419,9 @@ CPU 架构（`uname -m`）→ 下载的构建：
 | `armv6l`、`armv6*` | `linux-armv6` | 树莓派 Zero / 1 |
 | `i386`、`i486`、`i586`、`i686`、`x86` | `linux-386` | 老旧 32 位 VPS |
 | `riscv64` | `linux-riscv64` | RISC-V 开发板 |
-| 其他（mips 等） | — | 退出：“暂不支持的 CPU 架构”，并列出支持的架构 |
+| `mips` / `mipsel`（大端） | `linux-mips` | 部分 OpenWrt 路由器；uname -m 不区分字节序，按 /bin/sh 的 ELF 头 EI_DATA 判断 |
+| `mips` / `mipsel`（小端） | `linux-mipsle` | MT7621 等 OpenWrt 路由器 |
+| 其他（mips64 等） | — | 退出：“暂不支持的 CPU 架构”，并列出支持的架构 |
 
 说明：
 
