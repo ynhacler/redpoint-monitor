@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 71 | WebSocket /ws 实现：同源 Origin 校验、会话定时校验、连接上限与慢连接断开；安装命令页改用 server.enrolled 事件（断线时退回轮询） | 19.11、20 |
 | 70 | Web 请求类型由 OpenAPI 契约生成（api.gen.ts，CI 检查一致）；统一错误处理：401 统一回到登录页、errorText 文案、全局错误边界；契约补充 required 与 unsupported_encoding | 19.0.1、43.4、43.6 |
 | 69 | 图标定为 Lucide，Web 使用 @lucide/vue（经 Icon.vue 按需引用） | 41.4.3 |
 | 68 | 新增第 44 章：云厂商账户（AWS、阿里云国内站 / 国际站、腾讯云、Oracle Cloud）的费用、流量与实例；只读凭证、AES-256-GCM 加密保存、签名自行实现不引入 SDK；DMIT 无公开 API 暂不接入 | 44 |
@@ -5725,6 +5726,21 @@ server.offline
 server.metrics
 alert.triggered
 alert.recovered
+```
+
+已实现（修订第 71 条）：
+
+```text
+地址        GET /ws（与面板同源，HTTPS 下为 wss），消息格式见 api/openapi.yaml 的 WsEvent：
+            {"type", "server_id", "ts", "data"}；页面忽略不认识的 type
+方向        只由面板推送；页面发来的数据帧读取后丢弃，不接受任何指令
+认证        Web 管理员会话 Cookie；Origin 必须是面板自身（Host 或 --public-url），缺少 Origin 拒绝
+            ——防止跨站 WebSocket 劫持（浏览器跨站发起时会自动带上 Cookie）
+保活        面板每 30 秒 ping 一次并重新校验会话；会话退出、被踢出或过期时以 1008 关闭；75 秒无任何帧视为断开
+资源        全部连接最多 256 个；每个连接发送队列 64 条，满了说明客户端过慢，直接断开
+重连        页面断线后按 1 秒起、最长 30 秒的退避重连；断线期间的事件不补发，订阅方重连后重新拉取并保留低频轮询兜底
+实现        标准库实现 RFC 6455 的子集（握手、文本帧、ping / pong、关闭），不引入依赖
+已有事件    server.enrolled（安装命令页，设计 19.11）；节点列表的实时更新仍为 3 秒轮询，其余事件待实现
 ```
 
 ---

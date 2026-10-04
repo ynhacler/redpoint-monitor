@@ -21,7 +21,7 @@ function back() {
 <template>
   <main class="page">
     <RouterLink :to="`/servers/${id}`" class="back muted small"><Icon name="arrow-left" :size="14" />节点详情</RouterLink>
-    <InstallCommand :server-id="Number(id)" :initial="initial" @back="back" />
+    <InstallCommand :key="id" :server-id="Number(id)" :initial="initial" @back="back" />
   </main>
 </template>
 

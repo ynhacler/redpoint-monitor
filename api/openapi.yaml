@@ -28,6 +28,8 @@ tags:
     description: 告警（设计 16、19.9）
   - name: traffic
     description: 流量统计、校准与预测（设计 5、19.8、32）
+  - name: events
+    description: 实时事件（WebSocket，设计 20）
 
 paths:
   /auth/captcha:
@@ -176,6 +178,22 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
+
+  /ws:
+    servers: [{ url: / }]
+    get:
+      tags: [events]
+      summary: 实时事件（WebSocket，设计 20）；面板只推送，不接收指令
+      description: |
+        凭会话 Cookie 认证；Origin 必须是面板自身（防止跨站 WebSocket 劫持），缺少 Origin 时拒绝。
+        握手成功后每条消息是一个 WsEvent（JSON 文本帧）。面板每 30 秒 ping 一次并重新校验会话，
+        会话失效时以 1008 关闭；页面断线后自动重连，重连后应重新拉取数据（断线期间的事件不补发）。
+      responses:
+        '101': { description: 已切换为 WebSocket，之后推送 WsEvent }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
 
   /agent/enroll:
     post:
@@ -1601,6 +1619,21 @@ components:
             conntrack: { type: object, description: nf_conntrack：count、max；未加载时省略 }
             clock: { type: object, description: adjtimex：synced、max_error_us }
             env: { type: object, description: 运行环境：virt（kvm / xen / vmware / hyperv / openvz / lxc / docker / podman / vm / none）、dmi_vendor、dmi_product }
+
+    WsEvent:
+      type: object
+      description: WebSocket 推送的事件（设计 20）；未来新增类型，页面应忽略不认识的 type
+      required: [type, ts]
+      properties:
+        type: { type: string, enum: [server.enrolled], description: 'server.enrolled：主机已用注册码注册（设计 19.11）' }
+        server_id: { type: integer }
+        ts: { type: integer, description: 事件时间，Unix 秒 }
+        data:
+          type: object
+          description: 'server.enrolled：{server_name, warnings}；不含任何凭证'
+          properties:
+            server_name: { type: string }
+            warnings: { type: array, items: { type: string } }
 
     MetricPoint:
       type: object
