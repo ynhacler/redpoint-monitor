@@ -158,6 +158,9 @@ type System struct {
 	// 可选：内核网卡计数器的位数（32 / 64）；32 位内核上计数器约 4 GiB 回绕，面板据此补算（设计 5.5）。
 	// 省略表示未知，按 64 位处理（回退一律视为重置）。
 	CounterBits int `json:"counter_bits,omitempty"`
+	// 可选：本机是否启用了远程升级（装有 updater 且没有 no-remote-upgrade，设计 29.13）。
+	// 省略表示旧版 Agent、未知；面板据此在创建升级任务时直接说明原因，而不是让任务一直等待。
+	RemoteUpgrade *bool `json:"remote_upgrade,omitempty"`
 }
 
 type CPU struct {

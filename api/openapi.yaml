@@ -1591,6 +1591,7 @@ components:
             boot_id: { type: string }
             cpu_model: { type: string, description: 可选（设计 4.4） }
             counter_bits: { type: integer, enum: [32, 64], description: 可选：内核网卡计数器位数；32 位时面板按回绕补算流量（设计 5.5） }
+            remote_upgrade: { type: boolean, description: 可选：本机是否启用了远程升级（设计 29.13）；省略表示旧版 Agent、未知 }
         cpu:
           type: object
           required: [usage, cores, load1]
