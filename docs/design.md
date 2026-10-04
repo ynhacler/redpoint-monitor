@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 72 | 云账户第一步（AWS）：凭证加密、账户接口与 Web 页面、同步任务；费用同步间隔可选 6 / 12 / 24 小时（默认 12） | 44.4 |
 | 71 | WebSocket /ws 实现：同源 Origin 校验、会话定时校验、连接上限与慢连接断开；安装命令页改用 server.enrolled 事件（断线时退回轮询） | 19.11、20 |
 | 70 | Web 请求类型由 OpenAPI 契约生成（api.gen.ts，CI 检查一致）；统一错误处理：401 统一回到登录页、errorText 文案、全局错误边界；契约补充 required 与 unsupported_encoding | 19.0.1、43.4、43.6 |
 | 69 | 图标定为 Lucide，Web 使用 @lucide/vue（经 Icon.vue 按需引用） | 41.4.3 |
@@ -9947,7 +9948,8 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 ## 44.4 同步频率与费用
 
 ```text
-费用      每 6 小时；AWS Cost Explorer 每次 0.01 美元，每个账户每月约 120 次 ≈ 1.2 美元（界面中说明，可改为每天一次）
+费用      按账户设置每 6 / 12 / 24 小时，默认 12 小时。AWS 每次同步调用 Cost Explorer 2 次（本月费用 + 预测），每次 0.01 美元：
+          12 小时约 1.2 美元 / 月，6 小时约 2.4，每天约 0.6（界面中说明）
 实例      每 6 小时（到期时间、IP 变化很少）
 流量      每小时
 手动同步  界面中可立即同步一次；同一账户 1 分钟内只允许一次
@@ -9955,6 +9957,18 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 ```
 
 同步任务在面板进程内运行，与告警引擎相同的 runTask 机制（崩溃后重启、不影响上报）。
+
+AWS 实现说明（第一步，修订第 72 条）：
+
+```text
+费用      Cost Explorer UnblendedCost，UTC 自然月；本月预估 = 已产生 + GetCostForecast（明天至月末）；
+          新账户历史不足（DataUnavailableException）时没有预估；月末最后一天不再调用预测
+实例      EC2 DescribeRegions → 各区域 DescribeInstances（分页，不含已终止）；Lightsail GetRegions → GetInstances；
+          账户可只指定部分区域；区域并发最多 4 个
+流量      Lightsail GetInstanceMetricData：本月 NetworkIn + NetworkOut 之和（套餐额度按入站 + 出站计），额度按 GB = 10⁹ 字节
+权限      Web 中给出比 lightsail:Get* 更窄的策略：只列出用到的 GetRegions、GetInstances、GetInstanceMetricData，可直接复制
+备份      secret.key 不在 backup 生成的文件中；backup 命令会提示单独复制。缺少 secret.key 时停止同步并提示重新填写凭证
+```
 
 ## 44.5 与节点关联
 

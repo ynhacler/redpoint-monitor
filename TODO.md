@@ -140,7 +140,8 @@
 
 ## 云厂商账户（设计 44，用户要求插入，阶段 B 之后、C 之前）
 
-- [ ] 第一步：凭证加密（secret.key）、账户管理接口与 Web 页面、同步任务；AWS Cost Explorer 费用、EC2 / Lightsail 实例、Lightsail 流量
+- [x] 第一步：凭证加密（secret.key）、账户管理接口与 Web 页面、同步任务；AWS Cost Explorer 费用、EC2 / Lightsail 实例、Lightsail 流量
+  （待用真实 AWS 账户手动验证：Cost Explorer 返回值、Lightsail 流量与控制台一致）
 - [ ] 第二步：阿里云国内站与国际站：余额、账单概览、包年包月实例到期、轻量应用服务器流量包
 - [ ] 第三步：腾讯云：余额、按月账单、CVM 实例到期、轻量应用服务器流量包
 - [ ] 第四步：Oracle Cloud 按月费用、出站数据量、实例
