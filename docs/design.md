@@ -337,6 +337,7 @@
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
 | 60 | MIPS 构建：mips / mipsle（软浮点），安装脚本按 ELF 头判断字节序，端口解析按主机字节序；CI 以 qemu 模拟运行 | 27.5.4 |
 | 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证 | 27.12、28、43.5 |
+| 58 | Alpine / OpenRC：安装器识别 OpenRC，BusyBox 建用户，supervise-daemon 托管，--env-file 读取面板地址（不 source）；主循环卡死自检与一轮发送 20 秒预算；CI 在 alpine 容器中端到端验证；容器中 “/” 总是上报、排除绑定挂载的文件 | 4.6、27.12、28、43.5 |
 | 57 | 面板承载：SQLite 驱动升级到 v0.35（免运行时编译，常驻内存约减半，构建需要 Go 1.26）；写事务改为 immediate，修复批量写入与降采样并发时的 “database is locked”；新增压测工具 vpsmon-loadtest / make loadtest | 3.2、21 |
 | 56 | 采样间隔按节点可选（迁移 20，5～60 秒）：上报响应头 X-Report-Interval 下发，Agent 硬性限制 5～60 秒；在线判定与离线告警按周期数放宽 | 6.1、22 |
 | 55 | 上报压缩：面板声明 Accept-Encoding: gzip 并解压（解压后同样受 64 KB 限制），错误码 unsupported_encoding；Agent 协商后压缩、被拒时改发未压缩 | 6.1、43.4 |
@@ -2978,6 +2979,9 @@ proc
 sysfs
 cgroup
 ```
+
+“/” 总是上报并排在最前：容器（Docker、部分 LXC）的根是 overlay 等不在白名单中的文件系统，仍按 “/” 采集；
+容器运行时绑定挂载进来的单个文件（/etc/hosts、/etc/hostname、/etc/resolv.conf、/run/.containerenv）不是挂载点，排除。
 
 statfs 并发执行，一轮整体最多等待 2 秒。底层块设备失联（iSCSI、故障盘）时 statfs 可能永久阻塞：
 超时的挂载点本轮不上报并记录原因（见 43.5）；那次调用返回之前，后续轮次直接跳过它，每个挂载点最多只有一个阻塞的调用。

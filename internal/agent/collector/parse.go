@@ -390,12 +390,24 @@ func unescapeMount(s string) string {
 	return b.String()
 }
 
+// containerFileMounts 是容器运行时（Docker / Podman）绑定挂载进来的单个文件，来自宿主机的磁盘，不是本机的挂载点。
+var containerFileMounts = map[string]bool{
+	"/etc/hosts": true, "/etc/hostname": true, "/etc/resolv.conf": true, "/run/.containerenv": true,
+}
+
 // selectMounts 选出要采集容量的挂载点：白名单文件系统，同一设备只取一个（Docker 等的绑定挂载会让
 // 同一块盘出现多次，重复计算会误导），“/” 排在最前，其余按路径排序，最多 maxMounts 个。
+//
+// “/” 总是上报：容器（Docker、部分 LXC）的根是 overlay 等不在白名单中的文件系统，此时仍按 “/” 采集，
+// 否则根分区会缺失，反而把宿主机绑定挂载进来的文件当成磁盘（CI 在 alpine 容器中发现，设计 4.6）。
 func selectMounts(entries []mountEntry) []mountEntry {
 	byDevice := map[string]mountEntry{}
+	root := mountEntry{Mount: "/"}
 	for _, e := range entries {
-		if !diskFSTypes[e.FSType] {
+		if e.Mount == "/" {
+			root = e // 同一路径多次挂载时，后面的覆盖前面的
+		}
+		if !diskFSTypes[e.FSType] || containerFileMounts[e.Mount] {
 			continue
 		}
 		prev, ok := byDevice[e.Device]
@@ -404,9 +416,14 @@ func selectMounts(entries []mountEntry) []mountEntry {
 			byDevice[e.Device] = e
 		}
 	}
-	out := make([]mountEntry, 0, len(byDevice))
+	out := make([]mountEntry, 0, len(byDevice)+1)
+	hasRoot := false
 	for _, e := range byDevice {
 		out = append(out, e)
+		hasRoot = hasRoot || e.Mount == "/"
+	}
+	if !hasRoot {
+		out = append(out, root)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if (out[i].Mount == "/") != (out[j].Mount == "/") {

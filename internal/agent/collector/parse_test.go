@@ -152,6 +152,24 @@ nas:/export /mnt/nas nfs4 rw 0 0
 	}
 }
 
+// Docker 容器：根为 overlay，宿主机的磁盘以单个文件（/etc/hosts 等）与卷的形式绑定挂载进来（CI 在 alpine 容器中发现）。
+func TestSelectMountsContainer(t *testing.T) {
+	s := `overlay / overlay rw,relatime,lowerdir=/var/lib/docker/overlay2/l/A,upperdir=/x/diff 0 0
+proc /proc proc rw 0 0
+/dev/root /etc/resolv.conf ext4 rw,relatime 0 0
+/dev/root /etc/hostname ext4 rw,relatime 0 0
+/dev/root /etc/hosts ext4 rw,relatime 0 0
+/dev/root /w ext4 ro,relatime 0 0
+`
+	got := selectMounts(parseMounts(s))
+	if len(got) != 2 || got[0].Mount != "/" || got[0].FSType != "overlay" || got[1].Mount != "/w" {
+		t.Errorf("容器中应上报 “/”（overlay）在最前，排除绑定挂载的文件：%+v", got)
+	}
+	if got := selectMounts(nil); len(got) != 1 || got[0].Mount != "/" {
+		t.Errorf("读不到挂载表时也应上报 “/”：%+v", got)
+	}
+}
+
 func TestParseDiskstats(t *testing.T) {
 	s := ` 253       0 vda 1000 10 20000 500 2000 20 40000 900 0 1200 1400 0 0 0 0
  253       1 vda1 900 10 18000 450 1900 20 39000 880 0 1100 1330 0 0 0 0
