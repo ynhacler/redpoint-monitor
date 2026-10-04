@@ -207,12 +207,11 @@ func (s *Server) doCloudSync(ctx context.Context, a CloudAccount, k cloudKinds, 
 		if err != nil {
 			return err
 		}
-		var insts []cloud.Instance
+		// 传入全部实例，由各家客户端挑选有流量包的（阿里云轻量的额度只能从流量接口得到）
+		insts := make([]cloud.Instance, 0, len(rows))
 		for _, r := range rows {
-			if r.TrafficLimitBytes > 0 {
-				insts = append(insts, cloud.Instance{ID: r.InstanceID, Name: r.Name, Region: r.Region, Kind: r.Kind,
-					TrafficLimit: uint64(r.TrafficLimitBytes)})
-			}
+			insts = append(insts, cloud.Instance{ID: r.InstanceID, Name: r.Name, Region: r.Region, Kind: r.Kind,
+				TrafficLimit: uint64(r.TrafficLimitBytes)})
 		}
 		if len(insts) > 0 {
 			if err := c.Traffic(ctx, insts, now); err != nil {
@@ -242,6 +241,18 @@ func (s *Server) sealCredential(provider string, cred map[string]string) ([]byte
 	var fe []FieldError
 	var hint string
 	switch provider {
+	case cloud.ProviderAliyunCN, cloud.ProviderAliyunIntl:
+		id, secret := cred["access_key_id"], cred["access_key_secret"]
+		if !aliyunKeyID.MatchString(id) {
+			fe = append(fe, FieldError{Field: "credential.access_key_id", Message: "AccessKey ID 格式不正确（如 LTAI…）"})
+		}
+		if len(secret) < 20 || len(secret) > 64 {
+			fe = append(fe, FieldError{Field: "credential.access_key_secret", Message: "AccessKey Secret 格式不正确"})
+		}
+		if len(fe) == 0 {
+			hint = id[:4] + "…" + id[len(id)-4:]
+		}
+		cred = map[string]string{"access_key_id": id, "access_key_secret": secret}
 	case cloud.ProviderAWS:
 		id, secret := cred["access_key_id"], cred["secret_access_key"]
 		if !awsKeyID.MatchString(id) {

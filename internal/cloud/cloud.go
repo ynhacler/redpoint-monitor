@@ -18,12 +18,11 @@ import (
 // 服务商（cloud_accounts.provider）
 const (
 	ProviderAWS = "aws"
-	// 以下随第二～四步实现（设计 44.10）
-	// ProviderAliyunCN = "aliyun_cn"; ProviderAliyunIntl = "aliyun_intl"; ProviderTencent = "tencent"; ProviderOCI = "oci"
+	// 阿里云见 aliyun.go；腾讯云、Oracle Cloud 随第三、四步实现（设计 44.10）
 )
 
 // Providers 是当前已实现的服务商。
-var Providers = []string{ProviderAWS}
+var Providers = []string{ProviderAWS, ProviderAliyunCN, ProviderAliyunIntl}
 
 // Costs 是一个账户本月的费用（设计 44.7 cloud_costs）。金额以“分”为整数；没有的项为 nil。
 type Costs struct {
@@ -55,7 +54,7 @@ type Instance struct {
 type Client interface {
 	Costs(ctx context.Context, now time.Time) (*Costs, error)
 	Instances(ctx context.Context) ([]Instance, error)
-	// Traffic 为有流量包的实例补充本周期用量（原地修改）
+	// Traffic 为有流量包的实例补充本周期额度与用量（原地修改）；传入账户的全部实例，由各家自行挑选
 	Traffic(ctx context.Context, insts []Instance, now time.Time) error
 }
 
@@ -77,6 +76,12 @@ func NewClient(provider string, cred []byte, regions []string, o Options) (Clien
 			return nil, errors.New("AWS 凭证不完整")
 		}
 		return &awsClient{cred: c, regions: regions, o: o}, nil
+	case ProviderAliyunCN, ProviderAliyunIntl:
+		var c AliyunCredentials
+		if err := json.Unmarshal(cred, &c); err != nil || c.AccessKeyID == "" || c.AccessKeySecret == "" {
+			return nil, errors.New("阿里云凭证不完整")
+		}
+		return &aliyunClient{cred: c, intl: provider == ProviderAliyunIntl, regions: regions, o: o}, nil
 	}
 	return nil, fmt.Errorf("不支持的服务商 %q", provider)
 }
@@ -105,6 +110,9 @@ var authCodes = map[string]bool{
 	"SignatureDoesNotMatch": true, "ExpiredToken": true, "ExpiredTokenException": true,
 	"AccessDenied": true, "AccessDeniedException": true, "UnauthorizedOperation": true,
 	"InvalidSignatureException": true, "IncompleteSignature": true, "MissingAuthenticationToken": true,
+	// 阿里云
+	"InvalidAccessKeyId.NotFound": true, "InvalidAccessKeyId.Inactive": true, "InvalidAccessKeyId": true,
+	"Forbidden.RAM": true, "Forbidden.AccessKeyDisabled": true, "NoPermission": true, "Forbidden": true,
 }
 
 // IsAuthError 判断错误是否为凭证失效 / 权限不足。
@@ -142,6 +150,15 @@ func toCents(s string) (int64, error) {
 		return 0, fmt.Errorf("金额格式不正确：%q", s)
 	}
 	return int64(math.Round(f * 100)), nil
+}
+
+// BillingMonth 返回服务商账单口径下 now 所在的月份（YYYY-MM）：AWS 为 UTC，阿里云为北京时间。
+func BillingMonth(provider string, now time.Time) string {
+	switch provider {
+	case ProviderAliyunCN, ProviderAliyunIntl:
+		return now.In(aliyunTZ).Format("2006-01")
+	}
+	return now.UTC().Format("2006-01")
 }
 
 // monthStart 返回 t 所在月（UTC）的第一天。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 云账户页（设计 44）：接入用户自己的云账户，查看本月费用、预估与预算，云厂商口径的实例与流量包用量。
-// 第一步只支持 AWS；阿里云、腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10）。
+// 已支持 AWS、阿里云国内站与国际站；腾讯云、Oracle Cloud 随后续步骤加入（设计 44.10）。
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
@@ -10,7 +10,7 @@ import {
 import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
 import UsageBar from '../components/UsageBar.vue'
-import { DASH, fmtBytes, fmtMoney, fmtTime } from '../format'
+import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime } from '../format'
 
 const accounts = ref<CloudAccount[]>([])
 const instances = ref<CloudInstance[]>([])
@@ -39,6 +39,32 @@ function schedule() {
 }
 onMounted(load)
 onUnmounted(() => timer && clearTimeout(timer))
+
+// ---- 服务商（设计 44.3） ----
+
+type Provider = NonNullable<CloudAccountInput['provider']>
+interface ProviderInfo {
+  label: string
+  /** 账户默认币种（预算的单位） */
+  currency: string
+  idLabel: string
+  idPlaceholder: string
+  secretLabel: string
+  /** 凭证中密钥字段的名称（与接口一致） */
+  secretField: 'secret_access_key' | 'access_key_secret'
+  regionExample: string
+  /** 费用查询是否收费（AWS Cost Explorer） */
+  paidCostApi: boolean
+}
+const providers: Record<Provider, ProviderInfo> = {
+  aws: { label: 'AWS', currency: 'USD', idLabel: 'Access Key ID', idPlaceholder: 'AKIA…', secretLabel: 'Secret Access Key',
+    secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true },
+  aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
+    secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false },
+  aliyun_intl: { label: '阿里云国际', currency: 'USD', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
+    secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false },
+}
+const providerOf = (p: string) => providers[p as Provider] ?? providers.aws
 
 // ---- 账户状态 ----
 
@@ -103,9 +129,10 @@ async function remove(a: CloudAccount) {
 
 const editing = ref<'new' | number | null>(null)
 const form = ref({
-  name: '', access_key_id: '', secret_access_key: '', regions: '', budget: '', cost_interval_h: 12,
+  provider: 'aws' as Provider, name: '', access_key_id: '', secret: '', regions: '', budget: '', cost_interval_h: 12,
   sync_cost: true, sync_traffic: true, enabled: true, password: '',
 })
+const info = computed(() => providers[form.value.provider])
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const saving = ref(false)
@@ -113,15 +140,16 @@ const showPolicy = ref(false)
 
 function openNew() {
   editing.value = 'new'
-  form.value = { name: '', access_key_id: '', secret_access_key: '', regions: '', budget: '', cost_interval_h: 12,
+  form.value = { provider: 'aws', name: '', access_key_id: '', secret: '', regions: '', budget: '', cost_interval_h: 12,
     sync_cost: true, sync_traffic: true, enabled: true, password: '' }
+  showPolicy.value = false
   fieldErrors.value = {}
   formError.value = ''
 }
 
 function openEdit(a: CloudAccount) {
   editing.value = a.id
-  form.value = { name: a.name, access_key_id: '', secret_access_key: '', regions: a.regions.join(', '),
+  form.value = { provider: a.provider as Provider, name: a.name, access_key_id: '', secret: '', regions: a.regions.join(', '),
     budget: a.budget_cents ? String(a.budget_cents / 100) : '', cost_interval_h: a.cost_interval_h,
     sync_cost: a.sync_cost, sync_traffic: a.sync_traffic, enabled: a.enabled, password: '' }
   fieldErrors.value = {}
@@ -129,7 +157,7 @@ function openEdit(a: CloudAccount) {
 }
 
 // 添加时、或编辑时填写了新凭证：需要重新输入密码
-const changingCred = computed(() => editing.value === 'new' || !!(form.value.access_key_id || form.value.secret_access_key))
+const changingCred = computed(() => editing.value === 'new' || !!(form.value.access_key_id || form.value.secret))
 
 async function save() {
   const f = form.value
@@ -147,25 +175,26 @@ async function save() {
     sync_cost: f.sync_cost, sync_traffic: f.sync_traffic, enabled: f.enabled,
   }
   if (changingCred.value) {
-    body.credential = { access_key_id: f.access_key_id.trim(), secret_access_key: f.secret_access_key.trim() }
+    body.credential = { access_key_id: f.access_key_id.trim(), [info.value.secretField]: f.secret.trim() }
   }
   saving.value = true
   try {
     if (changingCred.value) await reauth(f.password)
-    if (editing.value === 'new') await createCloudAccount({ ...body, provider: 'aws' })
+    if (editing.value === 'new') await createCloudAccount({ ...body, provider: f.provider })
     else if (editing.value !== null) await updateCloudAccount(editing.value, body)
     editing.value = null
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.details.length) {
-      // credential.access_key_id → access_key_id
-      fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field.replace(/^credential\./, ''), d.message]))
+      // credential.access_key_id → access_key_id；两家的密钥字段都显示在“密钥”输入框下
+      fieldErrors.value = Object.fromEntries(e.details.map((d) => [
+        d.field.replace(/^credential\./, '').replace(/^(secret_access_key|access_key_secret)$/, 'secret'), d.message]))
     } else {
       formError.value = errorText(e)
     }
   } finally {
     f.password = ''
-    f.secret_access_key = ''
+    f.secret = ''
     saving.value = false
   }
 }
@@ -183,55 +212,73 @@ const awsPolicy = JSON.stringify({
 
 const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: '约 0.6' }
 
+// 阿里云：在 RAM 中创建用户，只授予这三个系统只读策略
+const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess'
+
 // ---- 实例 ----
 
 function trafficPct(i: CloudInstance): number {
   return i.traffic_limit_bytes ? (i.traffic_used_bytes / i.traffic_limit_bytes) * 100 : 0
 }
-const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
+const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量' }
+
+/** 到期提示：30 天内为 warn，已过期为 bad */
+function expireTone(i: CloudInstance): string {
+  const days = (i.expire_at - Date.now() / 1000) / 86400
+  return days < 0 ? 'bad' : days < 30 ? 'warn' : 'muted'
+}
 </script>
 
 <template>
   <main class="page">
     <div class="page-head">
       <h1>云账户</h1>
-      <button v-if="editing === null" type="button" @click="openNew">添加 AWS 账户</button>
+      <button v-if="editing === null" type="button" @click="openNew">添加账户</button>
     </div>
     <p class="muted small intro">
       接入你自己的云账户，查看本月费用与预估、云厂商口径的实例与流量包用量。只需只读权限；凭证加密保存在本面板，
-      面板直接请求云厂商的官方接口，数据不经过任何第三方。阿里云、腾讯云、Oracle Cloud 将陆续支持。
+      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS 与阿里云（国内站、国际站），腾讯云、Oracle Cloud 将陆续支持。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <!-- 添加 / 编辑 -->
     <form v-if="editing !== null" class="panel editor" novalidate @submit.prevent="save">
-      <h2>{{ editing === 'new' ? '添加 AWS 账户' : `编辑 ${form.name}` }}</h2>
-      <p class="muted small">
+      <h2>{{ editing === 'new' ? '添加云账户' : `编辑 ${form.name}` }}</h2>
+      <div v-if="editing === 'new'" class="segmented providers" role="radiogroup" aria-label="服务商">
+        <button v-for="(p, key) in providers" :key="key" type="button" role="radio" :aria-checked="form.provider === key"
+          :class="{ active: form.provider === key }" @click="form.provider = key; showPolicy = false">{{ p.label }}</button>
+      </div>
+      <p v-if="form.provider === 'aws'" class="muted small">
         在 IAM 中创建一个专用用户，只附加下面的只读策略，再为它创建访问密钥。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
       </p>
-      <CommandBlock v-if="showPolicy" :command="awsPolicy" class="policy" />
+      <p v-else class="muted small">
+        在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
+        只授予三个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
+        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '查看策略名称' }}</button>
+      </p>
+      <CommandBlock v-if="showPolicy" :command="form.provider === 'aws' ? awsPolicy : aliyunPolicies" class="policy" />
       <div class="fields">
         <label>名称
           <input v-model="form.name" maxlength="64" placeholder="如 AWS 主账户" />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
         </label>
-        <label>Access Key ID
+        <label>{{ info.idLabel }}
           <input v-model="form.access_key_id" autocomplete="off" spellcheck="false"
-            :placeholder="editing === 'new' ? 'AKIA…' : '留空保持不变'" />
+            :placeholder="editing === 'new' ? info.idPlaceholder : '留空保持不变'" />
           <small v-if="fieldErrors.access_key_id" class="err">{{ fieldErrors.access_key_id }}</small>
         </label>
-        <label>Secret Access Key
-          <input v-model="form.secret_access_key" type="password" autocomplete="new-password" spellcheck="false"
+        <label>{{ info.secretLabel }}
+          <input v-model="form.secret" type="password" autocomplete="new-password" spellcheck="false"
             :placeholder="editing === 'new' ? '' : '留空保持不变'" />
-          <small v-if="fieldErrors.secret_access_key" class="err">{{ fieldErrors.secret_access_key }}</small>
+          <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
           <small v-else-if="fieldErrors.credential" class="err">{{ fieldErrors.credential }}</small>
         </label>
         <label class="wide">区域
-          <input v-model="form.regions" spellcheck="false" placeholder="留空表示全部已启用的区域；如 ap-northeast-1, us-west-2" />
+          <input v-model="form.regions" spellcheck="false" :placeholder="`留空表示全部区域；如 ${info.regionExample}`" />
           <small v-if="fieldErrors.regions" class="err">{{ fieldErrors.regions }}</small>
         </label>
-        <label>月度预算（USD）
+        <label>月度预算（{{ info.currency }}）
           <input v-model="form.budget" inputmode="decimal" placeholder="不设" />
           <small v-if="fieldErrors.budget" class="err">{{ fieldErrors.budget }}</small>
         </label>
@@ -241,10 +288,11 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
             <option :value="12">每 12 小时</option>
             <option :value="24">每天</option>
           </select>
-          <small class="muted">AWS Cost Explorer 每次调用收费 0.01 美元，此频率每月{{ intervalCost[form.cost_interval_h] }} 美元</small>
+          <small v-if="info.paidCostApi" class="muted">AWS Cost Explorer 每次调用收费 0.01 美元，此频率每月{{ intervalCost[form.cost_interval_h] }} 美元</small>
+          <small v-else class="muted">账单与余额接口免费</small>
         </label>
         <label class="check"><input v-model="form.sync_cost" type="checkbox" />同步费用</label>
-        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />同步流量（Lightsail 每小时）</label>
+        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />同步流量包（{{ form.provider === 'aws' ? 'Lightsail' : '轻量应用服务器' }}，每小时）</label>
         <label class="check"><input v-model="form.enabled" type="checkbox" />启用</label>
         <label v-if="changingCred">当前登录密码
           <input v-model="form.password" type="password" autocomplete="current-password" />
@@ -260,7 +308,7 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
     </form>
 
     <EmptyState v-if="loaded && !accounts.length && editing === null" text="还没有云账户。添加后面板会定时同步费用、实例与流量包用量。">
-      <button type="button" @click="openNew">添加 AWS 账户</button>
+      <button type="button" @click="openNew">添加账户</button>
     </EmptyState>
 
     <!-- 账户 -->
@@ -268,7 +316,7 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
       <li v-for="a in accounts" :key="a.id" class="panel account" :class="{ off: !a.enabled }">
         <div class="head">
           <div class="title">
-            <span class="type">AWS</span><b>{{ a.name }}</b>
+            <span class="type">{{ providerOf(a.provider).label }}</span><b>{{ a.name }}</b>
             <span class="muted small mono">{{ a.credential_hint }}</span>
           </div>
           <div class="acts">
@@ -286,13 +334,18 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
             <div class="muted small">本月已产生</div>
             <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.amount_cents, a.current_cost.currency) : DASH }}</div>
           </div>
-          <div>
+          <!-- 阿里云没有费用预测，显示账户余额 -->
+          <div v-if="a.current_cost?.balance_cents != null">
+            <div class="muted small">账户余额</div>
+            <div class="big num">{{ fmtMoney(a.current_cost.balance_cents, a.current_cost.currency) }}</div>
+          </div>
+          <div v-else>
             <div class="muted small">本月预估</div>
             <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.forecast_cents, a.current_cost.currency) : DASH }}</div>
           </div>
           <div>
             <div class="muted small">预算</div>
-            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? 'USD') : '未设' }}</div>
+            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? providerOf(a.provider).currency) : '未设' }}</div>
           </div>
           <div>
             <div class="muted small">实例</div>
@@ -307,7 +360,8 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
         </div>
         <p class="muted small">
           {{ a.regions.length ? `区域：${a.regions.join('、')}` : '全部已启用的区域' }} ·
-          费用每 {{ a.cost_interval_h }} 小时{{ a.sync_cost ? '' : '（已关闭）' }} · 费用为 UTC 自然月，数据有数小时延迟
+          费用每 {{ a.cost_interval_h }} 小时{{ a.sync_cost ? '' : '（已关闭）' }} ·
+          {{ a.provider === 'aws' ? '按 UTC 自然月' : '按北京时间自然月' }}，数据有数小时延迟
         </p>
 
         <form v-if="deleting === a.id" class="confirm" @submit.prevent="remove(a)">
@@ -330,7 +384,10 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
             </div>
             <div class="muted small ellipsis mono">{{ [i.public_ipv4, i.public_ipv6].filter(Boolean).join(' / ') || '无公网 IP' }}</div>
           </div>
-          <span class="small state" :class="i.state === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
+          <span class="small state">
+            <span :class="i.state.toLowerCase() === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
+            <span v-if="i.expire_at" class="expire" :class="expireTone(i)">到期 {{ fmtDate(i.expire_at) }}</span>
+          </span>
           <div v-if="i.traffic_limit_bytes" class="traffic">
             <UsageBar :pct="trafficPct(i)" />
             <span class="small num muted">{{ fmtBytes(i.traffic_used_bytes) }} / {{ fmtBytes(i.traffic_limit_bytes) }}</span>
@@ -338,7 +395,10 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
         </li>
       </ul>
-      <p class="muted small">Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；与节点关联、自动校准与到期提醒将在后续版本加入。</p>
+      <p class="muted small">
+        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云轻量为本月（北京时间）流量包用量。
+        与节点关联、自动校准与到期提醒将在后续版本加入。
+      </p>
     </section>
   </main>
 </template>
@@ -374,6 +434,8 @@ const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail' }
 .list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 220px; gap: var(--space-3); align-items: center;
   padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
 .list li:last-child { border-bottom: 0; }
+.state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.providers { margin: var(--space-2) 0 var(--space-3); }
 .inst-main { min-width: 0; }
 .meta { margin-left: var(--space-2); }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

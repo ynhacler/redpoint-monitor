@@ -347,6 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 74 | 云账户第二步：阿里云国内站与国际站（ACS3 签名、账单与余额、ECS / 轻量实例与到期、轻量流量包）；账单月份按服务商时区 | 44.4 |
 | 73 | 升级任务：v0.3.0 之前的 Agent 与未启用远程升级的主机在创建时跳过并说明原因；Agent 上报 system.remote_upgrade；15 分钟未领取即失败 | 29.13.1 |
 | 72 | 云账户第一步（AWS）：凭证加密、账户接口与 Web 页面、同步任务；费用同步间隔可选 6 / 12 / 24 小时（默认 12） | 44.4 |
 | 71 | WebSocket /ws 实现：同源 Origin 校验、会话定时校验、连接上限与慢连接断开；安装命令页改用 server.enrolled 事件（断线时退回轮询） | 19.11、20 |
@@ -9961,6 +9962,20 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 ```
 
 同步任务在面板进程内运行，与告警引擎相同的 runTask 机制（崩溃后重启、不影响上报）。
+
+阿里云实现说明（第二步，修订第 74 条）：
+
+```text
+签名      ACS3-HMAC-SHA256，按官方文档的 RunInstances 示例测试；RPC 接口参数放在查询串，POST，空请求体
+接入点    费用中心：国内站 business.aliyuncs.com，国际站 business.ap-southeast-1.aliyuncs.com；
+          ECS（ecs.<区域>.aliyuncs.com）、轻量应用服务器（swas.<区域>.aliyuncs.com）两站相同
+费用      QueryBillOverview 本月各产品 PretaxAmount 之和（税前、已扣优惠）+ QueryAccountBalance 可用余额；
+          没有费用预测接口，页面显示余额代替预估；免费，费用同步间隔只影响刷新频率
+月份      账单与轻量流量包按北京时间（UTC+8）自然月；“本月”判断按服务商的账单时区（AWS 为 UTC）
+实例      ECS DescribeInstances（包年包月才有到期时间，按量付费忽略 ExpiredTime 占位值）；
+          轻量 ListInstances（均为包年包月，有到期时间）
+流量      轻量 ListInstancesTrafficPackages：额度与本月用量（字节）；实例列表不含额度，重新同步实例时保留已同步的额度
+```
 
 AWS 实现说明（第一步，修订第 72 条）：
 

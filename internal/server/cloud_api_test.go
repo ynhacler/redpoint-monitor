@@ -283,3 +283,60 @@ func TestCloudBackoff(t *testing.T) {
 		t.Fatal("停用的账户不应同步")
 	}
 }
+
+// 阿里云（国内站）：凭证字段、余额、轻量应用服务器流量包；实例重新同步后流量包额度保留
+func TestCloudAliyunSync(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("x-acs-action") {
+		case "QueryBillOverview":
+			io.WriteString(w, `{"Data":{"Items":{"Item":[{"PretaxAmount":30.5,"Currency":"CNY"}]}}}`)
+		case "QueryAccountBalance":
+			io.WriteString(w, `{"Data":{"AvailableAmount":"12.00","Currency":"CNY"}}`)
+		case "DescribeRegions":
+			io.WriteString(w, `{"Regions":{"Region":[{"RegionId":"cn-hongkong"}]}}`)
+		case "DescribeInstances":
+			io.WriteString(w, `{"Instances":{"Instance":[]}}`)
+		case "ListRegions":
+			io.WriteString(w, `{"Regions":[{"RegionId":"cn-hongkong"}]}`)
+		case "ListInstances":
+			io.WriteString(w, `{"TotalCount":1,"Instances":[{"InstanceId":"swas-1","InstanceName":"hk","Status":"Running","PublicIpAddress":"8.0.0.1","ExpiredTime":"2026-11-08T16:00:00Z"}]}`)
+		case "ListInstancesTrafficPackages":
+			io.WriteString(w, `{"InstanceTrafficPackageUsages":[{"InstanceId":"swas-1","TrafficUsed":5000000000,"TrafficPackageTotal":1000000000000}]}`)
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer srv.Close()
+	s.cloud.opts = cloud.Options{Endpoint: func(service, region string) string { return srv.URL + "/" }}
+
+	// AWS 的字段名不适用于阿里云
+	code, _, e := createCloudAccount(t, h, admin, `{"provider":"aliyun_cn","name":"阿里云","credential":{"access_key_id":"LTAI5tExampleExample","secret_access_key":"x"}}`)
+	if code != http.StatusUnprocessableEntity || e.Details[0].Field != "credential.access_key_secret" {
+		t.Fatalf("字段错误 %d %+v", code, e)
+	}
+	code, v, e := createCloudAccount(t, h, admin, `{"provider":"aliyun_cn","name":"阿里云","regions":["cn-hongkong"],
+		"credential":{"access_key_id":"LTAI5tExampleExample","access_key_secret":"secretsecretsecretsecret"}}`)
+	if code != http.StatusCreated || v.CredentialHint != "LTAI…mple" || v.Provider != "aliyun_cn" {
+		t.Fatalf("添加 %d %+v %+v", code, v, e)
+	}
+	a, _ := s.store.GetCloudAccount(v.ID)
+	now := time.Now()
+	s.syncCloudAccount(context.Background(), a, cloudKinds{cost: true, instances: true, traffic: true}, now)
+	// 再同步一次实例：列表中没有流量包额度，不能把已同步的额度清零
+	a, _ = s.store.GetCloudAccount(v.ID)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true}, now)
+	a, _ = s.store.GetCloudAccount(v.ID)
+	if a.LastError != "" {
+		t.Fatalf("同步失败 %s", a.LastError)
+	}
+	insts, _ := s.store.CloudInstances(v.ID)
+	if len(insts) != 1 || insts[0].Kind != "swas" || insts[0].TrafficLimitBytes != 1e12 || insts[0].TrafficUsedBytes != 5e9 || insts[0].ExpireAt == 0 {
+		t.Fatalf("轻量实例 %+v", insts)
+	}
+	costs, _ := s.store.CloudCosts(v.ID, 1)
+	if len(costs) != 1 || costs[0].AmountCents != 3050 || costs[0].BalanceCents == nil || *costs[0].BalanceCents != 1200 || costs[0].Currency != "CNY" {
+		t.Fatalf("费用 %+v", costs)
+	}
+}

@@ -21,7 +21,8 @@ import (
 
 var (
 	awsKeyID      = regexp.MustCompile(`^AKIA[A-Z0-9]{16}$`)
-	cloudRegion   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-\d{1,2}$`)
+	aliyunKeyID   = regexp.MustCompile(`^LTAI[0-9A-Za-z]{12,28}$`)
+	cloudRegion   = regexp.MustCompile(`^[a-z]{2}(-[a-z0-9]+){1,3}$`) // ap-northeast-1、cn-hangzhou
 	costIntervals = []int{6, 12, 24}
 )
 
@@ -67,8 +68,8 @@ func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, 
 	if err != nil {
 		return v, err
 	}
-	// 只显示本月的费用：上月的数据不能当作“本月”
-	if len(costs) > 0 && costs[0].Period == time.Now().UTC().Format("2006-01") {
+	// 只显示本月（按服务商的账单时区）的费用：上月的数据不能当作“本月”
+	if len(costs) > 0 && costs[0].Period == cloud.BillingMonth(a.Provider, time.Now()) {
 		v.CurrentCost = &costs[0]
 	}
 	return v, nil
