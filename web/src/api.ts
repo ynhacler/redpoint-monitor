@@ -404,8 +404,18 @@ export async function listCloudCosts(id: number) {
   return (await request('get', '/cloud-accounts/{id}/costs', { params: { id } })).items
 }
 
-export async function listCloudInstances(accountId?: number) {
-  return (await request('get', '/cloud-instances', { query: { account_id: accountId } })).items
+export async function listCloudInstances(q: { account_id?: number; server_id?: number } = {}) {
+  return (await request('get', '/cloud-instances', { query: q })).items
+}
+
+/** 关联或取消关联（serverId 为 null）节点（设计 44.5） */
+export function linkCloudInstance(id: number, serverId: number | null) {
+  return request('put', '/cloud-instances/{id}/server', { params: { id }, body: { server_id: serverId } })
+}
+
+/** 把关联实例的到期时间写入节点的到期日 */
+export function applyCloudExpire(id: number) {
+  return request('post', '/cloud-instances/{id}/apply-expire', { params: { id } })
 }
 
 // ---- 只读 API Key（设计 45.2） ----

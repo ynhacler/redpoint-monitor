@@ -212,6 +212,8 @@ type CloudInstance struct {
 	TrafficPeriodStart string `json:"traffic_period_start"`
 	ServerID           *int64 `json:"server_id"`
 	UpdatedAt          int64  `json:"updated_at"`
+	// SuggestedServerID：未关联时，公网 IP 与之唯一匹配的节点（建议关联，设计 44.5）；不入库
+	SuggestedServerID *int64 `json:"suggested_server_id"`
 }
 
 // ReplaceCloudInstances 用最新列表替换账户的实例：新增、更新，已不存在的删除；保留已有的节点关联与流量数据。

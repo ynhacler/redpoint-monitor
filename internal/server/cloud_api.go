@@ -374,19 +374,24 @@ func (s *Server) handleCloudCosts(w http.ResponseWriter, r *http.Request) {
 
 // handleCloudInstances：GET /api/v1/cloud-instances，admin。
 func (s *Server) handleCloudInstances(w http.ResponseWriter, r *http.Request) {
-	var accountID int64
-	if v := r.URL.Query().Get("account_id"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n <= 0 {
-			s.writeError(w, r, errorf(CodeBadRequest, "account_id 格式不正确"))
-			return
-		}
-		accountID = n
+	accountID, serverID, err := cloudInstanceQuery(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
 	}
 	insts, err := s.store.CloudInstances(accountID)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
+	}
+	rows, err := s.store.ListServers()
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	suggestLinks(insts, rows)
+	if serverID > 0 { // 节点详情：只要关联到该节点的实例
+		insts = slices.DeleteFunc(insts, func(in CloudInstance) bool { return in.ServerID == nil || *in.ServerID != serverID })
 	}
 	writeList(w, insts, "", nil)
 }

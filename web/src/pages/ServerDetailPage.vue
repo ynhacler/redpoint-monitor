@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getHistory, getServer, type HistoryRange, type HistoryView, type ServerView } from '../api'
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
+import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
@@ -227,6 +228,7 @@ const charts = computed(() => [
       <section class="section">
         <TrafficCard :server="s" />
         <TrafficHistory :server="s" class="section-tight" />
+        <CloudInstanceCard :server="s" class="section-tight" />
       </section>
 
       <!-- 告警记录（设计 16） -->

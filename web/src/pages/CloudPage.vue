@@ -4,13 +4,14 @@
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  createCloudAccount, deleteCloudAccount, errorText, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
+  createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
   updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudInstance,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
 import UsageBar from '../components/UsageBar.vue'
 import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime } from '../format'
+import { state } from '../store'
 
 const accounts = ref<CloudAccount[]>([])
 const instances = ref<CloudInstance[]>([])
@@ -264,6 +265,21 @@ function trafficPct(i: CloudInstance): number {
 }
 const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量' }
 
+// ---- 与节点关联（设计 44.5）：按公网 IP 建议，由用户确认 ----
+const nodeName = (id: number | null | undefined) => (id ? state.servers.find((s) => s.id === id)?.name ?? `#${id}` : '')
+const linkable = computed(() => [...state.servers].sort((a, b) => a.name.localeCompare(b.name)))
+const linkError = ref('')
+async function link(i: CloudInstance, serverId: number | null) {
+  linkError.value = ''
+  try {
+    const v = await linkCloudInstance(i.id, serverId)
+    const k = instances.value.findIndex((x) => x.id === i.id)
+    if (k >= 0) instances.value[k] = { ...v, suggested_server_id: null }
+  } catch (e) {
+    linkError.value = errorText(e)
+  }
+}
+
 /** 到期提示：30 天内为 warn，已过期为 bad */
 function expireTone(i: CloudInstance): string {
   const days = (i.expire_at - Date.now() / 1000) / 86400
@@ -448,11 +464,28 @@ function expireTone(i: CloudInstance): string {
             <span class="small num muted">{{ fmtBytes(i.traffic_used_bytes) }} / {{ fmtBytes(i.traffic_limit_bytes) }}</span>
           </div>
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
+          <!-- 与节点关联：已关联 / 建议关联（公网 IP 唯一匹配）/ 手动选择 -->
+          <div class="link small">
+            <template v-if="i.server_id">
+              关联节点 <RouterLink :to="`/servers/${i.server_id}`">{{ nodeName(i.server_id) }}</RouterLink>
+              <button type="button" class="text" @click="link(i, null)">取消关联</button>
+            </template>
+            <template v-else-if="i.suggested_server_id">
+              公网 IP 与节点 <b>{{ nodeName(i.suggested_server_id) }}</b> 相同
+              <button type="button" class="secondary small" @click="link(i, i.suggested_server_id)">关联</button>
+            </template>
+            <select v-else class="small" aria-label="关联节点" :value="''"
+              @change="link(i, Number(($event.target as HTMLSelectElement).value) || null)">
+              <option value="">关联到节点…</option>
+              <option v-for="s in linkable" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </div>
         </li>
       </ul>
+      <p v-if="linkError" class="small err">{{ linkError }}</p>
       <p class="muted small">
         Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量。
-        与节点关联、自动校准与到期提醒将在后续版本加入。
+        关联节点后，节点详情显示云厂商口径的状态、流量包与到期时间，可一键写入节点的到期日。
       </p>
     </section>
   </main>
@@ -486,8 +519,10 @@ function expireTone(i: CloudInstance): string {
   padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .confirm input { width: 200px; }
 .list { list-style: none; margin: var(--space-3) 0 var(--space-2); padding: 0; }
-.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 220px; gap: var(--space-3); align-items: center;
+.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 220px; gap: var(--space-2) var(--space-3); align-items: center;
   padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.link { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--text-muted); }
+.link select { width: auto; max-width: 220px; }
 .list li:last-child { border-bottom: 0; }
 .state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
 .key-help { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--surface-2);
