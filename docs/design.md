@@ -347,7 +347,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
-| 68 | 新增第 44 章：云厂商账户（AWS、阿里云、Oracle Cloud）的费用、流量与实例；只读凭证、AES-256-GCM 加密保存、签名自行实现不引入 SDK；DMIT 无公开 API 暂不接入 | 44 |
+| 68 | 新增第 44 章：云厂商账户（AWS、阿里云国内站 / 国际站、腾讯云、Oracle Cloud）的费用、流量与实例；只读凭证、AES-256-GCM 加密保存、签名自行实现不引入 SDK；DMIT 无公开 API 暂不接入 | 44 |
 | 67 | 审计日志按主体、操作、时间筛选与 CSV 导出（BOM、防 CSV 注入、导出记入日志）；登录会话列表与踢出（auth.session_revoke 归入登录日志）；Web 日志页筛选与导出、账号页“登录中的设备” | 24.8 |
 | 66 | 内置 HTTPS：--domain（autocert，仅限指定域名，证书缓存 DATA/certs）、:80 重定向与 HTTP-01、TLS 1.2 起、HSTS；systemd drop-in 只授予 CAP_NET_BIND_SERVICE；新增依赖 golang.org/x/net（autocert 所需） | 25、23.1 |
 | 65 | 节点计费时区（迁移 21，traffic_timezone）：流量按节点时区归日，周期与汇总按该时区计算；内嵌 time/tzdata | 5.4 |
@@ -9894,7 +9894,8 @@ Web：模拟各类错误响应，确认界面表现符合 43.6
 实例      实例列表、公网 IP、规格、到期时间与续费价格；与节点关联后自动填写资产信息、到期提醒（1.2.5）
 ```
 
-首批支持 AWS、阿里云、Oracle Cloud（OCI）。DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动校准；
+首批支持 AWS、阿里云（国内站 aliyun.com 与国际站 alibabacloud.com 分别作为两种账户类型）、腾讯云、Oracle Cloud（OCI）。
+DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动校准；
 不做登录后台抓取（需要保存登录密码、页面改版即失效、可能违反服务条款）。
 
 ## 44.2 安全
@@ -9916,7 +9917,9 @@ Web：模拟各类错误响应，确认界面表现符合 43.6
 | 服务商 | 凭证与签名 | 费用 | 流量 | 实例与到期 | 最小只读权限 |
 |---|---|---|---|---|---|
 | AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get* |
-| 阿里云 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS：QueryAccountBalance、QueryBillOverview | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
+| 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
+| 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上 | 同上（国际站控制台中的同名策略） |
+| 腾讯云 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、按月账单汇总；国内站人民币、国际站美元（同一 API 地址，币种随账户） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
 | Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … to read usage-reports in tenancy；inspect instances |
 
 ## 44.4 同步频率与费用
@@ -9955,15 +9958,15 @@ cloud_sync      连续 24 小时同步失败或凭证失效               提示
 ## 44.7 数据表
 
 ```text
-cloud_accounts    id、provider（aws / aliyun / oci）、name、regions、credential_enc、credential_hint（末 4 位）、
+cloud_accounts    id、provider（aws / aliyun_cn / aliyun_intl / tencent / oci）、name、regions、credential_enc、credential_hint（末 4 位）、
                   budget_cents、currency、enabled、sync_cost / sync_traffic（开关）、last_sync_at、last_error、created_at
 cloud_costs       account_id、period（YYYY-MM）、amount_cents、forecast_cents、balance_cents、currency、updated_at
-cloud_instances   account_id、instance_id、name、region、kind（ec2 / lightsail / ecs / swas / oci）、public_ipv4、public_ipv6、
+cloud_instances   account_id、instance_id、name、region、kind（ec2 / lightsail / ecs / swas / cvm / lighthouse / oci）、public_ipv4、public_ipv6、
                   plan、expire_at、renew_price_cents、traffic_limit_bytes、traffic_used_bytes、traffic_period_start、
                   server_id（关联的节点，可空）、updated_at
 ```
 
-金额以“分”为整数保存，币种随账户（AWS / OCI 多为 USD，阿里云为 CNY）。
+金额以“分”为整数保存，币种随账户（AWS / OCI 多为 USD；阿里云国内站、腾讯云国内站为 CNY，国际站多为 USD）。
 
 ## 44.8 接口
 
@@ -9981,7 +9984,7 @@ PUT    /api/v1/cloud-instances/{id}/server       关联 / 取消关联节点
 ## 44.9 实现与测试
 
 ```text
-签名        internal/cloud：sigv4.go、acs3.go、ocisign.go，各自用官方文档中的签名示例做表驱动测试
+签名        internal/cloud：sigv4.go、acs3.go（阿里云国内 / 国际共用）、tc3.go（腾讯云）、ocisign.go，各自用官方文档中的签名示例做表驱动测试
 客户端      每家一个只包含所用接口的小客户端；HTTP 超时 30 秒；响应体大小上限
 凭证加密    internal/cloud/secret.go：AES-256-GCM，随机 nonce；secret.key 缺失时生成，权限 0600
 测试        接口层用 httptest 模拟云厂商响应；真实账户的端到端验证由开发者手动进行，不进 CI
@@ -9991,7 +9994,8 @@ PUT    /api/v1/cloud-instances/{id}/server       关联 / 取消关联节点
 
 ```text
 第一步    框架与 AWS：凭证加密、账户管理接口与 Web 页面、同步任务、Cost Explorer 费用、EC2 / Lightsail 实例与 Lightsail 流量
-第二步    阿里云：余额、账单概览、包年包月实例到期、轻量应用服务器流量包
-第三步    Oracle Cloud：按月费用、出站数据量、实例
-第四步    实例与节点关联、到期提醒、可选的自动流量校准、云相关告警
+第二步    阿里云（国内站与国际站）：余额、账单概览、包年包月实例到期、轻量应用服务器流量包
+第三步    腾讯云：余额、按月账单、CVM 实例到期、轻量应用服务器流量包
+第四步    Oracle Cloud：按月费用、出站数据量、实例
+第五步    实例与节点关联、到期提醒、可选的自动流量校准、云相关告警
 ```
