@@ -8,6 +8,7 @@ import { cpu, diskSummary, gaugeLevel, mem, rx, tx, type LiveSample } from '../m
 import Chart, { type Series } from './Chart.vue'
 import Qty from './Qty.vue'
 import Ring from './Ring.vue'
+import Icon from './Icon.vue'
 import Sparkline from './Sparkline.vue'
 
 const props = defineProps<{
@@ -36,26 +37,18 @@ const minutes = computed(() => {
   return n > 1 ? Math.max(1, Math.round((props.samples[n - 1].ts - props.samples[0].ts) / 60)) : 0
 })
 
-// 图标：Lucide 路径（ISC），线宽 1.5（设计 41.4.3）
-const icons = {
-  cpu: 'M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2M7 5h10v14H7zM10 9h4v6h-4z',
-  disk: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2ZM17 21v-8H7v8M7 3v5h8',
-  mem: 'M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5',
-  conn: 'M4.9 19.1a10 10 0 0 1 0-14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9a10 10 0 0 1 0 14.2M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z',
-  speed: 'M22 12h-4l-3 9L9 3l-3 9H2',
-}
 </script>
 
 <template>
   <div class="quick">
     <div class="tile spark-tile">
-      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.cpu" /></svg>CPU<span class="extra num">{{ r.cpu.cores }} 核</span></div>
+      <div class="label"><Icon name="cpu" :size="15" />CPU<span class="extra num">{{ r.cpu.cores }} 核</span></div>
       <div class="big" :class="cpuLv"><Qty :v="pct1(cpu(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.cpu)" :color="color(cpuLv)" :height="36" />
     </div>
 
     <div class="tile">
-      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.disk" /></svg>磁盘<span v-if="disk && disk.level !== 'ok' && gaugeLevel(disk.usage, 'disk') !== disk.level" class="extra" :class="disk.level">{{ disk.fullest.mount }} {{ Math.round(disk.fullest.usage) }}%</span><span v-else-if="disk && disk.count > 1" class="extra">{{ disk.count }} 块</span></div>
+      <div class="label"><Icon name="hard-drive" :size="15" />磁盘<span v-if="disk && disk.level !== 'ok' && gaugeLevel(disk.usage, 'disk') !== disk.level" class="extra" :class="disk.level">{{ disk.fullest.mount }} {{ Math.round(disk.fullest.usage) }}%</span><span v-else-if="disk && disk.count > 1" class="extra">{{ disk.count }} 块</span></div>
       <div class="ring-row">
         <div>
           <div class="big" :class="diskLv"><Qty :v="disk ? Math.round(disk.usage) : '—'" u="%" /></div>
@@ -66,13 +59,13 @@ const icons = {
     </div>
 
     <div class="tile spark-tile">
-      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.mem" /></svg>内存<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
+      <div class="label"><Icon name="layers" :size="15" />内存<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
       <div class="big" :class="memLv"><Qty :v="pct1(mem(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.mem)" :color="color(memLv)" :height="36" />
     </div>
 
     <div class="tile">
-      <div class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.conn" /></svg>连接与进程</div>
+      <div class="label"><Icon name="radio" :size="15" />连接与进程</div>
       <div class="counts num">
         <div><b>{{ r.conns?.tcp ?? '—' }}</b><span><i style="background: var(--accent)" />TCP</span></div>
         <div><b>{{ r.conns?.udp ?? '—' }}</b><span><i style="background: var(--series-2)" />UDP</span></div>
@@ -88,7 +81,7 @@ const icons = {
 
     <div class="tile speed">
       <div class="speed-head">
-        <div class="label" :title="minutes ? `最近 ${minutes} 分钟` : ''"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="icons.speed" /></svg>上传下载速率</div>
+        <div class="label" :title="minutes ? `最近 ${minutes} 分钟` : ''"><Icon name="pulse" :size="15" />上传下载速率</div>
         <span class="values num small">
           <span><i style="background: var(--accent)" />下载 {{ fmtBytes(rx(server), true) }}</span>
           <span><i style="background: var(--ok)" />上传 {{ fmtBytes(tx(server), true) }}</span>
@@ -104,7 +97,7 @@ const icons = {
 .tile { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; overflow: hidden; }
 .label { display: flex; align-items: center; gap: 6px; font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); white-space: nowrap; min-width: 0; }
-.label svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.label svg { flex: none; }
 .extra { margin-left: auto; font-size: var(--font-xs); overflow: hidden; text-overflow: ellipsis; }
 .big { font-size: 30px; line-height: 36px; font-weight: 700; letter-spacing: -0.01em; }
 .big :deep(.u) { font-size: .6em; font-weight: var(--weight-strong); margin-left: 1px; color: inherit; opacity: .85; }
