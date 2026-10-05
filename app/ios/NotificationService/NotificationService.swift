@@ -1,7 +1,7 @@
 // Notification Service Extension（设计 30.3.3）：APNs 推送的外层文字固定为“服务器告警”，真实内容在自定义字段 c 中加密；
 // 扩展用本机私钥解密后替换标题与正文。解密失败（没有私钥、旧版 App、密钥已更换）时保留兜底文字。
 //
-// 【安全】私钥只在本机钥匙串中（与 App 共享的访问组，App 写入）；解密后的内容只用于显示这条通知，不写入任何文件。
+// 【安全】私钥只在本机钥匙串中（与 App 共享的访问组，App 写入）；解密后的内容用于显示这条通知；只有标题写入本机 App Group，供桌面小组件显示最近告警（设计 1.5.4）。
 import UserNotifications
 
 class NotificationService: UNNotificationServiceExtension {
@@ -30,6 +30,8 @@ class NotificationService: UNNotificationServiceExtension {
         if let center = msg.center_id { info["center_id"] = center }
         if let sid = msg.server_id { info["server_id"] = sid }
         content.userInfo = info
+        // 桌面小组件显示最近一条告警，并请求刷新（设计 1.5.4）
+        WidgetShared.saveAlert(title: msg.title, severity: msg.severity, ts: msg.ts)
         contentHandler(content)
     }
 

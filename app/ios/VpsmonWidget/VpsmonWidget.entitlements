@@ -6,9 +6,5 @@
 	<array>
 		<string>group.dev.vpsmon.vpsmonApp</string>
 	</array>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)dev.vpsmon.shared</string>
-	</array>
 </dict>
 </plist>
