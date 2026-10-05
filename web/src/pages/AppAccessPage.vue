@@ -8,6 +8,7 @@ import {
   type AppAccessKey, type AppAccessKeyInput, type AppDevice,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
+import QrCode from '../components/QrCode.vue'
 import { DASH, fmtDateTime, fmtTime } from '../format'
 import { scopeText } from '../scope'
 import { state } from '../store'
@@ -132,13 +133,19 @@ const activeDevices = computed(() => devices.value.filter((d) => d.status === 'a
       <p v-if="insecure" class="banner warn small">
         面板地址不是 https，App 会拒绝连接。请为面板配置 HTTPS（如用 Caddy 反向代理），并以 --public-url 启动面板。
       </p>
+      <div class="pair-wrap">
+      <figure class="qr-box">
+        <QrCode :value="created.pair_url" label="App 配对二维码" />
+        <figcaption class="small muted">用 App 扫码配对</figcaption>
+      </figure>
       <div class="pair">
-        <span class="small muted">面板地址</span>
+        <span class="small muted">或在 App 中手工填写 · 面板地址</span>
         <CommandBlock :command="created.server_url" plain />
         <span class="small muted">AK</span>
         <CommandBlock :command="created.access_key" plain />
         <span class="small muted">配对链接（二维码内容）</span>
         <CommandBlock :command="created.pair_url" plain />
+      </div>
       </div>
     </section>
 
@@ -251,8 +258,10 @@ const activeDevices = computed(() => devices.value.filter((d) => d.status === 'a
 .panel + .panel, .created + .panel, .editor + .panel { margin-top: var(--space-4); }
 .panel h2 { font-size: var(--font-lg); margin-bottom: var(--space-2); }
 .created p { margin: 0 0 var(--space-2); }
-.pair { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.pair .muted { margin-top: var(--space-2); }
+.pair-wrap { display: flex; gap: var(--space-5); align-items: flex-start; flex-wrap: wrap; }
+.qr-box { margin: 0; width: 200px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.pair { flex: 1 1 260px; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.pair .muted:not(:first-child) { margin-top: var(--space-2); }
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
 .fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .fields .wide { grid-column: 1 / -1; }
