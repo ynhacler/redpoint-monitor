@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -241,6 +242,30 @@ func (s *Server) sealCredential(provider string, cred map[string]string) ([]byte
 	var fe []FieldError
 	var hint string
 	switch provider {
+	case cloud.ProviderOCI:
+		c := map[string]string{}
+		for _, k := range []string{"tenancy_ocid", "user_ocid", "fingerprint", "private_key", "region"} {
+			c[k] = strings.TrimSpace(cred[k])
+		}
+		if !strings.HasPrefix(c["tenancy_ocid"], "ocid1.tenancy.") {
+			fe = append(fe, FieldError{Field: "credential.tenancy_ocid", Message: "租户 OCID 应以 ocid1.tenancy. 开头"})
+		}
+		if !strings.HasPrefix(c["user_ocid"], "ocid1.user.") {
+			fe = append(fe, FieldError{Field: "credential.user_ocid", Message: "用户 OCID 应以 ocid1.user. 开头"})
+		}
+		if !ociFingerprint.MatchString(c["fingerprint"]) {
+			fe = append(fe, FieldError{Field: "credential.fingerprint", Message: "指纹格式不正确（如 12:34:…:ef，16 组）"})
+		}
+		if !cloudRegion.MatchString(c["region"]) {
+			fe = append(fe, FieldError{Field: "credential.region", Message: "主区域格式不正确（如 ap-tokyo-1）"})
+		}
+		if _, err := cloud.ParseOCIKey(c["private_key"]); err != nil {
+			fe = append(fe, FieldError{Field: "credential.private_key", Message: err.Error()})
+		}
+		if len(fe) == 0 {
+			hint = "…" + c["fingerprint"][len(c["fingerprint"])-5:]
+		}
+		cred = c
 	case cloud.ProviderTencentCN, cloud.ProviderTencentIntl:
 		id, secret := cred["secret_id"], cred["secret_key"]
 		if !tencentSecretID.MatchString(id) {

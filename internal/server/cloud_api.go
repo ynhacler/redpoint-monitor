@@ -23,6 +23,7 @@ var (
 	awsKeyID        = regexp.MustCompile(`^AKIA[A-Z0-9]{16}$`)
 	aliyunKeyID     = regexp.MustCompile(`^LTAI[0-9A-Za-z]{12,28}$`)
 	tencentSecretID = regexp.MustCompile(`^AKID[0-9A-Za-z]{20,40}$`)
+	ociFingerprint  = regexp.MustCompile(`^([0-9a-f]{2}:){15}[0-9a-f]{2}$`)
 	cloudRegion     = regexp.MustCompile(`^[a-z]{2}(-[a-z0-9]+){1,3}$`) // ap-northeast-1、cn-hangzhou
 	costIntervals   = []int{6, 12, 24}
 )

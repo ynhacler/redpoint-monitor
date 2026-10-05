@@ -52,8 +52,8 @@ interface ProviderInfo {
   idPlaceholder: string
   secretLabel: string
   /** 凭证中 ID 与密钥字段的名称（与接口一致） */
-  idField: 'access_key_id' | 'secret_id'
-  secretField: 'secret_access_key' | 'access_key_secret' | 'secret_key'
+  idField: 'access_key_id' | 'secret_id' | 'user_ocid'
+  secretField: 'secret_access_key' | 'access_key_secret' | 'secret_key' | 'private_key'
   /** 轻量 / 套餐流量包的名称 */
   trafficName: string
   /** 账单时区说明 */
@@ -91,6 +91,12 @@ const providers: Record<Provider, ProviderInfo> = {
     trafficName: 'Lighthouse', billingTZ: '按北京时间自然月',
     keySteps: 'CAM 控制台 → Users → Create User（Custom，Programmatic access）→ 关联下面的自定义策略 → 保存 SecretId / SecretKey',
     keyURL: 'https://console.tencentcloud.com/cam' },
+  // Oracle Cloud 用 API 签名密钥（RSA 私钥），另需租户 OCID、指纹与主区域（设计 44.3）
+  oci: { label: 'Oracle Cloud', currency: 'USD', idLabel: '用户 OCID', idPlaceholder: 'ocid1.user.oc1..…', secretLabel: 'API 私钥（PEM）',
+    idField: 'user_ocid', secretField: 'private_key', regionExample: 'ap-tokyo-1, us-ashburn-1', paidCostApi: false,
+    trafficName: '出站流量（每月 10 TB 免费）', billingTZ: '按 UTC 自然月',
+    keySteps: '控制台右上角头像 → 我的概要信息（My profile）→ API 密钥 → 添加 API 密钥 → 下载私钥 → 添加，复制弹出的配置文件预览中的 user、fingerprint、tenancy、region',
+    keyURL: 'https://cloud.oracle.com/identity/domains/my-profile/api-keys' },
 }
 const providerOf = (p: string) => providers[p as Provider] ?? providers.aws
 
@@ -157,7 +163,7 @@ async function remove(a: CloudAccount) {
 
 const editing = ref<'new' | number | null>(null)
 const form = ref({
-  provider: 'aws' as Provider, name: '', access_key_id: '', secret: '', regions: '', budget: '', cost_interval_h: 12,
+  provider: 'aws' as Provider, name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', cost_interval_h: 12,
   sync_cost: true, sync_traffic: true, enabled: true, password: '',
 })
 const info = computed(() => providers[form.value.provider])
@@ -168,7 +174,7 @@ const showPolicy = ref(false)
 
 function openNew() {
   editing.value = 'new'
-  form.value = { provider: 'aws', name: '', access_key_id: '', secret: '', regions: '', budget: '', cost_interval_h: 12,
+  form.value = { provider: 'aws', name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', cost_interval_h: 12,
     sync_cost: true, sync_traffic: true, enabled: true, password: '' }
   showPolicy.value = false
   fieldErrors.value = {}
@@ -177,7 +183,7 @@ function openNew() {
 
 function openEdit(a: CloudAccount) {
   editing.value = a.id
-  form.value = { provider: a.provider as Provider, name: a.name, access_key_id: '', secret: '', regions: a.regions.join(', '),
+  form.value = { provider: a.provider as Provider, name: a.name, access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: a.regions.join(', '),
     budget: a.budget_cents ? String(a.budget_cents / 100) : '', cost_interval_h: a.cost_interval_h,
     sync_cost: a.sync_cost, sync_traffic: a.sync_traffic, enabled: a.enabled, password: '' }
   fieldErrors.value = {}
@@ -185,7 +191,10 @@ function openEdit(a: CloudAccount) {
 }
 
 // 添加时、或编辑时填写了新凭证：需要重新输入密码
-const changingCred = computed(() => editing.value === 'new' || !!(form.value.access_key_id || form.value.secret))
+const changingCred = computed(() => {
+  const f = form.value
+  return editing.value === 'new' || !!(f.access_key_id || f.secret || f.tenancy_ocid || f.fingerprint || f.home_region)
+})
 
 async function save() {
   const f = form.value
@@ -204,6 +213,10 @@ async function save() {
   }
   if (changingCred.value) {
     body.credential = { [info.value.idField]: f.access_key_id.trim(), [info.value.secretField]: f.secret.trim() }
+    if (f.provider === 'oci') {
+      Object.assign(body.credential, { tenancy_ocid: f.tenancy_ocid.trim(), fingerprint: f.fingerprint.trim().toLowerCase(),
+        region: f.home_region.trim() })
+    }
   }
   saving.value = true
   try {
@@ -214,10 +227,10 @@ async function save() {
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.details.length) {
-      // credential.access_key_id → access_key_id；两家的密钥字段都显示在“密钥”输入框下
+      // credential.access_key_id → access_key_id；各家的密钥字段都显示在“密钥”输入框下，OCI 的 region 显示在“主区域”下
       fieldErrors.value = Object.fromEntries(e.details.map((d) => [
-        d.field.replace(/^credential\./, '').replace(/^(secret_access_key|access_key_secret|secret_key)$/, 'secret')
-          .replace(/^secret_id$/, 'access_key_id'), d.message]))
+        d.field.replace(/^credential\./, '').replace(/^(secret_access_key|access_key_secret|secret_key|private_key)$/, 'secret')
+          .replace(/^(secret_id|user_ocid)$/, 'access_key_id').replace(/^region$/, 'home_region'), d.message]))
     } else {
       formError.value = errorText(e)
     }
@@ -256,14 +269,19 @@ const tencentPolicy = JSON.stringify({
     resource: ['*'],
   }],
 }, null, 2)
-const policyFor = (p: Provider) => (p === 'aws' ? awsPolicy : p.startsWith('tencent') ? tencentPolicy : aliyunPolicies)
+// Oracle Cloud：把 API 用户放进一个组，在根区间为该组添加这四条只读策略
+const ociPolicy = ['read usage-reports', 'inspect compartments', 'read instance-family', 'read virtual-network-family']
+  .map((x) => `Allow group <组名> to ${x} in tenancy`).join('\n')
+const policyFor = (p: Provider) => (p === 'aws' ? awsPolicy : p === 'oci' ? ociPolicy
+  : p.startsWith('tencent') ? tencentPolicy : aliyunPolicies)
 
 // ---- 实例 ----
 
 function trafficPct(i: CloudInstance): number {
   return i.traffic_limit_bytes ? (i.traffic_used_bytes / i.traffic_limit_bytes) * 100 : 0
 }
-const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量' }
+const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量',
+  oci: 'OCI', oci_egress: '租户' }
 
 // ---- 与节点关联（设计 44.5）：按公网 IP 建议，由用户确认 ----
 const nodeName = (id: number | null | undefined) => (id ? state.servers.find((s) => s.id === id)?.name ?? `#${id}` : '')
@@ -317,6 +335,11 @@ function expireTone(i: CloudInstance): string {
         只授予三个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '查看策略名称' }}</button>
       </p>
+      <p v-else-if="form.provider === 'oci'" class="muted small">
+        建议创建一个专用用户并加入一个组，在根区间为该组添加下面的只读策略，再为该用户添加 API 密钥（不带密码的 RSA 私钥）。
+        出站流量按租户统计，对照每月 10 TB 免费额度。
+        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
+      </p>
       <p v-else class="muted small">
         在{{ form.provider === 'tencent_cn' ? '腾讯云（cloud.tencent.com）' : '腾讯云国际站（tencentcloud.com）' }}访问管理 CAM 中创建子用户，
         关联下面的自定义只读策略，再为它创建 API 密钥。国内站与国际站是两套账号，请按账号所在站点选择。
@@ -339,8 +362,28 @@ function expireTone(i: CloudInstance): string {
             :placeholder="editing === 'new' ? info.idPlaceholder : '留空保持不变'" />
           <small v-if="fieldErrors.access_key_id" class="err">{{ fieldErrors.access_key_id }}</small>
         </label>
-        <label>{{ info.secretLabel }}
-          <input v-model="form.secret" type="password" autocomplete="new-password" spellcheck="false"
+        <template v-if="form.provider === 'oci'">
+          <label>租户 OCID
+            <input v-model="form.tenancy_ocid" autocomplete="off" spellcheck="false"
+              :placeholder="editing === 'new' ? 'ocid1.tenancy.oc1..…' : '留空保持不变'" />
+            <small v-if="fieldErrors.tenancy_ocid" class="err">{{ fieldErrors.tenancy_ocid }}</small>
+          </label>
+          <label>指纹（fingerprint）
+            <input v-model="form.fingerprint" autocomplete="off" spellcheck="false"
+              :placeholder="editing === 'new' ? 'aa:bb:…（16 组）' : '留空保持不变'" />
+            <small v-if="fieldErrors.fingerprint" class="err">{{ fieldErrors.fingerprint }}</small>
+          </label>
+          <label>主区域（home region）
+            <input v-model="form.home_region" autocomplete="off" spellcheck="false"
+              :placeholder="editing === 'new' ? '如 ap-tokyo-1' : '留空保持不变'" />
+            <small v-if="fieldErrors.home_region" class="err">{{ fieldErrors.home_region }}</small>
+          </label>
+        </template>
+        <label :class="{ wide: form.provider === 'oci' }">{{ info.secretLabel }}
+          <!-- 私钥是多行 PEM：用文本框；不进浏览器自动填充 -->
+          <textarea v-if="form.provider === 'oci'" v-model="form.secret" rows="4" autocomplete="off" spellcheck="false" class="mono pem"
+            :placeholder="editing === 'new' ? '-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----' : '留空保持不变'" />
+          <input v-else v-model="form.secret" type="password" autocomplete="new-password" spellcheck="false"
             :placeholder="editing === 'new' ? '' : '留空保持不变'" />
           <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
           <small v-else-if="fieldErrors.credential" class="err">{{ fieldErrors.credential }}</small>
@@ -465,7 +508,7 @@ function expireTone(i: CloudInstance): string {
           </div>
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
           <!-- 与节点关联：已关联 / 建议关联（公网 IP 唯一匹配）/ 手动选择 -->
-          <div class="link small">
+          <div v-if="i.kind !== 'oci_egress'" class="link small">
             <template v-if="i.server_id">
               关联节点 <RouterLink :to="`/servers/${i.server_id}`">{{ nodeName(i.server_id) }}</RouterLink>
               <button type="button" class="text" @click="link(i, null)">取消关联</button>
@@ -499,6 +542,7 @@ function expireTone(i: CloudInstance): string {
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
 .fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .fields .wide { grid-column: 1 / -1; }
+.fields .pem { font-size: var(--font-xs); resize: vertical; -webkit-text-security: disc; }
 .fields .check { flex-direction: row; align-items: center; gap: var(--space-2); }
 .check input { width: auto; }
 .actions { display: flex; gap: var(--space-2); }

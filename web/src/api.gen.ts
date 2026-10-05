@@ -541,8 +541,8 @@ export interface Report {
 
 /** 添加时 provider、name、credential 必填；修改时 provider 不可更改，credential 留空表示不变 */
 export interface CloudAccountInput {
-  /** aliyun_cn / aliyun_intl：阿里云国内站（aliyun.com）/ 国际站（alibabacloud.com）；tencent_cn / tencent_intl：腾讯云国内站（cloud.tencent.com）/ 国际站（tencentcloud.com）。Oracle Cloud 随后续步骤加入（设计 44.10） */
-  provider?: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl'
+  /** aliyun_cn / aliyun_intl：阿里云国内站（aliyun.com）/ 国际站（alibabacloud.com）；tencent_cn / tencent_intl：腾讯云国内站（cloud.tencent.com）/ 国际站（tencentcloud.com）；oci：Oracle Cloud */
+  provider?: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl' | 'oci'
   name: string
   /** 只同步这些区域；空表示全部已启用的区域 */
   regions?: string[]
@@ -558,6 +558,16 @@ export interface CloudAccountInput {
     secret_id?: string
     /** 腾讯云 */
     secret_key?: string
+    /** Oracle Cloud：租户 OCID（ocid1.tenancy.…） */
+    tenancy_ocid?: string
+    /** Oracle Cloud：用户 OCID（ocid1.user.…） */
+    user_ocid?: string
+    /** Oracle Cloud：API 签名密钥的指纹 */
+    fingerprint?: string
+    /** Oracle Cloud：API 签名私钥（PEM，不带密码） */
+    private_key?: string
+    /** Oracle Cloud：主区域（home region），如 ap-tokyo-1 */
+    region?: string
   }
   /** 月度预算（账户币种：AWS 为 USD，阿里云国内站 CNY、国际站多为 USD）；0 表示不设 */
   budget?: number
@@ -570,7 +580,7 @@ export interface CloudAccountInput {
 
 export interface CloudAccount {
   id: number
-  provider: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl'
+  provider: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl' | 'oci'
   name: string
   regions: string[]
   /** 如 AKIA…WXYZ；完整凭证不返回 */
@@ -622,7 +632,7 @@ export interface CloudInstance {
   instance_id: string
   name: string
   region: string
-  /** ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量） */
+  /** ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量）/ oci / oci_egress（Oracle 租户每月出站流量） */
   kind: string
   /** 云厂商原样，如 running / stopped */
   state: string

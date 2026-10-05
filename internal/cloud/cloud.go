@@ -18,11 +18,11 @@ import (
 // 服务商（cloud_accounts.provider）
 const (
 	ProviderAWS = "aws"
-	// 阿里云见 aliyun.go，腾讯云见 tencent.go；Oracle Cloud 随第四步实现（设计 44.10）
+	// 阿里云见 aliyun.go，腾讯云见 tencent.go，Oracle Cloud 见 oci.go
 )
 
 // Providers 是当前已实现的服务商。
-var Providers = []string{ProviderAWS, ProviderAliyunCN, ProviderAliyunIntl, ProviderTencentCN, ProviderTencentIntl}
+var Providers = []string{ProviderAWS, ProviderAliyunCN, ProviderAliyunIntl, ProviderTencentCN, ProviderTencentIntl, ProviderOCI}
 
 // Costs 是一个账户本月的费用（设计 44.7 cloud_costs）。金额以“分”为整数；没有的项为 nil。
 type Costs struct {
@@ -88,6 +88,12 @@ func NewClient(provider string, cred []byte, regions []string, o Options) (Clien
 			return nil, errors.New("腾讯云凭证不完整")
 		}
 		return &tencentClient{cred: c, intl: provider == ProviderTencentIntl, regions: regions, o: o}, nil
+	case ProviderOCI:
+		var c OCICredentials
+		if err := json.Unmarshal(cred, &c); err != nil {
+			return nil, errors.New("Oracle Cloud 凭证不完整")
+		}
+		return newOCIClient(c, regions, o)
 	}
 	return nil, fmt.Errorf("不支持的服务商 %q", provider)
 }
@@ -119,6 +125,8 @@ var authCodes = map[string]bool{
 	// 阿里云
 	"InvalidAccessKeyId.NotFound": true, "InvalidAccessKeyId.Inactive": true, "InvalidAccessKeyId": true,
 	"Forbidden.RAM": true, "Forbidden.AccessKeyDisabled": true, "NoPermission": true, "Forbidden": true,
+	// Oracle Cloud
+	"NotAuthenticated": true, "NotAuthorizedOrNotFound": true,
 }
 
 // IsAuthError 判断错误是否为凭证失效 / 权限不足。
@@ -148,6 +156,9 @@ func readBody(res *http.Response, parseErr func(status int, body []byte) *Provid
 	}
 	return b, nil
 }
+
+// strconvFloat 把金额格式化为保留 4 位小数的字符串（再由 toCents 四舍五入为分）。
+func strconvFloat(f float64) string { return strconv.FormatFloat(f, 'f', 4, 64) }
 
 // toCents 把十进制金额字符串（如 "12.3456"）四舍五入为分。
 func toCents(s string) (int64, error) {

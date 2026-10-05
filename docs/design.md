@@ -360,6 +360,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 87 | 云账户第四步：Oracle Cloud（HTTP 签名 RSA-SHA256、Usage API 按月费用与出站数据量、全部区间与已订阅区域的实例、公网 IP）；租户出站流量作为统计项对照 10 TB 免费额度，不可关联节点 | 44.3 |
 | 86 | 到期提醒（节点与云实例，30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包 90% / 95%、同步失败），按里程碑各发一次 | 1.2.5、44.6 |
 | 85 | 云实例与节点关联：按公网 IP 唯一匹配建议、确认关联、节点详情“云厂商”卡片、到期日一键写入节点 | 44.5 |
 | 84 | 按需实时模式：详情页可见时节点临时以 2 秒采样（live=1，30 秒续期，仅 Web 会话）；Agent 间隔下限改为 2 秒 | 6.1、46.2 |
@@ -10004,7 +10005,7 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 | 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
 | 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上 | 同上（国际站控制台中的同名策略） |
 | 腾讯云国内站 / 国际站 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、DescribeBillSummaryByProduct；国内站 <产品>.tencentcloudapi.com、人民币，国际站 <产品>.intl.tencentcloudapi.com、美元（两种账户类型，修订第 76 条） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
-| Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … to read usage-reports in tenancy；inspect instances |
+| Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … in tenancy：read usage-reports、inspect compartments、read instance-family、read virtual-network-family |
 
 ## 44.4 同步频率与费用
 
@@ -10057,6 +10058,23 @@ AWS 实现说明（第一步，修订第 72 条）：
 实例      CVM（包年包月有到期时间）、轻量 Lighthouse；按 Offset / Limit 分页
 流量      轻量 DescribeInstancesTrafficPackages：额度与已用量（字节），周期起点取流量包开始时间
 权限      Web 中给出只列出上述 7 个接口的自定义策略，可直接复制
+```
+
+Oracle Cloud 实现说明（第四步，修订第 87 条）：
+
+```text
+签名      HTTP Signatures（draft-cavage）RSA-SHA256，keyId = 租户 OCID / 用户 OCID / 指纹；GET 签 date (request-target) host，
+          POST 另签 x-content-sha256 content-type content-length；用官方文档的示例私钥与请求测试
+          （文档示例日期写作 Thu, 05 Jan 2014，实际是星期日，测试按 Sun 计算）
+凭证      租户 OCID、用户 OCID、指纹、不带密码的 RSA 私钥（PKCS#1 / PKCS#8）与主区域；保存时校验格式并解析私钥，
+          整体加密保存，列表只显示指纹末 5 位
+费用      Usage API（usageapi.<主区域>.oci.oraclecloud.com）COST、MONTHLY：本月 computedAmount 之和；没有余额与预测；
+          按 UTC 自然月
+实例      已订阅区域（regionSubscriptions）× 全部区间（根区间 + compartmentIdInSubtree），不含 TERMINATED；
+          公网 IP 取 vnicAttachments → vnics；按需付费，没有到期时间；opc-next-page 分页
+流量      出站流量按租户统计：Usage API USAGE 按 skuName 分组，取含 “Outbound Data Transfer” 的用量（GB，10⁹ 字节）；
+          以一条 kind=oci_egress 的统计项显示，额度 10 TB，复用流量包显示与 90% / 95% 提醒；它不是机器，不能关联节点
+错误      {"code", "message"}；NotAuthenticated、NotAuthorizedOrNotFound 视为凭证失效
 ```
 
 ## 44.5 与节点关联

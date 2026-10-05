@@ -21,9 +21,10 @@ async function load() {
 watch(() => props.server.id, load, { immediate: true })
 
 const providerNames: Record<string, string> = {
-  aws: 'AWS', aliyun_cn: '阿里云', aliyun_intl: '阿里云国际', tencent_cn: '腾讯云', tencent_intl: '腾讯云国际',
+  aws: 'AWS', aliyun_cn: '阿里云', aliyun_intl: '阿里云国际', tencent_cn: '腾讯云', tencent_intl: '腾讯云国际', oci: 'Oracle Cloud',
 }
-const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量' }
+const kindNames: Record<string, string> = { ec2: 'EC2', lightsail: 'Lightsail', ecs: 'ECS', swas: '轻量', cvm: 'CVM', lighthouse: '轻量',
+  oci: 'OCI', oci_egress: '租户' }
 
 // 按日历日计算剩余天数，与节点详情“到期”一栏一致
 function daysLeft(i: CloudInstance): number {

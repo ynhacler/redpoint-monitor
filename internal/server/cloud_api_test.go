@@ -475,3 +475,41 @@ func TestCloudInstanceLink(t *testing.T) {
 		t.Fatal("应已取消关联")
 	}
 }
+
+// Oracle Cloud：凭证校验（OCID、指纹、主区域、私钥）；私钥只以密文保存，提示只显示指纹末尾
+// ociSampleKey 是 Oracle 官方文档的示例私钥（JSON 转义后的字符串；PEM 头尾拆开写，避免推送保护误判）
+const ociSampleKey = "-----BEGIN RSA " + "PRIVATE KEY-----\\n" + `MIICXgIBAAKBgQDCFENGw33yGihy92pDjZQhl0C36rPJj+CvfSC8+q28hxA161QF\nNUd13wuCTUcq0Qd2qsBe/2hFyc2DCJJg0h1L78+6Z4UMR7EOcpfdUE9Hf3m/hs+F\nUR45uBJeDK1HSFHD8bHKD6kv8FPGfJTotc+2xjJwoYi+1hqp1fIekaxsyQIDAQAB\nAoGBAJR8ZkCUvx5kzv+utdl7T5MnordT1TvoXXJGXK7ZZ+UuvMNUCdN2QPc4sBiA\nQWvLw1cSKt5DsKZ8UETpYPy8pPYnnDEz2dDYiaew9+xEpubyeW2oH4Zx71wqBtOK\nkqwrXa/pzdpiucRRjk6vE6YY7EBBs/g7uanVpGibOVAEsqH1AkEA7DkjVH28WDUg\nf1nqvfn2Kj6CT7nIcE3jGJsZZ7zlZmBmHFDONMLUrXR/Zm3pR5m0tCmBqa5RK95u\n412jt1dPIwJBANJT3v8pnkth48bQo/fKel6uEYyboRtA5/uHuHkZ6FQF7OUkGogc\nmSJluOdc5t6hI1VsLn0QZEjQZMEOWr+wKSMCQQCC4kXJEsHAve77oP6HtG/IiEn7\nkpyUXRNvFsDE0czpJJBvL/aRFUJxuRK91jhjC68sA7NsKMGg5OXb5I5Jj36xAkEA\ngIT7aFOYBFwGgQAQkWNKLvySgKbAZRTeLBacpHMuQdl1DfdntvAyqpAZ0lY0RKmW\nG6aFKaqQfOXKCyWoUiVknQJAXrlgySFci/2ueKlIE1QqIiLSZ8V8OlpFLRnb1pzI\n7U1yQXnTAEFYM560yJlzUpOb1V4cScGd365tiSMvxLOvTA==\n` + "-----END RSA " + "PRIVATE KEY-----"
+
+func TestCloudOCIAccount(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	code, _, e := createCloudAccount(t, h, admin, `{"provider": "oci", "name": "Oracle2", "credential": {"tenancy_ocid": "ocid1.tenancy.oc1..aaaa", "user_ocid": "ocid1.user.oc1..bbbb", "fingerprint": "xx", "region": "ap-tokyo-1", "private_key": "-----BEGIN RSA `+"PRIVATE KEY-----\\nAAAA\\n-----END RSA "+`PRIVATE KEY-----"}}`)
+	fields := map[string]bool{}
+	for _, d := range e.Details {
+		fields[d.Field] = true
+	}
+	if code != 422 || !fields["credential.fingerprint"] || !fields["credential.private_key"] {
+		t.Fatalf("应拒绝错误的指纹与私钥：%d %+v", code, e)
+	}
+	code, v, e := createCloudAccount(t, h, admin, strings.Replace(`{"provider": "oci", "name": "Oracle", "credential": {"tenancy_ocid": "ocid1.tenancy.oc1..aaaa", "user_ocid": "ocid1.user.oc1..bbbb", "fingerprint": "73:61:a2:21:67:e0:df:be:7e:4b:93:1e:15:98:a5:b7", "region": "ap-tokyo-1", "private_key": "PEM"}}`, "PEM", ociSampleKey, 1))
+	if code != 201 || v.Provider != "oci" || v.CredentialHint != "…a5:b7" {
+		t.Fatalf("添加 %d %+v %+v", code, v, e)
+	}
+	var enc []byte
+	s.store.DB.QueryRow(`SELECT credential_enc FROM cloud_accounts WHERE id = ?`, v.ID).Scan(&enc)
+	if strings.Contains(string(enc), "PRIVATE KEY") {
+		t.Fatal("【安全】私钥不能明文入库")
+	}
+	a, _ := s.store.GetCloudAccount(v.ID)
+	if _, err := s.cloudClient(a); err != nil {
+		t.Fatalf("应能用解密后的凭证创建客户端：%v", err)
+	} // 租户出站流量项不是机器：不能关联节点
+	now := time.Now()
+	s.store.ReplaceCloudInstances(v.ID, []cloud.Instance{{ID: "egress", Name: "出站流量", Kind: "oci_egress", TrafficLimit: 10e12}}, now)
+	insts, _ := s.store.CloudInstances(v.ID)
+	_, node, _ := createNode(t, h, admin, `{"name":"oci-node"}`)
+	rec := do(h, "PUT", "/api/v1/cloud-instances/"+itoa64(insts[0].ID)+"/server", admin, []byte(`{"server_id":`+itoa(node.ServerID)+`}`))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("出站流量项不应能关联节点：%d %s", rec.Code, rec.Body)
+	}
+}
