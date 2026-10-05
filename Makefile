@@ -13,7 +13,7 @@ VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux \
+.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux build-relay \
         vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
@@ -143,6 +143,13 @@ deploy: build-linux ## Deploy server to VPS: make deploy VPS=root@1.2.3.4
 deploy-agent: build-linux ## Deploy agent: make deploy-agent VPS=root@host SERVER=https://... TOKEN_FILE=path
 	@test -n "$(VPS)" -a -n "$(SERVER)" -a -n "$(TOKEN_FILE)" || (echo "usage: make deploy-agent VPS=user@host SERVER=https://monitor.example.com TOKEN_FILE=./hk1.token" && exit 1)
 	scripts/deploy.sh agent $(VPS) $(SERVER) $(TOKEN_FILE)
+
+build-relay: ## Cross-compile the push relay (design 30.2) for linux amd64/arm64 into dist/
+	@mkdir -p dist
+	@for arch in amd64 arm64; do \
+	  echo "→ push-relay linux/$$arch"; \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GOBUILD) -ldflags "$(LDFLAGS)" -o dist/push-relay-linux-$$arch ./cmd/push-relay || exit 1; \
+	done
 
 install-server: ## On the VPS, after `make build`: install/upgrade the server as a systemd service
 	sudo scripts/install.sh server

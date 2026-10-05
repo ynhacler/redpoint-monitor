@@ -584,6 +584,18 @@ var migrations = []string{
 	`ALTER TABLE cloud_instances ADD COLUMN auto_calibrate INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE cloud_instances ADD COLUMN calibrated_at INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE cloud_instances ADD COLUMN calibrate_status TEXT NOT NULL DEFAULT '';`,
+
+	// 迁移 28：App 推送 Token（设计 18.11、30）。每台设备一条；加密公钥在 app_devices.push_public_key。
+	// Token 只保存在本面板，发送时临时交给 Relay；设备吊销或 Token 失效时删除
+	`CREATE TABLE push_devices (
+		id INTEGER PRIMARY KEY,
+		app_device_id INTEGER NOT NULL UNIQUE REFERENCES app_devices(id) ON DELETE CASCADE,
+		provider TEXT NOT NULL,
+		push_token TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		last_error TEXT NOT NULL DEFAULT ''
+	);`,
 }
 
 func (s *Store) migrate() error {

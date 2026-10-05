@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 95 | 推送面板端与 Push Relay：HPKE 加密与补齐、实例签名与防重放、推送 Token 登记与清理、范围过滤；cmd/push-relay 转发 APNs / FCM，无日志、内存限流 | 18.11、30 |
 | 94 | 云厂商口径的自动流量校准：实例级开关，周期一致且数据新鲜时每天校准一次关联节点，否则记录原因 | 44.5 |
 | 93 | 云账户余额提醒：账户可设余额阈值，低于时每月严重提醒一次（阿里云、腾讯云） | 44.6、44.7 |
 | 92 | 健康摘要（1.5.7）：面板计算 CPU / 内存 / 磁盘增长 / 流量的结论与文字，Web 节点详情与 App 详情显示；fmtBytesSI 整数不再写 .0，与 Web 一致 | 1.5.7 |
@@ -8167,6 +8168,29 @@ Android：自建 Relay 同样受 FCM 项目绑定限制，推荐直接使用 Uni
 且不能关联到具体实例、用户或服务器。
 
 ---
+
+### 30.5.1 实现说明（修订第 95 条）
+
+```text
+协议      internal/push（面板与 Relay 共用）
+          加密：HPKE Base 模式 DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 / ChaCha20-Poly1305（Go 标准库 crypto/hpke），
+                info = "vpsmon push v1"；密文 = enc（32 字节）‖ AEAD 密文，标准 Base64
+          补齐：2 字节大端长度 ‖ 明文 ‖ 0 填充，档位 256 / 512 / 1024 / 2048 字节
+          签名：X-Vpsmon-Instance（Ed25519 公钥）、X-Vpsmon-Timestamp、X-Vpsmon-Signature =
+                Ed25519("vpsmon-push-v1\n" + 时间戳 + "\n" + hex(SHA256(请求体)))，±5 分钟，窗口内同一签名只接受一次
+          请求：POST /v1/push {provider: apns|fcm, token, ciphertext, critical}；410 表示 Token 已失效
+面板      --push-relay 指定 Relay（只接受 https，回环除外）；未指定时不推送。实例密钥 DATA/push.key（首次使用时生成）
+          PUT / DELETE /api/v1/app/push 登记或关闭本机推送（push_devices，迁移 28）；/app/me 返回 push_available、
+          push_enabled、center_id（实例公钥的短哈希）
+          每条通知（警告以上与恢复）推给授权范围内的设备；不针对单个节点的通知只发给“全部节点”的设备；
+          与渠道共用重试与投递记录（渠道类型 app）；410 时删除 Token；设备吊销、解除配对、随 AK 吊销时删除 Token
+明文      {center_id, event_id, server_id, server_name, kind, severity, title, body, ts}
+Relay     cmd/push-relay（make build-relay，deploy/systemd/push-relay.service）：凭证只通过文件传入；
+          APNs：ES256 JWT（40 分钟更新），alert 固定为“服务器告警 / 打开 App 查看详情”、mutable-content、
+          严重告警 time-sensitive，密文在自定义字段 c；FCM HTTP v1：服务账号换取访问令牌，只有 data.c 的 data message
+          每实例每分钟 30 条、每天 2000 条（内存）；不写访问日志，连接错误日志丢弃，只输出每小时的聚合计数
+未完成    App 端（密钥、登记、iOS NSE 与 Android 解密）；官方 Relay 的部署与默认地址
+```
 
 ## 30.6 Relay 不可用时
 

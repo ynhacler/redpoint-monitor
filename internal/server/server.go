@@ -32,6 +32,7 @@ type Options struct {
 	Logger    *slog.Logger // 为 nil 时使用 slog.Default()
 	Version   string       // 由 git describe 注入，/healthz 与启动日志中显示（设计 40.3.2）
 	PublicURL string       // 面板对外地址，写进安装命令；为空时由请求推断（设计 27.3.1）
+	PushRelay string       // Push Relay 地址（设计 30.2）；为空时不向 App 推送
 	// NoLoginCaptcha 关闭登录滑动验证码（默认开启，设计 17.4）；仅用于需要脚本登录的场景
 	NoLoginCaptcha bool
 	// NoReleaseSync 关闭自动同步官方 Agent 版本（离线 / 内网环境；仍可在 Web 中手动同步，设计 29.1）
@@ -71,6 +72,7 @@ type Server struct {
 	apiKeys       apiKeyLimiter  // 只读 API Key 的限流（设计 45.2）
 	appLimit      apiKeyLimiter  // App 设备的限流（每台每分钟 120 次，设计 23.6）
 	pairLimit     *enrollLimiter // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
+	push          *pushState     // App 原生推送（设计 30）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -123,7 +125,8 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(), pairLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
-		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState()}
+		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
+		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
 	s.notify, s.noise = newNotifier(s), newAlertNoise()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -255,6 +258,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/app/pair", accessPair, s.handlePair)
 	handle("POST /api/v1/app/token/refresh", accessPair, s.handleRefresh)
 	handle("GET /api/v1/app/me", accessApp, s.handleAppMe)
+	handle("PUT /api/v1/app/push", accessApp, s.handleAppPushPut)
+	handle("DELETE /api/v1/app/push", accessApp, s.handleAppPushDelete)
 	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）
 	// 实时事件（设计 20）：只推送，不接收指令
 	handle("GET /ws", accessRead, s.handleWS)

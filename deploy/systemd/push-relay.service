@@ -1,0 +1,31 @@
+# 官方 Push Relay（设计 30.2）：无状态转发加密推送，不写访问日志（设计 30.5）。
+# 凭证文件（.p8、服务账号 JSON）放在 /etc/push-relay/，属主 root、组 push-relay、权限 0640。
+# 前面的 HTTPS 反向代理（Caddy 等）必须关闭访问日志。
+[Unit]
+Description=VPS Monitor push relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=push-relay
+Group=push-relay
+ExecStart=/usr/local/bin/push-relay --listen 127.0.0.1:8090 \
+  --apns-key /etc/push-relay/apns.p8 --apns-key-id KEYID --apns-team-id TEAMID --apns-topic dev.vpsmon.app \
+  --fcm-service-account /etc/push-relay/fcm.json
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+# 不保存任何状态：没有可写目录
+
+[Install]
+WantedBy=multi-user.target

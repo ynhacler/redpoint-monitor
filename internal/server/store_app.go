@@ -139,6 +139,10 @@ func (s *Store) RevokeAppAccessKey(id int64, revokeDevices bool, now time.Time) 
 	}
 	devices := []int64{}
 	if revokeDevices {
+		if _, err := tx.Exec(`DELETE FROM push_devices WHERE app_device_id IN
+			(SELECT id FROM app_devices WHERE access_key_id = ? AND revoked_at = 0)`, id); err != nil {
+			return AppAccessKey{}, nil, err
+		}
 		rows, err := tx.Query(`UPDATE app_devices SET revoked_at = ?, revoked_by = 'access_key', push_public_key = ''
 			WHERE access_key_id = ? AND revoked_at = 0 RETURNING id`, now.Unix(), id)
 		if err != nil {
@@ -340,6 +344,9 @@ func (s *Store) RefreshDevice(tok, appVersion string, now time.Time) (AppDevice,
 		// 【安全】旧 Refresh Token 在宽限期后再次出现：可能已被复制，吊销设备（双方都需要重新配对）
 		_, err := s.DB.Exec(`UPDATE app_devices SET revoked_at = ?, revoked_by = 'refresh_reuse', push_public_key = ''
 			WHERE id = ? AND revoked_at = 0`, now.Unix(), id)
+		if err == nil {
+			err = s.DeletePushDevice(id)
+		}
 		return AppDevice{ID: id}, appTokens{}, refreshReused, err
 	}
 	t := newAppTokens(now)
@@ -394,6 +401,9 @@ func (s *Store) RevokeAppDevice(id int64, by string, now time.Time) (*AppDevice,
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil, errorf(CodeNotFound, "设备不存在或已吊销")
+	}
+	if err := s.DeletePushDevice(id); err != nil { // Push Token 立即失效（设计 19.4）
+		return nil, err
 	}
 	return s.GetAppDevice(id, now)
 }

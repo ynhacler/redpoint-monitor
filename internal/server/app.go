@@ -384,7 +384,8 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAppMe(w http.ResponseWriter, r *http.Request) {
 	d := info(r).device
 	writeJSON(w, map[string]any{"device_id": d.ID, "name": d.Name, "platform": d.Platform, "scope": scopeView(*d),
-		"panel_version": s.version})
+		"panel_version": s.version, "push_available": s.push.relay != "", "push_enabled": s.store.HasPushDevice(d.ID),
+		"center_id": s.centerID()})
 }
 
 // handleUnpair：POST /api/v1/app/unpair，app。App 主动解除本机配对。

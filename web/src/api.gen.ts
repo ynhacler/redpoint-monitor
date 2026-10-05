@@ -790,6 +790,12 @@ export interface AppMe {
   platform: string
   scope: AppScope
   panel_version: string
+  /** 面板已配置 Push Relay（--push-relay），可以登记推送 */
+  push_available: boolean
+  /** 本机已登记推送 Token */
+  push_enabled: boolean
+  /** 本面板的匿名标识（推送 payload 的 center_id，多监控中心时区分来源，设计 30.3.2）；未启用推送时为空 */
+  center_id: string
 }
 
 /** WebSocket 推送的事件（设计 20、45.2）；未来新增类型，页面应忽略不认识的 type。API Key 只收到其范围内节点的事件 */
@@ -1068,6 +1074,23 @@ export interface Paths {
     /** 当前设备与授权范围 */
     get: {
       response: AppMe
+    }
+  }
+  '/app/push': {
+    /** 登记或更新本机的推送 Token 与加密公钥（设计 18.11、30） */
+    put: {
+      body: {
+        provider: 'apns' | 'fcm'
+        /** APNs 设备 Token（十六进制）或 FCM 注册 Token */
+        token: string
+        /** X25519 公钥（32 字节，标准 Base64） */
+        public_key?: string
+      }
+      response: void
+    }
+    /** 关闭本机推送（删除推送 Token） */
+    delete: {
+      response: void
     }
   }
   '/app/unpair': {
