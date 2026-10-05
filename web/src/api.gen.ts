@@ -1596,6 +1596,27 @@ export interface Paths {
       response: EnrollCodeView
     }
   }
+  '/servers/batch': {
+    /** 批量新建节点（设计 27.9）：全部校验通过才创建，每个节点独立的注册码 */
+    post: {
+      body: {
+        items: CreateServerRequest[]
+        /** 注册码有效期，默认 24h */
+        enroll_ttl?: '1h' | '24h' | '7d'
+      }
+      response: {
+        items: EnrollCodeView[]
+        exports: {
+          /** 每台主机一条安装命令（文本） */
+          commands: string
+          /** CSV：名称, 注册码, 有效期, 命令（UTF-8，带表头） */
+          csv: string
+          /** Ansible inventory 与 playbook（YAML）；没有已验签的官方版本时为 null */
+          ansible: string | null
+        }
+      }
+    }
+  }
   '/servers/{id}': {
     /** 单个节点（格式同列表中的一项） */
     get: {

@@ -16,6 +16,7 @@ export const router = createRouter({
     // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效
     { path: '/', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { title: '仪表板' } },
     { path: '/servers', redirect: (to) => ({ path: '/', query: to.query }) },
+    { path: '/servers/batch', name: 'server-batch', component: () => import('./pages/BatchCreatePage.vue'), meta: { title: '批量新建' } },
     { path: '/servers/new', name: 'server-new', component: () => import('./pages/ServerEditPage.vue'), meta: { title: '新建节点' } },
     { path: '/servers/:id(\\d+)', name: 'server', component: () => import('./pages/ServerDetailPage.vue'), props: true, meta: { title: '节点详情' } },
     { path: '/servers/:id(\\d+)/edit', name: 'server-edit', component: () => import('./pages/ServerEditPage.vue'), props: true, meta: { title: '编辑节点' } },

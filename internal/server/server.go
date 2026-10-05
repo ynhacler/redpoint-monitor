@@ -298,6 +298,7 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/silences/{id}", accessOps, s.handleEndSilence)
 	handle("GET /api/v1/servers", accessRead, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
+	handle("POST /api/v1/servers/batch", accessAdmin, s.handleBatchCreate)
 	handle("GET /api/v1/servers/{id}", accessRead, s.handleGetServer)
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
