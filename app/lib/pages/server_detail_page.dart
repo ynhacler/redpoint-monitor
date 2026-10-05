@@ -9,15 +9,20 @@ import '../cache.dart';
 import '../format.dart';
 import '../metrics.dart';
 import '../models.dart';
+import '../privacy.dart';
 import '../theme.dart';
 import '../widgets/line_chart.dart';
 
 class ServerDetailPage extends StatefulWidget {
-  const ServerDetailPage({super.key, required this.api, required this.cache, required this.initial, required this.onRevoked});
+  const ServerDetailPage({super.key, required this.api, required this.cache, required this.initial, required this.onRevoked,
+      this.privacy = false});
   final ApiClient api;
   final CacheStore cache;
   final ServerView initial;
   final VoidCallback onRevoked;
+
+  /// 隐私模式：隐藏 IP、价格与供应商（设计 1.5.12）
+  final bool privacy;
 
   @override
   State<ServerDetailPage> createState() => _ServerDetailPageState();
@@ -241,6 +246,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           _section(context, '趋势', _trend(context)),
           _section(context, '流量', _traffic(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
+          if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '操作', _ops(context)),
         ]),
       ),
@@ -356,6 +362,41 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (f != null)
         Text('预计周期总量 ${fmtTraffic(f.total, t.unit)}${f.over ? '，将超出额度' : ''}',
             style: f.over ? muted.copyWith(color: colors.bad) : muted),
+    ]);
+  }
+
+  // 资产信息（设计 1.2.3）；隐私模式下 IP、价格、供应商打码（1.5.12）
+  List<(String, String)> _assetRows() {
+    final s = _s;
+    final p = widget.privacy;
+    final price = s.priceCents > 0 ? '${s.currency} ${(s.priceCents / 100).toStringAsFixed(2)}${s.billingPeriod.isNotEmpty ? ' · ${_period[s.billingPeriod] ?? s.billingPeriod}' : ''}' : '';
+    return [
+      if (s.ipv4.isNotEmpty) ('IPv4', p ? maskIP(s.ipv4) : s.ipv4),
+      if (s.ipv6.isNotEmpty) ('IPv6', p ? maskIP(s.ipv6) : s.ipv6),
+      if (s.provider.isNotEmpty) ('供应商', maskText(s.provider, p)),
+      if (s.plan.isNotEmpty) ('套餐', s.plan),
+      if (s.region.isNotEmpty) ('地区', s.region),
+      if (price.isNotEmpty) ('续费', maskText(price, p)),
+      if (s.expireDate.isNotEmpty) ('到期', s.expireDate),
+      if (s.note.isNotEmpty) ('备注', s.note),
+    ];
+  }
+
+  // 与 web/src/format.ts 的 periodNames 一致
+  static const _period = {'monthly': '月付', 'quarterly': '季付', 'semiannually': '半年付', 'annually': '年付',
+      'biennially': '两年付', 'triennially': '三年付', 'one_time': '一次性'};
+
+  Widget _assets(BuildContext context) {
+    final muted = TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return Column(children: [
+      for (final (k, v) in _assetRows())
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 56, child: Text(k, style: muted)),
+            Expanded(child: SelectableText(v, style: const TextStyle(fontSize: 13))),
+          ]),
+        ),
     ]);
   }
 

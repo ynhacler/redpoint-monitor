@@ -10,16 +10,18 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'cache.dart';
 import 'pages/pair_page.dart';
-import 'pages/servers_page.dart';
+import 'pages/shell.dart';
+import 'prefs.dart';
 import 'session.dart';
 import 'theme.dart';
 
-void main() => runApp(VpsMonApp(store: const SecureSessionStore(), cache: FileCacheStore()));
+void main() => runApp(VpsMonApp(store: const SecureSessionStore(), cache: FileCacheStore(), prefs: FilePrefsStore()));
 
 class VpsMonApp extends StatelessWidget {
-  const VpsMonApp({super.key, required this.store, required this.cache});
+  const VpsMonApp({super.key, required this.store, required this.cache, required this.prefs});
   final SessionStore store;
   final CacheStore cache;
+  final PrefsStore prefs;
 
   @override
   Widget build(BuildContext context) {
@@ -27,15 +29,16 @@ class VpsMonApp extends StatelessWidget {
       title: 'VPS Monitor',
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
-      home: Root(store: store, cache: cache),
+      home: Root(store: store, cache: cache, prefs: prefs),
     );
   }
 }
 
 class Root extends StatefulWidget {
-  const Root({super.key, required this.store, required this.cache});
+  const Root({super.key, required this.store, required this.cache, required this.prefs});
   final SessionStore store;
   final CacheStore cache;
+  final PrefsStore prefs;
 
   @override
   State<Root> createState() => _RootState();
@@ -61,7 +64,8 @@ class _RootState extends State<Root> {
   }
 
   Future<void> _paired(Session s) async {
-    await widget.cache.clear(); // 换了面板或重新配对：不显示上一次的缓存
+    await widget.cache.clear(); // 换了面板或重新配对：不显示上一次的缓存与收藏
+    await widget.prefs.clear();
     await widget.store.save(s);
     setState(() {
       _api = ApiClient(s, widget.store);
@@ -72,6 +76,7 @@ class _RootState extends State<Root> {
   Future<void> _unpair() async {
     await _api?.unpair();
     await widget.cache.clear();
+    await widget.prefs.clear();
     _api?.close();
     setState(() => _api = null);
   }
@@ -79,6 +84,7 @@ class _RootState extends State<Root> {
   // 设计 12.7：清除凭证（ApiClient 已清除）、回到配对页并说明原因
   void _revoked() {
     widget.cache.clear();
+    widget.prefs.clear();
     _api?.close();
     setState(() {
       _api = null;
@@ -91,6 +97,6 @@ class _RootState extends State<Root> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final api = _api;
     if (api == null) return PairPage(onPaired: _paired, notice: _notice);
-    return ServersPage(api: api, cache: widget.cache, onUnpair: _unpair, onRevoked: _revoked);
+    return AppShell(api: api, cache: widget.cache, prefs: widget.prefs, onUnpair: _unpair, onRevoked: _revoked);
   }
 }

@@ -125,7 +125,9 @@ class Silence {
 
 class ServerView {
   ServerView({required this.raw, required this.id, required this.name, required this.status, required this.group, required this.country,
-      required this.lastSeenAt, required this.traffic, required this.alerts, this.latest, this.maintenance, this.muted, this.expireDate = ''});
+      required this.lastSeenAt, required this.traffic, required this.alerts, this.latest, this.maintenance, this.muted, this.expireDate = '',
+      this.ipv4 = '', this.ipv6 = '', this.provider = '', this.plan = '', this.region = '', this.note = '', this.priceCents = 0,
+      this.currency = '', this.billingPeriod = ''});
   final Map<String, dynamic> raw;
   final int id;
   final String name;
@@ -143,6 +145,17 @@ class ServerView {
   final Silence? maintenance;
   final Silence? muted;
   final String expireDate;
+
+  // 资产信息（隐私模式下隐藏，设计 1.5.12）
+  final String ipv4;
+  final String ipv6;
+  final String provider;
+  final String plan;
+  final String region;
+  final String note;
+  final int priceCents;
+  final String currency;
+  final String billingPeriod;
 
   factory ServerView.fromJson(Map<String, dynamic> j) {
     final latest = j['latest'] as Map<String, dynamic>?;
@@ -162,8 +175,46 @@ class ServerView {
       maintenance: m == null ? null : Silence.fromJson(m),
       muted: mu == null ? null : Silence.fromJson(mu),
       expireDate: (j['expire_date'] as String?) ?? '',
+      ipv4: (j['ipv4'] as String?) ?? '',
+      ipv6: (j['ipv6'] as String?) ?? '',
+      provider: (j['provider'] as String?) ?? '',
+      plan: (j['plan'] as String?) ?? '',
+      region: (j['region'] as String?) ?? '',
+      note: (j['note'] as String?) ?? '',
+      priceCents: _int(j['price_cents']) ?? 0,
+      currency: (j['currency'] as String?) ?? '',
+      billingPeriod: (j['billing_period'] as String?) ?? '',
     );
   }
+}
+
+/// 告警事件（GET /alerts，设计 19.9）：事件中心的一条（设计 1.5.17）。
+class AlertEvent {
+  AlertEvent({required this.id, required this.serverId, required this.serverName, required this.type, required this.severity,
+      required this.state, required this.message, required this.firedAt, this.resolvedAt});
+  final int id;
+  final int serverId;
+  final String serverName;
+  final String type;
+  final String severity;
+
+  /// firing / resolved
+  final String state;
+  final String message;
+  final int firedAt;
+  final int? resolvedAt;
+
+  factory AlertEvent.fromJson(Map<String, dynamic> j) => AlertEvent(
+        id: _int(j['id'])!,
+        serverId: _int(j['server_id']) ?? 0,
+        serverName: (j['server_name'] as String?) ?? '',
+        type: (j['type'] as String?) ?? '',
+        severity: (j['severity'] as String?) ?? 'info',
+        state: (j['state'] as String?) ?? 'firing',
+        message: (j['message'] as String?) ?? '',
+        firedAt: _int(j['fired_at']) ?? 0,
+        resolvedAt: _int(j['resolved_at']),
+      );
 }
 
 /// 健康摘要（GET /servers/{id}/health，设计 1.5.7）：面板计算的结论与文字，与 Web 相同。
