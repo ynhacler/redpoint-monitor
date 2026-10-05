@@ -104,6 +104,10 @@ func (c NotifyChannel) view() channelView {
 		cfg["url"] = c.Config.URL
 		cfg["topic"] = maskTopic(c.Config.Topic)
 		cfg["has_token"] = c.Config.Token != ""
+	default:
+		if isChatChannel(c.Type) {
+			cfg = c.chatView()
+		}
 	}
 	return channelView{NotifyChannel: c, Config: cfg}
 }
@@ -193,7 +197,11 @@ func (c *NotifyChannel) validate() []FieldError {
 			errs = append(errs, FieldError{Field: "config.token", Message: "访问令牌格式不正确"})
 		}
 	default:
-		errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram、webhook 或 ntfy"})
+		if isChatChannel(c.Type) {
+			errs = append(errs, c.validateChat()...)
+		} else {
+			errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram、webhook、ntfy、discord、bark、wecom、dingtalk 或 feishu"})
+		}
 	}
 	return errs
 }
@@ -667,7 +675,10 @@ func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) e
 			req.Header.Set("Authorization", "Bearer "+c.Config.Token)
 		}
 	default:
-		return errors.New("未知的渠道类型")
+		if !isChatChannel(c.Type) {
+			return errors.New("未知的渠道类型")
+		}
+		req, err = chatRequest(ctx, c, m, now)
 	}
 	if err != nil {
 		return errors.New("请求构造失败")
@@ -685,6 +696,10 @@ func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if isChatChannel(c.Type) { // 企业微信、钉钉、飞书出错时也返回 200
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+			return chatResult(c.Type, b)
+		}
 		return nil
 	}
 	detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))

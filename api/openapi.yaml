@@ -1815,7 +1815,7 @@ components:
       required: [id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at]
       properties:
         id: { type: integer }
-        type: { type: string, enum: [telegram, webhook, ntfy] }
+        type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu] }
         name: { type: string }
         enabled: { type: boolean }
         min_severity: { type: string, enum: [critical, warning, info], description: 达到该级别才发送 }
@@ -1836,7 +1836,7 @@ components:
       type: object
       required: [name, config]
       properties:
-        type: { type: string, enum: [telegram, webhook, ntfy], description: 创建时必填，不可修改 }
+        type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu], description: '创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token' }
         name: { type: string, maxLength: 40 }
         enabled: { type: boolean, default: true }
         min_severity: { type: string, enum: [critical, warning, info], default: warning }
@@ -1848,10 +1848,10 @@ components:
             bot_token: { type: string, description: Telegram Bot Token（@BotFather） }
             chat_id: { type: string, description: 数字 ID（群组为负数）或 @频道名 }
             url: { type: string, description: Webhook 地址，或 ntfy 服务器地址（默认 https://ntfy.sh）；只允许 HTTPS，回环地址除外；不跟随重定向 }
-            secret: { type: string, maxLength: 128, description: 可选，请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret, 请求体) }
+            secret: { type: string, maxLength: 128, description: '可选。Webhook：请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret, 请求体)；钉钉、飞书：机器人的加签密钥' }
             clear_secret: { type: boolean }
             topic: { type: string, maxLength: 64, description: ntfy 主题；公共服务器上知道主题即可订阅，请用不易猜到的名称 }
-            token: { type: string, maxLength: 128, description: ntfy 可选访问令牌（tk_…），以 Authorization Bearer 发送 }
+            token: { type: string, maxLength: 128, description: ntfy 可选访问令牌（tk_…，Authorization Bearer）；Bark 的设备密钥（Device Key） }
             clear_token: { type: boolean }
 
     Delivery:
@@ -1861,7 +1861,7 @@ components:
         id: { type: integer }
         channel_id: { type: integer }
         channel_name: { type: string }
-        channel_type: { type: string, enum: [telegram, webhook] }
+        channel_type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu, app], description: app 为 App 原生推送（设计 30），channel_name 为“App：设备名” }
         event_id: { type: integer, description: 测试通知为 0 }
         server_name: { type: string }
         kind: { type: string, enum: [firing, resolved, repeat, test, flapping, still_firing, panel_down, panel_up, quiet_summary, reminder], description: 'reminder：到期 / 云账户提醒（设计 1.2.5、44.6）；quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）' }
