@@ -261,13 +261,15 @@ type pushPayload struct {
 	TS         int64  `json:"ts"`
 }
 
-// pushWants 判断设备是否接收这条通知：警告以上（恢复通知照常）；只推送授权范围内节点的告警，
+// pushWants 判断设备是否接收这条通知：警告以上（恢复通知照常），以及流量阈值与流量预计超额——它们默认是提示级，
+// 但流量提醒是 App 推送的核心体验（设计 1.5.8）；只推送授权范围内节点的告警，
 // 不针对单个节点的通知（批量离线、免打扰汇总、云账户提醒、面板自检）只发给“全部节点”范围的设备（17.3）。
 func (s *Server) pushWants(t pushTarget, m notifyMessage) bool {
 	if m.Kind == NotifyTest {
 		return false
 	}
-	if m.Kind != NotifyResolved && m.Severity != "" && severityRank(m.Severity) < severityRank(SeverityWarning) {
+	if m.Kind != NotifyResolved && m.Severity != "" && severityRank(m.Severity) < severityRank(SeverityWarning) &&
+		m.Type != "traffic" && m.Type != "traffic_forecast" {
 		return false
 	}
 	if t.ScopeType == "all" {

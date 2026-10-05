@@ -8183,7 +8183,7 @@ Android：自建 Relay 同样受 FCM 项目绑定限制，推荐直接使用 Uni
 面板      --push-relay 指定 Relay（只接受 https，回环除外）；未指定时不推送。实例密钥 DATA/push.key（首次使用时生成）
           PUT / DELETE /api/v1/app/push 登记或关闭本机推送（push_devices，迁移 28）；/app/me 返回 push_available、
           push_enabled、center_id（实例公钥的短哈希）
-          每条通知（警告以上与恢复）推给授权范围内的设备；不针对单个节点的通知只发给“全部节点”的设备；
+          每条通知（警告以上与恢复；流量阈值与流量预计超额虽为提示级也推送，设计 1.5.8）推给授权范围内的设备；不针对单个节点的通知只发给“全部节点”的设备；
           与渠道共用重试与投递记录（渠道类型 app）；410 时删除 Token；设备吊销、解除配对、随 AK 吊销时删除 Token
 明文      {center_id, event_id, server_id, server_name, kind, severity, title, body, ts}
 Relay     cmd/push-relay（make build-relay，deploy/systemd/push-relay.service）：凭证只通过文件传入；

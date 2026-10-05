@@ -82,7 +82,7 @@
 - [x] 接口 traffic/current、daily、monthly、calibrate、adjustments（设计 19.8）
 - [x] 按节点时区的计费日（迁移 21，改时区只影响之后的流量）
 - [x] 多次校准偏差稳定时提示设置系数；校准以服务商数值为锚点，改系数 / 计费模式不重复修正（设计 5.7）
-- [ ] 预测超限推送：Telegram / Webhook 已由告警规则 traffic_forecast 覆盖，App 推送随阶段 C
+- [x] 预测超限推送：Telegram / Webhook 由告警规则 traffic_forecast 覆盖；App 推送对流量阈值与流量预计超额不受“警告以上”限制（设计 1.5.8）
 
 ### A5 告警与通知
 
