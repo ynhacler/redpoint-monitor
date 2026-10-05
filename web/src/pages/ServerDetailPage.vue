@@ -6,6 +6,7 @@ import { errorText, getHistory, getServer, type HistoryRange, type HistoryView, 
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
+import HealthCard from '../components/HealthCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
@@ -206,6 +207,9 @@ const charts = computed(() => [
 
       <!-- 概况（设计 11.1） -->
       <ServerSummary :server="liveServer ?? s" :live="live" />
+
+      <!-- 健康摘要（设计 1.5.7） -->
+      <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 实时：速览 → CPU → 内存 → 磁盘 → 网络；离线时不显示旧数值（设计 43.6） -->
       <template v-if="live && liveServer?.latest">

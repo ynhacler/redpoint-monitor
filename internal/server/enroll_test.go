@@ -492,6 +492,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"DELETE /api/v1/servers/{id}":                    accessAdmin,
 		"POST /api/v1/servers/{id}/revoke-agent-token":   accessAdmin,
 		"GET /api/v1/servers/{id}/metrics/history":       accessRead,
+		"GET /api/v1/servers/{id}/health":                accessRead,
 		"GET /api/v1/servers/{id}/install-command":       accessAdmin,
 		"POST /api/v1/servers/{id}/enroll-code":          accessAdmin,
 		"DELETE /api/v1/servers/{id}/enroll-code":        accessAdmin,

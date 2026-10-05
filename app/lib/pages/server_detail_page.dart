@@ -37,13 +37,19 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   DateTime? _historyAt;
   bool _historyStale = false;
   bool _busy = false;
+  HealthSummary? _health;
+  int _ticks = 0;
 
   @override
   void initState() {
     super.initState();
     _refresh();
     _loadHistory();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+    _loadHealth();
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _refresh();
+      if (++_ticks % 6 == 0) _loadHealth(); // 摘要变化慢：每分钟刷新一次
+    });
   }
 
   @override
@@ -80,6 +86,18 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _loadHealth() async {
+    if (_s.status == 'pending') return;
+    try {
+      final h = await widget.api.health(_s.id);
+      if (mounted) setState(() => _health = h);
+    } on DeviceRevoked {
+      _revoked();
+    } catch (_) {
+      // 网络失败：保留上次的摘要
     }
   }
 
@@ -159,7 +177,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       appBar: AppBar(title: Text('${flagEmoji(s.country).isNotEmpty ? '${flagEmoji(s.country)} ' : ''}${s.name}')),
       body: RefreshIndicator(
         onRefresh: () async {
-          await Future.wait([_refresh(), _loadHistory()]);
+          await Future.wait([_refresh(), _loadHistory(), _loadHealth()]);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 32), children: [
           Row(children: [
@@ -219,6 +237,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
                 ]),
               ),
             ),
+          if (_health != null) _section(context, '健康摘要', _healthView(context)),
           _section(context, '趋势', _trend(context)),
           _section(context, '流量', _traffic(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
@@ -240,6 +259,25 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           ]),
         ),
       );
+
+  Widget _healthView(BuildContext context) {
+    final h = _health!;
+    final colors = StatusColors.of(context);
+    Color lc(String l) => switch (l) { 'bad' => colors.bad, 'warn' => colors.warn, 'muted' => colors.muted, _ => colors.ok };
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(h.status, style: TextStyle(fontWeight: FontWeight.w600, color: lc(h.level))),
+      for (final it in h.items)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 5), child: Icon(Icons.circle, size: 8, color: lc(it.level))),
+            const SizedBox(width: 8),
+            SizedBox(width: 36, child: Text(it.title, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+            Expanded(child: Text(it.text, style: const TextStyle(fontSize: 13))),
+          ]),
+        ),
+    ]);
+  }
 
   Widget _trend(BuildContext context) {
     final h = _history;

@@ -143,6 +143,9 @@ class ApiClient {
   /// 单个节点；不在授权范围内时面板返回 404。
   Future<ServerView> server(int id) async => ServerView.fromJson(await getJson('/servers/$id') as Map<String, dynamic>);
 
+  /// 健康摘要（设计 1.5.7）。
+  Future<HealthSummary> health(int id) async => HealthSummary.fromJson(await getJson('/servers/$id/health') as Map<String, dynamic>);
+
   /// 历史曲线：range 为 1h / 6h / 24h / 7d / 30d（设计 19.7）。返回原始 JSON 列表，便于离线缓存。
   Future<List<dynamic>> historyRaw(int id, String range) async {
     final body = await getJson('/servers/$id/metrics/history', query: {'range': range}) as Map<String, dynamic>;
