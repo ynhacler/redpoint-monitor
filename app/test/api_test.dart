@@ -26,8 +26,9 @@ http.Response ok(Object body) => http.Response.bytes(utf8.encode(jsonEncode(body
 
 const serverJson = {
   'id': 1, 'name': 'tokyo', 'status': 'online',
-  'latest': {'cpu': {'usage': 12.5}, 'memory': {'usage': 40}, 'network': [{'rx_speed': 1000, 'tx_speed': 2000}]},
-  'traffic': {'used': 5000, 'limit': 10000},
+  'latest': {'cpu': {'usage': 12.5, 'cores': 1, 'load1': 0.1}, 'memory': {'usage': 40, 'used': 4, 'total': 10},
+    'network': [{'rx_speed': 1000, 'tx_speed': 2000}]},
+  'traffic': {'cycle_start': '2026-10-01', 'cycle_end': '2026-11-01', 'used': 5000, 'limit': 10000, 'unit': 'decimal'},
 };
 
 void main() {
@@ -68,7 +69,7 @@ void main() {
     final api = ApiClient(s, store, client: client);
     final list = await api.servers();
     expect(list.single.name, 'tokyo');
-    expect(list.single.cpu, 12.5);
+    expect(list.single.latest!.cpu, 12.5);
     expect(refreshes, 1);
     expect(store.value?.refreshToken, 'rt_refresh2');
   });
@@ -115,5 +116,19 @@ void main() {
     expect(back.server, server);
     expect(back.refreshToken, 'rt_refresh3');
     expect(back.accessExpiresAt, s.accessExpiresAt);
+  });
+
+  test('静音单个节点：scope_type=server，结束静音用 DELETE', () async {
+    final calls = <String>[];
+    final client = MockClient((req) async {
+      calls.add('${req.method} ${req.url.path} ${req.body}');
+      return req.method == 'DELETE' ? http.Response('', 204) : ok({'id': 9});
+    });
+    final api = ApiClient(Session.fromTokens(server, tokens(1), DateTime.now()), MemorySessionStore(), client: client);
+    await api.silence(3, 'maintenance', '8h');
+    await api.endSilence(9);
+    expect(calls[0], contains('POST /api/v1/silences'));
+    expect(calls[0], contains('"scope_type":"server","scope_id":"3","duration":"8h"'));
+    expect(calls[1], startsWith('DELETE /api/v1/silences/9'));
   });
 }

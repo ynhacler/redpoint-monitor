@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'models.dart';
 import 'session.dart';
 import 'version.dart';
 
@@ -127,11 +128,33 @@ class ApiClient {
     return _json(res);
   }
 
-  /// 节点列表（授权范围内），异常优先由调用方排序。
-  Future<List<ServerItem>> servers() async {
-    final body = await getJson('/servers') as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>).map((e) => ServerItem.fromJson(e as Map<String, dynamic>)).toList();
+  Future<Map<String, dynamic>> _send2xx(String method, String path, {Object? body}) async {
+    final res = await _send(method, path, body: body);
+    if (res.statusCode >= 300) throw _errorOf(res);
+    return res.body.isEmpty ? const {} : _json(res) as Map<String, dynamic>;
   }
+
+  /// 节点列表（授权范围内），排序由调用方按异常优先处理。
+  Future<List<ServerView>> servers() async {
+    final body = await getJson('/servers') as Map<String, dynamic>;
+    return (body['items'] as List<dynamic>).map((e) => ServerView.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 单个节点；不在授权范围内时面板返回 404。
+  Future<ServerView> server(int id) async => ServerView.fromJson(await getJson('/servers/$id') as Map<String, dynamic>);
+
+  /// 历史曲线：range 为 1h / 6h / 24h / 7d / 30d（设计 19.7）。返回原始 JSON 列表，便于离线缓存。
+  Future<List<dynamic>> historyRaw(int id, String range) async {
+    final body = await getJson('/servers/$id/metrics/history', query: {'range': range}) as Map<String, dynamic>;
+    return body['items'] as List<dynamic>;
+  }
+
+  /// 静音（mute）或维护（maintenance）单个节点；duration 为 1h / 8h / 24h，空表示直到手动结束（设计 8.4.1）。
+  Future<void> silence(int serverId, String kind, String duration) =>
+      _send2xx('POST', '/silences', body: {'kind': kind, 'scope_type': 'server', 'scope_id': '$serverId', 'duration': duration});
+
+  /// 立即结束静音或维护。
+  Future<void> endSilence(int id) => _send2xx('DELETE', '/silences/$id');
 
   /// 主动解除本机配对（POST /app/unpair）；网络失败时也清除本地凭证（设备可在 Web 中吊销）。
   Future<void> unpair() async {
@@ -145,49 +168,4 @@ class ApiClient {
   }
 
   void close() => _http.close();
-}
-
-class ServerItem {
-  ServerItem({required this.id, required this.name, required this.status, this.cpu, this.mem, this.rx = 0, this.tx = 0,
-      required this.trafficUsed, required this.trafficLimit});
-  final int id;
-  final String name;
-  final String status;
-  final double? cpu;
-  final double? mem;
-  final num rx;
-  final num tx;
-  final num trafficUsed;
-  final num trafficLimit;
-
-  factory ServerItem.fromJson(Map<String, dynamic> j) {
-    final latest = j['latest'] as Map<String, dynamic>?;
-    final nets = (latest?['network'] as List<dynamic>?) ?? const [];
-    final traffic = j['traffic'] as Map<String, dynamic>;
-    return ServerItem(
-      id: j['id'] as int,
-      name: j['name'] as String,
-      status: j['status'] as String,
-      cpu: (latest?['cpu']?['usage'] as num?)?.toDouble(),
-      mem: (latest?['memory']?['usage'] as num?)?.toDouble(),
-      rx: nets.fold<num>(0, (a, n) => a + ((n as Map<String, dynamic>)['rx_speed'] as num)),
-      tx: nets.fold<num>(0, (a, n) => a + ((n as Map<String, dynamic>)['tx_speed'] as num)),
-      trafficUsed: traffic['used'] as num,
-      trafficLimit: traffic['limit'] as num,
-    );
-  }
-
-  /// 异常优先（设计 1.5.3）：离线 → 未知 → 在线 → 待安装
-  int get rank => switch (status) { 'offline' => 0, 'unknown' => 1, 'online' => 2, _ => 3 };
-}
-
-String fmtBytes(num n, {bool perSec = false}) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  var v = n.toDouble();
-  var i = 0;
-  while (v >= 1000 && i < units.length - 1) {
-    v /= 1000;
-    i++;
-  }
-  return '${v.toStringAsFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}${perSec ? '/s' : ''}';
 }
