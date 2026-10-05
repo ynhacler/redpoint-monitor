@@ -353,6 +353,26 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface SSLMonitor {
+  id: number
+  host: string
+  port: number
+  note: string
+  not_before: number
+  /** 证书到期时间，Unix 秒；0 表示还没有读到证书 */
+  not_after: number
+  issuer: string
+  subject: string
+  /** 证书中的域名（最多 20 个） */
+  sans: string[]
+  /** 证书链、域名与有效期都通过校验 */
+  valid: boolean
+  /** 无法连接或校验失败的原因；暂时连不上时保留上次读到的证书信息 */
+  last_error: string
+  checked_at: number
+  created_at: number
+}
+
 export interface HealthSummary {
   /** muted：待安装或维护中 */
   level: 'ok' | 'warn' | 'bad' | 'muted'
@@ -1395,6 +1415,45 @@ export interface Paths {
         next_cursor: string
         items: Delivery[]
       }
+    }
+  }
+  '/ssl-monitors': {
+    /** SSL 证书到期监控（设计 33.3），快到期的在前 */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: SSLMonitor[]
+      }
+    }
+    /** 添加证书监控并立即检查一次（最多 15 秒） */
+    post: {
+      body: {
+        /** 域名或 IP；也可以是 example.com:8443 或粘贴的网址 */
+        host: string
+        /** 默认 443 */
+        port?: number
+        note?: string
+      }
+      response: SSLMonitor
+    }
+  }
+  '/ssl-monitors/{id}/check': {
+    /** 立即重新检查 */
+    post: {
+      params: {
+        id: number
+      }
+      response: SSLMonitor
+    }
+  }
+  '/ssl-monitors/{id}': {
+    /** 删除证书监控 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
     }
   }
   '/silences': {

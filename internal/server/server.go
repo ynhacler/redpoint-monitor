@@ -3,6 +3,7 @@ package server
 import (
 	"compress/gzip"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
@@ -73,6 +74,7 @@ type Server struct {
 	appLimit      apiKeyLimiter  // App 设备的限流（每台每分钟 120 次，设计 23.6）
 	pairLimit     *enrollLimiter // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
 	push          *pushState     // App 原生推送（设计 30）
+	sslRoots      *x509.CertPool // SSL 证书监控的根证书；nil 表示系统根证书（测试中替换，设计 33.3）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -294,6 +296,10 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/notification-channels/{id}", accessAdmin, s.handleDeleteChannel)
 	handle("POST /api/v1/notification-channels/{id}/test", accessAdmin, s.handleTestChannel)
 	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
+	handle("GET /api/v1/ssl-monitors", accessAdmin, s.handleSSLMonitors)
+	handle("POST /api/v1/ssl-monitors", accessAdmin, s.handleCreateSSLMonitor)
+	handle("POST /api/v1/ssl-monitors/{id}/check", accessAdmin, s.handleCheckSSLMonitor)
+	handle("DELETE /api/v1/ssl-monitors/{id}", accessAdmin, s.handleDeleteSSLMonitor)
 	handle("GET /api/v1/silences", accessOps, s.handleSilences)
 	handle("POST /api/v1/silences", accessOps, s.handleCreateSilence)
 	handle("DELETE /api/v1/silences/{id}", accessOps, s.handleEndSilence)

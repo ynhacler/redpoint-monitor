@@ -77,7 +77,7 @@ const actionNames: Record<string, string> = {
   'api_key.create': '创建 API Key', 'api_key.revoke': '吊销 API Key', 'api_key.first_use': 'API Key 首次使用',
   'cloud_account.create': '添加云账户', 'cloud_account.update': '修改云账户', 'cloud_account.delete': '删除云账户',
   'cloud_account.sync': '同步云账户', 'cloud_instance.auto_calibrate': '云实例自动校准开关',
-  'server.batch_create': '批量新建节点',
+  'server.batch_create': '批量新建节点', 'ssl_monitor.create': '添加证书监控', 'ssl_monitor.delete': '删除证书监控',
   'app_key.create': '创建 App 配对 AK', 'app_key.revoke': '吊销 App 配对 AK', 'app_device.revoke': '吊销 App 设备',
   'app.pair': 'App 配对', 'app.unpair': 'App 解除配对', 'app.push_enable': 'App 开启推送',
   'app.refresh_reuse': 'App 凭证重复使用（已吊销设备）',

@@ -596,6 +596,24 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL,
 		last_error TEXT NOT NULL DEFAULT ''
 	);`,
+
+	// 迁移 29：SSL 证书到期监控（设计 33.3）。面板定期连接 host:port 读取证书（始终校验，失败原因写入 last_error）
+	`CREATE TABLE ssl_monitors (
+		id INTEGER PRIMARY KEY,
+		host TEXT NOT NULL,
+		port INTEGER NOT NULL DEFAULT 443,
+		note TEXT NOT NULL DEFAULT '',
+		not_before INTEGER NOT NULL DEFAULT 0,
+		not_after INTEGER NOT NULL DEFAULT 0,
+		issuer TEXT NOT NULL DEFAULT '',
+		subject TEXT NOT NULL DEFAULT '',
+		sans TEXT NOT NULL DEFAULT '',
+		valid INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT '',
+		checked_at INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		UNIQUE (host, port)
+	);`,
 }
 
 func (s *Store) migrate() error {
