@@ -532,26 +532,36 @@ func (n *notifier) dispatch(m notifyMessage) {
 			n.deliver(context.Background(), c, m, n.backoff)
 		}(c, cm)
 	}
+	n.dispatchApp(m) // App 原生推送（设计 30）
 }
 
 // deliver 发送到一个渠道，失败按 backoff 重试，记录投递结果。返回最终的错误。
 func (n *notifier) deliver(ctx context.Context, c NotifyChannel, m notifyMessage, backoff []time.Duration) error {
-	now := time.Now()
 	d := &Delivery{ChannelID: c.ID, ChannelName: c.Name, ChannelType: c.Type, EventID: m.EventID, ServerName: m.ServerName,
-		Kind: m.Kind, Title: m.title(), Status: DeliverySending, CreatedAt: now.Unix()}
+		Kind: m.Kind, Title: m.title()}
+	return n.deliverWith(ctx, d, backoff, func() error { return n.send(ctx, c, m) })
+}
+
+// permanentError 表示重试也不会成功（如推送 Token 已失效），不再重试。
+type permanentError struct{ error }
+
+// deliverWith 执行一次投递：记录到 notification_deliveries，失败按 backoff 重试（设计 16.5）。渠道与 App 推送共用。
+func (n *notifier) deliverWith(ctx context.Context, d *Delivery, backoff []time.Duration, send func() error) error {
+	d.Status, d.CreatedAt = DeliverySending, time.Now().Unix()
 	if err := n.s.store.insertDelivery(d); err != nil {
 		n.s.log.Error("delivery insert failed", "component", "notify", "err", err)
 	}
 	var err error
 	for attempt := 0; ; attempt++ {
-		err = n.send(ctx, c, m)
+		err = send()
 		d.Attempts = attempt + 1
 		if err == nil {
 			d.Status, d.LastError, d.SentAt = DeliverySent, "", time.Now().Unix()
 			break
 		}
 		d.LastError = err.Error()
-		if attempt >= len(backoff) {
+		var pe permanentError
+		if attempt >= len(backoff) || errors.As(err, &pe) {
 			d.Status = DeliveryFailed
 			break
 		}
@@ -567,8 +577,8 @@ func (n *notifier) deliver(ctx context.Context, c NotifyChannel, m notifyMessage
 		n.s.store.updateDelivery(d)
 	}
 	if err != nil {
-		n.s.log.Warn("notification failed", "component", "notify", "channel_id", c.ID, "type", c.Type, "kind", m.Kind,
-			"attempts", d.Attempts, "err", err)
+		n.s.log.Warn("notification failed", "component", "notify", "channel_id", d.ChannelID, "type", d.ChannelType,
+			"kind", d.Kind, "attempts", d.Attempts, "err", err)
 	}
 	return err
 }

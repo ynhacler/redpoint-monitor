@@ -218,7 +218,11 @@ func (s *Server) read(h http.HandlerFunc) http.Handler {
 
 // scopeAllows 判断当前请求能否访问节点 row：Web 管理员可访问全部；API Key 按其范围。
 func scopeAllows(r *http.Request, row ServerRow) bool {
-	sc := info(r).apiScope
+	return info(r).apiScope.allows(row)
+}
+
+// allows 判断节点是否在范围内；nil 表示 Web 管理员，可访问全部。
+func (sc *apiScope) allows(row ServerRow) bool {
 	if sc == nil {
 		return true
 	}

@@ -384,6 +384,37 @@ paths:
         '200': { description: 设备, content: { application/json: { schema: { $ref: '#/components/schemas/AppMe' } } } }
         '401': { $ref: '#/components/responses/Error' }
 
+  /app/push:
+    put:
+      tags: [app]
+      summary: 登记或更新本机的推送 Token 与加密公钥（设计 18.11、30）
+      security: [{ deviceToken: [] }]
+      description: |
+        告警经 Push Relay 推送到本机，内容用 public_key 以 HPKE 加密（30.3），Relay 与 APNs / FCM 只能看到密文。
+        public_key 为 X25519 公钥（32 字节，标准 Base64）；配对时已提交的可省略。只推送授权范围内节点的告警。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, token]
+              properties:
+                provider: { type: string, enum: [apns, fcm] }
+                token: { type: string, description: APNs 设备 Token（十六进制）或 FCM 注册 Token }
+                public_key: { type: string, description: X25519 公钥（32 字节，标准 Base64） }
+      responses:
+        '204': { description: 已登记 }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [app]
+      summary: 关闭本机推送（删除推送 Token）
+      security: [{ deviceToken: [] }]
+      responses:
+        '204': { description: 已关闭 }
+        '401': { $ref: '#/components/responses/Error' }
+
   /app/unpair:
     post:
       tags: [app]
@@ -2277,13 +2308,16 @@ components:
 
     AppMe:
       type: object
-      required: [device_id, name, platform, scope, panel_version]
+      required: [device_id, name, platform, scope, panel_version, push_available, push_enabled, center_id]
       properties:
         device_id: { type: integer }
         name: { type: string }
         platform: { type: string }
         scope: { $ref: '#/components/schemas/AppScope' }
         panel_version: { type: string }
+        push_available: { type: boolean, description: 面板已配置 Push Relay（--push-relay），可以登记推送 }
+        push_enabled: { type: boolean, description: 本机已登记推送 Token }
+        center_id: { type: string, description: 本面板的匿名标识（推送 payload 的 center_id，多监控中心时区分来源，设计 30.3.2）；未启用推送时为空 }
 
     WsEvent:
       type: object

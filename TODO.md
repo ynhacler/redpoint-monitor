@@ -175,8 +175,11 @@
   （待真机验证：扫码配对 test-server）
 - [x] App：节点详情、离线缓存、静音 / 维护操作（设计 13、14）
 - [x] App：由 design/tokens.json 生成 Dart 令牌（app/lib/tokens.dart，CI 检查与 tokens.json 一致，设计 41.2）
-- [ ] E2E 推送：配对时交换 X25519 公钥，HPKE 加密，iOS NSE / Android 数据消息（设计 30.3）
-- [ ] push-relay：无状态、实例签名校验、内存限流（设计 30.2）
+- [x] E2E 推送（面板端）：HPKE 加密（标准库 crypto/hpke）、补齐档位、推送 Token 登记、范围过滤、投递记录、失效 Token 清理（设计 30.3）
+- [x] push-relay：无状态、实例签名校验、防重放、内存限流、APNs（ES256 JWT）/ FCM v1（服务账号），无日志（设计 30.2、30.5）
+- [ ] E2E 推送（App 端）：生成 X25519 密钥并在配对时提交、登记 APNs / FCM Token、iOS Notification Service Extension 解密、
+  Android 数据消息解密（需要开发者的 APNs 密钥与 Firebase 项目）
+- [ ] 部署官方 Push Relay，并把地址设为 --push-relay 的默认值
 
 ## MVP 之后
 

@@ -46,7 +46,8 @@ usage:
   vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
-                           [--public-url https://monitor.example.com] [--release-mirror] [--no-release-sync]
+                           [--public-url https://monitor.example.com] [--push-relay https://push.example.com]
+                           [--release-mirror] [--no-release-sync]
                            [--domain monitor.example.com [--acme-email EMAIL] [--https-listen :443] [--http-listen :80]]
   vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
   vpsmon-server audit      --data DIR [--category login|operation] [--result success|failure] [--action NAME|PREFIX.]
@@ -209,6 +210,7 @@ func main() {
 		noReleaseSync := fsx.Bool("no-release-sync", false, "do not sync official agent releases from GitHub automatically (offline panels; manual sync in the Web UI still works)")
 		releaseMirror := fsx.Bool("release-mirror", false, "also mirror every file of synced official releases into DATA/releases and serve them at /releases (hosts that cannot reach GitHub)")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
+		pushRelay := fsx.String("push-relay", "", "Push Relay URL for encrypted App notifications (design 30), e.g. https://push.example.com; empty disables App push")
 		domain := fsx.String("domain", "", "built-in HTTPS: obtain certificates via ACME (Let's Encrypt) for these comma-separated domains; implies accepting the CA's terms (design 25)")
 		acmeEmail := fsx.String("acme-email", "", "with --domain: contact email for certificate notices (optional)")
 		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address")
@@ -265,7 +267,10 @@ func main() {
 		if *publicURL != "" && !strings.HasPrefix(*publicURL, "https://") {
 			log.Fatal("--public-url must start with https://")
 		}
-		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL,
+		if err := server.CheckPushRelay(*pushRelay); err != nil {
+			log.Fatal(err)
+		}
+		srv, err := server.New(st, web.Dist(), server.Options{Logger: logger, Version: version, PublicURL: *publicURL, PushRelay: *pushRelay,
 			NoLoginCaptcha: *noCaptcha, NoReleaseSync: *noReleaseSync,
 			MirrorDir: filepath.Join(*data, "releases"), ReleaseMirror: *releaseMirror})
 		if err != nil {
