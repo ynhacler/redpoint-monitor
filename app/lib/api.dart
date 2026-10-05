@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'push_crypto.dart';
 import 'session.dart';
 import 'version.dart';
 
@@ -44,8 +45,10 @@ ApiException _errorOf(http.Response res) {
 dynamic _json(http.Response res) => jsonDecode(utf8.decode(res.bodyBytes));
 
 /// 用 AK 配对（POST /app/pair），返回新会话。AK 无效时抛出 [ApiException]（access_key_invalid）。
+/// 同时生成推送解密用的 X25519 密钥对：公钥随配对提交，私钥只保存在本机（设计 12.3、30.3.1）。
 Future<Session> pairDevice(Uri server, String accessKey, {required String name, required String platform, http.Client? client}) async {
   final c = client ?? http.Client();
+  final (priv, pub) = await generatePushKeyPair();
   try {
     final res = await c
         .post(server.replace(path: '${server.path}/api/v1/app/pair'),
@@ -53,10 +56,11 @@ Future<Session> pairDevice(Uri server, String accessKey, {required String name, 
             body: jsonEncode({
               'access_key': accessKey,
               'device': {'name': name, 'platform': platform, 'app_version': appVersion},
+              'push_public_key': base64.encode(pub),
             }))
         .timeout(_timeout);
     if (res.statusCode != 200) throw _errorOf(res);
-    return Session.fromTokens(server, _json(res) as Map<String, dynamic>, DateTime.now());
+    return Session.fromTokens(server, _json(res) as Map<String, dynamic>, DateTime.now(), pushPrivateKey: base64.encode(priv));
   } finally {
     if (client == null) c.close();
   }
@@ -91,7 +95,7 @@ class ApiClient {
       await _revoked();
     }
     if (res.statusCode != 200) throw _errorOf(res);
-    _session = Session.fromTokens(_session.server, _json(res) as Map<String, dynamic>, _now());
+    _session = Session.fromTokens(_session.server, _json(res) as Map<String, dynamic>, _now(), pushPrivateKey: _session.pushPrivateKey);
     await _store.save(_session);
   }
 
@@ -142,6 +146,24 @@ class ApiClient {
 
   /// 单个节点；不在授权范围内时面板返回 404。
   Future<ServerView> server(int id) async => ServerView.fromJson(await getJson('/servers/$id') as Map<String, dynamic>);
+
+  /// 当前设备与面板的推送能力（GET /app/me）。
+  Future<Map<String, dynamic>> me() async => await getJson('/app/me') as Map<String, dynamic>;
+
+  /// 登记推送 Token（PUT /app/push）；本机还没有推送密钥时（旧版本配对）生成并一并提交公钥。
+  Future<void> registerPush(String provider, String token) async {
+    String? pub;
+    if (_session.pushPrivateKey.isEmpty) {
+      final (priv, p) = await generatePushKeyPair();
+      _session = _session.copyWith(pushPrivateKey: base64.encode(priv));
+      await _store.save(_session);
+      pub = base64.encode(p);
+    }
+    await _send2xx('PUT', '/app/push', body: {'provider': provider, 'token': token, if (pub != null) 'public_key': pub});
+  }
+
+  /// 关闭本机推送（DELETE /app/push）。
+  Future<void> disablePush() => _send2xx('DELETE', '/app/push');
 
   /// 健康摘要（设计 1.5.7）。
   Future<HealthSummary> health(int id) async => HealthSummary.fromJson(await getJson('/servers/$id/health') as Map<String, dynamic>);

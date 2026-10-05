@@ -10,13 +10,16 @@ import '../cache.dart';
 import '../format.dart';
 import '../metrics.dart';
 import '../models.dart';
+import '../push.dart';
 import '../theme.dart';
 import 'server_detail_page.dart';
 
 class ServersPage extends StatefulWidget {
-  const ServersPage({super.key, required this.api, required this.cache, required this.onUnpair, required this.onRevoked});
+  const ServersPage({super.key, required this.api, required this.cache, required this.onUnpair, required this.onRevoked,
+      this.pushSource = const NoPushTokenSource()});
   final ApiClient api;
   final CacheStore cache;
+  final PushTokenSource pushSource;
 
   /// 用户主动解除本机配对
   final Future<void> Function() onUnpair;
@@ -34,6 +37,7 @@ class _ServersPageState extends State<ServersPage> {
   String? _error;
   String _group = '';
   Timer? _timer;
+  PushState? _push;
 
   @override
   void initState() {
@@ -51,6 +55,50 @@ class _ServersPageState extends State<ServersPage> {
     }
     await _refresh();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+    _syncPush();
+  }
+
+  // 登记推送（设计 30）：失败不影响列表，设置页显示状态
+  Future<void> _syncPush() async {
+    try {
+      final st = await syncPush(widget.api, widget.pushSource);
+      if (mounted) setState(() => _push = st);
+    } on DeviceRevoked {
+      widget.onRevoked();
+    } catch (_) {
+      // 网络失败：下次启动再试
+    }
+  }
+
+  void _openSettings() {
+    final s = widget.api.session;
+    final scope = switch (s.scopeType) { 'group' => '分组 ${s.scopeValue}', 'servers' => '指定的节点', _ => '全部节点' };
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ListTile(leading: const Icon(Icons.dns_outlined), title: Text(s.server.host), subtitle: Text(s.server.toString())),
+          ListTile(
+            leading: const Icon(Icons.visibility_outlined),
+            title: Text('可查看：$scope'),
+            subtitle: Text(s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('告警推送'),
+            subtitle: Text(_push == null ? '检查中…' : pushStateText[_push]!),
+          ),
+          ListTile(
+            leading: Icon(Icons.link_off, color: Theme.of(ctx).colorScheme.error),
+            title: Text('解除配对', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmUnpair();
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -116,7 +164,7 @@ class _ServersPageState extends State<ServersPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('我的服务器'),
-        actions: [IconButton(icon: const Icon(Icons.link_off), tooltip: '解除配对', onPressed: _confirmUnpair)],
+        actions: [IconButton(icon: const Icon(Icons.settings_outlined), tooltip: '设置', onPressed: _openSettings)],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,

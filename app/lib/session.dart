@@ -16,6 +16,7 @@ class Session {
     required this.scopeType,
     required this.scopeValue,
     required this.allowLowRiskOps,
+    this.pushPrivateKey = '',
   });
 
   final Uri server;
@@ -29,8 +30,15 @@ class Session {
   final String scopeValue;
   final bool allowLowRiskOps;
 
+  /// 推送解密用的 X25519 私钥（标准 Base64），配对时生成，只在本机（设计 30.3.1）；旧版本配对的会话为空
+  final String pushPrivateKey;
+
+  Session copyWith({String? pushPrivateKey}) => Session(server: server, deviceId: deviceId, accessToken: accessToken,
+      refreshToken: refreshToken, accessExpiresAt: accessExpiresAt, scopeType: scopeType, scopeValue: scopeValue,
+      allowLowRiskOps: allowLowRiskOps, pushPrivateKey: pushPrivateKey ?? this.pushPrivateKey);
+
   /// 由配对或刷新的响应（AppTokens）生成。
-  factory Session.fromTokens(Uri server, Map<String, dynamic> j, DateTime now) {
+  factory Session.fromTokens(Uri server, Map<String, dynamic> j, DateTime now, {String pushPrivateKey = ''}) {
     final scope = j['scope'] as Map<String, dynamic>;
     return Session(
       server: server,
@@ -41,6 +49,7 @@ class Session {
       scopeType: scope['type'] as String,
       scopeValue: scope['value'] as String,
       allowLowRiskOps: scope['allow_low_risk_ops'] as bool,
+      pushPrivateKey: pushPrivateKey,
     );
   }
 
@@ -53,6 +62,7 @@ class Session {
         'scope_type': scopeType,
         'scope_value': scopeValue,
         'allow_low_risk_ops': allowLowRiskOps,
+        'push_private_key': pushPrivateKey,
       };
 
   factory Session.fromJson(Map<String, dynamic> j) => Session(
@@ -64,6 +74,7 @@ class Session {
         scopeType: j['scope_type'] as String,
         scopeValue: j['scope_value'] as String,
         allowLowRiskOps: j['allow_low_risk_ops'] as bool,
+        pushPrivateKey: (j['push_private_key'] as String?) ?? '',
       );
 }
 

@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 96 | App 推送第一步：配对时生成 X25519 密钥并提交公钥、Dart HPKE 解密（与面板测试向量互通）、推送登记与状态 | 12.3、30.3 |
 | 95 | 推送面板端与 Push Relay：HPKE 加密与补齐、实例签名与防重放、推送 Token 登记与清理、范围过滤；cmd/push-relay 转发 APNs / FCM，无日志、内存限流 | 18.11、30 |
 | 94 | 云厂商口径的自动流量校准：实例级开关，周期一致且数据新鲜时每天校准一次关联节点，否则记录原因 | 44.5 |
 | 93 | 云账户余额提醒：账户可设余额阈值，低于时每月严重提醒一次（阿里云、腾讯云） | 44.6、44.7 |
@@ -8189,7 +8190,13 @@ Relay     cmd/push-relay（make build-relay，deploy/systemd/push-relay.service�
           APNs：ES256 JWT（40 分钟更新），alert 固定为“服务器告警 / 打开 App 查看详情”、mutable-content、
           严重告警 time-sensitive，密文在自定义字段 c；FCM HTTP v1：服务账号换取访问令牌，只有 data.c 的 data message
           每实例每分钟 30 条、每天 2000 条（内存）；不写访问日志，连接错误日志丢弃，只输出每小时的聚合计数
-未完成    App 端（密钥、登记、iOS NSE 与 Android 解密）；官方 Relay 的部署与默认地址
+App       （修订第 96 条）app/lib/push_crypto.dart：按 RFC 9180 用 cryptography 包的 X25519 / HMAC-SHA256 /
+          ChaCha20-Poly1305 实现接收方单次解密，用面板生成的测试向量校验互通（internal/push/testdata/vectors.json，
+          go test ./internal/push -run TestVectors -update 重新生成）；配对时生成密钥对，私钥随会话存于安全存储，
+          公钥随 /app/pair 提交（旧版本配对的设备在登记推送时补交）；启动时登记推送，设置页显示推送状态。
+          推送 Token 来源抽象为 PushTokenSource，接入 APNs / FCM 前显示“尚未接入系统推送服务”
+未完成    App 接入 firebase_messaging、iOS Notification Service Extension（CryptoKit HPKE）与 Android 后台解密；
+          官方 Relay 的部署与默认地址
 ```
 
 ## 30.6 Relay 不可用时
