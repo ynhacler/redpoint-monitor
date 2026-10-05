@@ -86,6 +86,7 @@ func (s *Server) reminderLoop(ctx context.Context) {
 		case <-time.After(wait):
 		}
 		wait = time.Hour
+		s.checkSSLDue(ctx, time.Now()) // SSL 证书每 12 小时检查一次（设计 33.3）
 		s.checkReminders(time.Now())
 		s.autoCalibrate(time.Now()) // 云厂商口径的自动流量校准（设计 44.5），每个实例每天一次
 	}
@@ -137,6 +138,7 @@ func (s *Server) checkReminders(now time.Time) {
 		s.remind(fmt.Sprintf("expire:server:%d:%s:%d", row.ID, row.ExpireDate, m), msg, now)
 	}
 	s.checkCloudReminders(now, nodeExpire)
+	s.sslReminders(now)
 	if err := s.store.PruneReminders(now); err != nil {
 		s.log.Warn("prune reminders failed", "component", "reminder", "err", err)
 	}

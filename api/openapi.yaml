@@ -897,6 +897,56 @@ paths:
           content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
+  /ssl-monitors:
+    get:
+      tags: [alerts]
+      summary: SSL 证书到期监控（设计 33.3），快到期的在前
+      responses:
+        '200':
+          description: 列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/SSLMonitor' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [alerts]
+      summary: 添加证书监控并立即检查一次（最多 15 秒）
+      description: 面板每 12 小时连接一次，始终校验证书；30 / 14 / 7 / 3 / 1 天、当天与已过期各提醒一次，证书无效时提醒一次。最多 200 个。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host]
+              properties:
+                host: { type: string, description: '域名或 IP；也可以是 example.com:8443 或粘贴的网址' }
+                port: { type: integer, minimum: 1, maximum: 65535, description: 默认 443 }
+                note: { type: string, maxLength: 100 }
+      responses:
+        '201': { description: 已添加, content: { application/json: { schema: { $ref: '#/components/schemas/SSLMonitor' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /ssl-monitors/{id}/check:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [alerts]
+      summary: 立即重新检查
+      responses:
+        '200': { description: 检查结果, content: { application/json: { schema: { $ref: '#/components/schemas/SSLMonitor' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /ssl-monitors/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    delete:
+      tags: [alerts]
+      summary: 删除证书监控
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /silences:
     get:
       tags: [alerts]
@@ -1957,6 +2007,24 @@ components:
         fired_at: { type: integer }
         resolved_at: { type: integer }
         resolved_value: { type: number }
+
+    SSLMonitor:
+      type: object
+      required: [id, host, port, note, not_before, not_after, issuer, subject, sans, valid, last_error, checked_at, created_at]
+      properties:
+        id: { type: integer }
+        host: { type: string }
+        port: { type: integer }
+        note: { type: string }
+        not_before: { type: integer }
+        not_after: { type: integer, description: 证书到期时间，Unix 秒；0 表示还没有读到证书 }
+        issuer: { type: string }
+        subject: { type: string }
+        sans: { type: array, items: { type: string }, description: 证书中的域名（最多 20 个） }
+        valid: { type: boolean, description: 证书链、域名与有效期都通过校验 }
+        last_error: { type: string, description: 无法连接或校验失败的原因；暂时连不上时保留上次读到的证书信息 }
+        checked_at: { type: integer }
+        created_at: { type: integer }
 
     HealthSummary:
       type: object

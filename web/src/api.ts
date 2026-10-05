@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
 } from './api.gen'
 
@@ -470,6 +470,24 @@ export async function listAppDevices() {
 
 export function revokeAppDevice(id: number) {
   return request('post', '/app-devices/{id}/revoke', { params: { id } })
+}
+
+// ---- SSL 证书到期监控（设计 33.3） ----
+
+export async function listSSLMonitors() {
+  return (await request('get', '/ssl-monitors')).items
+}
+
+export function createSSLMonitor(host: string, note: string) {
+  return request('post', '/ssl-monitors', { body: { host, note } })
+}
+
+export function checkSSLMonitor(id: number) {
+  return request('post', '/ssl-monitors/{id}/check', { params: { id } })
+}
+
+export function deleteSSLMonitor(id: number) {
+  return request('delete', '/ssl-monitors/{id}', { params: { id } })
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----
