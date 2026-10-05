@@ -4,7 +4,6 @@
 # 尚未加入（随对应里程碑补上）：
 #   OpenAPI 契约校验       TODO(A0): api/openapi.yaml 建立后加入（设计 19.0.1）
 #   注释检查               TODO(A0): revive exported 规则 / eslint-plugin-jsdoc（设计 39.7）
-#   flutter analyze / test TODO(C): 阶段 C 开始后加入
 name: CI
 
 on:
@@ -126,3 +125,23 @@ jobs:
       - run: shellcheck -s sh scripts/agent.sh.in
       # OpenRC 服务脚本（设计 28）：变量由 openrc-run 读取，SC2034（未使用的变量）不适用
       - run: shellcheck -s sh -e SC2034 deploy/openrc/vpsmon-agent
+
+  # App（阶段 C）：静态检查与单元测试；只用 Dart / Flutter，不构建 iOS / Android 包
+  flutter:
+    name: App（Flutter）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: 依赖
+        run: flutter pub get
+        working-directory: app
+      - name: flutter analyze
+        run: flutter analyze
+        working-directory: app
+      - name: flutter test
+        run: flutter test
+        working-directory: app

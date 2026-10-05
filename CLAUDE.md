@@ -130,7 +130,8 @@ Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` an
 Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
 --server … --enroll …` and the binary must already be on the host (design 27.3.1).
 App pairing server side (AK → `/app/pair` → dev_ + rt_ tokens, design 19.4.1) and the Web "App 接入" page are in.
-Not yet: push, Flutter pairing UI (phase C). See TODO.md.
+The Flutter app pairs (scan or manual), refreshes device tokens and lists servers (design 12.7.1).
+Not yet: push, App detail page / offline cache (phase C). See TODO.md.
 
 ## Dev environment notes (design 40)
 

@@ -128,6 +128,8 @@ vm-agent: build-linux ## Run the real agent inside the VM against the server on 
 
 app-setup: ## Generate iOS/Android projects for the Flutter app (first time)
 	cd app && flutter create --org dev.vpsmon --project-name vpsmon_app --platforms ios,android . && flutter pub get
+	@# 扫码配对需要相机权限说明（设计 12.4）；iOS 没有这一项时访问相机会直接崩溃
+	@/usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 扫描 Web 管理端的配对二维码" app/ios/Runner/Info.plist 2>/dev/null || true
 
 app-run: ## Run the app (pick a simulator/emulator when prompted)
 	cd app && flutter run
