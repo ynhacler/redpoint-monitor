@@ -1,4 +1,5 @@
-# 由 api/openapi.yaml 生成 Web 的 TypeScript 请求类型（设计 19.0.1）：web/src/api.gen.ts。
+# 由 api/openapi.yaml 生成 Web 的 TypeScript 请求类型（设计 19.0.1）：web/src/api.gen.ts；
+# 同时生成 JSON 版契约 internal/server/testdata/openapi.json，供服务端测试校验响应（Go 标准库没有 YAML 解析器）。
 # 只用 Ruby 标准库，不引入生成器依赖。生成文件提交到仓库；CI 用 --check 确认与契约一致。
 #
 # 用法：ruby scripts/gen-api-types.rb [--check]
@@ -7,12 +8,14 @@
 #   components.schemas 中的每个模型 → export interface / export type
 #   paths 中的每个操作 → Paths['/路径']['get' | 'post' | …] = { params?, query?, body?, response }
 #     params 为路径参数，query 为查询参数，body 为 JSON 请求体，response 为 2xx 的 JSON 响应（无内容时为 void）
+require "json"
 require "yaml"
 Encoding.default_external = Encoding::UTF_8 # 不依赖系统区域设置（CI、macOS 自带的 Ruby）
 
 ROOT = File.expand_path("..", __dir__)
 SPEC = File.join(ROOT, "api/openapi.yaml")
 OUT = File.join(ROOT, "web/src/api.gen.ts")
+JSON_OUT = File.join(ROOT, "internal/server/testdata/openapi.json")
 METHODS = %w[get post put patch delete].freeze
 
 $doc = YAML.load_file(SPEC)
@@ -156,11 +159,16 @@ $doc["paths"].each do |path, item|
 end
 out << "}\n"
 
+json = JSON.pretty_generate($doc) + "\n"
 if ARGV.include?("--check")
   current = File.exist?(OUT) ? File.read(OUT) : ""
   abort "web/src/api.gen.ts 与 api/openapi.yaml 不一致：运行 make api-types 后提交" unless current == out
-  puts "api.gen.ts 与契约一致"
+  current = File.exist?(JSON_OUT) ? File.read(JSON_OUT) : ""
+  abort "internal/server/testdata/openapi.json 与 api/openapi.yaml 不一致：运行 make api-types 后提交" unless current == json
+  puts "api.gen.ts、openapi.json 与契约一致"
 else
   File.write(OUT, out)
-  puts "已生成 #{OUT.delete_prefix(ROOT + "/")}"
+  Dir.mkdir(File.dirname(JSON_OUT)) unless Dir.exist?(File.dirname(JSON_OUT))
+  File.write(JSON_OUT, json)
+  puts "已生成 #{OUT.delete_prefix(ROOT + "/")}、#{JSON_OUT.delete_prefix(ROOT + "/")}"
 end

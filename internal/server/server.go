@@ -777,6 +777,13 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 	s.mu.Lock()
 	if snap := s.latest[row.ID]; snap != nil {
 		rep := snap.Report
+		// 契约中 disk、network 是数组（required）：没有磁盘或网卡的上报输出 []，不输出 null（客户端直接遍历）
+		if rep.Disk == nil {
+			rep.Disk = []protocol.Disk{}
+		}
+		if rep.Network == nil {
+			rep.Network = []protocol.NetIface{}
+		}
 		v.Latest = &rep
 		v.LastSeenAt = snap.ReceivedAt.Unix()
 	}
