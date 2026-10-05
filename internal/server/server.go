@@ -269,6 +269,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/agent/report", accessAgent, s.handleReport)
 	handle("GET /api/v1/agent/upgrade", accessAgent, s.handleAgentUpgrade)
 	handle("POST /api/v1/agent/upgrade/status", accessAgent, s.handleAgentUpgradeStatus)
+	handle("GET /api/v1/agent/whoami", accessAgent, s.handleWhoami)
 	handle("POST /api/v1/agent/unregister", accessAgent, s.handleUnregister) // 注销会吊销 Token，放在 Agent 路由最后（权限矩阵测试按顺序调用）
 
 	// 节点（设计 19.5、19.11）

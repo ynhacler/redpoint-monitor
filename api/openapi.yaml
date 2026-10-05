@@ -571,6 +571,27 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /agent/whoami:
+    get:
+      tags: [agent]
+      summary: 校验 Agent Token 并返回所属节点（vpsmon-agent doctor 使用，设计 27.11）；只读，不改变任何状态
+      security:
+        - agentToken: []
+      responses:
+        '200':
+          description: Token 有效
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server_id, server_name, panel_version, time]
+                properties:
+                  server_id: { type: integer }
+                  server_name: { type: string }
+                  panel_version: { type: string }
+                  time: { type: integer, description: 面板当前时间，Unix 秒（诊断时钟偏差） }
+        '401': { $ref: '#/components/responses/Error' }
+
   /agent/unregister:
     post:
       tags: [agent]

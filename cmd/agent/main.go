@@ -13,6 +13,8 @@
 //	vpsmon-agent uninstall                              停止并删除，通知面板（需要 root）
 //	vpsmon-agent upgrade [--version vX]                 本机升级到官方签名的版本（需要 root，设计 29）
 //	vpsmon-agent rotate-token --enroll ENR-…           用面板新生成的注册码更换 Token（需要 root，设计 17.2）
+//	vpsmon-agent re-enroll --enroll ENR-… [--server URL] 换绑到其他节点或其他面板（需要 root，设计 27.11）
+//	vpsmon-agent doctor                                 兼容性与连通性诊断，只读（设计 27.11）
 //	vpsmon-agent enable-remote-upgrade                  为已安装的 Agent 启用远程升级（需要 root，设计 29.13）
 //	vpsmon-agent refresh-unit                           把 systemd 单元更新为本版本内嵌的版本（需要 root，设计 43.5）
 //	vpsmon-agent updater                                特权 updater，由 vpsmon-agent-updater.service 调用
@@ -75,6 +77,10 @@ func main() {
 			os.Exit(cmdUpdater())
 		case "rotate-token":
 			os.Exit(cmdRotateToken(os.Args[2:]))
+		case "re-enroll":
+			os.Exit(cmdReEnroll(os.Args[2:]))
+		case "doctor":
+			os.Exit(cmdDoctor())
 		case "enable-remote-upgrade":
 			os.Exit(cmdEnableRemoteUpgrade())
 		case "refresh-unit":
@@ -220,6 +226,37 @@ func cmdRotateToken(args []string) int {
 		Version: version, Out: os.Stdout})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// cmdReEnroll 执行 vpsmon-agent re-enroll（设计 27.11）：换绑到同一面板的其他节点，或用 --server 换到另一个面板。
+func cmdReEnroll(args []string) int {
+	fs := flag.NewFlagSet("re-enroll", flag.ExitOnError)
+	code := fs.String("enroll", "", "one-time enroll code of the target node")
+	server := fs.String("server", "", "new panel URL (default: keep the current panel)")
+	allowHTTP := fs.Bool("allow-http", false, "allow plain HTTP to a non-loopback panel (development only)")
+	_ = fs.Parse(args)
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "✗ re-enroll 只支持 Linux")
+		return 1
+	}
+	if err := setup.ReEnroll(context.Background(), setup.Options{Server: *server, EnrollCode: *code, AllowHTTP: *allowHTTP,
+		Version: version, Out: os.Stdout}); err != nil {
+		fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+// cmdDoctor 执行 vpsmon-agent doctor（设计 27.11）：只读诊断，有问题时退出码为 1。
+func cmdDoctor() int {
+	o := setup.Options{Version: version, Out: os.Stdout}
+	if p, user := setup.CurrentPaths(); user && setup.IsUserInstall(p) {
+		o.Paths, o.UserSys = p, setup.RealUserSystem{}
+	}
+	if setup.Doctor(context.Background(), o) > 0 {
 		return 1
 	}
 	return 0

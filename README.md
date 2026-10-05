@@ -173,6 +173,8 @@ Agent 常用命令：
 
 ```bash
 vpsmon-agent status                  # 服务状态与最近一次上报
+sudo vpsmon-agent doctor             # 诊断：服务、上报、DNS / HTTPS / 证书、时钟、Token 是否有效
+sudo vpsmon-agent re-enroll --enroll ENR-…   # 换绑到其他节点；加 --server https://… 换到另一个面板
 sudo vpsmon-agent upgrade            # 升级到最新的官方签名版本（失败自动回滚）
 sudo vpsmon-agent uninstall          # 停止、删除并通知面板
 ```

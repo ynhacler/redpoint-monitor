@@ -461,6 +461,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"PUT /api/v1/cloud-instances/{id}/auto-calibrate": accessAdmin,
 		"POST /api/v1/agent/enroll":                       accessEnroll,
 		"POST /api/v1/agent/report":                       accessAgent,
+		"GET /api/v1/agent/whoami":                        accessAgent,
 		"POST /api/v1/agent/unregister":                   accessAgent,
 		"GET /api/v1/agent/upgrade":                       accessAgent,
 		"POST /api/v1/agent/upgrade/status":               accessAgent,
