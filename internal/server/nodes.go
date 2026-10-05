@@ -264,20 +264,35 @@ func (s *Server) installCommand(r *http.Request, code string) installView {
 		ManualCommand: "sudo vpsmon-agent install --server " + url + " --enroll " + code,
 		RotateCommand: "sudo vpsmon-agent rotate-token --enroll " + code}
 	v.Command = v.ManualCommand
-	if rel := s.latestStable(); rel != nil {
-		v.Mode, v.Release = "default", rel
-		// 已镜像时脚本与构建都从本面板下载（设计 27.5.3）；哈希仍来自已验签的清单
-		script := strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile
-		mirror := ""
-		if rel.Mirrored && s.mirrorRoot != "" {
-			script = url + "/releases/v" + rel.Version + "/" + rel.InstallerFile
-			mirror = " --mirror " + url + "/releases"
-		}
-		v.Command = "curl -fsSLo agent.sh " + script +
-			" && echo \"" + rel.InstallerSHA256 + "  agent.sh\" | sha256sum -c -" +
-			" && sudo sh agent.sh --server " + url + " --enroll " + code + mirror
+	if src, ok := s.installerSource(url); ok {
+		v.Mode, v.Release = "default", src.rel
+		v.Command = "curl -fsSLo agent.sh " + src.script +
+			" && echo \"" + src.rel.InstallerSHA256 + "  agent.sh\" | sha256sum -c -" +
+			" && sudo sh agent.sh --server " + url + " --enroll " + code + src.mirror
 	}
 	return v
+}
+
+// installerSource 是默认安装方式所用的脚本：最新的已验签正式版、下载地址与镜像参数（安装命令与批量导出共用）。
+// 没有已验签的正式版时 ok 为 false。
+type installerSrc struct {
+	rel    *agentRelease
+	script string // 安装脚本的下载地址
+	mirror string // 已镜像时追加到命令的 " --mirror …"，否则为空
+}
+
+func (s *Server) installerSource(panel string) (installerSrc, bool) {
+	rel := s.latestStable()
+	if rel == nil {
+		return installerSrc{}, false
+	}
+	// 已镜像时脚本与构建都从本面板下载（设计 27.5.3）；哈希仍来自已验签的清单
+	src := installerSrc{rel: rel, script: strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile}
+	if rel.Mirrored && s.mirrorRoot != "" {
+		src.script = panel + "/releases/v" + rel.Version + "/" + rel.InstallerFile
+		src.mirror = " --mirror " + panel + "/releases"
+	}
+	return src, true
 }
 
 // handleCreateServer：POST /api/v1/servers，admin。新建“待安装”节点并生成注册码（设计 19.11、27.2）。

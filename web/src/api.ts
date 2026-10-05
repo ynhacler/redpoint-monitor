@@ -198,6 +198,11 @@ export function createServer(input: CreateServerInput) {
   return request('post', '/servers', { body: input })
 }
 
+/** 批量新建（设计 27.9）：全部校验通过才创建；返回每个节点的注册码与三种导出（只返回这一次） */
+export function createServersBatch(items: CreateServerInput[], enrollTTL: '1h' | '24h' | '7d') {
+  return request('post', '/servers/batch', { body: { items, enroll_ttl: enrollTTL } })
+}
+
 /** live 为真时请求按需实时模式：节点随后 30 秒内以 2 秒采样（设计 46.2）；只在详情页可见时使用 */
 export function getServer(id: number, live = false) {
   return request('get', '/servers/{id}', { params: { id }, query: live ? { live: 1 } : undefined })

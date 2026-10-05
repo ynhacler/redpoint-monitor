@@ -1199,6 +1199,46 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/batch:
+    post:
+      tags: [servers]
+      summary: 批量新建节点（设计 27.9）：全部校验通过才创建，每个节点独立的注册码
+      description: |
+        最多 200 个；字段与单个新建相同（每项的 enroll_ttl 忽略，以请求的 enroll_ttl 为准）。任一项不合法时都不创建，
+        字段错误为 items[序号].字段（序号从 0 开始）；名称与已有节点或本批中的其他项重复也是错误。
+        exports 提供三种导出：每台主机一条安装命令、CSV（名称, 注册码, 有效期, 命令）、Ansible inventory 与 playbook
+        （先下载、按已验签的哈希校验、再执行；面板没有已验签的官方版本时为 null）。导出中含注册码，只返回这一次。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/CreateServerRequest' } }
+                enroll_ttl: { type: string, enum: ['1h', '24h', '7d'], description: 注册码有效期，默认 24h }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, exports]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/EnrollCodeView' } }
+                  exports:
+                    type: object
+                    required: [commands, csv, ansible]
+                    properties:
+                      commands: { type: string, description: 每台主机一条安装命令（文本） }
+                      csv: { type: string, description: 'CSV：名称, 注册码, 有效期, 命令（UTF-8，带表头）' }
+                      ansible: { type: ['string', 'null'], description: Ansible inventory 与 playbook（YAML）；没有已验签的官方版本时为 null }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /servers/{id}:
     parameters: [{ $ref: '#/components/parameters/ServerID' }]
     get:
