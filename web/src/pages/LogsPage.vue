@@ -13,7 +13,7 @@ const router = useRouter()
 const tab = computed(() => (route.query.tab === 'operation' ? 'operation' : 'login'))
 const result = computed(() => (route.query.result === 'success' || route.query.result === 'failure' ? route.query.result : ''))
 const qstr = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '')
-const actorQ = computed(() => (['admin', 'agent', 'apikey', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
+const actorQ = computed(() => (['admin', 'agent', 'apikey', 'app', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
 const actionQ = computed(() => qstr('action'))
 const fromQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('from')) ? qstr('from') : ''))
 const toQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('to')) ? qstr('to') : ''))
@@ -76,7 +76,11 @@ const actionNames: Record<string, string> = {
   'notification_channel.delete': '删除通知渠道', 'notification_channel.test': '测试通知渠道', 'setting.update': '修改系统设置',
   'api_key.create': '创建 API Key', 'api_key.revoke': '吊销 API Key', 'api_key.first_use': 'API Key 首次使用',
   'cloud_account.create': '添加云账户', 'cloud_account.update': '修改云账户', 'cloud_account.delete': '删除云账户',
-  'cloud_account.sync': '同步云账户',
+  'cloud_account.sync': '同步云账户', 'cloud_instance.auto_calibrate': '云实例自动校准开关',
+  'server.batch_create': '批量新建节点',
+  'app_key.create': '创建 App 配对 AK', 'app_key.revoke': '吊销 App 配对 AK', 'app_device.revoke': '吊销 App 设备',
+  'app.pair': 'App 配对', 'app.unpair': 'App 解除配对', 'app.push_enable': 'App 开启推送',
+  'app.refresh_reuse': 'App 凭证重复使用（已吊销设备）',
 }
 // 当前标签可选的操作（登录日志只有几种，操作日志为其余全部）
 const loginActionSet = new Set(['auth.login', 'auth.logout', 'auth.reauth', 'auth.session_revoke'])
@@ -91,6 +95,7 @@ function actor(l: AuditLog) {
   if (l.actor_type === 'cli') return '命令行'
   if (l.actor_type === 'apikey') return `API Key #${l.actor_id}`
   if (l.actor_type === 'system') return '系统'
+  if (l.actor_type === 'app') return l.actor_id ? `App（${l.actor_id}）` : 'App'
   return l.actor_id || DASH
 }
 function target(l: AuditLog) {
@@ -129,6 +134,7 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
         <option value="admin">管理员</option>
         <option value="agent">Agent</option>
         <option value="apikey">API Key</option>
+        <option value="app">App</option>
         <option value="cli">命令行</option>
         <option value="system">系统</option>
       </select>
