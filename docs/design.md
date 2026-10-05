@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 106 | iOS 通知服务扩展：CryptoKit HPKE 解密推送、共享钥匙串保存各中心私钥；iOS 工程提交到仓库 | 30.3 |
 | 105 | SSL 证书到期监控：始终校验、按里程碑提醒、证书无效提醒；告警页“证书”标签 | 33.3 |
 | 103 | 费用统计页：按币种的月均 / 年均、供应商 / 分组拆分、近期续费、云账户本月费用 | 1.2.3、36.3 |
 | 102 | App 多监控中心聚合视图与跨中心事件流 | 1.5.2、12.8、36.2 |
@@ -8239,7 +8240,12 @@ App       （修订第 96 条）app/lib/push_crypto.dart：按 RFC 9180 用 cryp
           go test ./internal/push -run TestVectors -update 重新生成）；配对时生成密钥对，私钥随会话存于安全存储，
           公钥随 /app/pair 提交（旧版本配对的设备在登记推送时补交）；启动时登记推送，设置页显示推送状态。
           推送 Token 来源抽象为 PushTokenSource，接入 APNs / FCM 前显示“尚未接入系统推送服务”
-未完成    App 接入 firebase_messaging、iOS Notification Service Extension（CryptoKit HPKE）与 Android 后台解密；
+iOS NSE  （修订第 106 条）app/ios/NotificationService：系统 CryptoKit HPKE（Curve25519_SHA256_ChachaPoly，iOS 17 起），
+          依次尝试本机各监控中心的私钥解密 APNs 自定义字段 c，替换标题与正文，按 center_id 分组，点按信息写入 userInfo；
+          失败或旧系统时保留外层兜底文字。私钥由 App 经 MethodChannel（dev.vpsmon/push_keys）写入与扩展共享的钥匙串访问组
+          $(AppIdentifierPrefix)dev.vpsmon.shared（AfterFirstUnlockThisDeviceOnly，不随备份迁移）；配对、解除、切换、
+          生成密钥时整体替换。make ios-push-check 用 Go 生成的测试向量校验 Swift 实现。iOS 工程（app/ios）从此提交到仓库
+未完成    App 接入 firebase_messaging（取得 APNs / FCM Token、aps-environment 授权）与 Android 后台解密；
           官方 Relay 的部署与默认地址
 ```
 
