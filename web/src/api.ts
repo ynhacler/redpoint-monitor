@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
 } from './api.gen'
 
@@ -230,6 +230,11 @@ export function revokeEnrollCode(id: number) {
 /** 立即吊销节点的全部 Agent Token（设计 17.2）；需先重新验证密码 */
 export function revokeAgentToken(id: number) {
   return request('post', '/servers/{id}/revoke-agent-token', { params: { id } })
+}
+
+/** 健康摘要（设计 1.5.7）：面板归纳的结论，Web 与 App 相同 */
+export function getHealth(id: number) {
+  return request('get', '/servers/{id}/health', { params: { id } })
 }
 
 export function getHistory(id: number, range: HistoryRange) {

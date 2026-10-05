@@ -1286,6 +1286,21 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/health:
+    get:
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
+      tags: [servers]
+      summary: 节点健康摘要（设计 1.5.7）：把最近的指标归纳成几句话，Web 与 App 显示同一结论
+      description: |
+        CPU：过去 24 小时平均与峰值；内存：过去 24 小时的范围（波动不超过 10 个百分点时为“稳定”）；
+        磁盘：当前使用率与最近 30 天增长（数据满 7 天才计算，增长时估算写满天数）；流量：本周期用量与预计。
+        数据来自 5 分钟聚合（设计 21），最近几分钟可能尚未计入。
+      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      responses:
+        '200': { description: 健康摘要, content: { application/json: { schema: { $ref: '#/components/schemas/HealthSummary' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/traffic/current:
     get:
       security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
@@ -1824,6 +1839,24 @@ components:
         fired_at: { type: integer }
         resolved_at: { type: integer }
         resolved_value: { type: number }
+
+    HealthSummary:
+      type: object
+      required: [level, status, items]
+      properties:
+        level: { type: string, enum: [ok, warn, bad, muted], description: 'muted：待安装或维护中' }
+        status: { type: string, description: '总体结论，如“正常”“需要关注：CPU 96%”“离线 4 分钟”' }
+        items:
+          type: array
+          description: 按 CPU、内存、磁盘、流量的顺序；没有数据的项省略
+          items:
+            type: object
+            required: [key, title, text, level]
+            properties:
+              key: { type: string, enum: [cpu, memory, disk, traffic] }
+              title: { type: string }
+              text: { type: string, description: '如“过去 24 小时平均 12%，峰值 68%”' }
+              level: { type: string, enum: [ok, warn, bad] }
 
     TrafficView:
       type: object

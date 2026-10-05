@@ -166,6 +166,25 @@ class ServerView {
   }
 }
 
+/// 健康摘要（GET /servers/{id}/health，设计 1.5.7）：面板计算的结论与文字，与 Web 相同。
+class HealthSummary {
+  HealthSummary({required this.level, required this.status, required this.items});
+
+  /// ok / warn / bad / muted
+  final String level;
+  final String status;
+  final List<({String key, String title, String text, String level})> items;
+
+  factory HealthSummary.fromJson(Map<String, dynamic> j) => HealthSummary(
+        level: j['level'] as String,
+        status: j['status'] as String,
+        items: [
+          for (final it in (j['items'] as List<dynamic>).cast<Map<String, dynamic>>())
+            (key: it['key'] as String, title: it['title'] as String, text: it['text'] as String, level: it['level'] as String),
+        ],
+      );
+}
+
 /// 历史曲线的一个点（GET /servers/{id}/metrics/history）。
 class MetricPoint {
   MetricPoint({required this.ts, required this.cpu, required this.mem, required this.disk, required this.rx, required this.tx});

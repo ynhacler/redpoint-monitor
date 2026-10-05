@@ -58,6 +58,10 @@ void main() {
         body = {'items': nodes, 'next_cursor': ''};
       } else if (p == '/api/v1/servers/1') {
         body = nodes[0];
+      } else if (p.endsWith('/health')) {
+        body = {'level': 'warn', 'status': '需要关注：CPU 96%', 'items': [
+          {'key': 'cpu', 'title': 'CPU', 'text': '过去 24 小时平均 12%，峰值 68%', 'level': 'ok'},
+        ]};
       } else if (p.endsWith('/metrics/history')) {
         body = {'range': '1h', 'resolution': 10, 'next_cursor': '', 'items': [
           for (var i = 0; i < 30; i++)
@@ -90,6 +94,8 @@ void main() {
     await tester.tap(find.textContaining('Tokyo ARM'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.text('趋势'), findsOneWidget);
+    expect(find.text('需要关注：CPU 96%'), findsOneWidget); // 健康摘要（面板计算）
+    expect(find.text('过去 24 小时平均 12%，峰值 68%'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('638 GB / 1 TB'), 200);
     expect(find.textContaining('已使用 63.8%'), findsOneWidget);
     expect(find.textContaining('距离重置'), findsOneWidget);

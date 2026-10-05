@@ -13,6 +13,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"vpsmon/internal/cloud"
@@ -235,7 +236,7 @@ func fmtBytesSI(n int64) string {
 		v /= 1000
 		i++
 	}
-	if v < 10 && i > 0 {
+	if v < 10 && i > 0 && math.Round(v*10) != math.Round(v)*10 { // 与 Web 一致：1.5 TB、1 TB（不写 1.0）
 		return fmt.Sprintf("%.1f %s", v, units[i])
 	}
 	return fmt.Sprintf("%.0f %s", v, units[i])

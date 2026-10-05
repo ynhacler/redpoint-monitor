@@ -345,6 +345,21 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface HealthSummary {
+  /** muted：待安装或维护中 */
+  level: 'ok' | 'warn' | 'bad' | 'muted'
+  /** 总体结论，如“正常”“需要关注：CPU 96%”“离线 4 分钟” */
+  status: string
+  /** 按 CPU、内存、磁盘、流量的顺序；没有数据的项省略 */
+  items: ({
+    key: 'cpu' | 'memory' | 'disk' | 'traffic'
+    title: string
+    /** 如“过去 24 小时平均 12%，峰值 68%” */
+    text: string
+    level: 'ok' | 'warn' | 'bad'
+  })[]
+}
+
 /** 本计费周期流量（设计 5.7、5.8、32）。字节数均为整数，GB 换算由客户端按 unit 完成。 */
 export interface TrafficView {
   cycle_start: string
@@ -1610,6 +1625,15 @@ export interface Paths {
         resolution: number
         items: MetricPoint[]
       }
+    }
+  }
+  '/servers/{id}/health': {
+    /** 节点健康摘要（设计 1.5.7）：把最近的指标归纳成几句话，Web 与 App 显示同一结论 */
+    get: {
+      params: {
+        id: number
+      }
+      response: HealthSummary
     }
   }
   '/servers/{id}/traffic/current': {
