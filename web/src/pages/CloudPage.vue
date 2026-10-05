@@ -313,7 +313,7 @@ function expireTone(i: CloudInstance): string {
     </div>
     <p class="muted small intro">
       接入你自己的云账户，查看本月费用与预估、云厂商口径的实例与流量包用量。只需只读权限；凭证加密保存在本面板，
-      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS、阿里云与腾讯云（国内站、国际站），Oracle Cloud 将陆续支持。
+      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS、阿里云与腾讯云（国内站、国际站）、Oracle Cloud。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 

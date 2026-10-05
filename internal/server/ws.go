@@ -56,10 +56,11 @@ const (
 )
 
 type wsClient struct {
-	send  chan []byte
-	done  chan struct{}
-	once  sync.Once
-	scope *apiScope // 以 API Key 连接时的节点范围；Web 管理员为 nil（全部）
+	send   chan []byte
+	done   chan struct{}
+	once   sync.Once
+	scope  *apiScope // 以 API Key 或 App 设备连接时的节点范围；Web 管理员为 nil（全部）
+	device int64     // 以 App 设备连接时的设备 ID；吊销时据此断开（设计 19.4）
 }
 
 // allows 判断事件是否在连接的范围内：不针对节点的事件（如注册）只发给 Web 管理员。
@@ -94,13 +95,13 @@ type wsHub struct {
 
 func newWSHub() *wsHub { return &wsHub{clients: map[*wsClient]struct{}{}} }
 
-func (h *wsHub) add(scope *apiScope) *wsClient {
+func (h *wsHub) add(scope *apiScope, device int64) *wsClient {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if len(h.clients) >= wsMaxClients {
 		return nil
 	}
-	c := &wsClient{send: make(chan []byte, wsSendQueue), done: make(chan struct{}), scope: scope}
+	c := &wsClient{send: make(chan []byte, wsSendQueue), done: make(chan struct{}), scope: scope, device: device}
 	h.clients[c] = struct{}{}
 	return c
 }
@@ -116,6 +117,19 @@ func (h *wsHub) count() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.clients)
+}
+
+// closeDevices 断开指定 App 设备的连接；ids 为 nil 时断开全部设备连接（设备吊销时，设计 19.4）。
+// 设备重连时重新认证：已吊销的被拒绝，其他设备照常连上。
+func (h *wsHub) closeDevices(ids map[int64]bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.clients {
+		if c.device != 0 && (ids == nil || ids[c.device]) {
+			delete(h.clients, c)
+			c.close()
+		}
+	}
 }
 
 // closeAll 关闭全部连接（面板退出时）。
@@ -209,10 +223,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	token := ri.sessionToken
 	apiKeyTok := ""
-	if ri.apiScope != nil {
+	var device int64
+	if ri.device != nil {
+		device = ri.device.ID
+	} else if ri.apiScope != nil {
 		apiKeyTok = bearer(r)
 	}
-	c := s.ws.add(ri.apiScope)
+	c := s.ws.add(ri.apiScope, device)
 	if c == nil {
 		s.writeError(w, r, errorf(CodeUnavailable, "实时连接过多，请稍后再试"))
 		return
@@ -282,8 +299,14 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-tick.C:
-			// 【安全】会话或 API Key 已失效（退出、被踢出、吊销、过期，或无法确认）：关闭连接（1008 违反策略）
-			if apiKeyTok != "" {
+			// 【安全】会话、API Key 或设备已失效（退出、被踢出、吊销、过期，或无法确认）：关闭连接（1008 违反策略）。
+			// 设备按设备状态校验，不按 Access Token：连接建立后 Access Token 到期不必断开（设计 19.4）
+			if device != 0 {
+				if !s.store.AppDeviceActive(device, time.Now()) {
+					write(0x8, wsClosePayload(1008, "device revoked"))
+					return
+				}
+			} else if apiKeyTok != "" {
 				if k, err := s.store.LookupAPIKey(apiKeyTok, time.Now()); err != nil || k == nil {
 					write(0x8, wsClosePayload(1008, "api key revoked"))
 					return

@@ -129,7 +129,8 @@ token is gone. Forgot password: `vpsmon-server admin reset-password --data DIR` 
 Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` and the Web pages are next.
 Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
 --server … --enroll …` and the binary must already be on the host (design 27.3.1).
-Not yet: push, App pairing (phase C). See TODO.md.
+App pairing server side (AK → `/app/pair` → dev_ + rt_ tokens, design 19.4.1) and the Web "App 接入" page are in.
+Not yet: push, Flutter pairing UI (phase C). See TODO.md.
 
 ## Dev environment notes (design 40)
 

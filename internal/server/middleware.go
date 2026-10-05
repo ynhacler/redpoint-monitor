@@ -25,15 +25,17 @@ const slowRequest = time.Second
 // 请求日志据此记录“谁”发起了请求（设计 24.6）。
 type reqInfo struct {
 	id          string // request_id，同时出现在响应头、错误响应与日志中（设计 43.4）
-	principal   string // admin / agent；未认证时为空
+	principal   string // admin / agent / apikey / app；未认证时为空
 	principalID int64  // agent 为节点 ID；admin 为账号 ID
 	// Web 管理员的会话与令牌（仅 admin 主体）；令牌只用于派生 CSRF，不记录日志
 	session      *session
 	sessionToken string
 	// hijacked：连接已被接管（WebSocket），日志记为 101，持续时间是连接时长而不是慢请求
 	hijacked bool
-	// apiScope：以只读 API Key 认证时的节点范围（设计 45.2）；Web 管理员为 nil，表示全部
+	// apiScope：以只读 API Key 或 App 设备认证时的节点范围（设计 45.2、17.3）；Web 管理员为 nil，表示全部
 	apiScope *apiScope
+	// device：以 App 设备认证时的设备（设计 12.5）
+	device *AppDevice
 }
 
 type ctxKey struct{}

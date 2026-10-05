@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ApiError, createAPIKey, errorText, listAPIKeys, reauth, revokeAPIKey, type APIKey, type APIKeyInput } from '../api'
 import { DASH, fmtDateTime, fmtTime } from '../format'
 import { state } from '../store'
+import { scopeText } from '../scope'
 import CommandBlock from './CommandBlock.vue'
 
 const keys = ref<APIKey[]>([])
@@ -71,16 +72,6 @@ async function revoke(k: APIKey) {
   } catch (e) {
     error.value = errorText(e)
   }
-}
-
-function scopeText(k: APIKey): string {
-  if (k.scope_type === 'group') return `分组：${k.scope_value}`
-  if (k.scope_type === 'servers') {
-    const ids = k.scope_value.split(',').map(Number)
-    const names = ids.map((id) => state.servers.find((s) => s.id === id)?.name ?? `#${id}`)
-    return `节点：${names.slice(0, 3).join('、')}${names.length > 3 ? ` 等 ${names.length} 个` : ''}`
-  }
-  return '全部节点'
 }
 
 // 示例：用 curl 读取节点列表（Key 只放在 Authorization 头中，不放在网址里）
@@ -159,7 +150,7 @@ const example = computed(() => `curl -H "Authorization: Bearer ${created.value}"
           <span v-if="k.revoked_at" class="tag">已吊销</span>
           <span v-else-if="k.expires_at && k.expires_at * 1000 < Date.now()" class="tag">已过期</span>
           <div class="small muted">
-            {{ scopeText(k) }} · 最近使用 {{ k.last_used_at ? fmtTime(k.last_used_at) : '从未' }}
+            {{ scopeText(k.scope_type, k.scope_value) }} · 最近使用 {{ k.last_used_at ? fmtTime(k.last_used_at) : '从未' }}
             · 创建于 {{ fmtDateTime(k.created_at) }}{{ k.expires_at ? ` · ${fmtDateTime(k.expires_at)} 过期` : '' }}
           </div>
         </div>

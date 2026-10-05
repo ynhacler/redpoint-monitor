@@ -22,9 +22,9 @@ func (s *Server) auditQueryFrom(w http.ResponseWriter, r *http.Request) (AuditQu
 		fe = append(fe, FieldError{Field: "result", Message: "result 只能是 success 或 failure"})
 	}
 	switch q.Actor {
-	case "", "admin", "agent", "apikey", "cli", "system":
+	case "", "admin", "agent", "apikey", "app", "cli", "system":
 	default:
-		fe = append(fe, FieldError{Field: "actor", Message: "actor 只能是 admin、agent、cli 或 system"})
+		fe = append(fe, FieldError{Field: "actor", Message: "actor 只能是 admin、agent、apikey、app、cli 或 system"})
 	}
 	if len(q.Action) > 64 {
 		fe = append(fe, FieldError{Field: "action", Message: "action 最多 64 个字符"})

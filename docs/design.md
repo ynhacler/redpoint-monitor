@@ -360,6 +360,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 88 | App 接入服务端：AK（MNT-，7 组 140 bit，默认一次性 / 1 台 / 1 天）、配对、dev_ Access Token 30 分钟 + rt_ Refresh Token 90 天轮换（宽限 60 秒，之后重复使用即吊销设备）、设备吊销覆盖 REST / 刷新 / WebSocket；设备以只读主体访问读取类接口，AK 允许时可静音与维护单个节点；新增错误码 access_key_invalid、token_expired；Web“App 接入”页；示例中的 dt_ 改为 dev_、设备 ID 为整数 | 8.4、12.5、17.2、19.2～19.4、43.4 |
 | 87 | 云账户第四步：Oracle Cloud（HTTP 签名 RSA-SHA256、Usage API 按月费用与出站数据量、全部区间与已订阅区域的实例、公网 IP）；租户出站流量作为统计项对照 10 TB 免费额度，不可关联节点 | 44.3 |
 | 86 | 到期提醒（节点与云实例，30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包 90% / 95%、同步失败），按里程碑各发一次 | 1.2.5、44.6 |
 | 85 | 云实例与节点关联：按公网 IP 唯一匹配建议、确认关联、节点详情“云厂商”卡片、到期日一键写入节点 | 44.5 |
@@ -4341,8 +4342,8 @@ monitor://pair?server=https%3A%2F%2Fmonitor.example.com&ak=MNT-X7K9-3PH2-W8QF
 
 ```json
 {
-  "device_id": "dev_01JXYZ",
-  "access_token": "dt_xxxxxxxxxxxxx",
+  "device_id": 12,
+  "access_token": "dev_xxxxxxxxxxxxx",
   "refresh_token": "rt_xxxxxxxxxxxxx",
   "expires_in": 1800,
   "scope": {
@@ -4356,7 +4357,7 @@ monitor://pair?server=https%3A%2F%2Fmonitor.example.com&ak=MNT-X7K9-3PH2-W8QF
 App 后续访问：
 
 ```http
-Authorization: Bearer dt_xxxxxxxxxxxxx
+Authorization: Bearer dev_xxxxxxxxxxxxx
 ```
 
 不再重复提交 AK。
@@ -5545,8 +5546,8 @@ POST /api/v1/app/pair
 
 ```json
 {
-  "device_id": "dev_01JXYZ",
-  "access_token": "dt_xxxxxxxxx",
+  "device_id": 12,
+  "access_token": "dev_xxxxxxxxx",
   "refresh_token": "rt_xxxxxxxxx",
   "expires_in": 1800
 }
@@ -5586,6 +5587,30 @@ Push Token 停止发送
 ```
 
 ---
+
+### 19.4.1 实现说明（修订第 88 条）
+
+```text
+接口      管理（Web 管理员）：GET/POST /app-access-keys、POST /app-access-keys/{id}/revoke（可选 revoke_devices 连带吊销设备）、
+          GET /app-devices、POST /app-devices/{id}/revoke
+          App：POST /app/pair、POST /app/token/refresh（凭请求体中的 AK / Refresh Token，按 IP 限流，同注册接口）、
+          GET /app/me、POST /app/unpair
+          读取类接口（accessRead：节点、历史、流量、告警、/version、/ws）接受设备凭证；静音与维护（accessOps）
+          接受 AK 允许低风险操作的设备，只能针对授权范围内的单个节点
+AK        MNT- 加 7 组 4 个 Crockford Base32 字符（140 bit ≥ 设计 23.3 的 128 bit）；输入时忽略大小写与空格；
+          参数：范围（全部 / 分组 / 节点）、低风险操作（默认允许）、最多设备（1～10，默认 1）、有效期（1～90 天，默认 1 天）；
+          创建前重新输入密码；只保存哈希，脱敏显示首尾两组；配对链接 monitor://pair?server=…&ak=…（面板地址取 --public-url）
+设备凭证  dev_ Access Token 30 分钟、rt_ Refresh Token 90 天，均为 160 bit 随机值，只存哈希；每次刷新两者都轮换，
+          刷新时可顺带更新 App 版本。旧 Refresh Token 在轮换后 60 秒内再次出现（上次响应丢失）时重新签发；
+          超过 60 秒再次出现视为泄露，吊销设备（revoked_by = refresh_reuse）
+范围      配对时从 AK 复制（之后修改 AK 不影响已配对设备）；范围外的节点按不存在处理（404）
+错误      Access Token 过期 401 token_expired（App 刷新后重试）；设备吊销或 90 天未刷新 401 token_revoked
+          （App 清除凭证、回到配对页，设计 12.7）；AK 无效 400 access_key_invalid（不区分原因）
+吊销      管理员吊销、App 解除、随 AK 吊销、重复使用：REST 与刷新立即失效，WebSocket 立即断开（1008），Push 公钥清空
+限流      每台设备每分钟 120 次（与 API Key 相同）；配对与刷新按 IP，每分钟 10 次，失败过多临时封禁
+审计      app_key.create / revoke、app.pair（含失败）、app.unpair、app.refresh_reuse、app_device.revoke；主体类型 app
+Push      配对请求可附带 X25519 公钥（push_public_key），暂存于 app_devices，推送实现时迁入 push_devices（18.11）
+```
 
 ## 19.5 Server
 
@@ -9881,6 +9906,8 @@ ACME 证书申请失败：继续使用现有证书；证书 14 天内到期仍�
 | reauth_required | 403 | 请重新输入密码以确认此操作 |
 | captcha_failed | 400 | 滑块验证未通过，请重试 |
 | unsupported_encoding | 415 | 不支持的内容编码 |
+| access_key_invalid | 400 | AK 无效、已使用或已过期，请在 Web 管理端重新生成 |
+| token_expired | 401 | 凭证已过期，请刷新（App Access Token，应用 Refresh Token 换新） |
 
 ---
 

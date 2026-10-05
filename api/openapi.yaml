@@ -32,6 +32,8 @@ tags:
     description: 实时事件（WebSocket，设计 20）
   - name: cloud
     description: 云厂商账户：费用、流量与实例（设计 44）
+  - name: app
+    description: App 接入：AK、配对、设备凭证与设备管理（设计 8.4、12.3～12.7、19.2～19.4）
 
 paths:
   /auth/captcha:
@@ -185,7 +187,7 @@ paths:
     get:
       tags: [auth]
       summary: 面板版本（Web 会话或 API Key）
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       responses:
         '200':
           description: 版本
@@ -243,15 +245,165 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /app-access-keys:
+    get:
+      tags: [app]
+      summary: App 配对 AK 列表（设计 8.4.2）；不含完整 AK
+      responses:
+        '200':
+          description: 列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/AppAccessKey' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [app]
+      summary: 创建 App 配对 AK（需在 10 分钟内重新验证过密码）；完整 AK 与配对链接只在响应中出现这一次（设计 8.4.1、19.2）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppAccessKeyInput' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_key, pair_url, server_url, app_access_key]
+                properties:
+                  access_key: { type: string, description: 'MNT-…，只显示这一次' }
+                  server_url: { type: string, description: 面板对外地址（--public-url，或由请求推断） }
+                  pair_url: { type: string, description: '二维码内容：monitor://pair?server=…&ak=…（设计 12.4）' }
+                  app_access_key: { $ref: '#/components/schemas/AppAccessKey' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /app-access-keys/{id}/revoke:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [app]
+      summary: 吊销 AK（之后不能再配对）；可选同时吊销用它配对的设备（设计 12.7）
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                revoke_devices: { type: boolean, description: 同时吊销用此 AK 配对的全部设备 }
+      responses:
+        '200':
+          description: 已吊销
+          content: { application/json: { schema: { type: object, required: [revoked_devices], properties: { revoked_devices: { type: integer } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /app-devices:
+    get:
+      tags: [app]
+      summary: 已连接的 App 设备（设计 8.4.3），有效的在前
+      responses:
+        '200':
+          description: 列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/AppDevice' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /app-devices/{id}/revoke:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [app]
+      summary: 吊销设备：Access Token、Refresh Token、WebSocket 连接与 Push 公钥立即失效（设计 19.4）
+      responses:
+        '204': { description: 已吊销 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /app/pair:
+    post:
+      tags: [app]
+      summary: 用 AK 配对，签发设备凭证（设计 12.3、19.3）
+      security: []
+      description: |
+        无需登录，凭 AK 认证；按 IP 限流（每分钟 10 次，失败过多临时封禁）。AK 不存在、已用完、已吊销、已过期
+        统一返回 access_key_invalid，不区分原因。Access Token 30 分钟有效，Refresh Token 90 天有效、每次刷新轮换。
+        App 应把两个 Token 保存在系统安全存储中（设计 12.6）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access_key, device]
+              properties:
+                access_key: { type: string, description: 'MNT-…（大小写、空格不敏感）' }
+                device:
+                  type: object
+                  required: [name, platform]
+                  properties:
+                    name: { type: string, maxLength: 64 }
+                    platform: { type: string, enum: [ios, android] }
+                    app_version: { type: string, maxLength: 32 }
+                push_public_key: { type: string, description: 'X25519 公钥（32 字节，标准 Base64），用于端到端加密推送（设计 12.3、30.3）；可省略' }
+      responses:
+        '200': { description: 已配对, content: { application/json: { schema: { $ref: '#/components/schemas/AppTokens' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /app/token/refresh:
+    post:
+      tags: [app]
+      summary: 用 Refresh Token 换取新的 Access Token 与 Refresh Token（轮换，设计 12.5）
+      security: []
+      description: |
+        旧 Refresh Token 立即失效。同一个旧 Refresh Token 在轮换后 60 秒内再次使用（上次响应丢失）时重新签发；
+        超过 60 秒后再次使用视为凭证泄露，设备被吊销（token_revoked）。设备已吊销或 90 天未刷新时返回 token_revoked，
+        App 应清除本地凭证并回到配对页（设计 12.7）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string, description: 'rt_…' }
+                app_version: { type: string, maxLength: 32, description: 可选：更新设备记录中的 App 版本 }
+      responses:
+        '200': { description: 新凭证, content: { application/json: { schema: { $ref: '#/components/schemas/AppTokens' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /app/me:
+    get:
+      tags: [app]
+      summary: 当前设备与授权范围
+      security: [{ deviceToken: [] }]
+      responses:
+        '200': { description: 设备, content: { application/json: { schema: { $ref: '#/components/schemas/AppMe' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /app/unpair:
+    post:
+      tags: [app]
+      summary: App 主动解除本机配对（吊销本设备）
+      security: [{ deviceToken: [] }]
+      responses:
+        '204': { description: 已解除 }
+        '401': { $ref: '#/components/responses/Error' }
+
   /ws:
     servers: [{ url: / }]
     get:
       tags: [events]
       summary: 实时事件（WebSocket，设计 20、45.2）；面板只推送，不接收指令
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       description: |
         Web：会话 Cookie 认证，Origin 必须是面板自身（防止跨站 WebSocket 劫持），缺少 Origin 时拒绝。
         脚本：Authorization: Bearer api_… 认证（不需要 Origin），只收到 API Key 范围内节点的事件；Key 吊销后以 1008 关闭。
+        App：Authorization: Bearer dev_… 认证，只收到设备授权范围内节点的事件；设备被吊销后以 1008 关闭
+        （连接建立后不因 Access Token 到期而断开，每 30 秒按设备状态重新校验）。
         握手成功后每条消息是一个 WsEvent（JSON 文本帧）。面板每 30 秒 ping 一次并重新校验会话，
         会话失效时以 1008 关闭；页面断线后自动重连，重连后应重新拉取数据（断线期间的事件不补发）。
       responses:
@@ -401,7 +553,7 @@ paths:
 
   /alerts:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [alerts]
       summary: 告警事件，按时间倒序（设计 19.9）
       parameters:
@@ -697,6 +849,8 @@ paths:
     get:
       tags: [alerts]
       summary: 生效中的静音与维护（设计 16.6），最新在前
+      security: [{ session: [] }, { deviceToken: [] }]
+      description: App 设备需允许低风险操作，只返回授权范围内节点的记录以及全局 / 按规则的静音（设计 8.4.1）。
       responses:
         '200':
           description: 静音与维护
@@ -705,6 +859,8 @@ paths:
     post:
       tags: [alerts]
       summary: 新增静音或维护；同一对象同一类型已有生效记录时以新设置为准
+      security: [{ session: [] }, { deviceToken: [] }]
+      description: App 设备需允许低风险操作（否则 403），且只能针对授权范围内的单个节点：scope_type 不是 server 时 422，范围外的节点 404（设计 8.4.1、17.3）。
       requestBody:
         required: true
         content:
@@ -728,6 +884,8 @@ paths:
     delete:
       tags: [alerts]
       summary: 立即结束静音或维护（保留记录）
+      security: [{ session: [] }, { deviceToken: [] }]
+      description: App 设备需允许低风险操作，只能结束授权范围内单个节点的记录。
       parameters: [{ $ref: '#/components/parameters/ServerID' }]
       responses:
         '204': { description: 已结束 }
@@ -741,7 +899,7 @@ paths:
       parameters:
         - { name: category, in: query, schema: { type: string, enum: [login, operation] }, description: 'login：登录、退出、二次验证；operation：其他操作；省略为全部' }
         - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
-        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, cli, system] }, description: 主体类型 }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, app, cli, system] }, description: 主体类型 }
         - { name: action, in: query, schema: { type: string }, description: '操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.）' }
         - { name: from, in: query, schema: { type: integer }, description: 起始时间（含），Unix 秒 }
         - { name: to, in: query, schema: { type: integer }, description: 结束时间（不含），Unix 秒 }
@@ -787,7 +945,7 @@ paths:
       parameters:
         - { name: category, in: query, schema: { type: string, enum: [login, operation] } }
         - { name: result, in: query, schema: { type: string, enum: [success, failure] } }
-        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, cli, system] } }
+        - { name: actor, in: query, schema: { type: string, enum: [admin, agent, apikey, app, cli, system] } }
         - { name: action, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: integer } }
         - { name: to, in: query, schema: { type: integer } }
@@ -951,7 +1109,7 @@ paths:
 
   /servers:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [servers]
       summary: 节点列表（实时状态取自内存）
       description: >-
@@ -992,7 +1150,7 @@ paths:
   /servers/{id}:
     parameters: [{ $ref: '#/components/parameters/ServerID' }]
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       parameters:
         - { name: live, in: query, schema: { type: integer, enum: [1] }, description: '按需实时模式（设计 46.2）：Web 详情页可见时带 live=1，节点在随后 30 秒内以 2 秒采样；API Key 带此参数无效' }
       tags: [servers]
@@ -1098,7 +1256,7 @@ paths:
 
   /servers/{id}/metrics/history:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [servers]
       summary: 节点历史指标（设计 19.7）
       description: |
@@ -1130,7 +1288,7 @@ paths:
 
   /servers/{id}/traffic/current:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [traffic]
       summary: 本计费周期流量、校准与预测（设计 19.8、5.7、32）；与节点中的 traffic 字段相同
       parameters: [{ $ref: '#/components/parameters/ServerID' }]
@@ -1145,7 +1303,7 @@ paths:
 
   /servers/{id}/traffic/daily:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [traffic]
       summary: 最近 N 天每日流量，按日期升序，无数据的日期补 0
       parameters:
@@ -1177,7 +1335,7 @@ paths:
 
   /servers/{id}/traffic/monthly:
     get:
-      security: [{ session: [] }, { apiKey: [] }]
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [traffic]
       summary: 最近 N 个计费周期（含当前），最新在前；历史周期按当前的计费模式、系数与额度计算
       parameters:
@@ -1285,6 +1443,14 @@ components:
       description: |
         只读 API Key（api_…，设计 45.2）：Web“账号 → API Key”中创建，只显示一次。只能访问标注了 apiKey 的读取类接口；
         可限定节点范围（范围外的节点按不存在处理，返回 404）；每个 Key 每分钟 120 次。只接受 Authorization 头。
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: |
+        App 设备 Access Token（dev_…，设计 12.5）：AK 配对获得，30 分钟有效，用 Refresh Token（rt_…）轮换。
+        只能访问标注了 deviceToken 的接口：读取授权范围内的节点、指标、流量、告警，以及（AK 允许时）静音与维护；
+        范围外的节点按不存在处理（404）。过期返回 401 token_expired（应刷新），设备被吊销返回 401 token_revoked（应重新配对）。
+        每台设备每分钟 120 次。
     agentToken:
       type: http
       scheme: bearer
@@ -1317,7 +1483,8 @@ components:
       description: 稳定的错误码，一经发布不再改名（设计 43.4）
       enum: [validation_failed, bad_request, unauthorized, token_revoked, forbidden, not_found, conflict,
              payload_too_large, enroll_code_invalid, rate_limited, quota_exceeded, unavailable, internal,
-             password_change_required, reauth_required, captcha_failed, unsupported_encoding]
+             password_change_required, reauth_required, captcha_failed, unsupported_encoding,
+             access_key_invalid, token_expired]
 
     ErrorBody:
       type: object
@@ -1979,6 +2146,85 @@ components:
         created_at: { type: integer }
         last_used_at: { type: integer, description: 最近使用时间（每分钟最多更新一次）；0 表示从未使用 }
         revoked_at: { type: integer, description: 吊销时间；0 表示有效 }
+
+    AppAccessKeyInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 64 }
+        scope_type: { type: string, enum: [all, group, servers], description: 默认 all }
+        group: { type: string, description: scope_type=group 时的分组名 }
+        server_ids: { type: array, items: { type: integer }, description: scope_type=servers 时的节点 }
+        allow_low_risk_ops: { type: boolean, description: 允许静音与维护，默认 true }
+        max_devices: { type: integer, minimum: 1, maximum: 10, description: 最多配对几台设备，默认 1 }
+        expires_in_days: { type: integer, minimum: 1, maximum: 90, description: AK 的配对有效期，默认 1 天 }
+
+    AppAccessKey:
+      type: object
+      required: [id, name, hint, scope_type, scope_value, allow_low_risk_ops, max_devices, paired_devices, expires_at, status, created_by, created_at, last_used_at, revoked_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        hint: { type: string, description: '脱敏显示，如 MNT-X7K9-****-W8QF' }
+        scope_type: { type: string, enum: [all, group, servers] }
+        scope_value: { type: string, description: 分组名，或逗号分隔的节点 ID }
+        allow_low_risk_ops: { type: boolean }
+        max_devices: { type: integer }
+        paired_devices: { type: integer }
+        expires_at: { type: integer }
+        status: { type: string, enum: [active, used, expired, revoked] }
+        created_by: { type: string }
+        created_at: { type: integer }
+        last_used_at: { type: integer, description: 最近一次配对；0 表示从未使用 }
+        revoked_at: { type: integer }
+
+    AppDevice:
+      type: object
+      required: [id, access_key_id, access_key_name, name, platform, app_version, scope_type, scope_value, allow_low_risk_ops, status, paired_at, last_seen_at, revoked_at, revoked_by]
+      properties:
+        id: { type: integer }
+        access_key_id: { type: integer }
+        access_key_name: { type: string }
+        name: { type: string }
+        platform: { type: string, enum: [ios, android] }
+        app_version: { type: string }
+        scope_type: { type: string, enum: [all, group, servers] }
+        scope_value: { type: string }
+        allow_low_risk_ops: { type: boolean }
+        status: { type: string, enum: [active, expired, revoked] }
+        paired_at: { type: integer }
+        last_seen_at: { type: integer, description: 最近一次请求（每分钟最多更新一次） }
+        revoked_at: { type: integer }
+        revoked_by: { type: string, description: 'admin / app（本机解除）/ access_key（随 AK 吊销）/ refresh_reuse（Refresh Token 重复使用）' }
+
+    AppTokens:
+      type: object
+      required: [device_id, access_token, refresh_token, expires_in, refresh_expires_in, scope]
+      properties:
+        device_id: { type: integer }
+        access_token: { type: string, description: 'dev_…，放在 Authorization: Bearer 中' }
+        refresh_token: { type: string, description: 'rt_…，只用于 /app/token/refresh' }
+        expires_in: { type: integer, description: Access Token 剩余秒数 }
+        refresh_expires_in: { type: integer, description: Refresh Token 剩余秒数 }
+        scope: { $ref: '#/components/schemas/AppScope' }
+
+    AppScope:
+      type: object
+      required: [type, value, allow_low_risk_ops]
+      properties:
+        type: { type: string, enum: [all, group, servers] }
+        value: { type: string }
+        allow_low_risk_ops: { type: boolean }
+
+    AppMe:
+      type: object
+      required: [device_id, name, platform, scope, panel_version]
+      properties:
+        device_id: { type: integer }
+        name: { type: string }
+        platform: { type: string }
+        scope: { $ref: '#/components/schemas/AppScope' }
+        panel_version: { type: string }
 
     WsEvent:
       type: object

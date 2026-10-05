@@ -171,11 +171,17 @@ func (l *apiKeyLimiter) allow(id int64, now time.Time) (ok bool, wait time.Durat
 	return true, 0, touch
 }
 
-// read 是 accessRead 路由的认证：Web 管理员会话（与 admin 相同）或只读 API Key（设计 45.2）。
+// read 是 accessRead 路由的认证：Web 管理员会话（与 admin 相同）、只读 API Key（设计 45.2）或 App 设备（设计 12.5）。
 func (s *Server) read(h http.HandlerFunc) http.Handler {
 	admin := s.admin(h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := bearer(r)
+		if strings.HasPrefix(tok, PrefixDevice) {
+			if s.deviceAuth(w, r, tok) != nil {
+				h(w, r)
+			}
+			return
+		}
 		if !strings.HasPrefix(tok, PrefixAPIKey) {
 			admin.ServeHTTP(w, r) // 会话 Cookie；没有时由 admin 返回 401
 			return
@@ -281,31 +287,9 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if k.Name == "" || utf8.RuneCountInString(k.Name) > 64 {
 		fe = append(fe, FieldError{Field: "name", Message: "名称为 1～64 个字符"})
 	}
-	switch k.ScopeType {
-	case "", "all":
-		k.ScopeType = "all"
-	case "group":
-		k.ScopeValue = strings.TrimSpace(b.Group)
-		if k.ScopeValue == "" {
-			fe = append(fe, FieldError{Field: "group", Message: "请选择分组"})
-		}
-	case "servers":
-		ids := slices.Compact(slices.Sorted(slices.Values(b.ServerIDs)))
-		if len(ids) == 0 || len(ids) > 1000 {
-			fe = append(fe, FieldError{Field: "server_ids", Message: "请选择 1～1000 个节点"})
-		}
-		parts := make([]string, 0, len(ids))
-		for _, id := range ids {
-			if _, err := s.store.GetServer(id); err != nil {
-				fe = append(fe, FieldError{Field: "server_ids", Message: "节点 " + strconv.FormatInt(id, 10) + " 不存在"})
-				break
-			}
-			parts = append(parts, strconv.FormatInt(id, 10))
-		}
-		k.ScopeValue = strings.Join(parts, ",")
-	default:
-		fe = append(fe, FieldError{Field: "scope_type", Message: "范围只能是 all、group 或 servers"})
-	}
+	var sfe []FieldError
+	k.ScopeType, k.ScopeValue, sfe = s.parseScope(b.ScopeType, b.Group, b.ServerIDs)
+	fe = append(fe, sfe...)
 	if b.ExpiresInD < 0 || b.ExpiresInD > 3650 {
 		fe = append(fe, FieldError{Field: "expires_in_days", Message: "有效期为 0（不过期）～3650 天"})
 	}
@@ -325,6 +309,38 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "api_key.create", TargetType: "api_key", TargetID: k.ID, Success: true,
 		Details: map[string]any{"name": k.Name, "scope_type": k.ScopeType, "scope_value": k.ScopeValue, "expires_at": k.ExpiresAt}})
 	writeJSONStatus(w, http.StatusCreated, map[string]any{"key": tok, "api_key": k})
+}
+
+// parseScope 校验节点范围（API Key 与 App AK 共用）：all / group / servers，返回规范化的类型与值。
+func (s *Server) parseScope(typ, group string, serverIDs []int64) (string, string, []FieldError) {
+	var fe []FieldError
+	value := ""
+	switch typ {
+	case "", "all":
+		typ = "all"
+	case "group":
+		value = strings.TrimSpace(group)
+		if value == "" {
+			fe = append(fe, FieldError{Field: "group", Message: "请选择分组"})
+		}
+	case "servers":
+		ids := slices.Compact(slices.Sorted(slices.Values(serverIDs)))
+		if len(ids) == 0 || len(ids) > 1000 {
+			fe = append(fe, FieldError{Field: "server_ids", Message: "请选择 1～1000 个节点"})
+		}
+		parts := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if _, err := s.store.GetServer(id); err != nil {
+				fe = append(fe, FieldError{Field: "server_ids", Message: "节点 " + strconv.FormatInt(id, 10) + " 不存在"})
+				break
+			}
+			parts = append(parts, strconv.FormatInt(id, 10))
+		}
+		value = strings.Join(parts, ",")
+	default:
+		fe = append(fe, FieldError{Field: "scope_type", Message: "范围只能是 all、group 或 servers"})
+	}
+	return typ, value, fe
 }
 
 // handleRevokeAPIKey：DELETE /api/v1/api-keys/{id}，admin。立即生效；记录保留。

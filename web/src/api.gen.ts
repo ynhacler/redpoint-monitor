@@ -3,7 +3,7 @@
 /* eslint-disable */
 
 /** 稳定的错误码，一经发布不再改名（设计 43.4） */
-export type ErrorCode = 'validation_failed' | 'bad_request' | 'unauthorized' | 'token_revoked' | 'forbidden' | 'not_found' | 'conflict' | 'payload_too_large' | 'enroll_code_invalid' | 'rate_limited' | 'quota_exceeded' | 'unavailable' | 'internal' | 'password_change_required' | 'reauth_required' | 'captcha_failed' | 'unsupported_encoding'
+export type ErrorCode = 'validation_failed' | 'bad_request' | 'unauthorized' | 'token_revoked' | 'forbidden' | 'not_found' | 'conflict' | 'payload_too_large' | 'enroll_code_invalid' | 'rate_limited' | 'quota_exceeded' | 'unavailable' | 'internal' | 'password_change_required' | 'reauth_required' | 'captcha_failed' | 'unsupported_encoding' | 'access_key_invalid' | 'token_expired'
 
 export interface ErrorBody {
   error: {
@@ -685,6 +685,88 @@ export interface APIKey {
   revoked_at: number
 }
 
+export interface AppAccessKeyInput {
+  name: string
+  /** 默认 all */
+  scope_type?: 'all' | 'group' | 'servers'
+  /** scope_type=group 时的分组名 */
+  group?: string
+  /** scope_type=servers 时的节点 */
+  server_ids?: number[]
+  /** 允许静音与维护，默认 true */
+  allow_low_risk_ops?: boolean
+  /** 最多配对几台设备，默认 1 */
+  max_devices?: number
+  /** AK 的配对有效期，默认 1 天 */
+  expires_in_days?: number
+}
+
+export interface AppAccessKey {
+  id: number
+  name: string
+  /** 脱敏显示，如 MNT-X7K9-****-W8QF */
+  hint: string
+  scope_type: 'all' | 'group' | 'servers'
+  /** 分组名，或逗号分隔的节点 ID */
+  scope_value: string
+  allow_low_risk_ops: boolean
+  max_devices: number
+  paired_devices: number
+  expires_at: number
+  status: 'active' | 'used' | 'expired' | 'revoked'
+  created_by: string
+  created_at: number
+  /** 最近一次配对；0 表示从未使用 */
+  last_used_at: number
+  revoked_at: number
+}
+
+export interface AppDevice {
+  id: number
+  access_key_id: number
+  access_key_name: string
+  name: string
+  platform: 'ios' | 'android'
+  app_version: string
+  scope_type: 'all' | 'group' | 'servers'
+  scope_value: string
+  allow_low_risk_ops: boolean
+  status: 'active' | 'expired' | 'revoked'
+  paired_at: number
+  /** 最近一次请求（每分钟最多更新一次） */
+  last_seen_at: number
+  revoked_at: number
+  /** admin / app（本机解除）/ access_key（随 AK 吊销）/ refresh_reuse（Refresh Token 重复使用） */
+  revoked_by: string
+}
+
+export interface AppTokens {
+  device_id: number
+  /** dev_…，放在 Authorization: Bearer 中 */
+  access_token: string
+  /** rt_…，只用于 /app/token/refresh */
+  refresh_token: string
+  /** Access Token 剩余秒数 */
+  expires_in: number
+  /** Refresh Token 剩余秒数 */
+  refresh_expires_in: number
+  scope: AppScope
+}
+
+export interface AppScope {
+  type: 'all' | 'group' | 'servers'
+  value: string
+  allow_low_risk_ops: boolean
+}
+
+export interface AppMe {
+  device_id: number
+  name: string
+  platform: string
+  scope: AppScope
+  panel_version: string
+}
+
 /** WebSocket 推送的事件（设计 20、45.2）；未来新增类型，页面应忽略不认识的 type。API Key 只收到其范围内节点的事件 */
 export interface WsEvent {
   /** server.enrolled：主机已用注册码注册（只发给 Web 管理员）；server.metrics：收到一份上报，data 为 ServerView（同节点列表的一项）； server.online / server.offline：上下线（每 10 秒检查一次）；alert.triggered / alert.recovered：告警触发 / 恢复 */
@@ -868,6 +950,104 @@ export interface Paths {
       params: {
         id: number
       }
+      response: void
+    }
+  }
+  '/app-access-keys': {
+    /** App 配对 AK 列表（设计 8.4.2）；不含完整 AK */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: AppAccessKey[]
+      }
+    }
+    /** 创建 App 配对 AK（需在 10 分钟内重新验证过密码）；完整 AK 与配对链接只在响应中出现这一次（设计 8.4.1、19.2） */
+    post: {
+      body: AppAccessKeyInput
+      response: {
+        /** MNT-…，只显示这一次 */
+        access_key: string
+        /** 面板对外地址（--public-url，或由请求推断） */
+        server_url: string
+        /** 二维码内容：monitor://pair?server=…&ak=…（设计 12.4） */
+        pair_url: string
+        app_access_key: AppAccessKey
+      }
+    }
+  }
+  '/app-access-keys/{id}/revoke': {
+    /** 吊销 AK（之后不能再配对）；可选同时吊销用它配对的设备（设计 12.7） */
+    post: {
+      params: {
+        id: number
+      }
+      body?: {
+        /** 同时吊销用此 AK 配对的全部设备 */
+        revoke_devices?: boolean
+      }
+      response: {
+        revoked_devices: number
+      }
+    }
+  }
+  '/app-devices': {
+    /** 已连接的 App 设备（设计 8.4.3），有效的在前 */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: AppDevice[]
+      }
+    }
+  }
+  '/app-devices/{id}/revoke': {
+    /** 吊销设备：Access Token、Refresh Token、WebSocket 连接与 Push 公钥立即失效（设计 19.4） */
+    post: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/app/pair': {
+    /** 用 AK 配对，签发设备凭证（设计 12.3、19.3） */
+    post: {
+      body: {
+        /** MNT-…（大小写、空格不敏感） */
+        access_key: string
+        device: {
+          name: string
+          platform: 'ios' | 'android'
+          app_version?: string
+        }
+        /** X25519 公钥（32 字节，标准 Base64），用于端到端加密推送（设计 12.3、30.3）；可省略 */
+        push_public_key?: string
+      }
+      response: AppTokens
+    }
+  }
+  '/app/token/refresh': {
+    /** 用 Refresh Token 换取新的 Access Token 与 Refresh Token（轮换，设计 12.5） */
+    post: {
+      body: {
+        /** rt_… */
+        refresh_token: string
+        /** 可选：更新设备记录中的 App 版本 */
+        app_version?: string
+      }
+      response: AppTokens
+    }
+  }
+  '/app/me': {
+    /** 当前设备与授权范围 */
+    get: {
+      response: AppMe
+    }
+  }
+  '/app/unpair': {
+    /** App 主动解除本机配对（吊销本设备） */
+    post: {
       response: void
     }
   }
@@ -1190,7 +1370,7 @@ export interface Paths {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
         /** 主体类型 */
-        actor?: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
+        actor?: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
         /** 操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.） */
         action?: string
         /** 起始时间（含），Unix 秒 */
@@ -1230,7 +1410,7 @@ export interface Paths {
       query?: {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
-        actor?: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
+        actor?: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
         action?: string
         from?: number
         to?: number

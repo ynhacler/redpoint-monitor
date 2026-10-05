@@ -34,6 +34,8 @@ const (
 	CodeReauthRequired         Code = "reauth_required"
 	CodeCaptchaFailed          Code = "captcha_failed" // 修订记录第 24 条
 	CodeUnsupportedEncoding    Code = "unsupported_encoding"
+	CodeAccessKeyInvalid       Code = "access_key_invalid" // App 配对 AK 无效（修订第 88 条）
+	CodeTokenExpired           Code = "token_expired"      // App Access Token 过期，应刷新（修订第 88 条）
 )
 
 // codeInfo 是每个错误码对应的 HTTP 状态与默认中文提示。
@@ -58,6 +60,8 @@ var codeInfo = map[Code]struct {
 	CodeReauthRequired:         {http.StatusForbidden, "请重新输入密码以确认此操作"},
 	CodeCaptchaFailed:          {http.StatusBadRequest, "滑块验证未通过，请重试"},
 	CodeUnsupportedEncoding:    {http.StatusUnsupportedMediaType, "不支持的内容编码"},
+	CodeAccessKeyInvalid:       {http.StatusBadRequest, "AK 无效、已使用或已过期，请在 Web 管理端重新生成"},
+	CodeTokenExpired:           {http.StatusUnauthorized, "凭证已过期，请刷新"},
 }
 
 // FieldError 是表单字段级错误，放在响应的 details 中，Web 在对应字段下显示（设计 43.6）。

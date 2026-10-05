@@ -29,7 +29,7 @@ func wsDial(t *testing.T, srv *httptest.Server, token, origin string) (net.Conn,
 	if origin != "" {
 		req += "Origin: " + origin + "\r\n"
 	}
-	if strings.HasPrefix(token, PrefixAPIKey) {
+	if strings.HasPrefix(token, PrefixAPIKey) || strings.HasPrefix(token, PrefixDevice) {
 		req += "Authorization: Bearer " + token + "\r\n"
 	} else if token != "" {
 		req += "Cookie: " + sessionCookie + "=" + token + "\r\n"
@@ -215,7 +215,7 @@ func TestWebSocketClosesOnSessionEnd(t *testing.T) {
 // 慢连接：发送队列满时断开，不阻塞其他连接与推送方
 func TestWebSocketSlowClientDropped(t *testing.T) {
 	hub := newWSHub()
-	slow := hub.add(nil)
+	slow := hub.add(nil, 0)
 	for i := 0; i < wsSendQueue+1; i++ {
 		hub.publish(wsEvent{Type: "test"})
 	}
@@ -349,7 +349,7 @@ func TestStatusScan(t *testing.T) {
 	_, a, _ := createNode(t, h, admin, `{"name":"hk-1"}`)
 	_, ra := enroll(h, a.EnrollCode, "hk-1", "m-a")
 	do(h, "POST", "/api/v1/agent/report", ra.AgentToken, []byte(fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"}}`, time.Now().Unix())))
-	c := s.ws.add(nil)
+	c := s.ws.add(nil, 0)
 	defer s.ws.remove(c)
 	last := map[int64]string{}
 	now := time.Now()
