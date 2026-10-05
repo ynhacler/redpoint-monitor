@@ -36,6 +36,7 @@ type cloudAccountView struct {
 	Regions           []string   `json:"regions"`
 	CredentialHint    string     `json:"credential_hint"`
 	BudgetCents       int64      `json:"budget_cents"`
+	BalanceAlertCents int64      `json:"balance_alert_cents"`
 	CostIntervalH     int        `json:"cost_interval_h"`
 	Enabled           bool       `json:"enabled"`
 	SyncCost          bool       `json:"sync_cost"`
@@ -56,7 +57,7 @@ type cloudAccountView struct {
 
 func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, error) {
 	v := cloudAccountView{ID: a.ID, Provider: a.Provider, Name: a.Name, Regions: a.Regions, CredentialHint: a.CredentialHint,
-		BudgetCents: a.BudgetCents, CostIntervalH: a.CostIntervalH, Enabled: a.Enabled, SyncCost: a.SyncCost,
+		BudgetCents: a.BudgetCents, BalanceAlertCents: a.BalanceAlertCents, CostIntervalH: a.CostIntervalH, Enabled: a.Enabled, SyncCost: a.SyncCost,
 		SyncTraffic: a.SyncTraffic, CostSyncedAt: a.CostSyncedAt, InstancesSyncedAt: a.InstancesSyncedAt,
 		TrafficSyncedAt: a.TrafficSyncedAt, LastError: a.LastError, ErrorSince: a.ErrorSince, AuthFailed: a.AuthFailed,
 		NextTryAt: a.NextTryAt, InstanceCount: count, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
@@ -84,6 +85,7 @@ type cloudAccountBody struct {
 	Regions       []string          `json:"regions"`
 	Credential    map[string]string `json:"credential"`
 	Budget        *float64          `json:"budget"`
+	BalanceAlert  *float64          `json:"balance_alert"`
 	CostIntervalH *int              `json:"cost_interval_h"`
 	Enabled       *bool             `json:"enabled"`
 	SyncCost      *bool             `json:"sync_cost"`
@@ -130,6 +132,13 @@ func (b cloudAccountBody) apply(a *CloudAccount) []FieldError {
 			fe = append(fe, FieldError{Field: "budget", Message: "预算应为不小于 0 的金额"})
 		} else {
 			a.BudgetCents = int64(math.Round(*b.Budget * 100))
+		}
+	}
+	if b.BalanceAlert != nil {
+		if *b.BalanceAlert < 0 || *b.BalanceAlert > 1e9 || math.IsNaN(*b.BalanceAlert) {
+			fe = append(fe, FieldError{Field: "balance_alert", Message: "余额提醒应为不小于 0 的金额"})
+		} else {
+			a.BalanceAlertCents = int64(math.Round(*b.BalanceAlert * 100))
 		}
 	}
 	if b.CostIntervalH != nil {

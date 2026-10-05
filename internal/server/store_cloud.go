@@ -13,17 +13,18 @@ import (
 
 // CloudAccount 是一行 cloud_accounts（不含凭证密文以外的明文凭证）。
 type CloudAccount struct {
-	ID             int64
-	Provider       string
-	Name           string
-	Regions        []string
-	CredentialEnc  []byte
-	CredentialHint string
-	BudgetCents    int64
-	CostIntervalH  int
-	Enabled        bool
-	SyncCost       bool
-	SyncTraffic    bool
+	ID                int64
+	Provider          string
+	Name              string
+	Regions           []string
+	CredentialEnc     []byte
+	CredentialHint    string
+	BudgetCents       int64
+	BalanceAlertCents int64 // 余额低于此值时提醒（设计 44.6）；0 表示不提醒
+	CostIntervalH     int
+	Enabled           bool
+	SyncCost          bool
+	SyncTraffic       bool
 	// 同步状态
 	CostSyncedAt      int64
 	InstancesSyncedAt int64
@@ -39,7 +40,7 @@ type CloudAccount struct {
 
 var errNoCloudAccount = errorf(CodeNotFound, "云账户不存在或已删除")
 
-const cloudAccountCols = `id, provider, name, regions, credential_enc, credential_hint, budget_cents, cost_interval_h,
+const cloudAccountCols = `id, provider, name, regions, credential_enc, credential_hint, budget_cents, balance_alert_cents, cost_interval_h,
 	enabled, sync_cost, sync_traffic, cost_synced_at, instances_synced_at, traffic_synced_at, last_error, error_since,
 	fail_count, next_try_at, auth_failed, created_at, updated_at`
 
@@ -47,7 +48,7 @@ func scanCloudAccount(sc interface{ Scan(...any) error }) (CloudAccount, error) 
 	var a CloudAccount
 	var regions string
 	err := sc.Scan(&a.ID, &a.Provider, &a.Name, &regions, &a.CredentialEnc, &a.CredentialHint, &a.BudgetCents,
-		&a.CostIntervalH, &a.Enabled, &a.SyncCost, &a.SyncTraffic, &a.CostSyncedAt, &a.InstancesSyncedAt,
+		&a.BalanceAlertCents, &a.CostIntervalH, &a.Enabled, &a.SyncCost, &a.SyncTraffic, &a.CostSyncedAt, &a.InstancesSyncedAt,
 		&a.TrafficSyncedAt, &a.LastError, &a.ErrorSince, &a.FailCount, &a.NextTryAt, &a.AuthFailed, &a.CreatedAt, &a.UpdatedAt)
 	if regions != "" {
 		a.Regions = strings.Split(regions, ",")
@@ -89,19 +90,19 @@ func (s *Store) SaveCloudAccount(a *CloudAccount, now time.Time) error {
 		a.CreatedAt = a.UpdatedAt
 		var res sql.Result
 		res, err = s.DB.Exec(`INSERT INTO cloud_accounts (provider, name, regions, credential_enc, credential_hint,
-			budget_cents, cost_interval_h, enabled, sync_cost, sync_traffic, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, a.Provider, a.Name, regions, a.CredentialEnc, a.CredentialHint,
-			a.BudgetCents, a.CostIntervalH, a.Enabled, a.SyncCost, a.SyncTraffic, a.CreatedAt, a.UpdatedAt)
+			budget_cents, balance_alert_cents, cost_interval_h, enabled, sync_cost, sync_traffic, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.Provider, a.Name, regions, a.CredentialEnc, a.CredentialHint,
+			a.BudgetCents, a.BalanceAlertCents, a.CostIntervalH, a.Enabled, a.SyncCost, a.SyncTraffic, a.CreatedAt, a.UpdatedAt)
 		if err == nil {
 			a.ID, _ = res.LastInsertId()
 		}
 	} else {
 		// 凭证更换后清除“凭证失效”与退避，立即重新同步
 		_, err = s.DB.Exec(`UPDATE cloud_accounts SET name = ?, regions = ?, credential_enc = ?, credential_hint = ?,
-			budget_cents = ?, cost_interval_h = ?, enabled = ?, sync_cost = ?, sync_traffic = ?, updated_at = ?,
+			budget_cents = ?, balance_alert_cents = ?, cost_interval_h = ?, enabled = ?, sync_cost = ?, sync_traffic = ?, updated_at = ?,
 			auth_failed = ?, fail_count = ?, next_try_at = ?, last_error = ?, error_since = ? WHERE id = ?`,
-			a.Name, regions, a.CredentialEnc, a.CredentialHint, a.BudgetCents, a.CostIntervalH, a.Enabled, a.SyncCost,
-			a.SyncTraffic, a.UpdatedAt, a.AuthFailed, a.FailCount, a.NextTryAt, a.LastError, a.ErrorSince, a.ID)
+			a.Name, regions, a.CredentialEnc, a.CredentialHint, a.BudgetCents, a.BalanceAlertCents, a.CostIntervalH, a.Enabled,
+			a.SyncCost, a.SyncTraffic, a.UpdatedAt, a.AuthFailed, a.FailCount, a.NextTryAt, a.LastError, a.ErrorSince, a.ID)
 	}
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return errNameTaken

@@ -123,3 +123,42 @@ func TestCloudReminders(t *testing.T) {
 		t.Fatalf("95%% 应再提醒一次：%d → %d", n, rcv.count())
 	}
 }
+
+// 余额不足：低于阈值时提醒一次（严重），同月不重复；未设阈值或余额充足不提醒（设计 44.6）
+func TestCloudBalanceReminder(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	rcv := newReceiver(t)
+	c := NotifyChannel{Type: "webhook", Name: "wh", Enabled: true, MinSeverity: "warning", NotifyResolved: true,
+		Config: channelConfig{URL: rcv.srv.URL + "/hook"}}
+	s.store.SaveChannel(&c, time.Now())
+	_, v, _ := createCloudAccount(t, h, admin, awsAccountBody)
+	now := time.Now()
+	balance := int64(1500) // 15.00
+	s.store.SaveCloudCost(v.ID, cloud.Costs{Period: cloud.BillingMonth("aws", now), AmountCents: 100, BalanceCents: &balance, Currency: "CNY"}, now)
+	check := func() int {
+		s.checkReminders(now)
+		s.notify.wg.Wait()
+		return rcv.count()
+	}
+	if n := check(); n != 0 {
+		t.Fatalf("未设阈值不应提醒：%d", n)
+	}
+	rec := do(h, "PUT", "/api/v1/cloud-accounts/"+itoa(v.ID), admin, []byte(`{"name":"aws","balance_alert":-1}`))
+	if rec.Code != 422 {
+		t.Fatalf("负数阈值应拒绝：%d", rec.Code)
+	}
+	if rec := do(h, "PUT", "/api/v1/cloud-accounts/"+itoa(v.ID), admin, []byte(`{"name":"aws","balance_alert":20}`)); rec.Code != 200 ||
+		!strings.Contains(rec.Body.String(), `"balance_alert_cents":2000`) {
+		t.Fatalf("设置阈值 %d %s", rec.Code, rec.Body)
+	}
+	if n := check(); n != 1 {
+		t.Fatalf("余额低于阈值应提醒一次：%d", n)
+	}
+	if _, body, _ := rcv.last(); !strings.Contains(body, "余额 CNY 15.00，低于提醒阈值 CNY 20.00") {
+		t.Fatalf("内容 %s", body)
+	}
+	if n := check(); n != 1 {
+		t.Fatalf("同月不应重复：%d", n)
+	}
+}
