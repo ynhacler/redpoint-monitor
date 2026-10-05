@@ -1,33 +1,43 @@
-// 状态颜色：取自 design/tokens.json（设计 41.2），与 Web 一致。
-// TODO(C): 由 tokens.json 生成 tokens.dart（与 Web 的 tokens.css 同源），替换这里的手写值。
+// 主题与状态颜色：取自 design/tokens.json 生成的 tokens.dart（设计 41.2），与 Web 同源。
 import 'package:flutter/material.dart';
 
 import 'metrics.dart';
+import 'tokens.dart';
+
+AppColors appColors(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? AppColors.dark : AppColors.light;
+
+/// Material 3 主题：主色、表面、背景与错误色来自令牌，其余由主色派生。
+ThemeData appTheme(Brightness b) {
+  final c = b == Brightness.dark ? AppColors.dark : AppColors.light;
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(seedColor: c.accent, brightness: b, primary: c.accent, onPrimary: c.onAccent,
+        surface: c.surface, error: c.bad, outlineVariant: c.border),
+    scaffoldBackgroundColor: c.bg,
+  );
+}
 
 class StatusColors {
-  const StatusColors({required this.ok, required this.warn, required this.bad, required this.muted});
-  final Color ok;
-  final Color warn;
-  final Color bad;
-  final Color muted;
+  const StatusColors(this.c);
+  final AppColors c;
 
-  static const light = StatusColors(ok: Color(0xFF16A34A), warn: Color(0xFFD97706), bad: Color(0xFFDC2626), muted: Color(0xFF9CA3AF));
-  static const dark = StatusColors(ok: Color(0xFF22C55E), warn: Color(0xFFF59E0B), bad: Color(0xFFEF4444), muted: Color(0xFF6B7280));
+  static StatusColors of(BuildContext context) => StatusColors(appColors(context));
 
-  static StatusColors of(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? dark : light;
+  Color get ok => c.ok;
+  Color get warn => c.warn;
+  Color get bad => c.bad;
+  Color get muted => c.mutedState;
 
-  Color level(Level l) => switch (l) { Level.ok => ok, Level.warn => warn, Level.bad => bad };
+  Color level(Level l) => switch (l) { Level.ok => c.ok, Level.warn => c.warn, Level.bad => c.bad };
 
   /// 在线状态的颜色：在线绿、未知橙、离线红、待安装灰（设计 22）
-  Color status(String s) => switch (s) { 'online' => ok, 'unknown' => warn, 'offline' => bad, _ => muted };
+  Color status(String s) => switch (s) { 'online' => c.ok, 'unknown' => c.warn, 'offline' => c.bad, _ => c.mutedState };
 }
 
 const statusText = {'online': '在线', 'unknown': '上报延迟', 'offline': '离线', 'pending': '待安装'};
 
-/// 图表的系列颜色（tokens.json 的 accent、series-2）
+/// 图表的系列颜色（accent、series-2）
 Color seriesColor(BuildContext context, int i) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  const light = [Color(0xFF2563EB), Color(0xFF7C3AED)];
-  const darkC = [Color(0xFF3B82F6), Color(0xFFA78BFA)];
-  return (dark ? darkC : light)[i % 2];
+  final c = appColors(context);
+  return i % 2 == 0 ? c.accent : c.series2;
 }

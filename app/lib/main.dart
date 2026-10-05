@@ -12,6 +12,7 @@ import 'cache.dart';
 import 'pages/pair_page.dart';
 import 'pages/servers_page.dart';
 import 'session.dart';
+import 'theme.dart';
 
 void main() => runApp(VpsMonApp(store: const SecureSessionStore(), cache: FileCacheStore()));
 
@@ -24,8 +25,8 @@ class VpsMonApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'VPS Monitor',
-      theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
-      darkTheme: ThemeData(colorSchemeSeed: Colors.blue, brightness: Brightness.dark, useMaterial3: true),
+      theme: appTheme(Brightness.light),
+      darkTheme: appTheme(Brightness.dark),
       home: Root(store: store, cache: cache),
     );
   }
