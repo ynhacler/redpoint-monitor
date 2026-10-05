@@ -1455,7 +1455,7 @@ export interface Paths {
         items: ({
           id: number
           ts: number
-          actor_type: 'admin' | 'agent' | 'apikey' | 'cli' | 'system'
+          actor_type: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
           /** 管理员用户名（登录失败时为填写的用户名）或节点 ID */
           actor_id: string
           action: string
