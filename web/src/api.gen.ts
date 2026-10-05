@@ -149,10 +149,10 @@ export type QuietHoursView = QuietHours & {
   held: number
 }
 
-/** 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥只返回是否已设置 */
+/** 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符 */
 export interface NotifyChannel {
   id: number
-  type: 'telegram' | 'webhook'
+  type: 'telegram' | 'webhook' | 'ntfy'
   name: string
   enabled: boolean
   /** 达到该级别才发送 */
@@ -163,6 +163,9 @@ export interface NotifyChannel {
     chat_id?: string
     url?: string
     has_secret?: boolean
+    /** ntfy 主题（脱敏） */
+    topic?: string
+    has_token?: boolean
   }
   created_at: number
   updated_at: number
@@ -170,7 +173,7 @@ export interface NotifyChannel {
 
 export interface NotifyChannelInput {
   /** 创建时必填，不可修改 */
-  type?: 'telegram' | 'webhook'
+  type?: 'telegram' | 'webhook' | 'ntfy'
   name: string
   enabled?: boolean
   min_severity?: 'critical' | 'warning' | 'info'
@@ -181,11 +184,16 @@ export interface NotifyChannelInput {
     bot_token?: string
     /** 数字 ID（群组为负数）或 @频道名 */
     chat_id?: string
-    /** Webhook 地址；只允许 HTTPS，回环地址除外；不跟随重定向 */
+    /** Webhook 地址，或 ntfy 服务器地址（默认 https://ntfy.sh）；只允许 HTTPS，回环地址除外；不跟随重定向 */
     url?: string
     /** 可选，请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret */
     secret?: string
     clear_secret?: boolean
+    /** ntfy 主题；公共服务器上知道主题即可订阅，请用不易猜到的名称 */
+    topic?: string
+    /** ntfy 可选访问令牌（tk_…），以 Authorization Bearer 发送 */
+    token?: string
+    clear_token?: boolean
   }
 }
 

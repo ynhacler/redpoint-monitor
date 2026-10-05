@@ -1700,11 +1700,11 @@ components:
 
     NotifyChannel:
       type: object
-      description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥只返回是否已设置
+      description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符
       required: [id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at]
       properties:
         id: { type: integer }
-        type: { type: string, enum: [telegram, webhook] }
+        type: { type: string, enum: [telegram, webhook, ntfy] }
         name: { type: string }
         enabled: { type: boolean }
         min_severity: { type: string, enum: [critical, warning, info], description: 达到该级别才发送 }
@@ -1716,6 +1716,8 @@ components:
             chat_id: { type: string }
             url: { type: string, example: 'https://hooks.example.com/…' }
             has_secret: { type: boolean }
+            topic: { type: string, example: 'vps…', description: ntfy 主题（脱敏） }
+            has_token: { type: boolean }
         created_at: { type: integer }
         updated_at: { type: integer }
 
@@ -1723,7 +1725,7 @@ components:
       type: object
       required: [name, config]
       properties:
-        type: { type: string, enum: [telegram, webhook], description: 创建时必填，不可修改 }
+        type: { type: string, enum: [telegram, webhook, ntfy], description: 创建时必填，不可修改 }
         name: { type: string, maxLength: 40 }
         enabled: { type: boolean, default: true }
         min_severity: { type: string, enum: [critical, warning, info], default: warning }
@@ -1734,9 +1736,12 @@ components:
           properties:
             bot_token: { type: string, description: Telegram Bot Token（@BotFather） }
             chat_id: { type: string, description: 数字 ID（群组为负数）或 @频道名 }
-            url: { type: string, description: Webhook 地址；只允许 HTTPS，回环地址除外；不跟随重定向 }
+            url: { type: string, description: Webhook 地址，或 ntfy 服务器地址（默认 https://ntfy.sh）；只允许 HTTPS，回环地址除外；不跟随重定向 }
             secret: { type: string, maxLength: 128, description: 可选，请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret, 请求体) }
             clear_secret: { type: boolean }
+            topic: { type: string, maxLength: 64, description: ntfy 主题；公共服务器上知道主题即可订阅，请用不易猜到的名称 }
+            token: { type: string, maxLength: 128, description: ntfy 可选访问令牌（tk_…），以 Authorization Bearer 发送 }
+            clear_token: { type: boolean }
 
     Delivery:
       type: object
