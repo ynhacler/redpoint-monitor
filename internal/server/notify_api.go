@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,14 @@ type channelBody struct {
 		Topic       string `json:"topic"`
 		Token       string `json:"token"`
 		ClearToken  bool   `json:"clear_token"`
+		// 邮件
+		SMTPHost     string `json:"smtp_host"`
+		SMTPPort     int    `json:"smtp_port"`
+		SMTPSecurity string `json:"smtp_security"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		From         string `json:"from"`
+		To           string `json:"to"`
 	} `json:"config"`
 }
 
@@ -62,6 +71,18 @@ func (b *channelBody) apply(c *NotifyChannel) {
 	}
 	if b.Config.Topic != "" {
 		c.Config.Topic = b.Config.Topic
+	}
+	if c.Type == ChannelEmail || b.Type == ChannelEmail {
+		// 邮件：非凭证字段按提交的值整体替换；密码留空保持原值。
+		// 【安全】SMTP 服务器或用户名变了就不沿用旧密码，避免把已保存的密码发给另一台服务器
+		if !strings.EqualFold(strings.TrimSpace(b.Config.SMTPHost), c.Config.SMTPHost) || b.Config.Username != c.Config.Username {
+			c.Config.Password = ""
+		}
+		c.Config.SMTPHost, c.Config.SMTPPort, c.Config.SMTPSecurity = b.Config.SMTPHost, b.Config.SMTPPort, b.Config.SMTPSecurity
+		c.Config.Username, c.Config.From, c.Config.To = b.Config.Username, b.Config.From, b.Config.To
+		if b.Config.Password != "" {
+			c.Config.Password = b.Config.Password
+		}
 	}
 	if b.Config.Token != "" {
 		c.Config.Token = b.Config.Token
