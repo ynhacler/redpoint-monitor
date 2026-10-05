@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../cache.dart';
+import '../centers.dart';
 import '../format.dart';
 import '../metrics.dart';
 import '../models.dart';
@@ -20,7 +21,8 @@ import 'server_detail_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.api, required this.cache, required this.prefs, required this.onUnpair,
-      required this.onRevoked, this.pushSource = const NoPushTokenSource(), this.centers = const [], this.onSwitch, this.onAdd});
+      required this.onRevoked, this.pushSource = const NoPushTokenSource(), this.centers = const [], this.onSwitch, this.onAdd,
+      this.onCentersChanged});
   final ApiClient api;
   final CacheStore cache;
   final PrefsStore prefs;
@@ -29,9 +31,12 @@ class AppShell extends StatefulWidget {
   final VoidCallback onRevoked;
 
   /// 多监控中心（设计 1.5.2）
-  final List<Uri> centers;
+  final List<CenterHandle> centers;
   final ValueChanged<int>? onSwitch;
   final VoidCallback? onAdd;
+
+  /// 其他中心的授权失效（已从列表移除）时通知外层刷新
+  final VoidCallback? onCentersChanged;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -46,6 +51,10 @@ class _AppShellState extends State<AppShell> {
   Prefs _prefs = Prefs();
   PushState? _push;
 
+  // 其他监控中心的汇总（聚合视图，设计 1.5.2）：每分钟刷新一次
+  final Map<String, CenterSummary> _others = {};
+  Timer? _othersTimer;
+
   @override
   void initState() {
     super.initState();
@@ -55,7 +64,23 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     _timer?.cancel();
+    _othersTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshOthers() async {
+    for (final c in widget.centers) {
+      if (identical(c.api, widget.api)) continue;
+      try {
+        final s = CenterSummary.of(await c.api.servers());
+        if (mounted) setState(() => _others[c.key] = s);
+      } on DeviceRevoked {
+        widget.onCentersChanged?.call(); // 该中心已从列表移除
+      } catch (e) {
+        final last = _others[c.key] ?? const CenterSummary(total: 0, online: 0, offline: 0, attention: 0);
+        if (mounted) setState(() => _others[c.key] = last.withError('$e'));
+      }
+    }
   }
 
   Future<void> _start() async {
@@ -72,6 +97,10 @@ class _AppShellState extends State<AppShell> {
     await _refresh();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
     _syncPush();
+    if (widget.centers.length > 1) {
+      _refreshOthers();
+      _othersTimer = Timer.periodic(const Duration(minutes: 1), (_) => _refreshOthers());
+    }
   }
 
   Future<void> _refresh() async {
@@ -138,17 +167,35 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final pages = [
       _OverviewTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: widget.api.session.server.host,
-          onRefresh: _refresh, card: _card, offline: _offlineBanner),
+          onRefresh: () async {
+            await Future.wait([_refresh(), _refreshOthers()]);
+          },
+          card: _card, offline: _offlineBanner,
+          centers: [
+            if (widget.centers.length > 1)
+              for (final (i, c) in widget.centers.indexed)
+                (c, identical(c.api, widget.api) ? CenterSummary.of(_items) : _others[c.key], identical(c.api, widget.api), i),
+          ],
+          onSwitch: (i) {
+            _timer?.cancel();
+            _othersTimer?.cancel();
+            widget.onSwitch?.call(i);
+          }),
       _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner,
           onSort: (v) {
             setState(() => _prefs.sortBy = v);
             _savePrefs();
           }),
-      EventsPage(api: widget.api, onRevoked: _revoked, onOpenServer: (id) {
+      EventsPage(api: widget.api, onRevoked: _revoked, centers: widget.centers, onCentersChanged: widget.onCentersChanged,
+          onSwitch: (i) {
+            _timer?.cancel();
+            _othersTimer?.cancel();
+            widget.onSwitch?.call(i);
+          }, onOpenServer: (id) {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);
       }),
-      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: widget.centers, onSwitch: (i) {
+      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
         _timer?.cancel();
         widget.onSwitch?.call(i);
       }, onAdd: widget.onAdd, onPrivacy: (v) {
@@ -184,7 +231,7 @@ class _AppShellState extends State<AppShell> {
 
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
-      required this.onRefresh, required this.card, required this.offline});
+      required this.onRefresh, required this.card, required this.offline, this.centers = const [], this.onSwitch});
   final List<ServerView> items;
   final Prefs prefs;
   final DateTime? updated;
@@ -193,6 +240,44 @@ class _OverviewTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Widget Function(ServerView) card;
   final Widget Function() offline;
+
+  /// 多个监控中心时的聚合视图：（中心，汇总，是否当前，下标）
+  final List<(CenterHandle, CenterSummary?, bool, int)> centers;
+  final ValueChanged<int>? onSwitch;
+
+  Widget _aggregate(BuildContext context) {
+    final colors = StatusColors.of(context);
+    final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
+    final total = CenterSummary.sum(centers.map((c) => c.$2).whereType<CenterSummary>());
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('全部监控中心', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('总计 ${total.total} 台 · 在线 ${total.online} · 离线 ${total.offline} · 需要关注 ${total.attention}', style: muted),
+          for (final (c, sum, current, i) in centers)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: Icon(current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  color: current ? Theme.of(context).colorScheme.primary : null, size: 20),
+              title: Text(c.server.host, overflow: TextOverflow.ellipsis),
+              subtitle: Text(sum == null
+                  ? '读取中…'
+                  : '${sum.total} 台 · 在线 ${sum.online}${sum.error != null ? ' · 暂时无法连接' : ''}'),
+              trailing: sum == null
+                  ? null
+                  : Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (sum.offline > 0) Text('离线 ${sum.offline}  ', style: TextStyle(color: colors.bad, fontSize: 12)),
+                      if (sum.attention > 0) Text('关注 ${sum.attention}', style: TextStyle(color: colors.warn, fontSize: 12)),
+                    ]),
+              onTap: current || onSwitch == null ? null : () => onSwitch!(i),
+            ),
+        ]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +293,7 @@ class _OverviewTab extends StatelessWidget {
       body: RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
+          if (centers.length > 1) _aggregate(context),
           Row(children: [
             _Count('在线', online, colors.ok),
             _Count('离线', offlineN, offlineN > 0 ? colors.bad : null),

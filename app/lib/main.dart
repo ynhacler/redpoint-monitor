@@ -53,6 +53,9 @@ class Root extends StatefulWidget {
 class _RootState extends State<Root> {
   Centers _centers = Centers();
   ApiClient? _api;
+
+  /// 每个中心一个客户端（聚合视图与跨中心事件用，设计 1.5.2）；当前中心的客户端也在其中
+  final Map<String, ApiClient> _clients = {};
   CacheStore? _cache;
   PrefsStore? _prefs;
   bool _loading = true;
@@ -79,9 +82,21 @@ class _RootState extends State<Root> {
     _activate();
   }
 
+  /// 每个中心一个客户端：新增的中心创建，已移除的关闭。
+  void _syncClients() {
+    final keys = {for (final s in _centers.sessions) centerKey(s)};
+    for (final k in _clients.keys.toList()) {
+      if (!keys.contains(k)) _clients.remove(k)!.close();
+    }
+    for (final s in _centers.sessions) {
+      final k = centerKey(s);
+      _clients.putIfAbsent(k, () => ApiClient(s, CenterSessionStore(widget.store, _centers, k)));
+    }
+  }
+
   /// 切到当前中心：每个中心独立的 ApiClient、缓存与偏好。
   void _activate() {
-    _api?.close();
+    _syncClients();
     final s = _centers.current;
     if (s == null) {
       setState(() => _api = null);
@@ -90,13 +105,14 @@ class _RootState extends State<Root> {
     final key = centerKey(s);
     final (cache, prefs) = widget.files(key);
     setState(() {
-      _api = ApiClient(s, CenterSessionStore(widget.store, _centers, key));
+      _api = _clients[key];
       _cache = cache;
       _prefs = prefs;
     });
   }
 
   Future<void> _paired(Session s) async {
+    _clients.remove(centerKey(s))?.close(); // 重新配对：用新凭证重建客户端
     _centers.upsert(s);
     await widget.store.save(_centers);
     final (cache, prefs) = widget.files(centerKey(s));
@@ -153,9 +169,10 @@ class _RootState extends State<Root> {
       prefs: _prefs!,
       onUnpair: _unpair,
       onRevoked: _revoked,
-      centers: [for (final s in _centers.sessions) s.server],
+      centers: [for (final s in _centers.sessions) CenterHandle(centerKey(s), s.server, _clients[centerKey(s)]!)],
       onSwitch: _switch,
       onAdd: _add,
+      onCentersChanged: () => setState(_syncClients), // 其他中心的授权失效时已从列表移除
     );
   }
 }
