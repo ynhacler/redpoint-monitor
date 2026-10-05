@@ -7,6 +7,9 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'api.dart';
+import 'metrics.dart';
+import 'models.dart';
 import 'session.dart';
 
 /// 中心的稳定标识：面板主机 + 设备编号（同一面板重新配对得到新设备，视为新的中心项）
@@ -115,4 +118,39 @@ class CenterSessionStore implements SessionStore {
     _centers.remove(_key);
     await _store.save(_centers);
   }
+}
+
+/// 一个已连接的监控中心：界面用来显示、切换与聚合（设计 1.5.2）。
+class CenterHandle {
+  CenterHandle(this.key, this.server, this.api);
+  final String key;
+  final Uri server;
+  final ApiClient api;
+}
+
+/// 一个中心的汇总（聚合视图，设计 1.5.2）。error 非空表示这次没能取到，显示上次的数字。
+class CenterSummary {
+  const CenterSummary({required this.total, required this.online, required this.offline, required this.attention, this.error});
+  final int total;
+  final int online;
+  final int offline;
+  final int attention;
+  final String? error;
+
+  /// 与首页同一口径：需要关注按 issues（与 Web 的“需要关注”一致，设计 9）
+  factory CenterSummary.of(List<ServerView> items) => CenterSummary(
+        total: items.length,
+        online: items.where((s) => s.status == 'online').length,
+        offline: items.where((s) => s.status == 'offline').length,
+        attention: items.where((s) => issues(s).isNotEmpty).length,
+      );
+
+  CenterSummary withError(String e) => CenterSummary(total: total, online: online, offline: offline, attention: attention, error: e);
+
+  static CenterSummary sum(Iterable<CenterSummary> xs) => CenterSummary(
+        total: xs.fold(0, (a, x) => a + x.total),
+        online: xs.fold(0, (a, x) => a + x.online),
+        offline: xs.fold(0, (a, x) => a + x.offline),
+        attention: xs.fold(0, (a, x) => a + x.attention),
+      );
 }
