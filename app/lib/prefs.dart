@@ -29,10 +29,13 @@ abstract class PrefsStore {
 }
 
 class FilePrefsStore implements PrefsStore {
-  FilePrefsStore({Future<Directory> Function()? dir}) : _dir = dir ?? getApplicationSupportDirectory;
+  FilePrefsStore({Future<Directory> Function()? dir, this.name = 'prefs_v1'}) : _dir = dir ?? getApplicationSupportDirectory;
   final Future<Directory> Function() _dir;
 
-  Future<File> _file() async => File('${(await _dir()).path}/prefs_v1.json');
+  /// 文件名（不含扩展名）；多监控中心时每个中心一个
+  final String name;
+
+  Future<File> _file() async => File('${(await _dir()).path}/$name.json');
 
   @override
   Future<Prefs> load() async {

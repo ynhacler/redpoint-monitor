@@ -28,14 +28,15 @@ abstract class CacheStore {
 /// 历史曲线最多缓存的条数（节点 × 范围），超出时丢弃最早的
 const _maxHistory = 30;
 
-/// 以一个 JSON 文件保存在 App 支持目录（Application Support / files）中。
+/// 以一个 JSON 文件保存在 App 支持目录（Application Support / files）中；多监控中心时每个中心一个文件（name）。
 class FileCacheStore implements CacheStore {
-  FileCacheStore({Future<Directory> Function()? dir}) : _dir = dir ?? getApplicationSupportDirectory;
+  FileCacheStore({Future<Directory> Function()? dir, this.name = 'cache_v1'}) : _dir = dir ?? getApplicationSupportDirectory;
 
   final Future<Directory> Function() _dir;
+  final String name;
   Map<String, dynamic>? _data;
 
-  Future<File> _file() async => File('${(await _dir()).path}/cache_v1.json');
+  Future<File> _file() async => File('${(await _dir()).path}/$name.json');
 
   Future<Map<String, dynamic>> _load() async {
     if (_data != null) return _data!;
