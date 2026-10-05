@@ -7,7 +7,9 @@ import 'package:http/testing.dart';
 import 'package:vpsmon_app/api.dart';
 import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
-import 'package:vpsmon_app/pages/servers_page.dart';
+import 'package:vpsmon_app/pages/server_detail_page.dart';
+import 'package:vpsmon_app/pages/shell.dart';
+import 'package:vpsmon_app/prefs.dart';
 import 'package:vpsmon_app/session.dart';
 
 /// 内存中的缓存（页面测试不碰文件系统）
@@ -27,6 +29,7 @@ class MemCache implements CacheStore {
 
 Map<String, dynamic> node(int id, String name, String status, {String group = 'jp', List<dynamic> alerts = const []}) => {
       'id': id, 'name': name, 'status': status, 'group': group, 'country': 'JP', 'last_seen_at': 1759650000,
+      'ipv4': '103.1.2.$id', 'provider': 'DMIT', 'price_cents': 1500, 'currency': 'USD', 'billing_period': 'monthly',
       'latest': {
         'cpu': {'usage': 96, 'cores': 2, 'load1': 1.2},
         'memory': {'usage': 42, 'used': 420000000, 'total': 1000000000},
@@ -40,7 +43,7 @@ Map<String, dynamic> node(int id, String name, String status, {String group = 'j
     };
 
 void main() {
-  testWidgets('首页（异常优先、分组）与详情页在窄屏上正常渲染', (tester) async {
+  testWidgets('首页、服务器（搜索 / 排序）、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 812 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -50,7 +53,10 @@ void main() {
         {'type': 'cpu', 'severity': 'warning', 'message': 'CPU 96%', 'value': 96, 'fired_at': 1759650000, 'silenced': false},
       ]),
       node(2, 'HK-1', 'offline', group: 'hk'),
+      node(3, 'SG-calm', 'online', group: 'sg'),
     ];
+    // 正常节点 SG-calm 没有告警，CPU 改成 10
+    (nodes[2]['latest'] as Map)['cpu'] = {'usage': 10, 'cores': 2, 'load1': 0.1};
     final client = MockClient((req) async {
       final p = req.url.path;
       Object body;
@@ -58,6 +64,13 @@ void main() {
         body = {'items': nodes, 'next_cursor': ''};
       } else if (p == '/api/v1/servers/1') {
         body = nodes[0];
+      } else if (p == '/api/v1/alerts') {
+        body = {'next_cursor': '', 'items': [
+          {'id': 9, 'server_id': 2, 'server_name': 'HK-1', 'type': 'offline', 'severity': 'critical', 'state': 'firing',
+            'message': '超过 120 秒未收到上报', 'fired_at': 1759650000},
+          {'id': 8, 'server_id': 1, 'server_name': 'Tokyo', 'type': 'cpu', 'severity': 'warning', 'state': 'resolved',
+            'message': 'CPU 96%', 'fired_at': 1759640000, 'resolved_at': 1759640600},
+        ]};
       } else if (p.endsWith('/health')) {
         body = {'level': 'warn', 'status': '需要关注：CPU 96%', 'items': [
           {'key': 'cpu', 'title': 'CPU', 'text': '过去 24 小时平均 12%，峰值 68%', 'level': 'ok'},
@@ -77,32 +90,68 @@ void main() {
         refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all',
         scopeValue: '', allowLowRiskOps: true);
     final api = ApiClient(session, MemorySessionStore(), client: client);
+    final prefs = MemoryPrefsStore();
 
     await tester.pumpWidget(MaterialApp(
-      home: ServersPage(api: api, cache: MemCache(), onUnpair: () async {}, onRevoked: () {}),
+      home: AppShell(api: api, cache: MemCache(), prefs: prefs, onUnpair: () async {}, onRevoked: () {}),
     ));
-    await tester.pump(); // 读缓存
+    await tester.pump(); // 读偏好与缓存
     await tester.pump(); // 请求返回
+    await tester.pump();
 
-    // 异常优先：离线的 HK-1 在前
+    // 首页：需要关注（离线在前），正常节点不在首页
     final hk = tester.getTopLeft(find.text('HK-1'));
     final tokyo = tester.getTopLeft(find.textContaining('Tokyo ARM'));
     expect(hk.dy, lessThan(tokyo.dy));
-    expect(find.text('CPU 96%'), findsOneWidget); // 告警标签
-    expect(find.text('全部'), findsOneWidget); // 分组筛选
+    expect(find.text('CPU 96%'), findsOneWidget);
+    expect(find.text('SG-calm'), findsNothing);
 
+    // 服务器：搜索按 IP 过滤，收藏后出现在首页
+    await tester.tap(find.text('服务器'));
+    await tester.pump();
+    expect(find.text('SG-calm'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '103.1.2.3');
+    await tester.pump();
+    expect(find.text('SG-calm'), findsOneWidget);
+    expect(find.text('HK-1'), findsNothing);
+    await tester.tap(find.byIcon(Icons.star_border).first);
+    await tester.pump();
+    expect(prefs.value.favorites, {3});
+
+    // 事件：时间线
+    await tester.tap(find.text('事件'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('超过 120 秒未收到上报'), findsOneWidget);
+    expect(find.textContaining('恢复'), findsWidgets);
+
+    // 我的：隐私模式
+    await tester.tap(find.text('我的'));
+    await tester.pump();
+    await tester.tap(find.text('隐私模式'));
+    await tester.pump();
+    expect(prefs.value.privacy, isTrue);
+
+    // 首页的收藏卡片：IP 打码
+    await tester.tap(find.text('首页'));
+    await tester.pump();
+    expect(find.textContaining('103.***.***.3'), findsOneWidget);
+
+    // 详情：趋势、流量、资产（隐私模式下价格与供应商打码）
     await tester.tap(find.textContaining('Tokyo ARM'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.text('趋势'), findsOneWidget);
-    expect(find.text('需要关注：CPU 96%'), findsOneWidget); // 健康摘要（面板计算）
-    expect(find.text('过去 24 小时平均 12%，峰值 68%'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('638 GB / 1 TB'), 200);
+    expect(find.text('需要关注：CPU 96%'), findsOneWidget);
+    // 底部导航的各页都保留在 IndexedStack 中：指定滚动详情页自己的列表
+    final detail = find.descendant(of: find.byType(ServerDetailPage), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('638 GB / 1 TB'), 200, scrollable: detail);
     expect(find.textContaining('已使用 63.8%'), findsOneWidget);
-    expect(find.textContaining('距离重置'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('静音告警'), 200);
+    await tester.scrollUntilVisible(find.text('资产'), 200, scrollable: detail);
+    expect(find.text('103.***.***.1'), findsOneWidget);
+    expect(find.text('DMIT'), findsNothing);
+    await tester.scrollUntilVisible(find.text('静音告警'), 200, scrollable: detail);
     expect(find.text('开启维护'), findsOneWidget);
 
-    // 定时刷新的计时器：离开页面后不再触发
     await tester.pumpWidget(const SizedBox());
   });
 }

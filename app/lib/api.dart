@@ -165,6 +165,14 @@ class ApiClient {
   /// 关闭本机推送（DELETE /app/push）。
   Future<void> disablePush() => _send2xx('DELETE', '/app/push');
 
+  /// 告警事件（事件中心，设计 1.5.17）：按时间倒序，cursor 翻页；面板按设备的授权范围过滤。
+  Future<(List<AlertEvent>, String)> alerts({String state = 'all', String cursor = '', int limit = 50}) async {
+    final body = await getJson('/alerts', query: {'state': state, 'limit': '$limit', if (cursor.isNotEmpty) 'cursor': cursor})
+        as Map<String, dynamic>;
+    final items = (body['items'] as List<dynamic>).map((e) => AlertEvent.fromJson(e as Map<String, dynamic>)).toList();
+    return (items, (body['next_cursor'] as String?) ?? '');
+  }
+
   /// 健康摘要（设计 1.5.7）。
   Future<HealthSummary> health(int id) async => HealthSummary.fromJson(await getJson('/servers/$id/health') as Map<String, dynamic>);
 
