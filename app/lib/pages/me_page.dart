@@ -1,4 +1,4 @@
-// 我的（设计 1.5.18）：监控中心、授权范围、推送状态、隐私模式（1.5.12）、解除配对。
+// 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、推送状态、隐私模式（1.5.12）、解除配对。
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -6,8 +6,14 @@ import '../push.dart';
 import '../version.dart';
 
 class MePage extends StatelessWidget {
-  const MePage({super.key, required this.api, required this.push, required this.privacy, required this.onPrivacy, required this.onUnpair});
+  const MePage({super.key, required this.api, required this.push, required this.privacy, required this.onPrivacy, required this.onUnpair,
+      this.centers = const [], this.onSwitch, this.onAdd});
   final ApiClient api;
+
+  /// 全部监控中心的地址（当前中心为 api.session.server）
+  final List<Uri> centers;
+  final ValueChanged<int>? onSwitch;
+  final VoidCallback? onAdd;
   final PushState? push;
   final bool privacy;
   final ValueChanged<bool> onPrivacy;
@@ -28,6 +34,17 @@ class MePage extends StatelessWidget {
     if (ok == true) await onUnpair();
   }
 
+  Widget _centerTile(BuildContext context, Uri u, int i) {
+    final current = u == api.session.server;
+    return ListTile(
+      leading: Icon(current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+          color: current ? Theme.of(context).colorScheme.primary : null),
+      title: Text(u.host),
+      subtitle: Text(current ? '当前 · ${u.toString()}' : u.toString()),
+      onTap: current || onSwitch == null ? null : () => onSwitch!(i),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = api.session;
@@ -36,7 +53,12 @@ class MePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(children: [
-        ListTile(leading: const Icon(Icons.dns_outlined), title: Text(s.server.host), subtitle: Text(s.server.toString())),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('监控中心', style: TextStyle(fontWeight: FontWeight.w600))),
+        for (var i = 0; i < (centers.isEmpty ? 1 : centers.length); i++)
+          _centerTile(context, centers.isEmpty ? s.server : centers[i], i),
+        if (onAdd != null)
+          ListTile(leading: const Icon(Icons.add), title: const Text('添加监控中心'), subtitle: const Text('连接另一套自建面板'), onTap: onAdd),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.visibility_outlined),
           title: Text('可查看：$scope'),
