@@ -57,7 +57,13 @@ dev-web: ## Run Vite dev server on :5173 (proxies /api to :8080)
 test: ## Run Go tests
 	go test ./...
 
-lint: web/node_modules/.package-lock.json ## go vet + Web type-check
+lint: web/node_modules/.package-lock.json ## gofmt + go vet + Web type-check
+	@# 未经 gofmt 格式化的 Go 文件直接失败，列出文件
+	@unformatted="$$(gofmt -l cmd internal)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "以下 Go 文件未格式化，请运行 gofmt -w cmd internal："; \
+		echo "$$unformatted"; exit 1; \
+	fi
 	go vet ./...
 	cd web && npx vue-tsc --noEmit
 
