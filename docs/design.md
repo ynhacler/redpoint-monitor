@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 93 | 云账户余额提醒：账户可设余额阈值，低于时每月严重提醒一次（阿里云、腾讯云） | 44.6、44.7 |
 | 92 | 健康摘要（1.5.7）：面板计算 CPU / 内存 / 磁盘增长 / 流量的结论与文字，Web 节点详情与 App 详情显示；fmtBytesSI 整数不再写 .0，与 Web 一致 | 1.5.7 |
 | 91 | App 第二步：首页（计数、分组、异常优先卡片）、节点详情（资源、趋势、流量、告警、静音 / 维护）、离线缓存；格式与健康规则从 Web 移植 | 1.5.10、13、14 |
 | 90 | App 第一步：扫码 / 手工配对、设备凭证安全存储、自动刷新（单飞）与失效处理、节点列表、解除配对；CI 加入 Flutter 检查 | 12.2～12.7 |
@@ -10202,7 +10203,8 @@ cloud_sync      连续 24 小时同步失败或凭证失效               提示
 费用      本月（有预估时按预估）超过账户预算：警告，每个账户每月一次
 流量包    云厂商口径用到 90%（警告）/ 95%（严重）：每个周期各一次
 同步      凭证失效立即、其他错误连续 24 小时后：警告，每次故障一次
-余额      未做：各家余额口径不同，需要阈值设置（后续）
+余额      账户设置“余额低于 X 时提醒”（balance_alert_cents，只对返回余额的阿里云、腾讯云显示）；最近一次同步的余额
+          低于阈值时严重提醒，每个账户每月一次（修订第 93 条）
 去重      reminders_sent 按键记录（保留 400 天）；每小时检查一次，经通知渠道发送，遵守免打扰；
           级别至少为警告：提示级在免打扰期间会被丢弃，且渠道默认只接收警告以上
 ```
@@ -10211,7 +10213,7 @@ cloud_sync      连续 24 小时同步失败或凭证失效               提示
 
 ```text
 cloud_accounts    id、provider（aws / aliyun_cn / aliyun_intl / tencent_cn / tencent_intl / oci）、name、regions、credential_enc、credential_hint（末 4 位）、
-                  budget_cents、currency、enabled、sync_cost / sync_traffic（开关）、last_sync_at、last_error、created_at
+                  budget_cents、balance_alert_cents（余额提醒阈值，修订第 93 条）、currency、enabled、sync_cost / sync_traffic（开关）、last_sync_at、last_error、created_at
 cloud_costs       account_id、period（YYYY-MM）、amount_cents、forecast_cents、balance_cents、currency、updated_at
 cloud_instances   account_id、instance_id、name、region、kind（ec2 / lightsail / ecs / swas / cvm / lighthouse / oci）、public_ipv4、public_ipv6、
                   plan、expire_at、renew_price_cents、traffic_limit_bytes、traffic_used_bytes、traffic_period_start、

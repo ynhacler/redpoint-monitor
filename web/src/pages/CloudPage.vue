@@ -61,39 +61,41 @@ interface ProviderInfo {
   regionExample: string
   /** 费用查询是否收费（AWS Cost Explorer） */
   paidCostApi: boolean
+  /** 是否返回账户余额（可设余额提醒，设计 44.6） */
+  hasBalance: boolean
   /** 密钥从哪里获取：简短步骤与控制台地址 */
   keySteps: string
   keyURL: string
 }
 const providers: Record<Provider, ProviderInfo> = {
   aws: { label: 'AWS', currency: 'USD', idLabel: 'Access Key ID', idPlaceholder: 'AKIA…', secretLabel: 'Secret Access Key',
-    idField: 'access_key_id', secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true,
+    idField: 'access_key_id', secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true, hasBalance: false,
     trafficName: 'Lightsail', billingTZ: '按 UTC 自然月',
     keySteps: 'IAM 控制台 → 用户 → 创建用户（附加下面的只读策略）→ 安全凭证 → 创建访问密钥（用途选“第三方服务”）',
     keyURL: 'https://console.aws.amazon.com/iam/home#/users' },
   aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
-    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false,
+    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false, hasBalance: true,
     trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
     keySteps: 'RAM 访问控制 → 用户 → 创建用户（勾选“使用永久 AccessKey 访问”）→ 添加权限（三个只读策略）→ 保存 AccessKey',
     keyURL: 'https://ram.console.aliyun.com/users' },
   aliyun_intl: { label: '阿里云国际', currency: 'USD', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
-    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false,
+    idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false, hasBalance: true,
     trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
     keySteps: 'RAM 控制台 → Users → Create User（勾选 Using permanent AccessKey）→ Add Permissions（三个只读策略）→ 保存 AccessKey',
     keyURL: 'https://ram.console.alibabacloud.com/users' },
   tencent_cn: { label: '腾讯云', currency: 'CNY', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
-    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-hongkong, ap-guangzhou', paidCostApi: false,
+    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-hongkong, ap-guangzhou', paidCostApi: false, hasBalance: true,
     trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
     keySteps: '访问管理 CAM → 用户 → 新建用户（自定义创建，访问方式选“编程访问”）→ 关联下面的自定义策略 → 保存 SecretId / SecretKey',
     keyURL: 'https://console.cloud.tencent.com/cam' },
   tencent_intl: { label: '腾讯云国际', currency: 'USD', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
-    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-singapore, ap-tokyo', paidCostApi: false,
+    idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-singapore, ap-tokyo', paidCostApi: false, hasBalance: true,
     trafficName: 'Lighthouse', billingTZ: '按北京时间自然月',
     keySteps: 'CAM 控制台 → Users → Create User（Custom，Programmatic access）→ 关联下面的自定义策略 → 保存 SecretId / SecretKey',
     keyURL: 'https://console.tencentcloud.com/cam' },
   // Oracle Cloud 用 API 签名密钥（RSA 私钥），另需租户 OCID、指纹与主区域（设计 44.3）
   oci: { label: 'Oracle Cloud', currency: 'USD', idLabel: '用户 OCID', idPlaceholder: 'ocid1.user.oc1..…', secretLabel: 'API 私钥（PEM）',
-    idField: 'user_ocid', secretField: 'private_key', regionExample: 'ap-tokyo-1, us-ashburn-1', paidCostApi: false,
+    idField: 'user_ocid', secretField: 'private_key', regionExample: 'ap-tokyo-1, us-ashburn-1', paidCostApi: false, hasBalance: false,
     trafficName: '出站流量（每月 10 TB 免费）', billingTZ: '按 UTC 自然月',
     keySteps: '控制台右上角头像 → 我的概要信息（My profile）→ API 密钥 → 添加 API 密钥 → 下载私钥 → 添加，复制弹出的配置文件预览中的 user、fingerprint、tenancy、region',
     keyURL: 'https://cloud.oracle.com/identity/domains/my-profile/api-keys' },
@@ -163,7 +165,7 @@ async function remove(a: CloudAccount) {
 
 const editing = ref<'new' | number | null>(null)
 const form = ref({
-  provider: 'aws' as Provider, name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', cost_interval_h: 12,
+  provider: 'aws' as Provider, name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', balance_alert: '', cost_interval_h: 12,
   sync_cost: true, sync_traffic: true, enabled: true, password: '',
 })
 const info = computed(() => providers[form.value.provider])
@@ -174,7 +176,7 @@ const showPolicy = ref(false)
 
 function openNew() {
   editing.value = 'new'
-  form.value = { provider: 'aws', name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', cost_interval_h: 12,
+  form.value = { provider: 'aws', name: '', access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: '', budget: '', balance_alert: '', cost_interval_h: 12,
     sync_cost: true, sync_traffic: true, enabled: true, password: '' }
   showPolicy.value = false
   fieldErrors.value = {}
@@ -184,7 +186,8 @@ function openNew() {
 function openEdit(a: CloudAccount) {
   editing.value = a.id
   form.value = { provider: a.provider as Provider, name: a.name, access_key_id: '', secret: '', tenancy_ocid: '', fingerprint: '', home_region: '', regions: a.regions.join(', '),
-    budget: a.budget_cents ? String(a.budget_cents / 100) : '', cost_interval_h: a.cost_interval_h,
+    budget: a.budget_cents ? String(a.budget_cents / 100) : '',
+    balance_alert: a.balance_alert_cents ? String(a.balance_alert_cents / 100) : '', cost_interval_h: a.cost_interval_h,
     sync_cost: a.sync_cost, sync_traffic: a.sync_traffic, enabled: a.enabled, password: '' }
   fieldErrors.value = {}
   formError.value = ''
@@ -208,6 +211,7 @@ async function save() {
     name: f.name.trim(),
     regions: f.regions.split(/[\s,，]+/).filter(Boolean),
     budget: f.budget.trim() === '' ? 0 : Number(f.budget),
+    balance_alert: f.balance_alert.trim() === '' ? 0 : Number(f.balance_alert),
     cost_interval_h: f.cost_interval_h as CloudAccountInput['cost_interval_h'],
     sync_cost: f.sync_cost, sync_traffic: f.sync_traffic, enabled: f.enabled,
   }
@@ -396,6 +400,10 @@ function expireTone(i: CloudInstance): string {
           <input v-model="form.budget" inputmode="decimal" placeholder="不设" />
           <small v-if="fieldErrors.budget" class="err">{{ fieldErrors.budget }}</small>
         </label>
+        <label v-if="info.hasBalance">余额低于（{{ info.currency }}）时提醒
+          <input v-model="form.balance_alert" inputmode="decimal" placeholder="不提醒" />
+          <small v-if="fieldErrors.balance_alert" class="err">{{ fieldErrors.balance_alert }}</small>
+        </label>
         <label>费用同步间隔
           <select v-model.number="form.cost_interval_h">
             <option :value="6">每 6 小时</option>
@@ -451,7 +459,10 @@ function expireTone(i: CloudInstance): string {
           <!-- 阿里云没有费用预测，显示账户余额 -->
           <div v-if="a.current_cost?.balance_cents != null">
             <div class="muted small">账户余额</div>
-            <div class="big num">{{ fmtMoney(a.current_cost.balance_cents, a.current_cost.currency) }}</div>
+            <div class="big num" :class="{ bad: a.balance_alert_cents > 0 && a.current_cost.balance_cents < a.balance_alert_cents }">
+              {{ fmtMoney(a.current_cost.balance_cents, a.current_cost.currency) }}
+            </div>
+            <div v-if="a.balance_alert_cents" class="muted small">低于 {{ fmtMoney(a.balance_alert_cents, a.current_cost.currency) }} 时提醒</div>
           </div>
           <div v-else>
             <div class="muted small">本月预估</div>

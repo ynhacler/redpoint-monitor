@@ -4,6 +4,7 @@ package server
 //
 //	到期      节点到期日（以及未写入节点的云实例到期时间）：剩 30 / 14 / 7 / 3 / 1 天、当天、已过期各一次
 //	费用      云账户本月费用（有预估时按预估）超过预算：每个账户每月一次
+//	余额      云账户余额低于设置的阈值（阿里云、腾讯云返回余额）：严重，每个账户每月一次
 //	流量包    云厂商口径的流量包用到 90% / 95%：每个周期各一次
 //	同步      云账户凭证失效，或连续同步失败超过 24 小时：每次故障一次
 //
@@ -170,10 +171,18 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 			s.remind(fmt.Sprintf("cloud_sync:%d:%d", a.ID, a.ErrorSince), notifyMessage{ServerName: label, Type: "cloud_sync",
 				Severity: SeverityWarning, Message: why + "：" + a.LastError, Link: link}, now)
 		}
+		costs, err := s.store.CloudCosts(a.ID, 1)
+		current := err == nil && len(costs) > 0 && costs[0].Period == cloud.BillingMonth(a.Provider, now)
+		// 余额不足：最近一次同步的余额低于阈值，每月一次（充值后下月仍不足会再提醒）
+		if a.BalanceAlertCents > 0 && current && costs[0].BalanceCents != nil && *costs[0].BalanceCents < a.BalanceAlertCents {
+			c := costs[0]
+			s.remind(fmt.Sprintf("cloud_balance:%d:%s", a.ID, c.Period), notifyMessage{ServerName: label, Type: "cloud_balance",
+				Severity: SeverityCritical, Link: link, Message: fmt.Sprintf("余额 %s %.2f，低于提醒阈值 %s %.2f，请及时充值以免实例停机",
+					c.Currency, float64(*c.BalanceCents)/100, c.Currency, float64(a.BalanceAlertCents)/100)}, now)
+		}
 		// 费用超预算：有预估时按预估（提前提醒），每月一次
 		if a.BudgetCents > 0 {
-			costs, err := s.store.CloudCosts(a.ID, 1)
-			if err == nil && len(costs) > 0 && costs[0].Period == cloud.BillingMonth(a.Provider, now) {
+			if current {
 				c := costs[0]
 				v, what := c.AmountCents, "本月已产生"
 				if c.ForecastCents != nil && *c.ForecastCents > v {

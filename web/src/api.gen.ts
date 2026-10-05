@@ -586,6 +586,8 @@ export interface CloudAccountInput {
   }
   /** 月度预算（账户币种：AWS 为 USD，阿里云国内站 CNY、国际站多为 USD）；0 表示不设 */
   budget?: number
+  /** 余额低于此金额时提醒（账户币种；只对返回余额的阿里云、腾讯云有效，设计 44.6）；0 表示不提醒 */
+  balance_alert?: number
   /** 费用同步间隔，小时；AWS 每次同步约 0.02 美元 */
   cost_interval_h?: 6 | 12 | 24
   enabled?: boolean
@@ -601,6 +603,8 @@ export interface CloudAccount {
   /** 如 AKIA…WXYZ；完整凭证不返回 */
   credential_hint: string
   budget_cents: number
+  /** 余额提醒阈值（分）；0 表示不提醒 */
+  balance_alert_cents: number
   cost_interval_h: number
   enabled: boolean
   sync_cost: boolean

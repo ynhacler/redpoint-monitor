@@ -576,6 +576,9 @@ var migrations = []string{
 	);
 	CREATE INDEX app_devices_prev_refresh ON app_devices(prev_refresh_hash);
 	CREATE INDEX app_devices_key ON app_devices(access_key_id);`,
+
+	// 迁移 26：云账户余额提醒阈值（设计 44.6），单位为分；0 表示不提醒
+	`ALTER TABLE cloud_accounts ADD COLUMN balance_alert_cents INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
