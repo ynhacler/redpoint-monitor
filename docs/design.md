@@ -9332,9 +9332,12 @@ GitHub Actions 在每个 PR 中运行检查模式（设计 40.8.3），失败则
 
 ```text
 design/tokens.json        唯一来源
-  → web/src/styles/tokens.css   CSS 变量（构建时生成）
-  → app/lib/theme/tokens.dart   Flutter 常量（构建时生成）
+  → web/src/styles/tokens.css   CSS 变量
+  → app/lib/tokens.dart         Flutter 常量（AppColors.light / dark、AppSpace、AppRadius、AppFont）
 ```
+
+两者都由 web/scripts/gen-tokens.mjs 生成（npm run tokens，Web 构建前自动执行），生成结果提交到仓库；
+CI 检查它们与 tokens.json 一致。App 的 Material 3 主题（主色、表面、背景、错误色）与状态色都取自 AppColors。
 
 代码中禁止直接写颜色值、字号、间距数字，只能引用令牌。
 

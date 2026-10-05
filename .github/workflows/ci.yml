@@ -48,6 +48,10 @@ jobs:
       - name: Web 类型检查与构建
         run: make web
 
+      # 设计令牌是 Web 与 App 的唯一来源（设计 41.2）：生成结果必须已提交，且与 tokens.json 一致
+      - name: 设计令牌与生成结果一致
+        run: git diff --exit-code -- web/src/styles/tokens.css app/lib/tokens.dart
+
       - name: go vet + vue-tsc
         run: make lint
 

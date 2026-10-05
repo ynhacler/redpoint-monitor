@@ -173,7 +173,7 @@
 - [x] App 第一步：扫码 / 手工配对、凭证自动刷新与失效处理、节点列表（异常优先）、解除配对；CI 加入 flutter analyze / test
   （待真机验证：扫码配对 test-server）
 - [x] App：节点详情、离线缓存、静音 / 维护操作（设计 13、14）
-- [ ] App：由 design/tokens.json 生成 Dart 令牌（替换 theme.dart 中的手写颜色，设计 41.2）
+- [x] App：由 design/tokens.json 生成 Dart 令牌（app/lib/tokens.dart，CI 检查与 tokens.json 一致，设计 41.2）
 - [ ] E2E 推送：配对时交换 X25519 公钥，HPKE 加密，iOS NSE / Android 数据消息（设计 30.3）
 - [ ] push-relay：无状态、实例签名校验、内存限流（设计 30.2）
 
