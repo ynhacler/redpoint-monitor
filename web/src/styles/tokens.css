@@ -44,6 +44,8 @@
   --series-2: #7C3AED;
   --series-3: #0891B2;
   --track: #E5E7EB;
+  --qr-dark: #000000;
+  --qr-light: #FFFFFF;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -63,6 +65,8 @@
     --series-2: #A78BFA;
     --series-3: #22D3EE;
     --track: #2A2F3A;
+    --qr-dark: #000000;
+    --qr-light: #FFFFFF;
     color-scheme: dark;
   }
 }
@@ -82,5 +86,7 @@
   --series-2: #A78BFA;
   --series-3: #22D3EE;
   --track: #2A2F3A;
+  --qr-dark: #000000;
+  --qr-light: #FFFFFF;
   color-scheme: dark;
 }
