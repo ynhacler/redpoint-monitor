@@ -29,6 +29,7 @@ onUnmounted(stopPolling)
         <RouterLink to="/" :class="{ active: route.path === '/' || route.path.startsWith('/servers') }">仪表板</RouterLink>
         <RouterLink to="/alerts" active-class="active" class="with-badge">告警<span v-if="alertCount" class="badge num">{{ alertCount }}</span></RouterLink>
         <RouterLink to="/cloud" active-class="active">云账户</RouterLink>
+        <RouterLink to="/app" active-class="active" title="App 接入">App</RouterLink>
         <RouterLink to="/logs" active-class="active">日志</RouterLink>
       </nav>
       <div class="tools">

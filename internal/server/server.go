@@ -62,13 +62,15 @@ type Server struct {
 	releaseMirror bool         // 同步后自动镜像
 	mirrorHTTP    *http.Client // 下载构建用，超时更长
 	mirrorCache   mirrorCache
-	notify        *notifier     // 告警通知（设计 16.5）
-	noise         *alertNoise   // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
-	quiet         *quietState   // 免打扰时段（设计 16.5）
-	routeTable    []routeSpec   // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
-	ws            *wsHub        // WebSocket 事件推送（设计 20）
-	cloud         *cloudState   // 云厂商账户同步（设计 44）
-	apiKeys       apiKeyLimiter // 只读 API Key 的限流（设计 45.2）
+	notify        *notifier      // 告警通知（设计 16.5）
+	noise         *alertNoise    // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
+	quiet         *quietState    // 免打扰时段（设计 16.5）
+	routeTable    []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+	ws            *wsHub         // WebSocket 事件推送（设计 20）
+	cloud         *cloudState    // 云厂商账户同步（设计 44）
+	apiKeys       apiKeyLimiter  // 只读 API Key 的限流（设计 45.2）
+	appLimit      apiKeyLimiter  // App 设备的限流（每台每分钟 120 次，设计 23.6）
+	pairLimit     *enrollLimiter // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -118,7 +120,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync,
 		mirrorRoot: opts.MirrorDir, releaseMirror: opts.ReleaseMirror && opts.MirrorDir != "", mirrorHTTP: &http.Client{Timeout: 10 * time.Minute},
 		store: store, web: web, log: opts.Logger, version: opts.Version,
-		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(),
+		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(), pairLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState()}
@@ -167,6 +169,9 @@ const (
 	accessAdmin  access = "admin"  // Web 管理员
 	accessRead   access = "read"   // Web 管理员或只读 API Key（设计 45.2）：只用于读取类接口
 	accessAgent  access = "agent"  // Agent Token，只能操作 Token 绑定的节点
+	accessPair   access = "pair"   // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
+	accessApp    access = "app"    // 只接受 App 设备 Access Token（设计 12.5）
+	accessOps    access = "ops"    // Web 管理员，或 AK 允许低风险操作的 App 设备：静音、维护（设计 8.4.1、17.2）
 )
 
 // routeSpec 记录一条路由及其允许的主体。
@@ -192,8 +197,12 @@ func (s *Server) routes() http.Handler {
 	handle := func(pattern string, acc access, h http.HandlerFunc) {
 		var wrapped http.Handler
 		switch acc {
-		case accessPublic, accessEnroll:
+		case accessPublic, accessEnroll, accessPair:
 			wrapped = h
+		case accessApp:
+			wrapped = s.app(h)
+		case accessOps:
+			wrapped = s.ops(h)
 		case accessAdmin:
 			wrapped = s.admin(h)
 		case accessRead:
@@ -235,6 +244,17 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/api-keys", accessAdmin, s.handleCreateAPIKey)
 	handle("DELETE /api/v1/api-keys/{id}", accessAdmin, s.handleRevokeAPIKey)
 	handle("GET /api/v1/version", accessRead, s.handleVersion)
+
+	// App 接入（设计 8.4、12.3～12.7、19.2～19.4）
+	handle("GET /api/v1/app-access-keys", accessAdmin, s.handleAppKeys)
+	handle("POST /api/v1/app-access-keys", accessAdmin, s.handleCreateAppKey)
+	handle("POST /api/v1/app-access-keys/{id}/revoke", accessAdmin, s.handleRevokeAppKey)
+	handle("GET /api/v1/app-devices", accessAdmin, s.handleAppDevices)
+	handle("POST /api/v1/app-devices/{id}/revoke", accessAdmin, s.handleRevokeAppDevice)
+	handle("POST /api/v1/app/pair", accessPair, s.handlePair)
+	handle("POST /api/v1/app/token/refresh", accessPair, s.handleRefresh)
+	handle("GET /api/v1/app/me", accessApp, s.handleAppMe)
+	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）
 	// 实时事件（设计 20）：只推送，不接收指令
 	handle("GET /ws", accessRead, s.handleWS)
 
@@ -267,9 +287,9 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/notification-channels/{id}", accessAdmin, s.handleDeleteChannel)
 	handle("POST /api/v1/notification-channels/{id}/test", accessAdmin, s.handleTestChannel)
 	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
-	handle("GET /api/v1/silences", accessAdmin, s.handleSilences)
-	handle("POST /api/v1/silences", accessAdmin, s.handleCreateSilence)
-	handle("DELETE /api/v1/silences/{id}", accessAdmin, s.handleEndSilence)
+	handle("GET /api/v1/silences", accessOps, s.handleSilences)
+	handle("POST /api/v1/silences", accessOps, s.handleCreateSilence)
+	handle("DELETE /api/v1/silences/{id}", accessOps, s.handleEndSilence)
 	handle("GET /api/v1/servers", accessRead, s.handleListServers)
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
 	handle("GET /api/v1/servers/{id}", accessRead, s.handleGetServer)

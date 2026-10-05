@@ -405,13 +405,20 @@ func TestPermissionMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	creds := map[string]string{"无凭证": "", "伪造": "agt_forgedforgedforged", "伪造 API Key": "api_forgedforgedforged",
-		"admin": admin, "agent": agentTok, "apikey": apiKey}
+		"伪造设备": "dev_forgedforgedforged", "Refresh Token": "rt_forgedforgedforged",
+		"admin": admin, "agent": agentTok, "apikey": apiKey, "app": "", "app 无低风险操作": ""}
+	everyone := []string{"无凭证", "伪造", "伪造 API Key", "伪造设备", "Refresh Token", "admin", "agent", "apikey", "app", "app 无低风险操作"}
 	allowed := map[access][]string{
-		accessPublic: {"无凭证", "伪造", "伪造 API Key", "admin", "agent", "apikey"},
-		accessEnroll: {"无凭证", "伪造", "伪造 API Key", "admin", "agent", "apikey"}, // 凭请求体中的注册码认证
+		accessPublic: everyone,
+		accessEnroll: everyone, // 凭请求体中的注册码认证
+		accessPair:   everyone, // 凭请求体中的 AK / Refresh Token 认证
 		accessAdmin:  {"admin"},
-		accessRead:   {"admin", "apikey"}, // 【安全】API Key 只能访问读取类接口（设计 45.2）
-		accessAgent:  {"agent"},
+		// 【安全】API Key 与 App 设备只能访问读取类接口（设计 45.2、8.4.1）
+		accessRead:  {"admin", "apikey", "app", "app 无低风险操作"},
+		accessAgent: {"agent"},
+		accessApp:   {"app", "app 无低风险操作"},
+		// 【安全】静音与维护：只有 AK 允许低风险操作的设备（设计 17.2）
+		accessOps: {"admin", "app"},
 	}
 	// 期望表独立于实现，按设计 17.2 手写：路由声明的主体必须与之完全一致。
 	// 新增路由时必须同时在这里登记，否则测试失败——防止误把管理接口声明为公开。
@@ -431,6 +438,15 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/api-keys":                          accessAdmin,
 		"DELETE /api/v1/api-keys/{id}":                   accessAdmin,
 		"GET /api/v1/version":                            accessRead,
+		"GET /api/v1/app-access-keys":                    accessAdmin,
+		"POST /api/v1/app-access-keys":                   accessAdmin,
+		"POST /api/v1/app-access-keys/{id}/revoke":       accessAdmin,
+		"GET /api/v1/app-devices":                        accessAdmin,
+		"POST /api/v1/app-devices/{id}/revoke":           accessAdmin,
+		"POST /api/v1/app/pair":                          accessPair,
+		"POST /api/v1/app/token/refresh":                 accessPair,
+		"GET /api/v1/app/me":                             accessApp,
+		"POST /api/v1/app/unpair":                        accessApp,
 		"GET /api/v1/cloud-accounts":                     accessAdmin,
 		"POST /api/v1/cloud-accounts":                    accessAdmin,
 		"PUT /api/v1/cloud-accounts/{id}":                accessAdmin,
@@ -466,9 +482,9 @@ func TestPermissionMatrix(t *testing.T) {
 		"DELETE /api/v1/notification-channels/{id}":      accessAdmin,
 		"POST /api/v1/notification-channels/{id}/test":   accessAdmin,
 		"GET /api/v1/notification-deliveries":            accessAdmin,
-		"GET /api/v1/silences":                           accessAdmin,
-		"POST /api/v1/silences":                          accessAdmin,
-		"DELETE /api/v1/silences/{id}":                   accessAdmin,
+		"GET /api/v1/silences":                           accessOps,
+		"POST /api/v1/silences":                          accessOps,
+		"DELETE /api/v1/silences/{id}":                   accessOps,
 		"GET /api/v1/servers":                            accessRead,
 		"POST /api/v1/servers":                           accessAdmin,
 		"GET /api/v1/servers/{id}":                       accessRead,
@@ -514,6 +530,10 @@ func TestPermissionMatrix(t *testing.T) {
 			if name == "apikey" {
 				// 每次用新 Key：矩阵中的 DELETE /api-keys/{id} 会吊销编号为 1 的 Key
 				tok, _ = s.store.CreateAPIKey(&APIKey{Name: "matrix", ScopeType: "all"}, time.Now())
+			}
+			if name == "app" || name == "app 无低风险操作" {
+				// 每次用新设备：矩阵中的 /app/unpair、/app-devices/{id}/revoke 会吊销设备
+				tok = pairTestDevice(t, s, name == "app", "all", "").access
 			}
 			rec := do(h, method, path, tok, []byte(`{}`))
 			if rt.pattern == "POST /api/v1/auth/login" {

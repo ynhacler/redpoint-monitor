@@ -11,8 +11,10 @@ import (
 
 // Token prefixes make leaked tokens recognisable and prevent cross-use (design 1.6.6).
 const (
-	PrefixAgent  = "agt_"
-	PrefixAPIKey = "api_" // 只读 API Key（设计 45.2）
+	PrefixAgent   = "agt_"
+	PrefixAPIKey  = "api_" // 只读 API Key（设计 45.2）
+	PrefixDevice  = "dev_" // App 设备 Access Token（设计 12.5）
+	PrefixRefresh = "rt_"  // App 设备 Refresh Token（设计 12.5）
 )
 
 // NewToken returns a 160-bit random token with a type prefix. Only its hash is stored.

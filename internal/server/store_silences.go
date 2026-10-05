@@ -90,8 +90,9 @@ func (s *Store) CreateSilence(x Silence, now time.Time) (int64, error) {
 	return id, tx.Commit()
 }
 
-// EndSilence 立即结束一条静音或维护（保留记录）；不存在或已结束时返回 errNoSilence。
-func (s *Store) EndSilence(id int64, now time.Time) (*Silence, error) {
+// EndSilence 立即结束一条静音或维护（保留记录）；不存在、已结束或 allow 不允许时返回 errNoSilence。
+// allow 为 nil 表示不限制（Web 管理员）；App 设备只能结束授权范围内的记录（设计 17.3）。
+func (s *Store) EndSilence(id int64, now time.Time, allow func(Silence) bool) (*Silence, error) {
 	var x Silence
 	var ends sql.NullInt64
 	err := s.DB.QueryRow(`SELECT id, scope_type, scope_id, kind, reason, starts_at, ends_at, created_by FROM silences WHERE id = ?`, id).
@@ -104,7 +105,7 @@ func (s *Store) EndSilence(id int64, now time.Time) (*Silence, error) {
 	if ends.Valid {
 		x.EndsAt = &ends.Int64
 	}
-	if !x.activeAt(now) {
+	if !x.activeAt(now) || (allow != nil && !allow(x)) {
 		return nil, errNoSilence
 	}
 	if _, err := s.DB.Exec(`UPDATE silences SET ends_at = ? WHERE id = ?`, now.Unix(), id); err != nil {

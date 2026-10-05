@@ -533,6 +533,49 @@ var migrations = []string{
 		key TEXT PRIMARY KEY,
 		sent_at INTEGER NOT NULL
 	);`,
+
+	// 迁移 25：App 接入（设计 8.4、12.3～12.7、18.9、18.10）。AK、Access Token、Refresh Token 都只保存 SHA-256 哈希（约束 4）。
+	// 设备的授权范围在配对时从 AK 复制；prev_refresh_hash 与 rotated_at 用于 Refresh Token 轮换后的重复使用检测。
+	// push_public_key 为配对时提交的 X25519 公钥（端到端加密推送，设计 30.3），设备吊销时清空。
+	`CREATE TABLE app_access_keys (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		key_hash TEXT NOT NULL UNIQUE,
+		hint TEXT NOT NULL,
+		scope_type TEXT NOT NULL DEFAULT 'all',
+		scope_value TEXT NOT NULL DEFAULT '',
+		allow_low_risk_ops INTEGER NOT NULL DEFAULT 1,
+		max_devices INTEGER NOT NULL DEFAULT 1,
+		paired_devices INTEGER NOT NULL DEFAULT 0,
+		expires_at INTEGER NOT NULL,
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		last_used_at INTEGER NOT NULL DEFAULT 0,
+		revoked_at INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE app_devices (
+		id INTEGER PRIMARY KEY,
+		access_key_id INTEGER NOT NULL,
+		name TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		app_version TEXT NOT NULL DEFAULT '',
+		scope_type TEXT NOT NULL,
+		scope_value TEXT NOT NULL DEFAULT '',
+		allow_low_risk_ops INTEGER NOT NULL,
+		access_hash TEXT NOT NULL UNIQUE,
+		access_expires_at INTEGER NOT NULL,
+		refresh_hash TEXT NOT NULL UNIQUE,
+		refresh_expires_at INTEGER NOT NULL,
+		prev_refresh_hash TEXT NOT NULL DEFAULT '',
+		rotated_at INTEGER NOT NULL DEFAULT 0,
+		push_public_key TEXT NOT NULL DEFAULT '',
+		paired_at INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL DEFAULT 0,
+		revoked_at INTEGER NOT NULL DEFAULT 0,
+		revoked_by TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX app_devices_prev_refresh ON app_devices(prev_refresh_hash);
+	CREATE INDEX app_devices_key ON app_devices(access_key_id);`,
 }
 
 func (s *Store) migrate() error {

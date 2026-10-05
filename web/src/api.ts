@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, APIKey, APIKeyInput, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
 } from './api.gen'
 
@@ -431,6 +431,30 @@ export function createAPIKey(v: G.APIKeyInput) {
 
 export function revokeAPIKey(id: number) {
   return request('delete', '/api-keys/{id}', { params: { id } })
+}
+
+// ---- App 接入（设计 8.4、19.2、19.4） ----
+
+export async function listAppKeys() {
+  return (await request('get', '/app-access-keys')).items
+}
+
+/** 创建 App 配对 AK；需先重新验证密码。返回的 AK 与配对链接只出现这一次 */
+export function createAppKey(v: G.AppAccessKeyInput) {
+  return request('post', '/app-access-keys', { body: v })
+}
+
+/** 吊销 AK；revokeDevices 时同时吊销用它配对的设备 */
+export function revokeAppKey(id: number, revokeDevices: boolean) {
+  return request('post', '/app-access-keys/{id}/revoke', { params: { id }, body: { revoke_devices: revokeDevices } })
+}
+
+export async function listAppDevices() {
+  return (await request('get', '/app-devices')).items
+}
+
+export function revokeAppDevice(id: number) {
+  return request('post', '/app-devices/{id}/revoke', { params: { id } })
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----
