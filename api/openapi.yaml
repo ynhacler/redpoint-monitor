@@ -1863,7 +1863,7 @@ components:
       description: 添加时 provider、name、credential 必填；修改时 provider 不可更改，credential 留空表示不变
       required: [name]
       properties:
-        provider: { type: string, enum: [aws, aliyun_cn, aliyun_intl, tencent_cn, tencent_intl], description: 'aliyun_cn / aliyun_intl：阿里云国内站（aliyun.com）/ 国际站（alibabacloud.com）；tencent_cn / tencent_intl：腾讯云国内站（cloud.tencent.com）/ 国际站（tencentcloud.com）。Oracle Cloud 随后续步骤加入（设计 44.10）' }
+        provider: { type: string, enum: [aws, aliyun_cn, aliyun_intl, tencent_cn, tencent_intl, oci], description: 'aliyun_cn / aliyun_intl：阿里云国内站（aliyun.com）/ 国际站（alibabacloud.com）；tencent_cn / tencent_intl：腾讯云国内站（cloud.tencent.com）/ 国际站（tencentcloud.com）；oci：Oracle Cloud' }
         name: { type: string, maxLength: 64 }
         regions: { type: array, items: { type: string }, maxItems: 40, description: 只同步这些区域；空表示全部已启用的区域 }
         credential:
@@ -1875,6 +1875,11 @@ components:
             access_key_secret: { type: string, description: 阿里云 }
             secret_id: { type: string, description: 腾讯云 CAM 子用户的 SecretId（AKID…） }
             secret_key: { type: string, description: 腾讯云 }
+            tenancy_ocid: { type: string, description: 'Oracle Cloud：租户 OCID（ocid1.tenancy.…）' }
+            user_ocid: { type: string, description: 'Oracle Cloud：用户 OCID（ocid1.user.…）' }
+            fingerprint: { type: string, description: Oracle Cloud：API 签名密钥的指纹 }
+            private_key: { type: string, description: Oracle Cloud：API 签名私钥（PEM，不带密码） }
+            region: { type: string, description: Oracle Cloud：主区域（home region），如 ap-tokyo-1 }
         budget: { type: number, minimum: 0, description: 月度预算（账户币种：AWS 为 USD，阿里云国内站 CNY、国际站多为 USD）；0 表示不设 }
         cost_interval_h: { type: integer, enum: [6, 12, 24], description: 费用同步间隔，小时；AWS 每次同步约 0.02 美元 }
         enabled: { type: boolean }
@@ -1888,7 +1893,7 @@ components:
                  instance_count, current_cost, created_at, updated_at]
       properties:
         id: { type: integer }
-        provider: { type: string, enum: [aws, aliyun_cn, aliyun_intl, tencent_cn, tencent_intl] }
+        provider: { type: string, enum: [aws, aliyun_cn, aliyun_intl, tencent_cn, tencent_intl, oci] }
         name: { type: string }
         regions: { type: array, items: { type: string } }
         credential_hint: { type: string, description: '如 AKIA…WXYZ；完整凭证不返回' }
@@ -1936,7 +1941,7 @@ components:
         instance_id: { type: string }
         name: { type: string }
         region: { type: string }
-        kind: { type: string, description: ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量） }
+        kind: { type: string, description: ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量）/ oci / oci_egress（Oracle 租户每月出站流量） }
         state: { type: string, description: 云厂商原样，如 running / stopped }
         public_ipv4: { type: string }
         public_ipv6: { type: string }

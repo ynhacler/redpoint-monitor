@@ -101,6 +101,11 @@ func (s *Server) handleLinkCloudInstance(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	name := ""
+	if b.ServerID != nil && in.Kind == "oci_egress" {
+		// 租户出站流量是统计项，不是一台机器（设计 44.3）
+		s.writeError(w, r, errorf(CodeConflict, "租户出站流量不能关联节点"))
+		return
+	}
 	if b.ServerID != nil {
 		row, err := s.store.GetServer(*b.ServerID)
 		if err != nil {
