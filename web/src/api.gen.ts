@@ -152,7 +152,7 @@ export type QuietHoursView = QuietHours & {
 /** 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符 */
 export interface NotifyChannel {
   id: number
-  type: 'telegram' | 'webhook' | 'ntfy'
+  type: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
   name: string
   enabled: boolean
   /** 达到该级别才发送 */
@@ -172,8 +172,8 @@ export interface NotifyChannel {
 }
 
 export interface NotifyChannelInput {
-  /** 创建时必填，不可修改 */
-  type?: 'telegram' | 'webhook' | 'ntfy'
+  /** 创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token */
+  type?: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
   name: string
   enabled?: boolean
   min_severity?: 'critical' | 'warning' | 'info'
@@ -186,12 +186,12 @@ export interface NotifyChannelInput {
     chat_id?: string
     /** Webhook 地址，或 ntfy 服务器地址（默认 https://ntfy.sh）；只允许 HTTPS，回环地址除外；不跟随重定向 */
     url?: string
-    /** 可选，请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret */
+    /** 可选。Webhook：请求头 X-Vpsmon-Signature 为 sha256=HMAC-SHA256(secret, 请求体)；钉钉、飞书：机器人的加签密钥 */
     secret?: string
     clear_secret?: boolean
     /** ntfy 主题；公共服务器上知道主题即可订阅，请用不易猜到的名称 */
     topic?: string
-    /** ntfy 可选访问令牌（tk_…），以 Authorization Bearer 发送 */
+    /** ntfy 可选访问令牌（tk_…，Authorization Bearer）；Bark 的设备密钥（Device Key） */
     token?: string
     clear_token?: boolean
   }
@@ -201,7 +201,8 @@ export interface Delivery {
   id: number
   channel_id: number
   channel_name: string
-  channel_type: 'telegram' | 'webhook'
+  /** app 为 App 原生推送（设计 30），channel_name 为“App：设备名” */
+  channel_type: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu' | 'app'
   /** 测试通知为 0 */
   event_id: number
   server_name: string

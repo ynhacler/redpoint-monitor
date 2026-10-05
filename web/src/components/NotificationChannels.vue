@@ -64,7 +64,9 @@ async function save() {
       : form.type === 'ntfy'
         ? { url: form.url.trim() || undefined, topic: form.topic.trim() || undefined, token: form.token.trim() || undefined,
             clear_token: form.clear_token || undefined }
-        : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
+        : form.type === 'bark'
+          ? { url: form.url.trim() || undefined, token: form.token.trim() || undefined }
+          : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
   }
   try {
     if (editing.value === 'new') await createChannel({ ...body, type: form.type })
@@ -119,10 +121,22 @@ const kindNames: Record<Delivery['kind'], string> = {
   flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总', reminder: '提醒',
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
-const typeNames: Record<ChannelType, string> = { telegram: 'Telegram', webhook: 'Webhook', ntfy: 'ntfy' }
+const typeNames: Record<ChannelType, string> = {
+  telegram: 'Telegram', webhook: 'Webhook', ntfy: 'ntfy', bark: 'Bark（iOS）', discord: 'Discord',
+  wecom: '企业微信', dingtalk: '钉钉', feishu: '飞书',
+}
+// 机器人类渠道：填写群机器人的地址（钉钉、飞书可选加签密钥）（设计 31）
+const robotHelp: Partial<Record<ChannelType, string>> = {
+  discord: '频道设置 → 整合 → Webhook → 新建，复制 Webhook 网址（https://discord.com/api/webhooks/…）',
+  wecom: '群聊 → 添加群机器人 → 复制 Webhook 地址（https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…）',
+  dingtalk: '群设置 → 机器人 → 自定义机器人；安全设置选“加签”时把密钥（SEC…）填在下面（https://oapi.dingtalk.com/robot/send?access_token=…）',
+  feishu: '群设置 → 群机器人 → 自定义机器人；开启“签名校验”时把密钥填在下面（https://open.feishu.cn/open-apis/bot/v2/hook/…）',
+}
+const isRobot = (t: ChannelType) => t in robotHelp
 const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.chat_id} · ${c.config.bot_token}`
   : c.type === 'ntfy' ? `${c.config.url} · 主题 ${c.config.topic}${c.config.has_token ? ' · 已设置令牌' : ''}`
-    : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
+    : c.type === 'bark' ? `${c.config.url}${c.config.has_token ? ' · 已设置设备密钥' : ''}`
+      : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
 </script>
 
 <template>
@@ -137,9 +151,12 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     <QuietHoursSettings />
 
     <div class="actions">
-      <button type="button" @click="openNew('telegram')">添加 Telegram</button>
-      <button type="button" class="secondary" @click="openNew('webhook')">添加 Webhook</button>
-      <button type="button" class="secondary" @click="openNew('ntfy')">添加 ntfy</button>
+      <!-- 渠道类型较多：用下拉选择，窄屏也不溢出 -->
+      <select class="add-type" aria-label="添加通知渠道" :value="''"
+        @change="openNew(($event.target as HTMLSelectElement).value as ChannelType); ($event.target as HTMLSelectElement).value = ''">
+        <option value="" disabled>＋ 添加通知渠道…</option>
+        <option v-for="(n, t) in typeNames" :key="t" :value="t">{{ n }}</option>
+      </select>
     </div>
 
     <!-- 新增 / 编辑 -->
@@ -178,6 +195,31 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
           </label>
           <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_token" type="checkbox" />清除访问令牌</label>
         </template>
+        <template v-else-if="form.type === 'bark'">
+          <label class="wide">Bark 服务器
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://api.day.app（留空使用公共服务器）' : '留空保持不变'" />
+            <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
+          </label>
+          <label>设备密钥（Device Key）
+            <input v-model="form.token" type="password" autocomplete="off" :placeholder="editing === 'new' ? 'Bark App 首页显示的密钥' : '留空保持不变'" />
+            <small v-if="fieldErrors.token" class="err">{{ fieldErrors.token }}</small>
+            <small v-else class="muted">严重告警以“时效性通知”提醒，点击打开节点详情</small>
+          </label>
+        </template>
+        <template v-else-if="isRobot(form.type)">
+          <label class="wide">机器人地址
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : '留空保持不变'" />
+            <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
+            <small v-else class="muted">{{ robotHelp[form.type] }}</small>
+          </label>
+          <template v-if="form.type === 'dingtalk' || form.type === 'feishu'">
+            <label>加签密钥（可选）
+              <input v-model="form.secret" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : '留空保持不变'" />
+              <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
+            </label>
+            <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_secret" type="checkbox" />清除加签密钥</label>
+          </template>
+        </template>
         <template v-else>
           <label class="wide">Webhook 地址
             <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : '留空保持不变'" />
@@ -208,7 +250,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     </form>
 
     <!-- 渠道列表 -->
-    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、ntfy 或你的 Webhook。</p>
+    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、ntfy、Bark、Discord、企业微信、钉钉、飞书或你的 Webhook。</p>
     <ul v-if="channels.length" class="panel list">
       <li v-for="c in channels" :key="c.id" :class="{ off: !c.enabled }">
         <div class="ch">
@@ -289,4 +331,5 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
   .deliveries .kind, .deliveries li > .muted { display: none; }
   .deliveries .reason { grid-column: 1 / -1; }
 }
+.add-type { width: auto; }
 </style>
