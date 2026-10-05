@@ -239,6 +239,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/cloud-instances", accessAdmin, s.handleCloudInstances)
 	handle("PUT /api/v1/cloud-instances/{id}/server", accessAdmin, s.handleLinkCloudInstance)
 	handle("POST /api/v1/cloud-instances/{id}/apply-expire", accessAdmin, s.handleApplyCloudInstance)
+	handle("PUT /api/v1/cloud-instances/{id}/auto-calibrate", accessAdmin, s.handleCloudAutoCalibrate)
 	// 只读 API Key 的管理（设计 45.2）：只有 Web 管理员可以创建、查看、吊销；创建需重新验证密码
 	handle("GET /api/v1/api-keys", accessAdmin, s.handleAPIKeys)
 	handle("POST /api/v1/api-keys", accessAdmin, s.handleCreateAPIKey)

@@ -579,6 +579,11 @@ var migrations = []string{
 
 	// 迁移 26：云账户余额提醒阈值（设计 44.6），单位为分；0 表示不提醒
 	`ALTER TABLE cloud_accounts ADD COLUMN balance_alert_cents INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 27：云实例自动流量校准（设计 44.5）：开关、上次执行时间与结果说明
+	`ALTER TABLE cloud_instances ADD COLUMN auto_calibrate INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE cloud_instances ADD COLUMN calibrated_at INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE cloud_instances ADD COLUMN calibrate_status TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

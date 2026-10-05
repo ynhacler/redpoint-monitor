@@ -414,6 +414,11 @@ export async function listCloudInstances(q: { account_id?: number; server_id?: n
 }
 
 /** 关联或取消关联（serverId 为 null）节点（设计 44.5） */
+/** 打开或关闭自动流量校准（设计 44.5）：每天用云厂商口径的本周期流量校准关联节点 */
+export function setCloudAutoCalibrate(id: number, enabled: boolean) {
+  return request('put', '/cloud-instances/{id}/auto-calibrate', { params: { id }, body: { enabled } })
+}
+
 export function linkCloudInstance(id: number, serverId: number | null) {
   return request('put', '/cloud-instances/{id}/server', { params: { id }, body: { server_id: serverId } })
 }

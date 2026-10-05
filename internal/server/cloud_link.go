@@ -20,20 +20,34 @@ func (s *Store) CloudInstanceByID(id int64) (CloudInstance, error) {
 	var c CloudInstance
 	err := s.DB.QueryRow(`SELECT i.id, i.account_id, a.name, a.provider, i.instance_id, i.name, i.region, i.kind, i.state,
 		i.public_ipv4, i.public_ipv6, i.plan, i.expire_at, i.renew_price_cents, i.traffic_limit_bytes, i.traffic_used_bytes,
-		i.traffic_period_start, i.server_id, i.updated_at
+		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status
 		FROM cloud_instances i JOIN cloud_accounts a ON a.id = i.account_id WHERE i.id = ?`, id).Scan(
 		&c.ID, &c.AccountID, &c.AccountName, &c.Provider, &c.InstanceID, &c.Name, &c.Region, &c.Kind, &c.State,
 		&c.PublicIPv4, &c.PublicIPv6, &c.Plan, &c.ExpireAt, &c.RenewPriceCents, &c.TrafficLimitBytes, &c.TrafficUsedBytes,
-		&c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt)
+		&c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt, &c.CalibrateStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, errNoCloudInstance
 	}
 	return c, err
 }
 
-// SetCloudInstanceServer 关联（serverID 非 nil）或取消关联。
+// SetCloudInstanceServer 关联（serverID 非 nil）或取消关联；取消或改关联时关闭自动校准（需要重新确认口径一致）。
 func (s *Store) SetCloudInstanceServer(id int64, serverID *int64) error {
-	_, err := s.DB.Exec(`UPDATE cloud_instances SET server_id = ? WHERE id = ?`, serverID, id)
+	_, err := s.DB.Exec(`UPDATE cloud_instances SET auto_calibrate = CASE WHEN server_id IS ? THEN auto_calibrate ELSE 0 END,
+		calibrate_status = CASE WHEN server_id IS ? THEN calibrate_status ELSE '' END, server_id = ? WHERE id = ?`,
+		serverID, serverID, serverID, id)
+	return err
+}
+
+// SetCloudAutoCalibrate 打开或关闭自动流量校准（设计 44.5）。
+func (s *Store) SetCloudAutoCalibrate(id int64, on bool) error {
+	_, err := s.DB.Exec(`UPDATE cloud_instances SET auto_calibrate = ?, calibrate_status = '' WHERE id = ?`, on, id)
+	return err
+}
+
+// RecordCloudCalibrate 记录一次自动校准的时间与结果（包括未校准的原因）。
+func (s *Store) RecordCloudCalibrate(id int64, at time.Time, status string) error {
+	_, err := s.DB.Exec(`UPDATE cloud_instances SET calibrated_at = ?, calibrate_status = ? WHERE id = ?`, at.Unix(), status, id)
 	return err
 }
 

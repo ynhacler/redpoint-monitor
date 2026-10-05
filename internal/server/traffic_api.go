@@ -256,31 +256,37 @@ func (s *Server) handleCalibrate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	cur, err := s.trafficOf(*row, now)
+	v, a, err := s.calibrate(*row, GBToBytes(*body.UsedGB, row.TrafficUnit), body.Note, now)
 	if err != nil {
-		s.writeError(w, r, internalError(err))
-		return
-	}
-	reported := GBToBytes(*body.UsedGB, row.TrafficUnit)
-	// 每次校准都相对当前统计值重新锚定，覆盖本周期之前的校准，而不是累加；
-	// 同时记下原始收发字节，之后修改系数或计费模式时按新设置重算偏差（设计 5.7）
-	rawRx, rawTx := int64(cur.Rx), int64(cur.Tx)
-	a := Adjustment{CycleStart: cur.CycleStart, Measured: int64(cur.Measured), Reported: reported,
-		Adjustment: reported - int64(cur.Measured), RawRx: &rawRx, RawTx: &rawTx, Note: body.Note, CreatedAt: now.Unix()}
-	if _, err := s.store.AddAdjustment(row.ID, a); err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "traffic.calibrate", TargetType: "server", TargetID: row.ID,
 		Success: true, Details: map[string]any{"cycle_start": a.CycleStart, "measured": a.Measured,
 			"reported": a.Reported, "adjustment": a.Adjustment}})
-	v, err := s.trafficOf(*row, now)
-	if err != nil {
-		s.writeError(w, r, internalError(err))
-		return
-	}
-	s.storeTraffic(*row, v, now) // 校准后列表与详情立即显示新值
 	writeJSON(w, v)
+}
+
+// calibrate 以服务商数值（字节）校准节点本周期流量（设计 5.7），手动校准与云账户自动校准（44.5）共用。
+// 每次校准都相对当前统计值重新锚定，覆盖本周期之前的校准，而不是累加；
+// 同时记下原始收发字节，之后修改系数或计费模式时按新设置重算偏差。返回校准后的流量。
+func (s *Server) calibrate(row ServerRow, reported int64, note string, now time.Time) (trafficView, Adjustment, error) {
+	cur, err := s.trafficOf(row, now)
+	if err != nil {
+		return trafficView{}, Adjustment{}, err
+	}
+	rawRx, rawTx := int64(cur.Rx), int64(cur.Tx)
+	a := Adjustment{CycleStart: cur.CycleStart, Measured: int64(cur.Measured), Reported: reported,
+		Adjustment: reported - int64(cur.Measured), RawRx: &rawRx, RawTx: &rawTx, Note: note, CreatedAt: now.Unix()}
+	if _, err := s.store.AddAdjustment(row.ID, a); err != nil {
+		return trafficView{}, Adjustment{}, err
+	}
+	v, err := s.trafficOf(row, now)
+	if err != nil {
+		return trafficView{}, Adjustment{}, err
+	}
+	s.storeTraffic(row, v, now) // 校准后列表与详情立即显示新值
+	return v, a, nil
 }
 
 // handleAdjustments：GET /api/v1/servers/{id}/traffic/adjustments，admin。最近 50 条校准记录，最新在前。

@@ -1092,6 +1092,27 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /cloud-instances/{id}/auto-calibrate:
+    put:
+      tags: [cloud]
+      summary: 打开或关闭自动流量校准（设计 44.5）；打开要求已关联节点且实例有流量包
+      description: |
+        打开后每天一次：云厂商的周期起点与节点本周期起点相同、且云厂商流量 36 小时内同步过时，以云厂商的本周期用量
+        作为服务商数值校准节点（记入校准历史，审计主体 system）；对不上时不改节点，原因写入 calibrate_status。
+        取消或更改关联时自动关闭。
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } }
+      responses:
+        '200': { description: 实例, content: { application/json: { schema: { $ref: '#/components/schemas/CloudInstance' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /cloud-instances/{id}/apply-expire:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     post:
@@ -2134,7 +2155,7 @@ components:
       type: object
       required: [id, account_id, account_name, provider, instance_id, name, region, kind, state, public_ipv4, public_ipv6, plan,
                  expire_at, renew_price_cents, traffic_limit_bytes, traffic_used_bytes, traffic_period_start, server_id, updated_at,
-                 suggested_server_id]
+                 suggested_server_id, auto_calibrate, calibrated_at, calibrate_status]
       properties:
         id: { type: integer }
         account_id: { type: integer }
@@ -2156,6 +2177,9 @@ components:
         server_id: { type: [integer, 'null'], description: 关联的节点（设计 44.5） }
         suggested_server_id: { type: [integer, 'null'], description: 未关联时，公网 IP 与之唯一匹配的节点（建议关联，需用户确认） }
         updated_at: { type: integer }
+        auto_calibrate: { type: boolean, description: 每天用云厂商口径的本周期流量自动校准关联节点（设计 44.5） }
+        calibrated_at: { type: integer, description: 上次自动校准（或检查）的时间；0 表示还没有执行 }
+        calibrate_status: { type: string, description: '上次自动校准的结果，如“已按云厂商数值校准为 120 GB”或未校准的原因' }
 
     APIKeyInput:
       type: object
