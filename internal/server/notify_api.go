@@ -23,6 +23,9 @@ type channelBody struct {
 		URL         string `json:"url"`
 		Secret      string `json:"secret"`
 		ClearSecret bool   `json:"clear_secret"`
+		Topic       string `json:"topic"`
+		Token       string `json:"token"`
+		ClearToken  bool   `json:"clear_token"`
 	} `json:"config"`
 }
 
@@ -56,6 +59,14 @@ func (b *channelBody) apply(c *NotifyChannel) {
 	}
 	if b.Config.URL != "" {
 		c.Config.URL = b.Config.URL
+	}
+	if b.Config.Topic != "" {
+		c.Config.Topic = b.Config.Topic
+	}
+	if b.Config.Token != "" {
+		c.Config.Token = b.Config.Token
+	} else if b.Config.ClearToken {
+		c.Config.Token = ""
 	}
 	if b.Config.Secret != "" {
 		c.Config.Secret = b.Config.Secret

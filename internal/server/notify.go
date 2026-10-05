@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// 告警通知（设计 16.5、18.15、31）：Telegram 与 Webhook，由用户自己的面板直接发送。
+// 告警通知（设计 16.5、18.15、31）：Telegram、Webhook 与 ntfy，由用户自己的面板直接发送。
 //
 //   - 告警进入 firing、恢复、仍未恢复到达重复间隔时，按渠道的最低级别发送；已静音的告警照常记录、不发送
 //   - 每次投递记录到 notification_deliveries（保留 30 天），失败后按 2s / 8s / 30s 重试 3 次
@@ -32,7 +32,11 @@ import (
 const (
 	ChannelTelegram = "telegram"
 	ChannelWebhook  = "webhook"
+	ChannelNtfy     = "ntfy" // 设计 31：自建或公共 ntfy 服务器（第一批）
 )
+
+// defaultNtfyServer 是 ntfy 的公共服务器；自建服务器时填写自己的地址。
+const defaultNtfyServer = "https://ntfy.sh"
 
 // 通知种类
 const (
@@ -77,6 +81,8 @@ type channelConfig struct {
 	ChatID   string `json:"chat_id,omitempty"`   // Telegram：数字 ID 或 @频道名
 	URL      string `json:"url,omitempty"`       // Webhook
 	Secret   string `json:"secret,omitempty"`    // Webhook：可选，HMAC-SHA256 签名密钥
+	Topic    string `json:"topic,omitempty"`     // ntfy：主题（公共服务器上知道主题即可订阅，按凭证对待）
+	Token    string `json:"token,omitempty"`     // ntfy：可选，访问令牌（tk_…）
 }
 
 // channelView 是返回给 Web 的渠道：凭证脱敏，签名密钥只说明是否已设置。
@@ -94,8 +100,20 @@ func (c NotifyChannel) view() channelView {
 	case ChannelWebhook:
 		cfg["url"] = maskURL(c.Config.URL)
 		cfg["has_secret"] = c.Config.Secret != ""
+	case ChannelNtfy:
+		cfg["url"] = c.Config.URL
+		cfg["topic"] = maskTopic(c.Config.Topic)
+		cfg["has_token"] = c.Config.Token != ""
 	}
 	return channelView{NotifyChannel: c, Config: cfg}
+}
+
+// maskTopic：公共 ntfy 服务器上主题相当于密码，只显示前 3 个字符
+func maskTopic(t string) string {
+	if len(t) <= 3 {
+		return "…"
+	}
+	return t[:3] + "…"
 }
 
 // maskBotToken：123456789:AA…wxyz
@@ -122,6 +140,8 @@ func maskURL(raw string) string {
 var (
 	botTokenPattern = regexp.MustCompile(`^\d{5,15}:[A-Za-z0-9_-]{30,64}$`)
 	chatIDPattern   = regexp.MustCompile(`^(-?\d{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$`)
+	ntfyTopic       = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	ntfyToken       = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
 
 // validate 校验渠道字段，返回字段错误。
@@ -156,8 +176,24 @@ func (c *NotifyChannel) validate() []FieldError {
 		if len(c.Config.Secret) > 128 {
 			errs = append(errs, FieldError{Field: "config.secret", Message: "签名密钥最长 128 个字符"})
 		}
+	case ChannelNtfy:
+		c.Config.URL = strings.TrimRight(strings.TrimSpace(c.Config.URL), "/")
+		c.Config.Topic = strings.TrimSpace(c.Config.Topic)
+		c.Config.BotToken, c.Config.ChatID, c.Config.Secret = "", "", ""
+		if c.Config.URL == "" {
+			c.Config.URL = defaultNtfyServer
+		}
+		if msg := checkWebhookURL(c.Config.URL); msg != "" {
+			errs = append(errs, FieldError{Field: "config.url", Message: strings.Replace(msg, "Webhook", "ntfy 服务器", 1)})
+		}
+		if !ntfyTopic.MatchString(c.Config.Topic) {
+			errs = append(errs, FieldError{Field: "config.topic", Message: "主题为 1～64 个字母、数字、- 或 _；公共服务器上请用不易猜到的名称"})
+		}
+		if c.Config.Token != "" && !ntfyToken.MatchString(c.Config.Token) {
+			errs = append(errs, FieldError{Field: "config.token", Message: "访问令牌格式不正确"})
+		}
 	default:
-		errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram 或 webhook"})
+		errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram、webhook 或 ntfy"})
 	}
 	return errs
 }
@@ -473,6 +509,30 @@ func (m notifyMessage) webhookPayload(now time.Time) []byte {
 }
 
 // wants 判断渠道是否接收这条通知。
+// ntfyPayload 是 ntfy 的 JSON 发布格式（POST 到服务器根地址，主题在请求体中）：标题、正文、优先级、标签与点击链接。
+func (m notifyMessage) ntfyPayload(topic string, now time.Time) []byte {
+	title := m.title()
+	body := strings.TrimSpace(strings.TrimPrefix(m.text(now), title))
+	priority, tags := 3, []string{"information_source"}
+	switch {
+	case m.Kind == NotifyResolved:
+		tags = []string{"white_check_mark"}
+	case m.Severity == SeverityCritical:
+		priority, tags = 5, []string{"rotating_light"}
+	case m.Severity == SeverityWarning:
+		priority, tags = 4, []string{"warning"}
+	}
+	p := map[string]any{"topic": topic, "title": title, "message": body, "priority": priority, "tags": tags}
+	if body == "" {
+		p["message"] = title
+	}
+	if m.Link != "" {
+		p["click"] = m.Link
+	}
+	b, _ := json.Marshal(p)
+	return b
+}
+
 func (c NotifyChannel) wants(m notifyMessage) bool {
 	if !c.Enabled {
 		return false
@@ -600,6 +660,12 @@ func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) e
 			mac.Write(body)
 			req.Header.Set("X-Vpsmon-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 		}
+	case ChannelNtfy:
+		body := m.ntfyPayload(c.Config.Topic, now)
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, c.Config.URL, bytes.NewReader(body))
+		if err == nil && c.Config.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.Config.Token)
+		}
 	default:
 		return errors.New("未知的渠道类型")
 	}
@@ -623,6 +689,14 @@ func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) e
 	}
 	detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	msg := fmt.Sprintf("返回 %d", resp.StatusCode)
+	if c.Type == ChannelNtfy {
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(detail, &e) == nil && e.Error != "" {
+			msg += "：" + e.Error
+		}
+	}
 	if c.Type == ChannelTelegram {
 		// Telegram 的错误说明（如 chat not found）有助于排查；不含 Token
 		var tg struct {

@@ -36,20 +36,20 @@ onMounted(load)
 const editing = ref<number | 'new' | null>(null)
 const form = reactive({
   type: 'telegram' as ChannelType, name: '', enabled: true, min_severity: 'warning' as NotifyChannel['min_severity'],
-  notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false,
+  notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
 })
 const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
 
 function openNew(type: ChannelType) {
-  Object.assign(form, { type, name: type === 'telegram' ? 'Telegram' : 'Webhook', enabled: true, min_severity: 'warning',
-    notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false })
+  Object.assign(form, { type, name: typeNames[type], enabled: true, min_severity: 'warning',
+    notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false })
   fieldErrors.value = {}
   editing.value = 'new'
 }
 function openEdit(c: NotifyChannel) {
   Object.assign(form, { type: c.type, name: c.name, enabled: c.enabled, min_severity: c.min_severity, notify_resolved: c.notify_resolved,
-    bot_token: '', chat_id: c.config.chat_id ?? '', url: '', secret: '', clear_secret: false })
+    bot_token: '', chat_id: c.config.chat_id ?? '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false })
   fieldErrors.value = {}
   editing.value = c.id
 }
@@ -61,7 +61,10 @@ async function save() {
     name: form.name, enabled: form.enabled, min_severity: form.min_severity, notify_resolved: form.notify_resolved,
     config: form.type === 'telegram'
       ? { bot_token: form.bot_token.trim() || undefined, chat_id: form.chat_id.trim() }
-      : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
+      : form.type === 'ntfy'
+        ? { url: form.url.trim() || undefined, topic: form.topic.trim() || undefined, token: form.token.trim() || undefined,
+            clear_token: form.clear_token || undefined }
+        : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
   }
   try {
     if (editing.value === 'new') await createChannel({ ...body, type: form.type })
@@ -116,8 +119,10 @@ const kindNames: Record<Delivery['kind'], string> = {
   flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总', reminder: '提醒',
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
-const typeNames: Record<ChannelType, string> = { telegram: 'Telegram', webhook: 'Webhook' }
-const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.chat_id} · ${c.config.bot_token}` : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
+const typeNames: Record<ChannelType, string> = { telegram: 'Telegram', webhook: 'Webhook', ntfy: 'ntfy' }
+const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.chat_id} · ${c.config.bot_token}`
+  : c.type === 'ntfy' ? `${c.config.url} · 主题 ${c.config.topic}${c.config.has_token ? ' · 已设置令牌' : ''}`
+    : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
 </script>
 
 <template>
@@ -134,6 +139,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     <div class="actions">
       <button type="button" @click="openNew('telegram')">添加 Telegram</button>
       <button type="button" class="secondary" @click="openNew('webhook')">添加 Webhook</button>
+      <button type="button" class="secondary" @click="openNew('ntfy')">添加 ntfy</button>
     </div>
 
     <!-- 新增 / 编辑 -->
@@ -154,6 +160,23 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
             <small v-if="fieldErrors.chat_id" class="err">{{ fieldErrors.chat_id }}</small>
             <small v-else class="muted">先向机器人发一条消息（群组需把机器人拉进群），再通过 @userinfobot 等获取 ID</small>
           </label>
+        </template>
+        <template v-else-if="form.type === 'ntfy'">
+          <label class="wide">ntfy 服务器
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://ntfy.sh（留空使用公共服务器）' : '留空保持不变'" />
+            <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
+            <small v-else class="muted">自建 ntfy 时填写自己的地址；只支持 HTTPS，本机回环地址除外</small>
+          </label>
+          <label>主题
+            <input v-model="form.topic" spellcheck="false" autocomplete="off" :placeholder="editing === 'new' ? '如 vpsmon-7k2q9x' : '留空保持不变'" />
+            <small v-if="fieldErrors.topic" class="err">{{ fieldErrors.topic }}</small>
+            <small v-else class="muted">公共服务器上知道主题就能订阅，请用不易猜到的名称；手机上的 ntfy App 订阅同一主题即可收到</small>
+          </label>
+          <label>访问令牌（可选）
+            <input v-model="form.token" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? 'tk_…（服务器开启鉴权时）' : '留空保持不变'" />
+            <small v-if="fieldErrors.token" class="err">{{ fieldErrors.token }}</small>
+          </label>
+          <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_token" type="checkbox" />清除访问令牌</label>
         </template>
         <template v-else>
           <label class="wide">Webhook 地址
@@ -185,7 +208,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     </form>
 
     <!-- 渠道列表 -->
-    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram 或你的 Webhook。</p>
+    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、ntfy 或你的 Webhook。</p>
     <ul v-if="channels.length" class="panel list">
       <li v-for="c in channels" :key="c.id" :class="{ off: !c.enabled }">
         <div class="ch">
