@@ -179,7 +179,8 @@
 - [x] E2E 推送（面板端）：HPKE 加密（标准库 crypto/hpke）、补齐档位、推送 Token 登记、范围过滤、投递记录、失效 Token 清理（设计 30.3）
 - [x] push-relay：无状态、实例签名校验、防重放、内存限流、APNs（ES256 JWT）/ FCM v1（服务账号），无日志（设计 30.2、30.5）
 - [x] E2E 推送（App 端第一步）：配对时生成 X25519 密钥并提交公钥、HPKE 解密（与面板测试向量互通）、推送登记与状态显示
-- [ ] E2E 推送（App 端第二步）：接入 firebase_messaging 取得 APNs / FCM Token、iOS Notification Service Extension 解密、
+- [x] iOS 通知服务扩展：CryptoKit HPKE 解密、共享钥匙串中的各中心私钥（make ios-push-check 与面板向量互通）
+- [ ] E2E 推送（App 端第二步）：接入 firebase_messaging 取得 APNs / FCM Token、aps-environment 授权、
   Android 后台处理器解密（需要开发者的 APNs 密钥与 Firebase 项目）
 - [ ] 部署官方 Push Relay，并把地址设为 --push-relay 的默认值
 

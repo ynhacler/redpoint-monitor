@@ -96,10 +96,13 @@ class MemoryCentersStore implements CentersStore {
 
 /// 把一个中心适配为 ApiClient 使用的 SessionStore：刷新凭证时更新列表中的这一项，吊销时删除这一项。
 class CenterSessionStore implements SessionStore {
-  CenterSessionStore(this._store, this._centers, this._key);
+  CenterSessionStore(this._store, this._centers, this._key, {this.onChanged});
   final CentersStore _store;
   final Centers _centers;
   final String _key;
+
+  /// 会话变化后（刷新凭证、生成推送密钥、删除）通知外层，例如把推送私钥同步给 iOS 扩展
+  final void Function()? onChanged;
 
   @override
   Future<Session?> load() async => _centers.sessions.where((s) => centerKey(s) == _key).firstOrNull;
@@ -110,6 +113,7 @@ class CenterSessionStore implements SessionStore {
     if (i >= 0) {
       _centers.sessions[i] = s;
       await _store.save(_centers);
+      onChanged?.call();
     }
   }
 
@@ -117,6 +121,7 @@ class CenterSessionStore implements SessionStore {
   Future<void> clear() async {
     _centers.remove(_key);
     await _store.save(_centers);
+    onChanged?.call();
   }
 }
 

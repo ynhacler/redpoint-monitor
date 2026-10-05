@@ -13,7 +13,7 @@ VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux build-relay \
+.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux build-relay ios-push-check \
         vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
@@ -130,6 +130,11 @@ app-setup: ## Generate iOS/Android projects for the Flutter app (first time)
 	cd app && flutter create --org dev.vpsmon --project-name vpsmon_app --platforms ios,android . && flutter pub get
 	@# 扫码配对需要相机权限说明（设计 12.4）；iOS 没有这一项时访问相机会直接崩溃
 	@/usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 扫描 Web 管理端的配对二维码" app/ios/Runner/Info.plist 2>/dev/null || true
+
+ios-push-check: ## macOS: iOS push decryption (CryptoKit HPKE) against the panel's test vectors (design 30.3)
+	@d=$$(mktemp -d) && cp scripts/ios/push_crypto_check.swift $$d/main.swift && \
+	  swiftc -O app/ios/NotificationService/PushCrypto.swift $$d/main.swift -o $$d/check && $$d/check internal/push/testdata/vectors.json; \
+	  s=$$?; rm -rf $$d; exit $$s
 
 app-run: ## Run the app (pick a simulator/emulator when prompted)
 	cd app && flutter run

@@ -56,6 +56,7 @@ web/                   Vue 3 + Vite + TS; dist/ is embedded via go:embed
   src/components/      design-system components (design 41.3)
 design/tokens.json     design tokens shared by Web and App (design 41.2)
 app/                   Flutter app (iOS/Android); run `make app-setup` once
+  ios/NotificationService/ iOS push decryption extension (CryptoKit HPKE); `make ios-push-check` verifies it against Go vectors
 deploy/systemd/        hardened unit files; deploy/openrc/ OpenRC script (Alpine, design 28)
 scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design_refs.py
 docs/design.md         the design; numbering rules in design 40.9

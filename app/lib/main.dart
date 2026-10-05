@@ -14,6 +14,7 @@ import 'centers.dart';
 import 'pages/pair_page.dart';
 import 'pages/shell.dart';
 import 'prefs.dart';
+import 'push_keys.dart';
 import 'session.dart';
 import 'theme.dart';
 
@@ -90,8 +91,10 @@ class _RootState extends State<Root> {
     }
     for (final s in _centers.sessions) {
       final k = centerKey(s);
-      _clients.putIfAbsent(k, () => ApiClient(s, CenterSessionStore(widget.store, _centers, k)));
+      _clients.putIfAbsent(k, () => ApiClient(s, CenterSessionStore(widget.store, _centers, k,
+          onChanged: () => syncPushKeys(_centers.sessions))));
     }
+    syncPushKeys(_centers.sessions); // iOS：推送私钥交给通知扩展（设计 30.3.3）
   }
 
   /// 切到当前中心：每个中心独立的 ApiClient、缓存与偏好。
