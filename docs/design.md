@@ -360,6 +360,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 90 | App 第一步：扫码 / 手工配对、设备凭证安全存储、自动刷新（单飞）与失效处理、节点列表、解除配对；CI 加入 Flutter 检查 | 12.2～12.7 |
 | 89 | 配对二维码在浏览器本地生成（qrcode-generator，M 级纠错），两种主题均为黑模块白底、4 格静区；新增令牌 qr-dark / qr-light | 8.4.4、41.2 |
 | 88 | App 接入服务端：AK（MNT-，7 组 140 bit，默认一次性 / 1 台 / 1 天）、配对、dev_ Access Token 30 分钟 + rt_ Refresh Token 90 天轮换（宽限 60 秒，之后重复使用即吊销设备）、设备吊销覆盖 REST / 刷新 / WebSocket；设备以只读主体访问读取类接口，AK 允许时可静音与维护单个节点；新增错误码 access_key_invalid、token_expired；Web“App 接入”页；示例中的 dt_ 改为 dev_、设备 ID 为整数 | 8.4、12.5、17.2、19.2～19.4、43.4 |
 | 87 | 云账户第四步：Oracle Cloud（HTTP 签名 RSA-SHA256、Usage API 按月费用与出站数据量、全部区间与已订阅区域的实例、公网 IP）；租户出站流量作为统计项对照 10 TB 免费额度，不可关联节点 | 44.3 |
@@ -4445,6 +4446,23 @@ App 应：
 ```
 
 ---
+
+### 12.7.1 实现说明（修订第 90 条）
+
+```text
+文件      app/lib/pair_link.dart   二维码与手工输入的解析校验（纯函数，单元测试）
+          app/lib/session.dart     设备会话，flutter_secure_storage 中一个键（session_v1）；启动时清除开发骨架的旧键
+          app/lib/api.dart         配对、带凭证的请求、自动刷新、失效处理（http 的 MockClient 测试）
+          app/lib/pages/           添加监控平台（扫码 / 手工）、扫码（mobile_scanner）、节点列表
+地址      只接受 https；调试构建中允许 http://127.0.0.1 与 http://10.0.2.2（模拟器访问本机面板）；拒绝带用户名密码的地址
+扫码      只读取 server 与 ak 两个参数；先显示目标面板地址，用户确认后才配对
+刷新      Access Token 到期前 60 秒内先刷新；收到 token_expired 刷新后重试一次；刷新单飞，并发请求共用一次，
+          避免同一个 Refresh Token 被提交两次而触发重复使用检测（19.4.1）
+失效      token_revoked / unauthorized / 刷新被拒：清除凭证，回到“添加监控平台”并显示 12.7 的提示
+解除      节点列表右上角“解除配对”：调用 /app/unpair，网络失败也清除本地凭证
+平台工程  ios/、android/ 由 make app-setup（flutter create）生成，不提交；app-setup 同时写入 iOS 相机权限说明
+CI        flutter analyze 与 flutter test（不构建安装包）
+```
 
 ## 12.8 多监控中心
 

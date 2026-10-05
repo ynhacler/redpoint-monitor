@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpsmon_app/main.dart';
+import 'package:vpsmon_app/api.dart';
 
 void main() {
   test('fmtBytes uses decimal units', () {
