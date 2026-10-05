@@ -123,12 +123,18 @@ func TestAppPushEndToEnd(t *testing.T) {
 	if p := decrypt(jpKey, apns.got[jpTok]); p.ServerName != "tokyo" {
 		t.Fatalf("jp 设备 %+v", p)
 	}
-	// 提示级不推送
+	// 提示级不推送；流量阈值与流量预计超额例外（设计 1.5.8）
 	before := apns.hits
-	s.notify.dispatch(notifyMessage{Kind: NotifyFiring, ServerID: jp.ServerID, Severity: SeverityInfo, Message: "x", StartedAt: time.Now()})
+	s.notify.dispatch(notifyMessage{Kind: NotifyFiring, ServerID: jp.ServerID, Type: "swap", Severity: SeverityInfo, Message: "x", StartedAt: time.Now()})
 	s.notify.wg.Wait()
 	if apns.hits != before {
 		t.Fatal("提示级不应推送")
+	}
+	s.notify.dispatch(notifyMessage{Kind: NotifyFiring, EventID: 9, ServerID: jp.ServerID, ServerName: "tokyo", Type: "traffic_forecast",
+		Severity: SeverityInfo, Message: "预计周期结束 1.2 TB，超过套餐 1 TB", StartedAt: time.Now()})
+	s.notify.wg.Wait()
+	if p := decrypt(jpKey, apns.got[jpTok]); p.EventID != 9 || !strings.Contains(p.Title, "预计") {
+		t.Fatalf("流量预计超额应推送：%+v", p)
 	}
 
 	// 投递记录
