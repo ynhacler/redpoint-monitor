@@ -20,13 +20,18 @@ import 'server_detail_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.api, required this.cache, required this.prefs, required this.onUnpair,
-      required this.onRevoked, this.pushSource = const NoPushTokenSource()});
+      required this.onRevoked, this.pushSource = const NoPushTokenSource(), this.centers = const [], this.onSwitch, this.onAdd});
   final ApiClient api;
   final CacheStore cache;
   final PrefsStore prefs;
   final PushTokenSource pushSource;
   final Future<void> Function() onUnpair;
   final VoidCallback onRevoked;
+
+  /// 多监控中心（设计 1.5.2）
+  final List<Uri> centers;
+  final ValueChanged<int>? onSwitch;
+  final VoidCallback? onAdd;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -143,7 +148,10 @@ class _AppShellState extends State<AppShell> {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);
       }),
-      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, onPrivacy: (v) {
+      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: widget.centers, onSwitch: (i) {
+        _timer?.cancel();
+        widget.onSwitch?.call(i);
+      }, onAdd: widget.onAdd, onPrivacy: (v) {
         setState(() => _prefs.privacy = v);
         _savePrefs();
       }, onUnpair: () async {
