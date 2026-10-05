@@ -1815,7 +1815,7 @@ components:
       required: [id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at]
       properties:
         id: { type: integer }
-        type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu] }
+        type: { type: string, enum: [telegram, webhook, ntfy, email, discord, bark, wecom, dingtalk, feishu] }
         name: { type: string }
         enabled: { type: boolean }
         min_severity: { type: string, enum: [critical, warning, info], description: 达到该级别才发送 }
@@ -1829,6 +1829,13 @@ components:
             has_secret: { type: boolean }
             topic: { type: string, example: 'vps…', description: ntfy 主题（脱敏） }
             has_token: { type: boolean }
+            smtp_host: { type: string }
+            smtp_port: { type: integer }
+            smtp_security: { type: string, enum: [tls, starttls, none] }
+            username: { type: string }
+            has_password: { type: boolean }
+            from: { type: string }
+            to: { type: string }
         created_at: { type: integer }
         updated_at: { type: integer }
 
@@ -1836,7 +1843,7 @@ components:
       type: object
       required: [name, config]
       properties:
-        type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu], description: '创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token' }
+        type: { type: string, enum: [telegram, webhook, ntfy, email, discord, bark, wecom, dingtalk, feishu], description: '创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token' }
         name: { type: string, maxLength: 40 }
         enabled: { type: boolean, default: true }
         min_severity: { type: string, enum: [critical, warning, info], default: warning }
@@ -1853,6 +1860,13 @@ components:
             topic: { type: string, maxLength: 64, description: ntfy 主题；公共服务器上知道主题即可订阅，请用不易猜到的名称 }
             token: { type: string, maxLength: 128, description: ntfy 可选访问令牌（tk_…，Authorization Bearer）；Bark 的设备密钥（Device Key） }
             clear_token: { type: boolean }
+            smtp_host: { type: string, description: 邮件：SMTP 服务器，如 smtp.gmail.com }
+            smtp_port: { type: integer, description: 邮件：端口，默认按加密方式 465 / 587 }
+            smtp_security: { type: string, enum: [tls, starttls, none], description: '邮件：tls（隐式 TLS，465）/ starttls（587，默认）/ none（只允许本机回环地址）；始终校验证书' }
+            username: { type: string, maxLength: 128, description: 邮件：SMTP 用户名 }
+            password: { type: string, maxLength: 256, description: 邮件：SMTP 密码或授权码；修改时留空保持原值，但改了服务器或用户名必须重填 }
+            from: { type: string, description: '邮件：发件人，如 VPS Monitor <alerts@example.com>' }
+            to: { type: string, description: 邮件：收件人，逗号分隔，最多 10 个 }
 
     Delivery:
       type: object
@@ -1861,7 +1875,7 @@ components:
         id: { type: integer }
         channel_id: { type: integer }
         channel_name: { type: string }
-        channel_type: { type: string, enum: [telegram, webhook, ntfy, discord, bark, wecom, dingtalk, feishu, app], description: app 为 App 原生推送（设计 30），channel_name 为“App：设备名” }
+        channel_type: { type: string, enum: [telegram, webhook, ntfy, email, discord, bark, wecom, dingtalk, feishu, app], description: app 为 App 原生推送（设计 30），channel_name 为“App：设备名” }
         event_id: { type: integer, description: 测试通知为 0 }
         server_name: { type: string }
         kind: { type: string, enum: [firing, resolved, repeat, test, flapping, still_firing, panel_down, panel_up, quiet_summary, reminder], description: 'reminder：到期 / 云账户提醒（设计 1.2.5、44.6）；quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）' }

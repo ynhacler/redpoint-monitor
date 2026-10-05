@@ -37,19 +37,23 @@ const editing = ref<number | 'new' | null>(null)
 const form = reactive({
   type: 'telegram' as ChannelType, name: '', enabled: true, min_severity: 'warning' as NotifyChannel['min_severity'],
   notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
+  smtp_host: '', smtp_port: '' as string | number, smtp_security: 'starttls', username: '', password: '', from: '', to: '',
 })
 const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
 
 function openNew(type: ChannelType) {
   Object.assign(form, { type, name: typeNames[type], enabled: true, min_severity: 'warning',
-    notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false })
+    notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
+    smtp_host: '', smtp_port: '', smtp_security: 'starttls', username: '', password: '', from: '', to: '' })
   fieldErrors.value = {}
   editing.value = 'new'
 }
 function openEdit(c: NotifyChannel) {
   Object.assign(form, { type: c.type, name: c.name, enabled: c.enabled, min_severity: c.min_severity, notify_resolved: c.notify_resolved,
-    bot_token: '', chat_id: c.config.chat_id ?? '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false })
+    bot_token: '', chat_id: c.config.chat_id ?? '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
+    smtp_host: c.config.smtp_host ?? '', smtp_port: c.config.smtp_port ?? '', smtp_security: c.config.smtp_security ?? 'starttls',
+    username: c.config.username ?? '', password: '', from: c.config.from ?? '', to: c.config.to ?? '' })
   fieldErrors.value = {}
   editing.value = c.id
 }
@@ -66,6 +70,10 @@ async function save() {
             clear_token: form.clear_token || undefined }
         : form.type === 'bark'
           ? { url: form.url.trim() || undefined, token: form.token.trim() || undefined }
+          : form.type === 'email'
+            ? { smtp_host: form.smtp_host.trim(), smtp_port: Number(form.smtp_port) || undefined,
+                smtp_security: form.smtp_security as 'tls' | 'starttls' | 'none', username: form.username.trim(),
+                password: form.password || undefined, from: form.from.trim(), to: form.to.trim() }
           : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
   }
   try {
@@ -122,7 +130,7 @@ const kindNames: Record<Delivery['kind'], string> = {
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
 const typeNames: Record<ChannelType, string> = {
-  telegram: 'Telegram', webhook: 'Webhook', ntfy: 'ntfy', bark: 'Bark（iOS）', discord: 'Discord',
+  telegram: 'Telegram', webhook: 'Webhook', ntfy: 'ntfy', email: '邮件（SMTP）', bark: 'Bark（iOS）', discord: 'Discord',
   wecom: '企业微信', dingtalk: '钉钉', feishu: '飞书',
 }
 // 机器人类渠道：填写群机器人的地址（钉钉、飞书可选加签密钥）（设计 31）
@@ -136,6 +144,7 @@ const isRobot = (t: ChannelType) => t in robotHelp
 const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.chat_id} · ${c.config.bot_token}`
   : c.type === 'ntfy' ? `${c.config.url} · 主题 ${c.config.topic}${c.config.has_token ? ' · 已设置令牌' : ''}`
     : c.type === 'bark' ? `${c.config.url}${c.config.has_token ? ' · 已设置设备密钥' : ''}`
+      : c.type === 'email' ? `${c.config.smtp_host}:${c.config.smtp_port} → ${c.config.to}`
       : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
 </script>
 
@@ -195,6 +204,40 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
           </label>
           <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_token" type="checkbox" />清除访问令牌</label>
         </template>
+        <template v-else-if="form.type === 'email'">
+          <label>SMTP 服务器
+            <input v-model="form.smtp_host" spellcheck="false" placeholder="smtp.gmail.com" />
+            <small v-if="fieldErrors.smtp_host" class="err">{{ fieldErrors.smtp_host }}</small>
+          </label>
+          <label>加密方式
+            <select v-model="form.smtp_security">
+              <option value="starttls">STARTTLS（587）</option>
+              <option value="tls">TLS（465）</option>
+              <option value="none">不加密（只限本机中转）</option>
+            </select>
+            <small v-if="fieldErrors.smtp_security" class="err">{{ fieldErrors.smtp_security }}</small>
+          </label>
+          <label>端口
+            <input v-model="form.smtp_port" inputmode="numeric" :placeholder="form.smtp_security === 'tls' ? '465' : form.smtp_security === 'none' ? '25' : '587'" />
+            <small v-if="fieldErrors.smtp_port" class="err">{{ fieldErrors.smtp_port }}</small>
+          </label>
+          <label>用户名
+            <input v-model="form.username" autocomplete="off" spellcheck="false" placeholder="通常是邮箱地址" />
+          </label>
+          <label>密码 / 授权码
+            <input v-model="form.password" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : '留空保持不变（改了服务器或用户名需重填）'" />
+            <small v-if="fieldErrors.password" class="err">{{ fieldErrors.password }}</small>
+            <small v-else class="muted">QQ、163、Gmail 等需使用邮箱设置中生成的授权码 / 应用专用密码</small>
+          </label>
+          <label>发件人
+            <input v-model="form.from" spellcheck="false" placeholder="VPS Monitor <alerts@example.com>" />
+            <small v-if="fieldErrors.from" class="err">{{ fieldErrors.from }}</small>
+          </label>
+          <label class="wide">收件人
+            <input v-model="form.to" spellcheck="false" placeholder="a@example.com, b@example.com（最多 10 个）" />
+            <small v-if="fieldErrors.to" class="err">{{ fieldErrors.to }}</small>
+          </label>
+        </template>
         <template v-else-if="form.type === 'bark'">
           <label class="wide">Bark 服务器
             <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://api.day.app（留空使用公共服务器）' : '留空保持不变'" />
@@ -250,7 +293,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     </form>
 
     <!-- 渠道列表 -->
-    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、ntfy、Bark、Discord、企业微信、钉钉、飞书或你的 Webhook。</p>
+    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、邮件、ntfy、Bark、Discord、企业微信、钉钉、飞书或你的 Webhook。</p>
     <ul v-if="channels.length" class="panel list">
       <li v-for="c in channels" :key="c.id" :class="{ off: !c.enabled }">
         <div class="ch">

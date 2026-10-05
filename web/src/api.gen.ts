@@ -152,7 +152,7 @@ export type QuietHoursView = QuietHours & {
 /** 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符 */
 export interface NotifyChannel {
   id: number
-  type: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
+  type: 'telegram' | 'webhook' | 'ntfy' | 'email' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
   name: string
   enabled: boolean
   /** 达到该级别才发送 */
@@ -166,6 +166,13 @@ export interface NotifyChannel {
     /** ntfy 主题（脱敏） */
     topic?: string
     has_token?: boolean
+    smtp_host?: string
+    smtp_port?: number
+    smtp_security?: 'tls' | 'starttls' | 'none'
+    username?: string
+    has_password?: boolean
+    from?: string
+    to?: string
   }
   created_at: number
   updated_at: number
@@ -173,7 +180,7 @@ export interface NotifyChannel {
 
 export interface NotifyChannelInput {
   /** 创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token */
-  type?: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
+  type?: 'telegram' | 'webhook' | 'ntfy' | 'email' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
   name: string
   enabled?: boolean
   min_severity?: 'critical' | 'warning' | 'info'
@@ -194,6 +201,20 @@ export interface NotifyChannelInput {
     /** ntfy 可选访问令牌（tk_…，Authorization Bearer）；Bark 的设备密钥（Device Key） */
     token?: string
     clear_token?: boolean
+    /** 邮件：SMTP 服务器，如 smtp.gmail.com */
+    smtp_host?: string
+    /** 邮件：端口，默认按加密方式 465 / 587 */
+    smtp_port?: number
+    /** 邮件：tls（隐式 TLS，465）/ starttls（587，默认）/ none（只允许本机回环地址）；始终校验证书 */
+    smtp_security?: 'tls' | 'starttls' | 'none'
+    /** 邮件：SMTP 用户名 */
+    username?: string
+    /** 邮件：SMTP 密码或授权码；修改时留空保持原值，但改了服务器或用户名必须重填 */
+    password?: string
+    /** 邮件：发件人，如 VPS Monitor <alerts@example.com> */
+    from?: string
+    /** 邮件：收件人，逗号分隔，最多 10 个 */
+    to?: string
   }
 }
 
@@ -202,7 +223,7 @@ export interface Delivery {
   channel_id: number
   channel_name: string
   /** app 为 App 原生推送（设计 30），channel_name 为“App：设备名” */
-  channel_type: 'telegram' | 'webhook' | 'ntfy' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu' | 'app'
+  channel_type: 'telegram' | 'webhook' | 'ntfy' | 'email' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu' | 'app'
   /** 测试通知为 0 */
   event_id: number
   server_name: string

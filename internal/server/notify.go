@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -83,6 +84,14 @@ type channelConfig struct {
 	Secret   string `json:"secret,omitempty"`    // Webhook：可选，HMAC-SHA256 签名密钥
 	Topic    string `json:"topic,omitempty"`     // ntfy：主题（公共服务器上知道主题即可订阅，按凭证对待）
 	Token    string `json:"token,omitempty"`     // ntfy：可选，访问令牌（tk_…）
+	// 邮件（设计 31）：用户自己的 SMTP 服务器
+	SMTPHost     string `json:"smtp_host,omitempty"`
+	SMTPPort     int    `json:"smtp_port,omitempty"`
+	SMTPSecurity string `json:"smtp_security,omitempty"` // tls / starttls / none（只允许回环）
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
+	From         string `json:"from,omitempty"`
+	To           string `json:"to,omitempty"` // 逗号分隔，最多 10 个
 }
 
 // channelView 是返回给 Web 的渠道：凭证脱敏，签名密钥只说明是否已设置。
@@ -104,6 +113,8 @@ func (c NotifyChannel) view() channelView {
 		cfg["url"] = c.Config.URL
 		cfg["topic"] = maskTopic(c.Config.Topic)
 		cfg["has_token"] = c.Config.Token != ""
+	case ChannelEmail:
+		cfg = c.emailView()
 	default:
 		if isChatChannel(c.Type) {
 			cfg = c.chatView()
@@ -196,11 +207,13 @@ func (c *NotifyChannel) validate() []FieldError {
 		if c.Config.Token != "" && !ntfyToken.MatchString(c.Config.Token) {
 			errs = append(errs, FieldError{Field: "config.token", Message: "访问令牌格式不正确"})
 		}
+	case ChannelEmail:
+		errs = append(errs, c.validateEmail()...)
 	default:
 		if isChatChannel(c.Type) {
 			errs = append(errs, c.validateChat()...)
 		} else {
-			errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram、webhook、ntfy、discord、bark、wecom、dingtalk 或 feishu"})
+			errs = append(errs, FieldError{Field: "type", Message: "渠道类型应为 telegram、webhook、ntfy、email、discord、bark、wecom、dingtalk 或 feishu"})
 		}
 	}
 	return errs
@@ -564,6 +577,8 @@ type notifier struct {
 	wg      sync.WaitGroup
 	http    *http.Client
 	tgAPI   string // Telegram Bot API 地址，测试时替换
+	// smtpRoots 是校验 SMTP 服务器证书的根证书；nil 表示系统根证书（测试时替换）
+	smtpRoots *x509.CertPool
 }
 
 func newNotifier(s *Server) *notifier {
@@ -653,6 +668,9 @@ func (n *notifier) deliverWith(ctx context.Context, d *Delivery, backoff []time.
 
 // send 发送一次。错误信息不含请求地址与凭证。
 func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) error {
+	if c.Type == ChannelEmail {
+		return n.sendEmail(ctx, c, m)
+	}
 	now := time.Now()
 	var req *http.Request
 	var err error
