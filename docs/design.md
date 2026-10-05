@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 99 | vpsmon-agent doctor（只读诊断）与 re-enroll（换绑节点或面板）；新增 GET /agent/whoami | 27.11 |
 | 98 | 批量新建与导出（安装命令、CSV、Ansible） | 27.9 |
 | 97 | ntfy 通知渠道 | 31 |
 | 96 | App 推送第一步：配对时生成 X25519 密钥并提交公钥、Dart HPKE 解密（与面板测试向量互通）、推送登记与状态 | 12.3、30.3 |
@@ -6998,7 +6999,15 @@ sudo monitor-agent rotate-token --enroll ENR-... # 同一节点就地更换 Toke
 sudo monitor-agent upgrade / enable-remote-upgrade # 本机升级、为已安装节点启用远程升级（设计 29.13）
 ```
 
-已提供 `status`、`uninstall`、`rotate-token`、`upgrade`、`enable-remote-upgrade`；`doctor` 与 `re-enroll` 在 MVP 之后第一批提供（设计 36.1）。
+已提供 `status`、`uninstall`、`rotate-token`、`upgrade`、`enable-remote-upgrade`、`doctor`、`re-enroll`（后两者为修订第 99 条）。
+
+```text
+doctor     只读诊断，逐项 ✓ / ! / ✗ 并给出处理建议，有 ✗ 时退出码 1：系统；程序、面板地址、Token 文件与权限；
+           服务运行状态与最近一次上报；代理、DNS、HTTPS 与证书（始终校验）、面板版本、时钟偏差；
+           Token 是否有效（GET /api/v1/agent/whoami，只读，需 sudo 才能读取 Token）；/proc 与 /sys 是否可读
+re-enroll  先向（新）面板注册取得新 Token —— 失败则不改任何文件；再用旧 Token 注销旧节点（尽力而为，
+           同一面板的同一节点跳过）；最后写入新 Token 与面板地址并重启服务。--server 换到另一个面板
+```
 `rotate-token` 只能更换本节点的 Token：请求中带上当前所属节点，注册码属于其他节点时面板拒绝；换绑节点用 `re-enroll`。
 
 `uninstall` 通知面板时使用 Agent Token，面板将节点置为“待安装”并吊销该 Token；网络不可达时仍完成本地卸载。

@@ -176,8 +176,8 @@ func TestAppPushRegisterValidation(t *testing.T) {
 	s, h, _ := testServer(t)
 	tok := pairTestDevice(t, s, true, "all", "").access
 	for body, field := range map[string]string{
-		`{"provider":"wns","token":"x"}`:                               "provider",
-		`{"provider":"apns","token":"zz","public_key":"AAAA"}`:         "token",
+		`{"provider":"wns","token":"x"}`:                                "provider",
+		`{"provider":"apns","token":"zz","public_key":"AAAA"}`:          "token",
 		`{"provider":"apns","token":"` + strings.Repeat("a", 64) + `"}`: "public_key", // 配对时没有提交公钥
 	} {
 		rec := do(h, "PUT", "/api/v1/app/push", tok, []byte(body))

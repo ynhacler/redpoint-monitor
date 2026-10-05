@@ -140,6 +140,17 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, enrollResponse{ServerID: res.ServerID, ServerName: res.ServerName, AgentToken: res.Token, Warnings: res.Warnings})
 }
 
+// handleWhoami：GET /api/v1/agent/whoami，Agent Token 认证（设计 27.11）。vpsmon-agent doctor 用它确认
+// Token 有效、属于哪个节点以及时钟偏差；只读。
+func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request) {
+	sid := info(r).principalID
+	name := ""
+	if row, err := s.store.GetServer(sid); err == nil {
+		name = row.Name
+	}
+	writeJSON(w, map[string]any{"server_id": sid, "server_name": name, "panel_version": s.version, "time": time.Now().Unix()})
+}
+
 // handleUnregister：POST /api/v1/agent/unregister，Agent Token 认证（设计 19.10、27.11）。
 // 本地卸载时调用：吊销 Token，节点回到“待安装”，成功 204。
 func (s *Server) handleUnregister(w http.ResponseWriter, r *http.Request) {

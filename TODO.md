@@ -188,7 +188,7 @@
 
 - [x] ntfy 通知渠道（设计 31）
 - [x] 批量新建与导出（设计 27.9）：CSV 导入、全部校验后创建、安装命令 / CSV / Ansible 导出
-- [ ] vpsmon-agent doctor / re-enroll（设计 27.11）
+- [x] vpsmon-agent doctor / re-enroll（设计 27.11）
 - [ ] App：事件中心、搜索与排序、隐私模式（设计 1.5）
 - [ ] App：多监控中心的添加与切换（设计 1.5.2）
 - [ ] App：生物识别锁（需要 local_auth 依赖，设计 1.5.11）

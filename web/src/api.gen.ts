@@ -1164,6 +1164,18 @@ export interface Paths {
       response: void
     }
   }
+  '/agent/whoami': {
+    /** 校验 Agent Token 并返回所属节点（vpsmon-agent doctor 使用，设计 27.11）；只读，不改变任何状态 */
+    get: {
+      response: {
+        server_id: number
+        server_name: string
+        panel_version: string
+        /** 面板当前时间，Unix 秒（诊断时钟偏差） */
+        time: number
+      }
+    }
+  }
   '/agent/unregister': {
     /** Agent 本地卸载时通知面板（设计 27.11） */
     post: {
