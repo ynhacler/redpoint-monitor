@@ -213,6 +213,10 @@ type CloudInstance struct {
 	TrafficPeriodStart string `json:"traffic_period_start"`
 	ServerID           *int64 `json:"server_id"`
 	UpdatedAt          int64  `json:"updated_at"`
+	// 自动流量校准（设计 44.5）：开关、上次执行时间与结果说明
+	AutoCalibrate   bool   `json:"auto_calibrate"`
+	CalibratedAt    int64  `json:"calibrated_at"`
+	CalibrateStatus string `json:"calibrate_status"`
 	// SuggestedServerID：未关联时，公网 IP 与之唯一匹配的节点（建议关联，设计 44.5）；不入库
 	SuggestedServerID *int64 `json:"suggested_server_id"`
 }
@@ -274,7 +278,7 @@ func (s *Store) SaveCloudTraffic(accountID int64, insts []cloud.Instance, now ti
 func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 	rows, err := s.DB.Query(`SELECT i.id, i.account_id, a.name, a.provider, i.instance_id, i.name, i.region, i.kind, i.state,
 		i.public_ipv4, i.public_ipv6, i.plan, i.expire_at, i.renew_price_cents, i.traffic_limit_bytes, i.traffic_used_bytes,
-		i.traffic_period_start, i.server_id, i.updated_at
+		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status
 		FROM cloud_instances i JOIN cloud_accounts a ON a.id = i.account_id
 		WHERE ? = 0 OR i.account_id = ? ORDER BY a.name, i.kind, i.region, i.name, i.instance_id`, accountID, accountID)
 	if err != nil {
@@ -286,7 +290,8 @@ func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 		var c CloudInstance
 		if err := rows.Scan(&c.ID, &c.AccountID, &c.AccountName, &c.Provider, &c.InstanceID, &c.Name, &c.Region, &c.Kind,
 			&c.State, &c.PublicIPv4, &c.PublicIPv6, &c.Plan, &c.ExpireAt, &c.RenewPriceCents, &c.TrafficLimitBytes,
-			&c.TrafficUsedBytes, &c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt); err != nil {
+			&c.TrafficUsedBytes, &c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt,
+			&c.CalibrateStatus); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

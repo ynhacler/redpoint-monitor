@@ -673,6 +673,12 @@ export interface CloudInstance {
   /** 未关联时，公网 IP 与之唯一匹配的节点（建议关联，需用户确认） */
   suggested_server_id: number | null
   updated_at: number
+  /** 每天用云厂商口径的本周期流量自动校准关联节点（设计 44.5） */
+  auto_calibrate: boolean
+  /** 上次自动校准（或检查）的时间；0 表示还没有执行 */
+  calibrated_at: number
+  /** 上次自动校准的结果，如“已按云厂商数值校准为 120 GB”或未校准的原因 */
+  calibrate_status: string
 }
 
 export interface APIKeyInput {
@@ -1516,6 +1522,18 @@ export interface Paths {
       body: {
         /** null 表示取消关联 */
         server_id: number | null
+      }
+      response: CloudInstance
+    }
+  }
+  '/cloud-instances/{id}/auto-calibrate': {
+    /** 打开或关闭自动流量校准（设计 44.5）；打开要求已关联节点且实例有流量包 */
+    put: {
+      params: {
+        id: number
+      }
+      body: {
+        enabled: boolean
       }
       response: CloudInstance
     }

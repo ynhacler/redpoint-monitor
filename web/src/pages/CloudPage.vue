@@ -4,7 +4,7 @@
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
+  createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, setCloudAutoCalibrate, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
   updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudInstance,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
@@ -302,6 +302,20 @@ async function link(i: CloudInstance, serverId: number | null) {
   }
 }
 
+// 自动流量校准（设计 44.5）：默认关闭；云厂商数据有数小时延迟，且计费周期、口径需与节点一致
+async function toggleCalibrate(i: CloudInstance, on: boolean) {
+  if (on && !confirm(`每天用“${i.name || i.instance_id}”的云厂商流量校准节点“${nodeName(i.server_id)}”？\n` +
+    '请确认节点的流量重置日、计费时区与计费方式（入站 + 出站或只算出站）和云厂商一致；周期不一致时不会校准。')) return
+  linkError.value = ''
+  try {
+    const v = await setCloudAutoCalibrate(i.id, on)
+    const k = instances.value.findIndex((x) => x.id === i.id)
+    if (k >= 0) instances.value[k] = { ...v, suggested_server_id: null }
+  } catch (e) {
+    linkError.value = errorText(e)
+  }
+}
+
 /** 到期提示：30 天内为 warn，已过期为 bad */
 function expireTone(i: CloudInstance): string {
   const days = (i.expire_at - Date.now() / 1000) / 86400
@@ -523,6 +537,13 @@ function expireTone(i: CloudInstance): string {
             <template v-if="i.server_id">
               关联节点 <RouterLink :to="`/servers/${i.server_id}`">{{ nodeName(i.server_id) }}</RouterLink>
               <button type="button" class="text" @click="link(i, null)">取消关联</button>
+              <label v-if="i.traffic_limit_bytes > 0" class="auto-cal">
+                <input type="checkbox" :checked="i.auto_calibrate" @change="toggleCalibrate(i, ($event.target as HTMLInputElement).checked)" />
+                每天按云厂商流量校准节点
+              </label>
+              <span v-if="i.auto_calibrate && i.calibrate_status" class="muted cal-status">
+                {{ i.calibrate_status }}{{ i.calibrated_at > 0 ? `（${fmtTime(i.calibrated_at)}）` : '' }}
+              </span>
             </template>
             <template v-else-if="i.suggested_server_id">
               公网 IP 与节点 <b>{{ nodeName(i.suggested_server_id) }}</b> 相同
@@ -593,4 +614,7 @@ function expireTone(i: CloudInstance): string {
   .list li { grid-template-columns: minmax(0, 1fr) auto; }
   .list .traffic { grid-column: 1 / -1; }
 }
+.auto-cal { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: var(--space-2); }
+.auto-cal input { width: auto; }
+.cal-status { display: block; margin-top: var(--space-1); }
 </style>

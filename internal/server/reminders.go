@@ -87,6 +87,7 @@ func (s *Server) reminderLoop(ctx context.Context) {
 		}
 		wait = time.Hour
 		s.checkReminders(time.Now())
+		s.autoCalibrate(time.Now()) // 云厂商口径的自动流量校准（设计 44.5），每个实例每天一次
 	}
 }
 
