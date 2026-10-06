@@ -1,9 +1,11 @@
 <script setup lang="ts">
-// Agent 升级页（设计 29.1、29.14）：官方最新版本、各节点当前版本，批量创建升级任务，最近任务与取消。
+// Agent 升级页（设计 29.1、29.14、29.16）：官方最新版本、各节点当前版本，批量升级或灰度升级，最近任务与取消。
+// 灰度升级：按列表顺序分批（第一批 N 台 → 第二批累计 P% → 其余），每批结束后观察；失败过多或已升级的节点离线时自动暂停。
 // 【安全】只能选择面板已同步并验签的官方版本；节点上的 Agent 与 updater 独立验签并拒绝降级（设计 29.13）。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  cancelUpgradeTask, createUpgradeTasks, errorText, listReleases, listUpgradeTasks, syncReleases, type AgentRelease, type ServerView, type UpgradeTask,
+  cancelUpgradeTask, createRollout, createUpgradeTasks, errorText, listReleases, listRollouts, listUpgradeTasks, rolloutAction, syncReleases,
+  type AgentRelease, type ServerView, type UpgradeRollout, type UpgradeTask,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtDateTime } from '../format'
@@ -18,6 +20,17 @@ const notice = ref('')
 const busy = ref(false)
 const group = ref('')
 const selected = ref(new Set<number>())
+const rollouts = ref<UpgradeRollout[]>([])
+
+// 升级方式：直接升级全部所选，或灰度升级（设计 29.16）
+const mode = ref<'all' | 'canary'>('all')
+const firstCount = ref(2)
+const secondPercent = ref(20)
+const observe = ref(30)
+const maxFailures = ref(0)
+
+const rolloutStatus: Record<string, string> = { running: '进行中', paused: '已暂停', completed: '已完成', cancelled: '已取消' }
+const rolloutOpen = (r: UpgradeRollout) => r.status === 'running' || r.status === 'paused'
 
 const statusNames: Record<string, string> = {
   pending: '等待获取', delivered: '下载校验中', staged: '安装中', success: '成功',
@@ -32,15 +45,16 @@ function handle(e: unknown) {
 let timer: number | undefined
 async function load() {
   try {
-    const [rels, list] = await Promise.all([listReleases(), listUpgradeTasks()])
+    const [rels, list, ros] = await Promise.all([listReleases(), listUpgradeTasks(), listRollouts()])
     latest.value = rels.items.find((r) => r.channel === 'stable') ?? null
     mirrorOn.value = rels.mirror
     tasks.value = list.items
+    rollouts.value = ros.items
   } catch (e) {
     handle(e)
   }
   if (timer) clearTimeout(timer)
-  if (tasks.value.some(isActive)) timer = window.setTimeout(load, 10_000)
+  if (tasks.value.some(isActive) || rollouts.value.some(rolloutOpen)) timer = window.setTimeout(load, 10_000)
 }
 onMounted(load)
 onBeforeUnmount(() => timer && clearTimeout(timer))
@@ -104,6 +118,52 @@ async function upgrade() {
   }
 }
 
+const canaryReady = computed(() => mode.value === 'canary' && chosen.value.length >= 2)
+const hasOpenRollout = computed(() => rollouts.value.some(rolloutOpen))
+
+async function canary() {
+  if (!latest.value || chosen.value.length < 2) return
+  const n = chosen.value.length
+  if (!confirm(`灰度升级 ${n} 个节点到 ${latest.value.version}？\n第一批 ${firstCount.value} 台，第二批累计 ${secondPercent.value}%，然后其余全部；` +
+    `每批结束后观察 ${observe.value} 分钟，失败超过 ${maxFailures.value} 台或已升级的节点离线时自动暂停。`)) return
+  busy.value = true
+  error.value = notice.value = ''
+  try {
+    const r = await createRollout({
+      server_ids: chosen.value.map((x) => x.s.id), version: latest.value.version,
+      stages: [{ count: firstCount.value }, { percent: secondPercent.value }, { percent: 100 }],
+      observe_minutes: observe.value, max_failures: maxFailures.value,
+    })
+    notice.value = `已开始灰度升级：第一批 ${r.progress[0]?.tasks ?? 0} 台` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个` : '')
+    selected.value = new Set()
+    await load()
+  } catch (e) {
+    handle(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function act(r: UpgradeRollout, action: 'pause' | 'resume' | 'cancel') {
+  if (action === 'cancel' && !confirm('取消灰度升级？尚未开始安装的任务会一并取消，已升级的节点不受影响。')) return
+  if (action === 'resume' && r.reason && !confirm(`继续灰度升级？\n${r.reason}\n继续即表示已确认上述情况，之后只有新的失败或离线才会再次暂停。`)) return
+  busy.value = true
+  error.value = ''
+  try {
+    await rolloutAction(r.id, action)
+    await load()
+  } catch (e) {
+    handle(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 观察期结束、开始下一批的大致时间 */
+function nextAt(r: UpgradeRollout) {
+  return r.stage_done_at ? fmtDateTime(r.stage_done_at + r.observe_minutes * 60) : ''
+}
+
 async function cancel(t: UpgradeTask) {
   busy.value = true
   error.value = ''
@@ -162,10 +222,27 @@ function name(id: number) {
           <option value="">全部分组</option>
           <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
         </select>
-        <button type="button" :disabled="busy || !chosen.length || !latest" @click="upgrade">
+        <div class="seg" role="radiogroup" aria-label="升级方式">
+          <label :class="{ on: mode === 'all' }"><input v-model="mode" type="radio" value="all" />全部升级</label>
+          <label :class="{ on: mode === 'canary' }"><input v-model="mode" type="radio" value="canary" />灰度升级</label>
+        </div>
+        <button v-if="mode === 'all'" type="button" :disabled="busy || !chosen.length || !latest" @click="upgrade">
           <template v-if="!chosen.length">选择要升级的节点</template>
           <template v-else>升级 {{ chosen.length }} 个节点<template v-if="latest">到 {{ latest.version }}</template></template>
         </button>
+        <button v-else type="button" :disabled="busy || !canaryReady || !latest || hasOpenRollout" @click="canary">
+          <template v-if="hasOpenRollout">已有进行中的灰度升级</template>
+          <template v-else-if="chosen.length < 2">灰度升级至少选择 2 个节点</template>
+          <template v-else>灰度升级 {{ chosen.length }} 个节点</template>
+        </button>
+      </div>
+      <div v-if="mode === 'canary'" class="canary panel small">
+        <label>第一批<input v-model.number="firstCount" type="number" min="1" max="500" />台</label>
+        <label>第二批累计<input v-model.number="secondPercent" type="number" min="1" max="100" />%</label>
+        <span class="muted">第三批：其余全部</span>
+        <label>每批观察<input v-model.number="observe" type="number" min="5" max="1440" />分钟</label>
+        <label>允许失败<input v-model.number="maxFailures" type="number" min="0" max="100" />台</label>
+        <p class="muted hint">按列表顺序分批。每批全部结束后观察，失败（含回滚）超过允许台数或已升级的节点离线时自动暂停；不能升级的节点轮到时跳过，由后面的节点补足。</p>
       </div>
       <EmptyState v-if="state.loaded && !rows.length" text="没有已安装 Agent 的节点" />
       <ul v-else class="panel list">
@@ -185,6 +262,41 @@ function name(id: number) {
               <template v-else>{{ DASH }}</template>
             </span>
           </label>
+        </li>
+      </ul>
+    </section>
+
+    <section v-if="rollouts.length" class="section">
+      <h3>灰度升级</h3>
+      <ul class="panel list">
+        <li v-for="r in rollouts.slice(0, 5)" :key="r.id" class="rollout">
+          <div class="rhead">
+            <span class="num">→ {{ r.target_version }}</span>
+            <span class="small rstatus" :class="r.status">{{ rolloutStatus[r.status] }}</span>
+            <span class="muted small">{{ r.total }} 个节点 · 第 {{ r.current_stage }} / {{ r.stages.length }} 批 · {{ fmtDateTime(r.created_at) }}</span>
+            <span class="actions">
+              <button v-if="r.status === 'running'" type="button" class="link" :disabled="busy" @click="act(r, 'pause')">暂停</button>
+              <button v-if="r.status === 'paused'" type="button" class="link" :disabled="busy" @click="act(r, 'resume')">继续</button>
+              <button v-if="rolloutOpen(r)" type="button" class="link danger" :disabled="busy" @click="act(r, 'cancel')">取消</button>
+            </span>
+          </div>
+          <ol class="stages small">
+            <li v-for="p in r.progress" :key="p.stage" :class="{ cur: p.stage === r.current_stage && rolloutOpen(r) }">
+              <span>第 {{ p.stage }} 批</span>
+              <span v-if="!p.target && !p.tasks" class="muted">并入上一批</span>
+              <span v-else class="num">{{ p.success }}/{{ p.tasks || p.target }}</span>
+              <span v-if="p.failed" class="bad num">失败 {{ p.failed }}</span>
+              <span v-if="p.active" class="muted num">进行中 {{ p.active }}</span>
+            </li>
+          </ol>
+          <p v-if="r.status === 'running' && r.stage_done_at && r.current_stage < r.stages.length" class="muted small">
+            观察中，约 {{ nextAt(r) }} 开始第 {{ r.current_stage + 1 }} 批
+          </p>
+          <p v-if="r.reason" class="small" :class="r.status === 'paused' ? 'warn' : 'muted'">{{ r.reason }}</p>
+          <details v-if="r.skipped.length" class="small">
+            <summary class="muted">跳过 {{ r.skipped.length }} 个节点</summary>
+            <ul class="skips"><li v-for="k in r.skipped" :key="k.server_id">{{ name(k.server_id) }}：{{ k.reason }}</li></ul>
+          </details>
         </li>
       </ul>
     </section>
@@ -230,6 +342,29 @@ function name(id: number) {
 .status.failed, .status.rolled_back { color: var(--bad); }
 .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: inherit; margin-left: var(--space-2); }
 .bad { color: var(--bad); }
+.warn { color: var(--warn); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.seg label { padding: var(--space-1) var(--space-3); font-size: var(--font-sm); cursor: pointer; }
+.seg label.on { background: var(--accent); color: var(--on-accent); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.canary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3); }
+.canary label { display: inline-flex; align-items: center; gap: var(--space-2); }
+.canary input { width: 72px; }
+.canary .hint { flex-basis: 100%; margin: 0; }
+.rollout { padding: var(--space-3) var(--space-4); }
+.rhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
+.rhead .actions { margin-left: auto; }
+.rstatus.running { color: var(--accent); }
+.rstatus.paused { color: var(--warn); }
+.rstatus.completed { color: var(--ok); }
+.stages { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.stages li { display: inline-flex; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); }
+.stages li.cur { border-color: var(--accent); }
+.rollout p { margin: var(--space-2) 0 0; }
+.skips { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
+.danger { color: var(--bad); }
 @media (max-width: 700px) {
   .row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .row .state { grid-column: 2 / -1; }

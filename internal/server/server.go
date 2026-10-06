@@ -287,6 +287,9 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/upgrade-tasks", accessAdmin, s.handleUpgradeTasks)
 	handle("POST /api/v1/upgrade-tasks", accessAdmin, s.handleCreateUpgradeTasks)
 	handle("POST /api/v1/upgrade-tasks/{id}/cancel", accessAdmin, s.handleCancelUpgradeTask)
+	handle("GET /api/v1/upgrade-rollouts", accessAdmin, s.handleRollouts)
+	handle("POST /api/v1/upgrade-rollouts", accessAdmin, s.handleCreateRollout)
+	handle("POST /api/v1/upgrade-rollouts/{id}/{action}", accessAdmin, s.handleRolloutAction)
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
 	handle("GET /api/v1/settings/quiet-hours", accessAdmin, s.handleGetQuietHours)
 	handle("PUT /api/v1/settings/quiet-hours", accessAdmin, s.handlePutQuietHours)
@@ -690,6 +693,7 @@ func (s *Server) maintenance(ctx context.Context) {
 		} else {
 			s.log.Debug("downsampled", "component", "store", "1m", n["metrics_1m"], "5m", n["metrics_5m"], "1h", n["metrics_1h"])
 		}
+		s.checkRollouts(now) // 灰度升级：每分钟推进（设计 29.16）
 		if tick%10 == 0 {
 			if err := s.store.PruneSessions(now); err != nil {
 				s.log.Error("session prune failed", "component", "auth", "err", err)

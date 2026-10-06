@@ -2112,6 +2112,173 @@
         }
       }
     },
+    "/upgrade-rollouts": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "灰度升级，最新在前（最多 20 个，设计 29.16）",
+        "responses": {
+          "200": {
+            "description": "灰度升级列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "next_cursor",
+                    "items"
+                  ],
+                  "properties": {
+                    "next_cursor": {
+                      "type": "string",
+                      "description": "空表示没有更多"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UpgradeRollout"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "创建灰度升级并立即开始第一批（设计 29.16）",
+        "description": "节点按 server_ids 的顺序分批升级。每批全部结束后观察 observe_minutes 分钟：本批失败（失败 / 回滚）超过 max_failures 台，\n或本次已升级成功的节点离线时自动暂停；否则开始下一批，最后一批结束后完成。\n不符合条件的节点（待安装、版本不低于目标、未启用远程升级等）在轮到时跳过并记录原因，由后面的节点补足该批数量。\n同一时间只能有一个进行中（running / paused）的灰度升级。只有 Web 管理员可以操作；App 凭证不能（CLAUDE.md 约束 5）。\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "server_ids",
+                  "version",
+                  "stages"
+                ],
+                "properties": {
+                  "server_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 500,
+                    "description": "参与的节点，按升级顺序"
+                  },
+                  "version": {
+                    "type": "string",
+                    "example": "0.4.0"
+                  },
+                  "stages": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 5,
+                    "items": {
+                      "$ref": "#/components/schemas/RolloutStage"
+                    },
+                    "description": "各批累计规模；最后一批总是全部"
+                  },
+                  "observe_minutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 1440,
+                    "description": "每批结束后的观察时间，默认 30"
+                  },
+                  "max_failures": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "每批允许的失败台数，超过即暂停，默认 0"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeRollout"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/upgrade-rollouts/{id}/{action}": {
+      "post": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "暂停 / 继续 / 取消灰度升级",
+        "description": "pause：不再开始新的批次（已下发的任务照常完成）；resume：继续（重新开始当前批的观察）；\ncancel：结束灰度升级，并取消尚未交给 updater 的任务。\n",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "cancel"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已执行"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/quiet-hours": {
       "get": {
         "tags": [
@@ -5403,7 +5570,9 @@
           "reason",
           "created_by",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "rollout_id",
+          "stage"
         ],
         "properties": {
           "id": {
@@ -5437,6 +5606,160 @@
           "reason": {
             "type": "string",
             "description": "失败或回滚原因"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          },
+          "rollout_id": {
+            "type": "integer",
+            "description": "所属灰度升级；0 表示单独创建的任务"
+          },
+          "stage": {
+            "type": "integer",
+            "description": "灰度升级中的批次（从 1 开始）；单独创建的任务为 0"
+          }
+        }
+      },
+      "RolloutStage": {
+        "type": "object",
+        "description": "灰度升级的一批，累计规模二选一：count 台，或 percent（占全部参与节点的百分比，向上取整）",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "percent": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "UpgradeRollout": {
+        "type": "object",
+        "description": "灰度升级（设计 29.16）",
+        "required": [
+          "id",
+          "target_version",
+          "status",
+          "stages",
+          "observe_minutes",
+          "max_failures",
+          "total",
+          "current_stage",
+          "stage_done_at",
+          "reason",
+          "skipped",
+          "progress",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "target_version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "paused",
+              "completed",
+              "cancelled"
+            ],
+            "description": "paused 包括手动暂停与自动暂停（见 reason）"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutStage"
+            }
+          },
+          "observe_minutes": {
+            "type": "integer"
+          },
+          "max_failures": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "description": "参与的节点数"
+          },
+          "current_stage": {
+            "type": "integer",
+            "description": "当前批次（从 1 开始）"
+          },
+          "stage_done_at": {
+            "type": "integer",
+            "description": "当前批全部结束的时间；0 表示还有任务在进行，观察期从这时开始"
+          },
+          "reason": {
+            "type": "string",
+            "description": "暂停、取消或完成的说明"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "server_id",
+                "reason"
+              ],
+              "properties": {
+                "server_id": {
+                  "type": "integer"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "progress": {
+            "type": "array",
+            "description": "每批的任务统计",
+            "items": {
+              "type": "object",
+              "required": [
+                "stage",
+                "target",
+                "tasks",
+                "success",
+                "failed",
+                "active"
+              ],
+              "properties": {
+                "stage": {
+                  "type": "integer"
+                },
+                "target": {
+                  "type": "integer",
+                  "description": "本批计划的台数"
+                },
+                "tasks": {
+                  "type": "integer"
+                },
+                "success": {
+                  "type": "integer"
+                },
+                "failed": {
+                  "type": "integer",
+                  "description": "失败与回滚"
+                },
+                "active": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "created_by": {
             "type": "string"

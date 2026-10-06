@@ -113,6 +113,7 @@
 - [x] 面板镜像与离线导入：--release-mirror、release import、/releases 下载（设计 27.5.3、29.1）
 - [x] 远程升级：升级任务、Agent 轮询 /agent/upgrade、特权 updater（systemd path unit）、状态上报、节点详情升级按钮（设计 29.13、29.14）
 - [x] 远程升级批量界面：“Agent 升级”页，按分组 / 全选批量升级、最近任务（设计 29.1、29.14）
+- [x] 灰度升级：分批（台数 / 百分比）、观察期、失败或已升级节点离线时自动暂停、继续 / 取消（设计 29.16）
 - [x] 非 root 安装（用户模式）：家目录安装、systemd 用户服务或 crontab 保活、`vpsmon-agent keepalive`、运行锁（设计 27.13）
 - [x] 386 构建改为软浮点，CI 在较老的 CPU 上运行各架构构建（设计 27.5.4）
 - [ ] v0.4.0 已发布：在 jp-store 实测：已安装节点先 `sudo vpsmon-agent enable-remote-upgrade`，再从面板升级（设计 40.4.2）

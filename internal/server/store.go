@@ -614,6 +614,29 @@ var migrations = []string{
 		created_at INTEGER NOT NULL,
 		UNIQUE (host, port)
 	);`,
+
+	// 迁移 30：灰度升级（设计 29.16）。stages、server_ids、skipped 为 JSON；任务记录所属灰度升级与批次
+	`CREATE TABLE upgrade_rollouts (
+		id INTEGER PRIMARY KEY,
+		target_version TEXT NOT NULL,
+		status TEXT NOT NULL,
+		stages TEXT NOT NULL,
+		observe_minutes INTEGER NOT NULL,
+		max_failures INTEGER NOT NULL,
+		server_ids TEXT NOT NULL,
+		current_stage INTEGER NOT NULL DEFAULT 1,
+		stage_done_at INTEGER NOT NULL DEFAULT 0,
+		reason TEXT NOT NULL DEFAULT '',
+		skipped TEXT NOT NULL DEFAULT '[]',
+		ack_failures INTEGER NOT NULL DEFAULT 0,
+		ack_offline TEXT NOT NULL DEFAULT '[]',
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	ALTER TABLE upgrade_tasks ADD COLUMN rollout_id INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE upgrade_tasks ADD COLUMN stage INTEGER NOT NULL DEFAULT 0;
+	CREATE INDEX upgrade_tasks_rollout ON upgrade_tasks(rollout_id, stage);`,
 }
 
 func (s *Store) migrate() error {

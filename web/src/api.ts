@@ -5,7 +5,7 @@ import type * as G from './api.gen'
 
 export type {
   AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
-  NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeTask,
+  NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
 // ---- 由契约派生的类型 ----
@@ -290,6 +290,19 @@ export function createUpgradeTasks(serverIds: number[], version: string) {
 
 export function cancelUpgradeTask(id: number) {
   return request('post', '/upgrade-tasks/{id}/cancel', { params: { id } })
+}
+
+// 灰度升级（设计 29.16）
+export function listRollouts() {
+  return request('get', '/upgrade-rollouts')
+}
+
+export function createRollout(body: Body<'/upgrade-rollouts', 'post'>) {
+  return request('post', '/upgrade-rollouts', { body })
+}
+
+export function rolloutAction(id: number, action: 'pause' | 'resume' | 'cancel') {
+  return request('post', '/upgrade-rollouts/{id}/{action}', { params: { id, action } })
 }
 
 // ---- 告警（设计 16、19.9） ----
