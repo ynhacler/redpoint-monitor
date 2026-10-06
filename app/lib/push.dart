@@ -2,8 +2,8 @@
 //
 // Token 来源与平台通道隔离在 PushTokenSource 后面：接入 APNs / FCM 需要开发者的 Apple 推送密钥与 Firebase 项目
 // （GoogleService-Info.plist、google-services.json），未配置的构建使用 [NoPushTokenSource]，界面说明原因。
-// TODO(C): 接入 firebase_messaging（iOS 取 APNs Token、Android 取 FCM Token），iOS 增加 Notification Service Extension
-// 用 CryptoKit HPKE 解密（与 push_crypto.dart 同一参数），Android 在后台处理器中解密并创建本地通知。
+// Android：fcm.dart 的 FcmTokenSource，后台处理器解密并创建本地通知；iOS：NSE 用 CryptoKit 解密。
+// TODO(C): iOS 取得 APNs Token（需要开发者团队与 aps-environment 权限）。
 import 'api.dart';
 
 /// 推送 Token 的来源：返回（平台 apns / fcm，Token），不可用时返回 null。

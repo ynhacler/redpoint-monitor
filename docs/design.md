@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 109 | Android 版：FCM 推送与本机解密通知、桌面小组件、只允许 HTTPS、关闭云备份 | 1.5.4、12、30.3.3 |
 | 108 | iOS 桌面小组件：App Group 概览快照、最近告警、过期提示，配色由设计令牌生成 | 1.5.4、41.2 |
 | 107 | 邮件通知渠道：自有 SMTP、始终加密并校验证书（回环中转除外）、防邮件头注入、密码换服务器需重填 | 31 |
 | 106 | iOS 通知服务扩展：CryptoKit HPKE 解密推送、共享钥匙串保存各中心私钥；iOS 工程提交到仓库 | 30.3 |
@@ -1047,7 +1048,8 @@ iOS 已提前完成（修订第 108 条）：
 配色       由 design/tokens.json 生成 Tokens.swift（41.2），随系统浅色 / 深色
 ```
 
-Android 小组件待实现。
+Android 已完成（修订第 109 条）：本地插件 vpsmon_native 的 AppWidgetProvider，窄时显示计数与状态句，加宽后显示列表
+（行数随高度变化，最多 8 行）与 24 小时内的最近告警；同一快照格式，配色由 tokens.json 生成 Android 资源。
 
 ---
 
@@ -8261,8 +8263,13 @@ iOS NSE  （修订第 106 条）app/ios/NotificationService：系统 CryptoKit H
           失败或旧系统时保留外层兜底文字。私钥由 App 经 MethodChannel（dev.vpsmon/push_keys）写入与扩展共享的钥匙串访问组
           $(AppIdentifierPrefix)dev.vpsmon.shared（AfterFirstUnlockThisDeviceOnly，不随备份迁移）；配对、解除、切换、
           生成密钥时整体替换。make ios-push-check 用 Go 生成的测试向量校验 Swift 实现。iOS 工程（app/ios）从此提交到仓库
-未完成    App 接入 firebase_messaging（取得 APNs / FCM Token、aps-environment 授权）与 Android 后台解密；
-          官方 Relay 的部署与默认地址
+Android  （修订第 109 条）firebase_messaging 取得 FCM Token 并登记（不自动初始化，首次登记时请求通知权限）；
+          前台与后台处理器（独立 Flutter 引擎）读取各中心私钥依次解密字段 c，由本地插件 app/packages/vpsmon_native
+          创建通知：严重 / 警告 / 提示三个通知渠道，按中心分组，同一中心同一节点同一类通知相互替换，锁屏只显示“服务器告警”；
+          解不开时显示兜底文字。构建中没有 google-services.json（开发者 Firebase 项目，不提交）时不启用推送，App 照常使用。
+          只允许 HTTPS（调试构建另外放行 10.0.2.2 等本机地址），关闭云备份与设备迁移，关闭 Firebase 统计收集
+未完成    iOS 取得 APNs Token（需要开发者团队与 aps-environment 授权）；官方 Relay 的部署与默认地址；
+          正式构建的 google-services.json 与发布签名
 ```
 
 ## 30.6 Relay 不可用时

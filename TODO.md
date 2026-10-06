@@ -181,7 +181,8 @@
 - [x] E2E 推送（App 端第一步）：配对时生成 X25519 密钥并提交公钥、HPKE 解密（与面板测试向量互通）、推送登记与状态显示
 - [x] iOS 通知服务扩展：CryptoKit HPKE 解密、共享钥匙串中的各中心私钥（make ios-push-check 与面板向量互通）
 - [x] iOS 桌面小组件（小 / 中 / 大）：App Group 快照、最近告警、过期提示（设计 1.5.4）
-- [ ] Android 桌面小组件（设计 1.5.4）
+- [x] Android 版：FCM 推送（本机解密、通知渠道）、桌面小组件、网络与备份安全设置（设计 1.5.4、30.3.3）
+- [ ] 正式构建：Firebase 项目（google-services.json）、Android 发布签名、iOS APNs Token（需开发者凭证）
 - [ ] E2E 推送（App 端第二步）：接入 firebase_messaging 取得 APNs / FCM Token、aps-environment 授权、
   Android 后台处理器解密（需要开发者的 APNs 密钥与 Firebase 项目）
 - [ ] 部署官方 Push Relay，并把地址设为 --push-relay 的默认值

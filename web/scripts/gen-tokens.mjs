@@ -1,8 +1,8 @@
-// 由 design/tokens.json 生成 web/src/styles/tokens.css、app/lib/tokens.dart 与 iOS 小组件的 Tokens.swift（设计 41.2），Web 与 App 同源。只用 Node 标准库。
+// 由 design/tokens.json 生成 web/src/styles/tokens.css、app/lib/tokens.dart、iOS 小组件的 Tokens.swift 与 Android 原生资源（设计 41.2），Web 与 App 同源。只用 Node 标准库。
 //
 // 深色模式：默认跟随系统（prefers-color-scheme）；<html data-theme="light|dark"> 可固定（设计 41.2.1）。
 // 用法：npm run tokens（dev 与 build 前自动执行）
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -104,4 +104,19 @@ ${['xs', 'sm', 'md', 'lg', 'xl', 'num'].map((k) => `    static let font${k[0].to
 }
 `
 writeFileSync(join(here, '../../app/ios/VpsmonWidget/Tokens.swift'), swift)
-console.log('tokens.css, tokens.dart and Tokens.swift generated')
+
+// ---- Android 原生（通知与桌面小组件，设计 1.5.4）：values / values-night 两套颜色，尺寸为 dp / sp ----
+const snake = (k) => k.replace(/-/g, '_')
+const androidRes = (mode, withDims) => `<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动生成，请勿手工编辑：修改 design/tokens.json 后在 web/ 中运行 npm run tokens（设计 41.2） -->
+<resources>
+${names.map((n) => `    <color name="vpsmon_${snake(n)}">${tokens.color[n][mode]}</color>`).join('\n')}
+${withDims ? tokens.space.map((v, i) => `    <dimen name="vpsmon_space_${i + 1}">${v}dp</dimen>`).join('\n') + '\n' +
+  Object.entries(tokens.radius).map(([k, v]) => `    <dimen name="vpsmon_radius_${snake(k)}">${v}dp</dimen>`).join('\n') + '\n' +
+  ['xs', 'sm', 'md', 'lg', 'xl', 'num'].map((k) => `    <dimen name="vpsmon_font_${k}">${f[k].size}sp</dimen>`).join('\n') + '\n' : ''}</resources>
+`
+const resDir = join(here, '../../app/packages/vpsmon_native/android/src/main/res')
+for (const d of ['values', 'values-night']) mkdirSync(join(resDir, d), { recursive: true })
+writeFileSync(join(resDir, 'values/vpsmon_tokens.xml'), androidRes('light', true))
+writeFileSync(join(resDir, 'values-night/vpsmon_tokens.xml'), androidRes('dark', false))
+console.log('tokens.css, tokens.dart, Tokens.swift and Android resources generated')

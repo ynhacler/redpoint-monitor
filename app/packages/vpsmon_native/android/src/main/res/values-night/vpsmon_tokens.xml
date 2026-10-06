@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动生成，请勿手工编辑：修改 design/tokens.json 后在 web/ 中运行 npm run tokens（设计 41.2） -->
+<resources>
+    <color name="vpsmon_bg">#0F1115</color>
+    <color name="vpsmon_surface">#171A21</color>
+    <color name="vpsmon_surface_2">#12151B</color>
+    <color name="vpsmon_border">#262A33</color>
+    <color name="vpsmon_text">#E6E8EC</color>
+    <color name="vpsmon_text_muted">#8B93A1</color>
+    <color name="vpsmon_accent">#3B82F6</color>
+    <color name="vpsmon_on_accent">#FFFFFF</color>
+    <color name="vpsmon_ok">#22C55E</color>
+    <color name="vpsmon_warn">#F59E0B</color>
+    <color name="vpsmon_bad">#EF4444</color>
+    <color name="vpsmon_muted_state">#6B7280</color>
+    <color name="vpsmon_series_2">#A78BFA</color>
+    <color name="vpsmon_series_3">#22D3EE</color>
+    <color name="vpsmon_track">#2A2F3A</color>
+    <color name="vpsmon_qr_dark">#000000</color>
+    <color name="vpsmon_qr_light">#FFFFFF</color>
+</resources>
