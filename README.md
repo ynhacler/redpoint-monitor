@@ -83,6 +83,15 @@ curl -fsSLo vpsmon-server.service \
 sudo install -m 0644 vpsmon-server.service /etc/systemd/system/vpsmon-server.service
 ```
 
+**自定义端口**：面板的参数可以写在 `/etc/vpsmon/server.env`（`VPSMON_<参数名>`，升级不会覆盖），例如换到 9090：
+
+```bash
+sudo install -d -m 0755 /etc/vpsmon
+echo 'VPSMON_LISTEN=127.0.0.1:9090' | sudo tee /etc/vpsmon/server.env
+```
+
+只写端口（`VPSMON_LISTEN=9090` 或 `--listen 9090`）表示只监听本机。下文中的 `8080` 换成你的端口即可。
+
 先不要启动，接着配置 HTTPS。
 
 ---
@@ -104,6 +113,7 @@ sudo systemctl enable --now vpsmon-server
 ```
 
 面板仍以 `vpsmon` 用户运行，只额外获得绑定 80 / 443 端口的能力。证书缓存在 `/var/lib/vpsmon/certs`。
+HTTPS 不用 443 时，在 `/etc/vpsmon/server.env` 中加 `VPSMON_HTTPS_LISTEN=8443`（证书验证仍需要公网 80 端口）。
 
 ### 方式 B：Caddy 反向代理（主机上已有其他网站时）
 
@@ -118,15 +128,7 @@ monitor.example.com {
 再告诉面板它的对外地址（写进安装命令与 App 配对链接）：
 
 ```bash
-sudo systemctl edit vpsmon-server
-```
-
-在打开的编辑器中写入：
-
-```ini
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/vpsmon-server run --data /var/lib/vpsmon --listen 127.0.0.1:8080 --public-url https://monitor.example.com
+echo 'VPSMON_PUBLIC_URL=https://monitor.example.com' | sudo tee -a /etc/vpsmon/server.env
 ```
 
 然后：

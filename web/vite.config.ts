@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// Dev: Vite on :5173 proxies API calls to the Go server on :8080 (make dev-server).
+// 开发：Vite（:5173）把 /api、/ws 代理到本机面板，默认 :8080；换端口时由 scripts/dev.sh 设置 VPSMON_DEV_API（设计 28.1）
+const api = process.env.VPSMON_DEV_API ?? 'http://127.0.0.1:8080'
+
 export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8080',
-      '/ws': { target: 'ws://127.0.0.1:8080', ws: true },
+      '/api': api,
+      '/ws': { target: api.replace(/^http/, 'ws'), ws: true },
     },
   },
   build: { outDir: 'dist', emptyOutDir: true },

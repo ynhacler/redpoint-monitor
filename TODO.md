@@ -98,6 +98,7 @@
 ### A6 部署与运维
 
 - [x] 内置 HTTPS（ACME，`--domain`）（设计 25）；systemd drop-in deploy/systemd/vpsmon-server-https.conf
+- [x] 面板端口与参数可自定义：VPSMON_* 环境变量、/etc/vpsmon/server.env、监听地址只写端口（设计 28.1）
 - [x] 请求日志记录真实客户端 IP：只信任回环代理的 X-Forwarded-For（设计 24.6、26）
 - [x] `vpsmon-server backup / restore`、`diag`（设计 25、24.10）；Web 下载备份随系统设置页（阶段 B）
 
@@ -114,7 +115,7 @@
 - [x] 远程升级批量界面：“Agent 升级”页，按分组 / 全选批量升级、最近任务（设计 29.1、29.14）
 - [x] 非 root 安装（用户模式）：家目录安装、systemd 用户服务或 crontab 保活、`vpsmon-agent keepalive`、运行锁（设计 27.13）
 - [x] 386 构建改为软浮点，CI 在较老的 CPU 上运行各架构构建（设计 27.5.4）
-- [ ] v0.3.0 发布后在 jp-store 实测：已安装节点先 `sudo vpsmon-agent enable-remote-upgrade`，再从面板升级（设计 40.4.2）
+- [ ] v0.4.0 已发布：在 jp-store 实测：已安装节点先 `sudo vpsmon-agent enable-remote-upgrade`，再从面板升级（设计 40.4.2）
 
 ## 阶段 B — Web
 
@@ -157,7 +158,7 @@
 - [x] 可选的自动流量校准（云厂商口径 → 节点流量校准，设计 44.5）
 - DMIT：没有公开 API，暂不接入
 
-## 开放接口与 Agent 优化（设计 45、46，用户要求插入，参考 Komari）
+## 开放接口与 Agent 优化（设计 45、46）
 
 - [x] 45 第一步：只读 API Key（api_ 前缀、节点范围、限流、审计）+ /api/v1/version；权限矩阵增加 API Key 主体
 - [x] 45 第二步：WebSocket 事件 server.metrics / online / offline / alert.*；节点列表改为事件更新
@@ -183,8 +184,8 @@
 - [x] iOS 桌面小组件（小 / 中 / 大）：App Group 快照、最近告警、过期提示（设计 1.5.4）
 - [x] Android 版：FCM 推送（本机解密、通知渠道）、桌面小组件、网络与备份安全设置（设计 1.5.4、30.3.3）
 - [ ] 正式构建：Firebase 项目（google-services.json）、Android 发布签名、iOS APNs Token（需开发者凭证）
-- [ ] E2E 推送（App 端第二步）：接入 firebase_messaging 取得 APNs / FCM Token、aps-environment 授权、
-  Android 后台处理器解密（需要开发者的 APNs 密钥与 Firebase 项目）
+- [x] E2E 推送（App 端第二步）：Android 接入 firebase_messaging 取得 FCM Token、后台处理器解密
+- [ ] iOS 取得 APNs Token 并登记（需要开发者团队与 aps-environment 授权）
 - [ ] 部署官方 Push Relay，并把地址设为 --push-relay 的默认值
 
 ## MVP 之后

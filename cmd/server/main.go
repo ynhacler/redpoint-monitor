@@ -3,7 +3,7 @@
 //	vpsmon-server init        --data DIR               创建数据库与管理员账号，输出初始密码
 //	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
 //	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
-//	vpsmon-server run         --data DIR --listen ADDR [--log-format json|text] [--log-level info]
+//	vpsmon-server run         --data DIR --listen ADDR|PORT [--log-format json|text] [--log-level info]（参数也可用环境变量 VPSMON_*）
 //	vpsmon-server backup      --data DIR [--out FILE] [--keep N]   在线备份（设计 25）
 //	vpsmon-server restore     --data DIR --from FILE               离线恢复，须先停止面板
 //	vpsmon-server diag        --data DIR [--out FILE] [--log-file FILE]   生成诊断包（设计 24.10）
@@ -45,7 +45,8 @@ usage:
   vpsmon-server init       --data DIR [--username admin]
   vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
-  vpsmon-server run        --data DIR [--listen 127.0.0.1:8080] [--log-format json|text] [--log-level info]
+  vpsmon-server run        --data DIR [--listen 127.0.0.1:8080 | PORT] [--log-format json|text] [--log-level info]
+                           (every run flag can also be set via VPSMON_<FLAG>, e.g. VPSMON_LISTEN=9090)
                            [--public-url https://monitor.example.com] [--push-relay https://push.example.com]
                            [--release-mirror] [--no-release-sync]
                            [--domain monitor.example.com [--acme-email EMAIL] [--https-listen :443] [--http-listen :80]]
@@ -203,7 +204,7 @@ func main() {
 		fmt.Println("  nothing was uploaded; credentials are removed and IPs masked — review it before attaching to an issue")
 
 	case "run":
-		listen := fsx.String("listen", "127.0.0.1:8080", "listen address")
+		listen := fsx.String("listen", "127.0.0.1:8080", "listen address; a bare port means 127.0.0.1:PORT (env VPSMON_LISTEN; every flag also reads VPSMON_<FLAG>)")
 		logFormat := fsx.String("log-format", "json", "log format: json or text (design 24.3)")
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
 		noCaptcha := fsx.Bool("no-login-captcha", false, "disable the login slider captcha (design 17.4); login rate limiting stays on")
@@ -213,10 +214,27 @@ func main() {
 		pushRelay := fsx.String("push-relay", "", "Push Relay URL for encrypted App notifications (design 30), e.g. https://push.example.com; empty disables App push")
 		domain := fsx.String("domain", "", "built-in HTTPS: obtain certificates via ACME (Let's Encrypt) for these comma-separated domains; implies accepting the CA's terms (design 25)")
 		acmeEmail := fsx.String("acme-email", "", "with --domain: contact email for certificate notices (optional)")
-		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address")
+		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address; a bare port listens on all addresses")
 		httpListen := fsx.String("http-listen", ":80", "with --domain: HTTP listen address for ACME http-01 and redirects to HTTPS (empty = disabled)")
 		acmeDir := fsx.String("acme-directory", "", "with --domain: ACME directory URL (default: Let's Encrypt production)")
 		_ = fsx.Parse(args)
+		// 参数也可以来自环境变量 VPSMON_*（/etc/vpsmon/server.env，设计 28.1）；监听地址可以只写端口
+		if err := applyEnv(fsx, lookupEnv); err != nil {
+			log.Fatal(err)
+		}
+		for _, l := range []struct {
+			v    *string
+			host string
+		}{{listen, "127.0.0.1"}, {httpsListen, ""}, {httpListen, ""}} {
+			n, err := normalizeListen(*l.v, l.host)
+			if err != nil {
+				log.Fatal(err)
+			}
+			*l.v = n
+		}
+		if *listen == "" {
+			log.Fatal("--listen 不能为空")
+		}
 		var domains []string
 		if *domain != "" {
 			var err error
