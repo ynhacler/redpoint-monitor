@@ -14,6 +14,11 @@ dependencies:
   mobile_scanner: ^7.4.2
   path_provider: ^2.1.6
   cryptography: ^2.9.0
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
+  # 本仓库内的 Android 原生部分：告警通知与桌面小组件（packages/vpsmon_native）
+  vpsmon_native:
+    path: packages/vpsmon_native
 
 dev_dependencies:
   flutter_test:

@@ -2,7 +2,7 @@
 //
 // 启动（设计 12.2）：有已保存的监控中心 → 当前中心的首页；没有 → 添加监控平台。
 // 多监控中心（设计 1.5.2、12.8）：每个中心独立的凭证、推送密钥、离线缓存与偏好；“我的”中添加与切换。
-// TODO(C): 系统推送的接入（firebase_messaging，设计 30）；iOS NSE 已完成。
+// 系统推送（设计 30）：Android 用 FCM（fcm.dart），iOS 由 NSE 解密；TODO(C): iOS 取得 APNs Token 并登记。
 //
 // 本地开发：面板以 make dev 启动；iOS 模拟器填 http://127.0.0.1:8080，Android 模拟器填 http://10.0.2.2:8080
 // （调试构建才允许这两个明文地址）；真机使用 https 面板地址。
@@ -11,15 +11,22 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'cache.dart';
 import 'centers.dart';
+import 'fcm.dart';
 import 'home_widget.dart';
 import 'pages/pair_page.dart';
 import 'pages/shell.dart';
 import 'prefs.dart';
+import 'push.dart';
 import 'push_keys.dart';
 import 'session.dart';
 import 'theme.dart';
 
-void main() => runApp(const VpsMonApp(store: SecureCentersStore()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const store = SecureCentersStore();
+  final push = await initPush(store); // Android：FCM（设计 30）；iOS 的 APNs Token 待接入
+  runApp(VpsMonApp(store: store, pushSource: push));
+}
 
 /// 每个中心的离线缓存与偏好文件；测试中替换为内存实现
 typedef CenterFiles = (CacheStore, PrefsStore) Function(String key);
@@ -28,9 +35,10 @@ typedef CenterFiles = (CacheStore, PrefsStore) Function(String key);
     (FileCacheStore(name: 'cache_v1_$key'), FilePrefsStore(name: 'prefs_v1_$key'));
 
 class VpsMonApp extends StatelessWidget {
-  const VpsMonApp({super.key, required this.store, this.files = defaultCenterFiles});
+  const VpsMonApp({super.key, required this.store, this.files = defaultCenterFiles, this.pushSource = const NoPushTokenSource()});
   final CentersStore store;
   final CenterFiles files;
+  final PushTokenSource pushSource;
 
   @override
   Widget build(BuildContext context) {
@@ -38,15 +46,16 @@ class VpsMonApp extends StatelessWidget {
       title: 'VPS Monitor',
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
-      home: Root(store: store, files: files),
+      home: Root(store: store, files: files, pushSource: pushSource),
     );
   }
 }
 
 class Root extends StatefulWidget {
-  const Root({super.key, required this.store, required this.files});
+  const Root({super.key, required this.store, required this.files, this.pushSource = const NoPushTokenSource()});
   final CentersStore store;
   final CenterFiles files;
+  final PushTokenSource pushSource;
 
   @override
   State<Root> createState() => _RootState();
@@ -174,6 +183,7 @@ class _RootState extends State<Root> {
       prefs: _prefs!,
       onUnpair: _unpair,
       onRevoked: _revoked,
+      pushSource: widget.pushSource,
       centers: [for (final s in _centers.sessions) CenterHandle(centerKey(s), s.server, _clients[centerKey(s)]!)],
       onSwitch: _switch,
       onAdd: _add,

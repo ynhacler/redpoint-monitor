@@ -58,6 +58,8 @@ design/tokens.json     design tokens shared by Web and App (design 41.2)
 app/                   Flutter app (iOS/Android); run `make app-setup` once
   ios/NotificationService/ iOS push decryption extension (CryptoKit HPKE); `make ios-push-check` verifies it against Go vectors
   ios/VpsmonWidget/   WidgetKit home-screen widget; reads the App Group snapshot from lib/home_widget.dart, Tokens.swift is generated
+  android/            Android project (dev.vpsmon.app); FCM push in lib/fcm.dart, off without google-services.json (not committed)
+  packages/vpsmon_native/ local Android plugin: alert notifications + home-screen widget (usable from the FCM background isolate)
 deploy/systemd/        hardened unit files; deploy/openrc/ OpenRC script (Alpine, design 28)
 scripts/               setup-mac.sh, dev.sh, deploy.sh, install.sh, check_design_refs.py
 docs/design.md         the design; numbering rules in design 40.9

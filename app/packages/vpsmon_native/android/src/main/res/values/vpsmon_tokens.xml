@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动生成，请勿手工编辑：修改 design/tokens.json 后在 web/ 中运行 npm run tokens（设计 41.2） -->
+<resources>
+    <color name="vpsmon_bg">#F6F7F9</color>
+    <color name="vpsmon_surface">#FFFFFF</color>
+    <color name="vpsmon_surface_2">#F1F3F6</color>
+    <color name="vpsmon_border">#E5E7EB</color>
+    <color name="vpsmon_text">#16181D</color>
+    <color name="vpsmon_text_muted">#6B7280</color>
+    <color name="vpsmon_accent">#2563EB</color>
+    <color name="vpsmon_on_accent">#FFFFFF</color>
+    <color name="vpsmon_ok">#16A34A</color>
+    <color name="vpsmon_warn">#D97706</color>
+    <color name="vpsmon_bad">#DC2626</color>
+    <color name="vpsmon_muted_state">#9CA3AF</color>
+    <color name="vpsmon_series_2">#7C3AED</color>
+    <color name="vpsmon_series_3">#0891B2</color>
+    <color name="vpsmon_track">#E5E7EB</color>
+    <color name="vpsmon_qr_dark">#000000</color>
+    <color name="vpsmon_qr_light">#FFFFFF</color>
+    <dimen name="vpsmon_space_1">4dp</dimen>
+    <dimen name="vpsmon_space_2">8dp</dimen>
+    <dimen name="vpsmon_space_3">12dp</dimen>
+    <dimen name="vpsmon_space_4">16dp</dimen>
+    <dimen name="vpsmon_space_5">20dp</dimen>
+    <dimen name="vpsmon_space_6">24dp</dimen>
+    <dimen name="vpsmon_space_7">32dp</dimen>
+    <dimen name="vpsmon_space_8">48dp</dimen>
+    <dimen name="vpsmon_radius_sm">6dp</dimen>
+    <dimen name="vpsmon_radius_md">12dp</dimen>
+    <dimen name="vpsmon_radius_full">9999dp</dimen>
+    <dimen name="vpsmon_font_xs">11sp</dimen>
+    <dimen name="vpsmon_font_sm">12sp</dimen>
+    <dimen name="vpsmon_font_md">14sp</dimen>
+    <dimen name="vpsmon_font_lg">16sp</dimen>
+    <dimen name="vpsmon_font_xl">20sp</dimen>
+    <dimen name="vpsmon_font_num">28sp</dimen>
+</resources>

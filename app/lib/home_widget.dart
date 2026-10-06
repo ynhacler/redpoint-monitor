@@ -3,7 +3,7 @@
 // 【安全】快照里只有名称、状态、CPU / 内存 / 网速与计数：没有 AK、设备凭证、推送私钥、IP、价格与供应商
 // （小组件不长期保存 App 凭证，设计 1.5.4；隐私模式口径，设计 1.5.12）。
 // 数字在这里按 format.dart 格式化好，原生端只负责排版，Web / App / 小组件显示一致（设计 41.4.1）。
-// Android 小组件尚未实现：通道不存在时忽略。
+// iOS 由 AppDelegate 写入 App Group（WidgetKit 扩展读取）；Android 由本地插件 vpsmon_native 写入并刷新小组件。
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -70,7 +70,7 @@ class WidgetPublisher {
     if (key == _last && _lastAt != null && t.difference(_lastAt!) < minInterval) return false;
     _last = key;
     _lastAt = t;
-    if (!Platform.isIOS) return true;
+    if (!Platform.isIOS && !Platform.isAndroid) return true;
     try {
       await _channel.invokeMethod<void>('update', jsonEncode(snapshot));
     } on MissingPluginException {
@@ -84,7 +84,7 @@ class WidgetPublisher {
 
 /// 所有监控中心都已移除：清空小组件快照，不再显示已解除的面板的数据。
 Future<void> clearHomeWidget() async {
-  if (!Platform.isIOS) return;
+  if (!Platform.isIOS && !Platform.isAndroid) return;
   try {
     await _channel.invokeMethod<void>('clear');
   } on MissingPluginException {

@@ -50,7 +50,7 @@ jobs:
 
       # 设计令牌是 Web 与 App 的唯一来源（设计 41.2）：生成结果必须已提交，且与 tokens.json 一致
       - name: 设计令牌与生成结果一致
-        run: git diff --exit-code -- web/src/styles/tokens.css app/lib/tokens.dart app/ios/VpsmonWidget/Tokens.swift
+        run: git diff --exit-code -- web/src/styles/tokens.css app/lib/tokens.dart app/ios/VpsmonWidget/Tokens.swift app/packages/vpsmon_native/android/src/main/res
 
       - name: go vet + vue-tsc
         run: make lint
@@ -148,4 +148,12 @@ jobs:
         working-directory: app
       - name: flutter test
         run: flutter test
+        working-directory: app
+      # Android 构建：确认没有 google-services.json 时也能构建（推送自动关闭，设计 30）
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android 构建
+        run: flutter build apk --debug
         working-directory: app

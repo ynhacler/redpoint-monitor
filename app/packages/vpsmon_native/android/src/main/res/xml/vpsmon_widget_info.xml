@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设计 1.5.4：系统最短 30 分钟重绘一次；数据由 App 刷新时主动更新 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="420dp"
+    android:maxResizeHeight="400dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/vpsmon_widget_small"
+    android:previewLayout="@layout/vpsmon_widget_small"
+    android:description="@string/vpsmon_widget_description"
+    android:widgetCategory="home_screen" />

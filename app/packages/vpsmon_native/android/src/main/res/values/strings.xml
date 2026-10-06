@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vpsmon_widget_label">服务器概览</string>
+    <string name="vpsmon_widget_description">服务器状态概览；数据随 App 刷新，点按打开 App 查看实时数据</string>
+    <string name="vpsmon_widget_empty">打开 App 以更新</string>
+</resources>

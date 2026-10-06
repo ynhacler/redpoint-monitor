@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 桌面小组件（设计 1.5.4）：只读取 App 写入的快照，不联网、不保存凭证 -->
+        <receiver
+            android:name=".StatusWidget"
+            android:label="@string/vpsmon_widget_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/vpsmon_widget_info" />
+        </receiver>
+    </application>
+</manifest>

@@ -1,0 +1,19 @@
+name: vpsmon_native
+description: "VPS Monitor 的 Android 原生部分：告警通知与桌面小组件（设计 1.5.4、30.3.3）。只在本仓库内使用。"
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.vpsmon.vpsmon_native
+        pluginClass: VpsmonNativePlugin
