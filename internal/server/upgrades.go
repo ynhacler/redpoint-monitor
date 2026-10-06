@@ -67,15 +67,17 @@ type UpgradeTask struct {
 	CreatedBy     string `json:"created_by"`
 	CreatedAt     int64  `json:"created_at"`
 	UpdatedAt     int64  `json:"updated_at"`
+	RolloutID     int64  `json:"rollout_id"` // 所属灰度升级；0 表示单独创建（设计 29.16）
+	Stage         int    `json:"stage"`
 }
 
 const upgradeTaskColumns = `t.id, t.server_id, COALESCE(s.name, ''), t.target_version, t.from_version, t.status, t.reason,
-	t.created_by, t.created_at, t.updated_at`
+	t.created_by, t.created_at, t.updated_at, t.rollout_id, t.stage`
 
 func scanUpgradeTask(sc interface{ Scan(...any) error }) (UpgradeTask, error) {
 	var t UpgradeTask
 	err := sc.Scan(&t.ID, &t.ServerID, &t.ServerName, &t.TargetVersion, &t.FromVersion, &t.Status, &t.Reason,
-		&t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
+		&t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.RolloutID, &t.Stage)
 	return t, err
 }
 
@@ -117,13 +119,17 @@ func (s *Store) ActiveUpgradeTask(serverID int64) (*UpgradeTask, error) {
 
 // CreateUpgradeTask 新建任务；节点已有进行中的任务时返回 errUpgradeBusy。
 func (s *Store) CreateUpgradeTask(serverID int64, target, from, by string, now time.Time) (int64, error) {
+	return s.createUpgradeTask(serverID, target, from, by, 0, 0, now)
+}
+
+func (s *Store) createUpgradeTask(serverID int64, target, from, by string, rolloutID int64, stage int, now time.Time) (int64, error) {
 	if t, err := s.ActiveUpgradeTask(serverID); err != nil {
 		return 0, err
 	} else if t != nil {
 		return 0, errUpgradeBusy
 	}
-	res, err := s.DB.Exec(`INSERT INTO upgrade_tasks (server_id, target_version, from_version, status, created_by, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?)`, serverID, target, from, UpgradePending, by, now.Unix(), now.Unix())
+	res, err := s.DB.Exec(`INSERT INTO upgrade_tasks (server_id, target_version, from_version, status, created_by, created_at, updated_at,
+		rollout_id, stage) VALUES (?,?,?,?,?,?,?,?,?)`, serverID, target, from, UpgradePending, by, now.Unix(), now.Unix(), rolloutID, stage)
 	if err != nil {
 		return 0, err
 	}
@@ -212,6 +218,22 @@ func (s *Server) currentAgentVersion(id int64) string {
 	return ""
 }
 
+// upgradeEligibility 检查节点能否升级到 v：返回节点、当前版本；不能升级时 why 说明原因（单独任务与灰度升级共用）。
+func (s *Server) upgradeEligibility(id int64, v release.Version) (row *ServerRow, cur, why string) {
+	row, err := s.store.GetServer(id)
+	if err != nil {
+		return nil, "", "节点不存在"
+	}
+	if row.EnrollState == enrollPending {
+		return row, "", "尚未安装 Agent"
+	}
+	cur, remote := s.agentUpgradeInfo(id)
+	if cv, err := release.ParseVersion(cur); err == nil && cv.Compare(v) >= 0 {
+		return row, cur, "当前版本 " + cur + " 不低于目标版本"
+	}
+	return row, cur, remoteUpgradeBlocker(cur, remote)
+}
+
 // handleUpgradeTasks：GET /api/v1/upgrade-tasks?server_id=，admin。最近 100 个任务，最新在前。
 func (s *Server) handleUpgradeTasks(w http.ResponseWriter, r *http.Request) {
 	var sid int64
@@ -269,21 +291,8 @@ func (s *Server) handleCreateUpgradeTasks(w http.ResponseWriter, r *http.Request
 	created, skips := []UpgradeTask{}, []skipped{}
 	now := time.Now()
 	for _, id := range b.ServerIDs {
-		row, err := s.store.GetServer(id)
-		if err != nil {
-			skips = append(skips, skipped{id, "节点不存在"})
-			continue
-		}
-		if row.EnrollState == enrollPending {
-			skips = append(skips, skipped{id, "尚未安装 Agent"})
-			continue
-		}
-		cur, remote := s.agentUpgradeInfo(id)
-		if cv, err := release.ParseVersion(cur); err == nil && cv.Compare(v) >= 0 {
-			skips = append(skips, skipped{id, "当前版本 " + cur + " 不低于目标版本"})
-			continue
-		}
-		if why := remoteUpgradeBlocker(cur, remote); why != "" {
+		row, cur, why := s.upgradeEligibility(id, v)
+		if why != "" {
 			skips = append(skips, skipped{id, why})
 			continue
 		}

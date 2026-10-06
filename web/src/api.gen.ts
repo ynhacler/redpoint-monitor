@@ -253,6 +253,53 @@ export interface UpgradeTask {
   created_by: string
   created_at: number
   updated_at: number
+  /** 所属灰度升级；0 表示单独创建的任务 */
+  rollout_id: number
+  /** 灰度升级中的批次（从 1 开始）；单独创建的任务为 0 */
+  stage: number
+}
+
+/** 灰度升级的一批，累计规模二选一：count 台，或 percent（占全部参与节点的百分比，向上取整） */
+export interface RolloutStage {
+  count?: number
+  percent?: number
+}
+
+/** 灰度升级（设计 29.16） */
+export interface UpgradeRollout {
+  id: number
+  target_version: string
+  /** paused 包括手动暂停与自动暂停（见 reason） */
+  status: 'running' | 'paused' | 'completed' | 'cancelled'
+  stages: RolloutStage[]
+  observe_minutes: number
+  max_failures: number
+  /** 参与的节点数 */
+  total: number
+  /** 当前批次（从 1 开始） */
+  current_stage: number
+  /** 当前批全部结束的时间；0 表示还有任务在进行，观察期从这时开始 */
+  stage_done_at: number
+  /** 暂停、取消或完成的说明 */
+  reason: string
+  skipped: {
+    server_id: number
+    reason: string
+  }[]
+  /** 每批的任务统计 */
+  progress: {
+    stage: number
+    /** 本批计划的台数 */
+    target: number
+    tasks: number
+    success: number
+    /** 失败与回滚 */
+    failed: number
+    active: number
+  }[]
+  created_by: string
+  created_at: number
+  updated_at: number
 }
 
 export interface EnrollCodeView {
@@ -1367,6 +1414,41 @@ export interface Paths {
     post: {
       params: {
         id: number
+      }
+      response: void
+    }
+  }
+  '/upgrade-rollouts': {
+    /** 灰度升级，最新在前（最多 20 个，设计 29.16） */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: UpgradeRollout[]
+      }
+    }
+    /** 创建灰度升级并立即开始第一批（设计 29.16） */
+    post: {
+      body: {
+        /** 参与的节点，按升级顺序 */
+        server_ids: number[]
+        version: string
+        /** 各批累计规模；最后一批总是全部 */
+        stages: RolloutStage[]
+        /** 每批结束后的观察时间，默认 30 */
+        observe_minutes?: number
+        /** 每批允许的失败台数，超过即暂停，默认 0 */
+        max_failures?: number
+      }
+      response: UpgradeRollout
+    }
+  }
+  '/upgrade-rollouts/{id}/{action}': {
+    /** 暂停 / 继续 / 取消灰度升级 */
+    post: {
+      params: {
+        id: number
+        action: 'pause' | 'resume' | 'cancel'
       }
       response: void
     }
