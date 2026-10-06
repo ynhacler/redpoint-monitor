@@ -579,3 +579,63 @@ func TestLiveMode(t *testing.T) {
 		t.Fatalf("到期后应恢复：%q", got)
 	}
 }
+
+// 浏览器安全响应头：CSP（不允许内联脚本、禁止被嵌入）、nosniff、no-referrer；接口不缓存（设计 26.1）。
+func TestSecurityHeaders(t *testing.T) {
+	_, h, _ := testServer(t)
+	rec := do(h, "GET", "/", "", nil)
+	csp := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"script-src 'self';", "frame-ancestors 'none'", "object-src 'none'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP 缺少 %q：%s", want, csp)
+		}
+	}
+	if strings.Contains(csp, "unsafe-eval") || strings.Contains(strings.SplitN(csp, "style-src", 2)[0], "unsafe-inline") {
+		t.Errorf("脚本不应允许 unsafe-inline / unsafe-eval：%s", csp)
+	}
+	if rec.Header().Get("X-Frame-Options") != "DENY" || rec.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		rec.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Errorf("安全响应头：%v", rec.Header())
+	}
+	if rec := do(h, "GET", "/api/v1/servers", "", nil); rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("接口响应不应缓存：%q", rec.Header().Get("Cache-Control"))
+	}
+	// Host 中的异常字符不会进入策略
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = "evil.com; script-src *"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if strings.Contains(w.Header().Get("Content-Security-Policy"), "evil") {
+		t.Errorf("Host 不应注入到 CSP：%s", w.Header().Get("Content-Security-Policy"))
+	}
+}
+
+// 静态文件：不存在的分块与带扩展名的路径返回 404（升级后旧页面不会拿到 HTML 当脚本）；前端路由返回页面；
+// 带哈希的分块长期缓存，页面每次确认（升级后立即生效）。
+func TestWebStatic(t *testing.T) {
+	s, _, _ := testServer(t)
+	s.web = fstest.MapFS{
+		"index.html":          {Data: []byte("<html>spa</html>")},
+		"assets/index-abc.js": {Data: []byte("console.log(1)")},
+	}
+	h := s.webHandler()
+	get := func(p string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", p, nil))
+		return w
+	}
+	if w := get("/assets/index-abc.js"); w.Code != 200 || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+		t.Errorf("分块：%d %q", w.Code, w.Header().Get("Cache-Control"))
+	}
+	for _, p := range []string{"/assets/index-old.js", "/favicon.ico", "/robots.txt"} {
+		if w := get(p); w.Code != 404 {
+			t.Errorf("%s 应为 404：%d", p, w.Code)
+		}
+	}
+	for _, p := range []string{"/", "/servers/2", "/alerts"} {
+		w := get(p)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "spa") || w.Header().Get("Cache-Control") != "no-cache" {
+			t.Errorf("%s 应返回页面且不长期缓存：%d %q", p, w.Code, w.Header().Get("Cache-Control"))
+		}
+	}
+}

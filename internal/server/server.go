@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -892,11 +893,25 @@ func (s *Server) webHandler() http.Handler {
 	}
 	files := http.FileServerFS(s.web)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// SPA fallback: unknown paths serve index.html
-		if r.URL.Path != "/" {
-			if _, err := fs.Stat(s.web, r.URL.Path[1:]); err != nil {
-				r.URL.Path = "/"
+		p := r.URL.Path
+		if p != "/" {
+			if _, err := fs.Stat(s.web, p[1:]); err != nil {
+				// 不存在的文件（/assets/ 下的分块、带扩展名的路径）返回 404，而不是页面：升级后仍打开着的旧页面
+				// 请求已不存在的分块时，浏览器得到明确的失败并重新加载（main.ts），不会把 HTML 当作脚本执行
+				if strings.HasPrefix(p, "/assets/") || path.Ext(p) != "" {
+					http.NotFound(w, r)
+					return
+				}
+				p = "/" // 前端路由（/servers/2 等）：返回页面，由 vue-router 处理
+				r.URL.Path = p
 			}
+		}
+		if strings.HasPrefix(p, "/assets/") {
+			// 文件名带内容哈希，内容变化时文件名也变：可以长期缓存
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// 页面每次都向面板确认：升级后立即加载新版本
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		files.ServeHTTP(w, r)
 	})

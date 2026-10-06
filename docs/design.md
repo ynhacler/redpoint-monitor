@@ -157,6 +157,7 @@
   - [24.10 诊断包](#2410-诊断包)
 - [25. 服务部署](#25-服务部署)
 - [26. Nginx / Caddy](#26-nginx--caddy)
+  - [26.1 浏览器安全响应头与静态文件](#261-浏览器安全响应头与静态文件)
 - [27. Agent 安装](#27-agent-安装)
   - [27.1 安装流程总览](#271-安装流程总览)
   - [27.2 Web：新建节点](#272-web新建节点)
@@ -361,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 115 | 浏览器安全响应头（CSP、防嵌入、nosniff、no-referrer）、接口不缓存、缺失的静态文件返回 404 与升级后自动重新加载；流量记录不再随每次刷新重复请求 | 26.1 |
 | 114 | App 卡片与首页统计与 Web 一致（环形指标、网络 / IO、流量条、扁平卡片）；Web 页脚显示面板版本 | 13、41.3 |
 | 113 | 服务监控：面板检查 HTTP / HTTPS、TCP、DNS，连续失败告警与恢复通知，7 天记录与可用率 | 33.2 |
 | 112 | Agent：OpenRC 远程升级（crond 触发）、暂存目录属主检查与修复、日志级别与 journald 优先级、升级检查防刷屏 | 24.5、27.12、29.13 |
@@ -6452,6 +6454,28 @@ Caddy
 ```text
 monitor.example.com
 ```
+
+## 26.1 浏览器安全响应头与静态文件
+
+面板直接提供或经反向代理提供 Web 时，响应都带以下头（修订第 115 条）：
+
+```text
+Content-Security-Policy  default-src 'self'; script-src 'self'（不允许内联脚本与 eval）；
+                         style-src 'self' 'unsafe-inline'（ECharts 提示框的 HTML 带 style 属性）；img-src 'self' data:（滑块验证码）；
+                         connect-src 'self' 与同主机的 ws / wss；object-src 'none'; base-uri 'none'; form-action 'self';
+                         frame-ancestors 'none'（禁止被嵌入，防点击劫持）
+X-Frame-Options          DENY（旧浏览器）
+X-Content-Type-Options   nosniff
+Referrer-Policy          no-referrer
+Permissions-Policy       禁用相机、麦克风、定位、支付、USB
+Cache-Control            /api/ 下的响应 no-store；页面 no-cache（升级后立即加载新版本）；
+                         /assets/ 下带内容哈希的文件长期缓存（immutable）
+Strict-Transport-Security 只在面板自己提供 HTTPS 时设置（反向代理后由代理决定）
+```
+
+静态文件：不存在的 /assets/ 文件与带扩展名的路径返回 404，其余路径返回页面（前端路由）。
+升级后仍打开着的旧页面加载已不存在的分块时得到 404，页面自动重新加载一次（一分钟内最多一次）。
+ECharts 单独打包，页面代码变化时不必重新下载。
 
 ---
 
