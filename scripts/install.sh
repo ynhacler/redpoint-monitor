@@ -27,7 +27,7 @@ server)
   case "${PORT:-}" in
     '') ;;
     *[!0-9]*) echo "PORT must be a number (1-65535)"; exit 1 ;;
-    *) [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo "PORT must be 1-65535"; exit 1; } ;;
+    *) if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then echo "PORT must be 1-65535"; exit 1; fi ;;
   esac
   install -d -m 0755 /etc/vpsmon
   if [ ! -f /etc/vpsmon/server.env ]; then
