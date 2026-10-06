@@ -54,6 +54,7 @@ func do(h http.Handler, method, path, token string, body []byte) *httptest.Respo
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
+	checkContract(method, req.URL.Path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.Bytes()) // 设计 19.0.1
 	return rec
 }
 

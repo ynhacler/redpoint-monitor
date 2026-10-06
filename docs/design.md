@@ -5543,6 +5543,10 @@ Web（TypeScript）与 App（Dart）的请求类型由契约生成，不手写
 服务端测试校验响应与契约一致
 ```
 
+实现：make api-types 同时生成 JSON 版契约 internal/server/testdata/openapi.json（Go 标准库没有 YAML 解析器）；
+测试辅助函数 do() 发出的每个请求，2xx 的 JSON 响应都按对应路由的 schema 检查类型、required、enum 与未声明的字段，
+不一致处在测试结束时汇总并使 go test 失败。因此新增接口或字段时，契约与实现不同步会直接在 CI 中暴露。
+
 ### 19.0.2 约定
 
 | 项目 | 约定 |

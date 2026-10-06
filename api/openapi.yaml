@@ -1,6 +1,6 @@
 # 面板接口契约（设计 19.0.1）：新增或修改接口时先改这里，再写实现。
 # Web 的请求类型由本文件生成（make api-types → web/src/api.gen.ts，CI 检查一致）；App（Dart）随阶段 C；
-# 服务端测试校验响应与契约一致（TODO(A0)）。
+# 服务端测试校验响应与契约一致：测试中每个 2xx JSON 响应都按本契约检查（internal/server/contract_test.go）。
 openapi: 3.1.0
 info:
   title: RedPoint Monitor API
@@ -1873,7 +1873,7 @@ components:
       required: [id, channel_id, channel_name, channel_type, event_id, server_name, kind, title, status, attempts, last_error, created_at, sent_at]
       properties:
         id: { type: integer }
-        channel_id: { type: integer }
+        channel_id: { type: integer, description: App 推送（channel_type 为 app）时为 0 }
         channel_name: { type: string }
         channel_type: { type: string, enum: [telegram, webhook, ntfy, email, discord, bark, wecom, dingtalk, feishu, app], description: app 为 App 原生推送（设计 30），channel_name 为“App：设备名” }
         event_id: { type: integer, description: 测试通知为 0 }

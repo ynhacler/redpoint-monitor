@@ -1,5 +1,5 @@
 # OpenAPI 契约的基本检查（设计 19.0.1、19.0.2）：能被严格的 YAML 解析器解析；
-# 返回 items 的 GET 接口必须同时声明 next_cursor，且两者都列入 required（writeList 总是返回）。完整的响应与契约一致性校验见 TODO(A0)。
+# 返回 items 的 GET 接口必须同时声明 next_cursor，且两者都列入 required（writeList 总是返回）。响应与契约的一致性由服务端测试校验（internal/server/contract_test.go）。
 require "yaml"
 doc = YAML.load_file(ARGV[0] || "api/openapi.yaml")
 bad = []

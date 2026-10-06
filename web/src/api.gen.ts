@@ -220,6 +220,7 @@ export interface NotifyChannelInput {
 
 export interface Delivery {
   id: number
+  /** App 推送（channel_type 为 app）时为 0 */
   channel_id: number
   channel_name: string
   /** app 为 App 原生推送（设计 30），channel_name 为“App：设备名” */
