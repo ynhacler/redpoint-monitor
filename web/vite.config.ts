@@ -12,5 +12,16 @@ export default defineConfig({
       '/ws': { target: api.replace(/^http/, 'ws'), ws: true },
     },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // ECharts（含 zrender，已按需引入）单独成块：页面代码变化时不必重新下载，带图表的页面共用同一份缓存。
+    // 它本身约 450 KB（gzip 后约 150 KB），提高告警阈值，避免每次构建都提示
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => (/node_modules\/(echarts|zrender)\//.test(id) ? 'echarts' : undefined),
+      },
+    },
+  },
 })

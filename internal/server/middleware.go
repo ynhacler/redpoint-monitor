@@ -78,6 +78,44 @@ func (w *statusRecorder) Write(b []byte) (int, error) {
 // Unwrap 让 http.ResponseController 能访问底层连接（以后的 WebSocket 需要，设计 20）。
 func (w *statusRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// setSecurityHeaders 设置浏览器安全响应头（设计 26.1）：
+//   - CSP：只允许本面板的脚本（不允许内联脚本与 eval）；样式允许内联（ECharts 提示框的 HTML 中带 style 属性）；
+//     图片允许 data:（登录滑块验证码）；连接只允许本面板（含同主机的 WebSocket）；禁止被嵌入其他页面（防点击劫持）
+//   - nosniff、不发送 Referer、禁用相机 / 麦克风 / 定位等浏览器能力
+//   - 接口响应不缓存：其中有服务器信息与凭证相关的数据，不应留在浏览器或代理的缓存中
+//
+// 【安全】WebSocket 地址取自请求的 Host，只接受主机名、IP 与端口字符，避免把请求中的内容注入到策略里。
+func setSecurityHeaders(h http.Header, r *http.Request) {
+	connect := "'self'"
+	if host := r.Host; host != "" && validHostHeader(host) {
+		connect += " ws://" + host + " wss://" + host
+	}
+	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "+
+		"font-src 'self'; connect-src "+connect+"; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		h.Set("Cache-Control", "no-store")
+	}
+}
+
+// validHostHeader：只含主机名、IPv4 / IPv6 与端口允许的字符。
+func validHostHeader(h string) bool {
+	if len(h) > 255 {
+		return false
+	}
+	for _, c := range h {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '-', c == ':', c == '[', c == ']':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // middleware 包装所有路由：分配 request_id → 捕获 panic → 记录请求日志。
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +123,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		ri := &reqInfo{id: newRequestID()}
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, ri))
 		w.Header().Set("X-Request-ID", ri.id)
+		setSecurityHeaders(w.Header(), r)
 		if r.TLS != nil {
 			// 面板直接提供 HTTPS（内置 HTTPS，设计 25）时要求浏览器以后只用 HTTPS 访问；
 			// 在反向代理后面时由代理决定，这里不加

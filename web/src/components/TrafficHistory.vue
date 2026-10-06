@@ -33,8 +33,8 @@ async function load() {
   }
 }
 onMounted(load)
-// 换节点或刚校准过（calibrated_at 变化）时重新加载
-watch(() => [props.server.id, props.server.traffic.calibrated_at], load)
+// 换节点或刚校准过（calibrated_at 变化）时重新加载。用字符串比较：返回数组的 getter 每次都是新数组，节点列表每次刷新都会触发
+watch(() => `${props.server.id}:${props.server.traffic.calibrated_at}`, load)
 
 /** 周期显示为“首日 ～ 末日”：cycle_end 是下一周期的开始日，不含 */
 function range(c: TrafficCycle): string {

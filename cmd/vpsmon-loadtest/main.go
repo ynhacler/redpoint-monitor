@@ -184,11 +184,27 @@ func (a *agent) post(c *http.Client, endpoint string, at time.Time, st *stats) {
 	d := time.Since(start)
 	if err != nil {
 		st.add(d, false)
+		st.fail(errKind(err))
 		return
 	}
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	st.add(d, resp.StatusCode/100 == 2)
+	if resp.StatusCode/100 != 2 {
+		st.fail("HTTP " + strconv.Itoa(resp.StatusCode))
+	}
+}
+
+// errKind 把网络错误归类（不打印完整错误，避免刷屏）。
+func errKind(err error) string {
+	msg := err.Error()
+	for _, k := range []string{"timeout", "connection reset", "connection refused", "broken pipe", "EOF", "too many open files",
+		"can't assign requested address"} {
+		if strings.Contains(msg, k) {
+			return k
+		}
+	}
+	return "network error"
 }
 
 // probeList 登录后每 3 秒请求一次节点列表，模拟一个打开着的 Web 页面。
@@ -229,7 +245,18 @@ type stats struct {
 	mu    sync.Mutex
 	lat   []time.Duration
 	errs  atomic.Int64
-	bytes atomic.Int64 // 响应体传输字节数（只统计节点列表）
+	bytes atomic.Int64   // 响应体传输字节数（只统计节点列表）
+	kinds map[string]int // 失败原因：HTTP 状态码或网络错误，便于判断是限流、超时还是面板出错
+}
+
+// fail 记录一次失败的原因。
+func (s *stats) fail(kind string) {
+	s.mu.Lock()
+	if s.kinds == nil {
+		s.kinds = map[string]int{}
+	}
+	s.kinds[kind]++
+	s.mu.Unlock()
 }
 
 func (s *stats) add(d time.Duration, ok bool) {
@@ -255,6 +282,18 @@ func (s *stats) print(name string, over time.Duration) {
 		float64(len(s.lat))/over.Seconds(), p(0.5), p(0.95), p(0.99), s.lat[len(s.lat)-1].Round(10*time.Microsecond), s.errs.Load())
 	if b := s.bytes.Load(); b > 0 {
 		fmt.Printf("  body %.1f KB/req", float64(b)/float64(len(s.lat))/1024)
+	}
+	if len(s.kinds) > 0 {
+		keys := make([]string, 0, len(s.kinds))
+		for k := range s.kinds {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s ×%d", k, s.kinds[k]))
+		}
+		fmt.Printf("  (%s)", strings.Join(parts, ", "))
 	}
 	fmt.Println()
 }

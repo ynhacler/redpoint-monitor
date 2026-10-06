@@ -51,10 +51,19 @@ function addSample(v: ServerView) {
     rx: r.network.reduce((a, n) => a + n.rx_speed, 0), tx: r.network.reduce((a, n) => a + n.tx_speed, 0),
   })
 }
+// 1 小时历史同时用于预填实时曲线与默认的历史曲线：短时间内只请求一次
+let recent1h: { id: number; at: number; p: ReturnType<typeof getHistory> } | null = null
+function history1h(id: number) {
+  if (!recent1h || recent1h.id !== id || Date.now() - recent1h.at > 5000) {
+    recent1h = { id, at: Date.now(), p: getHistory(id, '1h') }
+  }
+  return recent1h.p
+}
+
 async function seedSamples() {
   const id = sid.value
   try {
-    const h = await getHistory(id, '1h')
+    const h = await history1h(id)
     if (id !== sid.value) return
     const cut = Date.now() / 1000 - SAMPLE_WINDOW
     const seeded: LiveSample[] = []
@@ -114,7 +123,7 @@ let timer: number | undefined
 
 async function loadHistory() {
   try {
-    history.value = await getHistory(sid.value, range.value)
+    history.value = await (range.value === '1h' ? history1h(sid.value) : getHistory(sid.value, range.value))
     historyError.value = ''
   } catch (e) {
     historyError.value = errorText(e)
