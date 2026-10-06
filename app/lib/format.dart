@@ -70,3 +70,29 @@ String flagEmoji(String country) {
   if (!RegExp(r'^[A-Z]{2}$').hasMatch(c)) return '';
   return String.fromCharCodes(c.codeUnits.map((u) => 0x1F1E6 + u - 0x41));
 }
+
+/// 卡片中的简短字节数：单位只写一个字母（1.2 G、350 M），与 Web 的 fmtBytesShort 一致（设计 41.4.1）。
+String fmtBytesShort(num? n, {bool perSec = false}) {
+  if (n == null || n.isNaN) return dash;
+  const units = ['B', 'K', 'M', 'G', 'T', 'P'];
+  var v = n.toDouble();
+  var i = 0;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  final s = i == 0 || v >= 100 ? v.round().toString() : ((v * 10).round() / 10).toString().replaceAll(RegExp(r'\.0$'), '');
+  return '$s ${units[i]}${perSec ? '/s' : ''}';
+}
+
+/// 开机时间（卡片）：不足 1 天按小时，1～999 天按天，更长按年；与 Web 的 fmtUptimeShort 一致。
+String fmtUptimeShort(num? seconds) {
+  if (seconds == null || seconds < 0) return dash;
+  final days = seconds / 86400;
+  if (days < 1) {
+    final h = (seconds / 3600).floor();
+    return h < 1 ? '<1小时' : '$h小时';
+  }
+  if (days <= 999) return '${days.floor()}天';
+  return '${(days / 365).toStringAsFixed(1)}年';
+}

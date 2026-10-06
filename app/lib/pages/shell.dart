@@ -294,6 +294,7 @@ class _OverviewTab extends StatelessWidget {
     final colors = StatusColors.of(context);
     final online = items.where((s) => s.status == 'online').length;
     final offlineN = items.where((s) => s.status == 'offline').length;
+    final heavy = items.where((s) => (trafficPct(s) ?? 0) >= 80).length;
     final attention = sortServers(items.where((s) => issues(s).isNotEmpty).toList(), SortBy.smart, prefs.favorites);
     final favs = sortServers(items.where((s) => prefs.favorites.contains(s.id) && issues(s).isEmpty).toList(), SortBy.name, prefs.favorites);
     final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
@@ -304,10 +305,13 @@ class _OverviewTab extends StatelessWidget {
         onRefresh: onRefresh,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
           if (centers.length > 1) _aggregate(context),
+          // 与 Web 仪表板的统计一致：全部 / 在线 / 离线 / 需要关注，数字只在非零时着色
           Row(children: [
-            _Count('在线', online, colors.ok),
+            _Count('全部', items.where((s) => s.status != 'pending').length, null),
+            _Count('在线', online, online > 0 ? colors.ok : null),
             _Count('离线', offlineN, offlineN > 0 ? colors.bad : null),
             _Count('需要关注', attention.length, attention.isNotEmpty ? colors.warn : null), // 与 Web“需要关注”同一规则（设计 9）
+            _Count('流量≥80%', heavy, heavy > 0 ? colors.warn : null),
           ]),
           if (error != null) offline(),
           if (items.isEmpty && updated != null) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('授权范围内还没有节点'))),
@@ -333,14 +337,19 @@ class _Count extends StatelessWidget {
   final Color? color;
 
   @override
+  // 与 Web 的统计格一致：上方小号说明，下方数字
   Widget build(BuildContext context) => Expanded(
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(children: [
-              Text('$value', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: color)),
-              Text(label, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ]),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(children: [
+                Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant), maxLines: 1),
+                Text('$value', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+              ]),
+            ),
           ),
         ),
       );

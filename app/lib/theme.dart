@@ -14,6 +14,19 @@ ThemeData appTheme(Brightness b) {
     colorScheme: ColorScheme.fromSeed(seedColor: c.accent, brightness: b, primary: c.accent, onPrimary: c.onAccent,
         surface: c.surface, error: c.bad, outlineVariant: c.border),
     scaffoldBackgroundColor: c.bg,
+    // 与 Web 一致（设计 41.3）：卡片为表面色 + 1px 边框 + 12px 圆角，没有阴影
+    cardTheme: CardThemeData(
+      color: c.surface,
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: c.border)),
+    ),
+    // 顶栏同 Web：表面色、底部分隔线、滚动时不变色
+    appBarTheme: AppBarTheme(backgroundColor: c.surface, surfaceTintColor: Colors.transparent, scrolledUnderElevation: 0,
+        shape: Border(bottom: BorderSide(color: c.border))),
+    navigationBarTheme: NavigationBarThemeData(backgroundColor: c.surface, surfaceTintColor: Colors.transparent),
+    dividerTheme: DividerThemeData(color: c.border, space: 1),
+    textTheme: Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text),
   );
 }
 
