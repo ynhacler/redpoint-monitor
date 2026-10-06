@@ -2,7 +2,7 @@
 //
 // 启动（设计 12.2）：有已保存的监控中心 → 当前中心的首页；没有 → 添加监控平台。
 // 多监控中心（设计 1.5.2、12.8）：每个中心独立的凭证、推送密钥、离线缓存与偏好；“我的”中添加与切换。
-// TODO(C): 系统推送的接入（firebase_messaging、iOS NSE，设计 30）。
+// TODO(C): 系统推送的接入（firebase_messaging，设计 30）；iOS NSE 已完成。
 //
 // 本地开发：面板以 make dev 启动；iOS 模拟器填 http://127.0.0.1:8080，Android 模拟器填 http://10.0.2.2:8080
 // （调试构建才允许这两个明文地址）；真机使用 https 面板地址。
@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'cache.dart';
 import 'centers.dart';
+import 'home_widget.dart';
 import 'pages/pair_page.dart';
 import 'pages/shell.dart';
 import 'prefs.dart';
@@ -102,6 +103,7 @@ class _RootState extends State<Root> {
     _syncClients();
     final s = _centers.current;
     if (s == null) {
+      clearHomeWidget(); // 桌面小组件不再显示已解除的面板（设计 1.5.4）
       setState(() => _api = null);
       return;
     }

@@ -1,4 +1,4 @@
-// 由 design/tokens.json 生成 web/src/styles/tokens.css 与 app/lib/tokens.dart（设计 41.2），Web 与 App 同源。只用 Node 标准库。
+// 由 design/tokens.json 生成 web/src/styles/tokens.css、app/lib/tokens.dart 与 iOS 小组件的 Tokens.swift（设计 41.2），Web 与 App 同源。只用 Node 标准库。
 //
 // 深色模式：默认跟随系统（prefers-color-scheme）；<html data-theme="light|dark"> 可固定（设计 41.2.1）。
 // 用法：npm run tokens（dev 与 build 前自动执行）
@@ -83,4 +83,25 @@ ${['xs', 'sm', 'md', 'lg', 'xl', 'num'].map((k) => `  static const ${k} = ${f[k]
 }
 `
 writeFileSync(join(here, '../../app/lib/tokens.dart'), dart)
-console.log('tokens.css and tokens.dart generated')
+
+// ---- iOS 原生（桌面小组件，设计 1.5.4）：颜色随系统浅色 / 深色切换 ----
+const rgb = (hex) => [1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(3)).join(', ')
+const swift = `// 自动生成，请勿手工编辑：修改 design/tokens.json 后在 web/ 中运行 npm run tokens（设计 41.2）
+import SwiftUI
+import UIKit
+
+private func dynamic(_ light: (Double, Double, Double), _ dark: (Double, Double, Double)) -> Color {
+    Color(UIColor { t in
+        let c = t.userInterfaceStyle == .dark ? dark : light
+        return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+    })
+}
+
+enum Tokens {
+${names.map((n) => `    /// ${tokens.color[n].use}\n    static let ${camel(n)} = dynamic((${rgb(tokens.color[n].light)}), (${rgb(tokens.color[n].dark)}))`).join('\n')}
+${tokens.space.map((v, i) => `    static let space${i + 1}: CGFloat = ${v}`).join('\n')}
+${['xs', 'sm', 'md', 'lg', 'xl', 'num'].map((k) => `    static let font${k[0].toUpperCase() + k.slice(1)}: CGFloat = ${f[k].size}`).join('\n')}
+}
+`
+writeFileSync(join(here, '../../app/ios/VpsmonWidget/Tokens.swift'), swift)
+console.log('tokens.css, tokens.dart and Tokens.swift generated')

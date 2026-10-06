@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		309A458E15DC7C157AEC38F5 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE1BEB5F6333011EEB34EBC /* NotificationService.swift */; };
+		3115E29B648E7FE69DF23897 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FF331F02B11B9936347023 /* WidgetShared.swift */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
+		39E2603BA7C6AB6987534546 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FF331F02B11B9936347023 /* WidgetShared.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		438DC4CB5CDA4F56F2A3093F /* PushKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95353EFA4DC69DB19F27794 /* PushKeyStore.swift */; };
 		47E50C4D53557A13AAB753D0 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68AB15980179DCBCB74F9E2A /* Pods_Runner.framework */; };
@@ -17,13 +19,20 @@
 		536C0F2667A6A21CA5CDCA2E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2931E3021ACC43562AFC76F4 /* Foundation.framework */; };
 		744760A6CBA2AC2554B672C9 /* PushCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A342AF80068DB24718B2E8F9 /* PushCrypto.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
+		75D5F458E273E4758DDC9FF6 /* VpsmonWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FDAC07F213F33EFB0EF5DD86 /* VpsmonWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		7DF9C88CD4DD3E485FCEB6BD /* VpsmonWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89AE4907E74ED6F96229AB6 /* VpsmonWidget.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		A4321636084D775326257E68 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64813B55C8ABE6FFE300F49B /* SwiftUI.framework */; };
 		A8CB5D8587DEA70024088586 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DD3C777A9602C7F3237A63EE /* Pods_RunnerTests.framework */; };
+		B3E902A7B1E2DD58FE468937 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FF331F02B11B9936347023 /* WidgetShared.swift */; };
+		D3352264FBF11D59549FE22F /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 808D90525986B26592CD7345 /* WidgetKit.framework */; };
 		D527356D82880E6DB3E6CC9C /* PushKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95353EFA4DC69DB19F27794 /* PushKeyStore.swift */; };
+		DBB6BAFF94CBED8C42288BCC /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2931E3021ACC43562AFC76F4 /* Foundation.framework */; };
+		E9B040E606542C2C467F66AF /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9AA2BB70741BD8F725BEA0 /* Tokens.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +49,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 1BE4452487FF1F8C14FFE308;
 			remoteInfo = NotificationService;
+		};
+		9D6B7C20A52E240AA369ED31 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F703BCE170290D9F94B7D6BD;
+			remoteInfo = VpsmonWidget;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -61,6 +77,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				4C8059BC1B37EF2133F88125 /* NotificationService.appex in Embed Foundation Extensions */,
+				75D5F458E273E4758DDC9FF6 /* VpsmonWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -68,17 +85,22 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		06FF331F02B11B9936347023 /* WidgetShared.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
+		0DD3796DF0234E6109ABFF8C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		146184DF4020516371C31580 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		19F6C52B2E1B09E1537549E3 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		2931E3021ACC43562AFC76F4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		2A9AA2BB70741BD8F725BEA0 /* Tokens.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
+		2D7C3E48FACB32C09EDAD673 /* VpsmonWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = VpsmonWidget.entitlements; sourceTree = "<group>"; };
 		2F4ABF5051FE9A1134EE22AF /* Runner.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		423CC067BD0EB673681637FE /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		4673C4FF2221F89930532091 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		64813B55C8ABE6FFE300F49B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
 		68AB15980179DCBCB74F9E2A /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		6BE1BEB5F6333011EEB34EBC /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -87,6 +109,7 @@
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		808D90525986B26592CD7345 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -95,15 +118,27 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A342AF80068DB24718B2E8F9 /* PushCrypto.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushCrypto.swift; sourceTree = "<group>"; };
+		B89AE4907E74ED6F96229AB6 /* VpsmonWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VpsmonWidget.swift; sourceTree = "<group>"; };
 		CBFA0D6D132567D2C9BB09DE /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		CDA11551D67CB3469567FDC2 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		DD3C777A9602C7F3237A63EE /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7F9E5381CC0B45E27AC6591 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE6030504011FF2A821D7948 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F95353EFA4DC69DB19F27794 /* PushKeyStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushKeyStore.swift; sourceTree = "<group>"; };
+		FDAC07F213F33EFB0EF5DD86 /* VpsmonWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VpsmonWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		57160AAE9BB49875E77B8C7A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBB6BAFF94CBED8C42288BCC /* Foundation.framework in Frameworks */,
+				D3352264FBF11D59549FE22F /* WidgetKit.framework in Frameworks */,
+				A4321636084D775326257E68 /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6586A0F0CEDC0A985B9FB291 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -136,6 +171,8 @@
 			isa = PBXGroup;
 			children = (
 				2931E3021ACC43562AFC76F4 /* Foundation.framework */,
+				808D90525986B26592CD7345 /* WidgetKit.framework */,
+				64813B55C8ABE6FFE300F49B /* SwiftUI.framework */,
 			);
 			name = iOS;
 			sourceTree = "<group>";
@@ -170,6 +207,7 @@
 				BC145FA42E7465915115502A /* Pods */,
 				F3628994F285F424084026CF /* Frameworks */,
 				DC525D4A9506041B4574798D /* NotificationService */,
+				EA6B225ACCFA354D88624578 /* VpsmonWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -179,6 +217,7 @@
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				E7F9E5381CC0B45E27AC6591 /* NotificationService.appex */,
+				FDAC07F213F33EFB0EF5DD86 /* VpsmonWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -225,6 +264,19 @@
 			);
 			name = NotificationService;
 			path = NotificationService;
+			sourceTree = "<group>";
+		};
+		EA6B225ACCFA354D88624578 /* VpsmonWidget */ = {
+			isa = PBXGroup;
+			children = (
+				B89AE4907E74ED6F96229AB6 /* VpsmonWidget.swift */,
+				2A9AA2BB70741BD8F725BEA0 /* Tokens.swift */,
+				06FF331F02B11B9936347023 /* WidgetShared.swift */,
+				0DD3796DF0234E6109ABFF8C /* Info.plist */,
+				2D7C3E48FACB32C09EDAD673 /* VpsmonWidget.entitlements */,
+			);
+			name = VpsmonWidget;
+			path = VpsmonWidget;
 			sourceTree = "<group>";
 		};
 		F3628994F285F424084026CF /* Frameworks */ = {
@@ -294,6 +346,7 @@
 			);
 			dependencies = (
 				2960C8F1142C23767A42CED0 /* PBXTargetDependency */,
+				EE6DBEF84E349FAFFCEBDBD5 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -302,6 +355,23 @@
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F703BCE170290D9F94B7D6BD /* VpsmonWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1B1B3D0643574EE94F1F063 /* Build configuration list for PBXNativeTarget "VpsmonWidget" */;
+			buildPhases = (
+				BE476C75C0A4E4CF8C63A842 /* Sources */,
+				57160AAE9BB49875E77B8C7A /* Frameworks */,
+				AA7BB09F255765604A49333A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VpsmonWidget;
+			productName = VpsmonWidget;
+			productReference = FDAC07F213F33EFB0EF5DD86 /* VpsmonWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -342,6 +412,7 @@
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				1BE4452487FF1F8C14FFE308 /* NotificationService */,
+				F703BCE170290D9F94B7D6BD /* VpsmonWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -369,6 +440,13 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA7BB09F255765604A49333A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -486,6 +564,17 @@
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				D527356D82880E6DB3E6CC9C /* PushKeyStore.swift in Sources */,
+				B3E902A7B1E2DD58FE468937 /* WidgetShared.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BE476C75C0A4E4CF8C63A842 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DF9C88CD4DD3E485FCEB6BD /* VpsmonWidget.swift in Sources */,
+				E9B040E606542C2C467F66AF /* Tokens.swift in Sources */,
+				3115E29B648E7FE69DF23897 /* WidgetShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -496,6 +585,7 @@
 				309A458E15DC7C157AEC38F5 /* NotificationService.swift in Sources */,
 				744760A6CBA2AC2554B672C9 /* PushCrypto.swift in Sources */,
 				438DC4CB5CDA4F56F2A3093F /* PushKeyStore.swift in Sources */,
+				39E2603BA7C6AB6987534546 /* WidgetShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -512,6 +602,12 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		EE6DBEF84E349FAFFCEBDBD5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = VpsmonWidget;
+			target = F703BCE170290D9F94B7D6BD /* VpsmonWidget */;
+			targetProxy = 9D6B7C20A52E240AA369ED31 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -535,6 +631,25 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		17AAD4FE538FA376476BC3B4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VpsmonWidget/VpsmonWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VpsmonWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vpsmon.vpsmonApp.VpsmonWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		1D8F0806748A8FAAB6FD9827 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
@@ -676,6 +791,46 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
+			};
+			name = Profile;
+		};
+		5E9257E28FBB5C121866468F /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VpsmonWidget/VpsmonWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VpsmonWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vpsmon.vpsmonApp.VpsmonWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8B22883C578F51E94F1CEA80 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VpsmonWidget/VpsmonWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VpsmonWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vpsmon.vpsmonApp.VpsmonWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Profile;
 		};
@@ -916,6 +1071,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1B1B3D0643574EE94F1F063 /* Build configuration list for PBXNativeTarget "VpsmonWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5E9257E28FBB5C121866468F /* Release */,
+				17AAD4FE538FA376476BC3B4 /* Debug */,
+				8B22883C578F51E94F1CEA80 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

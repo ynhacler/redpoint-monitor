@@ -8,6 +8,7 @@ import '../api.dart';
 import '../cache.dart';
 import '../centers.dart';
 import '../format.dart';
+import '../home_widget.dart';
 import '../metrics.dart';
 import '../models.dart';
 import '../prefs.dart';
@@ -55,6 +56,13 @@ class _AppShellState extends State<AppShell> {
   final Map<String, CenterSummary> _others = {};
   Timer? _othersTimer;
 
+  // 桌面小组件快照（设计 1.5.4）
+  final _widget = WidgetPublisher();
+
+  void _publishWidget() {
+    if (_updated != null) _widget.publish(widgetSnapshot(_items, _others.values, _updated!));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +89,7 @@ class _AppShellState extends State<AppShell> {
         if (mounted) setState(() => _others[c.key] = last.withError('$e'));
       }
     }
+    _publishWidget();
   }
 
   Future<void> _start() async {
@@ -114,6 +123,7 @@ class _AppShellState extends State<AppShell> {
         _error = null;
         _updated = now;
       });
+      _publishWidget();
     } on DeviceRevoked {
       _revoked();
     } catch (e) {
