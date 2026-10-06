@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 应用外壳：顶部导航、深浅色切换、账号与退出，以及各页面的容器。
 // 登录状态与节点数据由 store 统一管理，各页面共用（设计 41.6）；未登录时由路由守卫带到 /login。
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { getPanelVersion } from './api'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
 import { activeAlertCount } from './metrics'
@@ -15,6 +16,18 @@ const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } 
 // 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
 const alertCount = computed(() => activeAlertCount(state.servers))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
+
+// 面板版本显示在页脚（登录后读取一次）；git describe 的形式如 v0.4.1、v0.4.1-3-gabc123
+const panelVersion = ref('')
+watch(signedIn, async (on) => {
+  if (!on || panelVersion.value) return
+  try {
+    const v = await getPanelVersion()
+    panelVersion.value = /^\d/.test(v) ? `v${v}` : v
+  } catch {
+    /* 版本只是展示信息，读取失败时不显示 */
+  }
+}, { immediate: true })
 
 onMounted(() => applyTheme(themeMode.value))
 onUnmounted(stopPolling)
@@ -54,9 +67,14 @@ onUnmounted(stopPolling)
   <ErrorBoundary>
     <RouterView v-if="state.authChecked" />
   </ErrorBoundary>
+  <footer v-if="signedIn && panelVersion" class="footer small">
+    VPS Monitor 面板 <span class="num" title="面板版本（Agent 版本见“Agent 升级”页）">{{ panelVersion }}</span>
+  </footer>
 </template>
 
 <style scoped>
+.footer { max-width: var(--max-width); margin: var(--space-7) auto var(--space-5); padding: 0 var(--space-4); color: var(--text-muted);
+  text-align: center; }
 .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
 .inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); height: 52px; display: flex; align-items: center; gap: var(--space-6); }
 .brand { white-space: nowrap; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }

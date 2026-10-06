@@ -27,7 +27,8 @@ class DiskInfo {
 
 class Latest {
   Latest({required this.cpu, required this.mem, required this.memUsed, required this.memTotal, required this.disks,
-      required this.rx, required this.tx, required this.load1, required this.cores, this.uptime});
+      required this.rx, required this.tx, required this.load1, required this.cores, this.uptime, this.rxTotal = 0, this.txTotal = 0,
+      this.tempC, this.io});
   final double cpu;
   final double mem;
   final int memUsed;
@@ -38,6 +39,16 @@ class Latest {
   final double load1;
   final int cores;
   final int? uptime;
+
+  /// 开机以来累计收发字节数（网卡计数，重启后清零）
+  final int rxTotal;
+  final int txTotal;
+
+  /// CPU 温度；读不到时为 null
+  final double? tempC;
+
+  /// 磁盘读写（各磁盘之和）；旧版 Agent 没有时为 null
+  final DiskIO? io;
 
   factory Latest.fromJson(Map<String, dynamic> j) {
     final cpu = j['cpu'] as Map<String, dynamic>;
@@ -53,8 +64,33 @@ class Latest {
       disks: ((j['disk'] as List<dynamic>?) ?? const []).map((d) => DiskInfo.fromJson(d as Map<String, dynamic>)).toList(),
       rx: nets.fold<int>(0, (a, n) => a + _int((n as Map<String, dynamic>)['rx_speed'])!),
       tx: nets.fold<int>(0, (a, n) => a + _int((n as Map<String, dynamic>)['tx_speed'])!),
+      rxTotal: nets.fold<int>(0, (a, n) => a + (_int((n as Map<String, dynamic>)['rx_bytes']) ?? 0)),
+      txTotal: nets.fold<int>(0, (a, n) => a + (_int((n as Map<String, dynamic>)['tx_bytes']) ?? 0)),
       uptime: _int((j['system'] as Map<String, dynamic>?)?['uptime']),
+      tempC: _dbl(cpu['temp_c']),
+      io: DiskIO.sum((j['disk_io'] as List<dynamic>?)?.cast<Map<String, dynamic>>()),
     );
+  }
+}
+
+/// 磁盘读写速率与开机以来累计（各磁盘之和，设计 4.7）
+class DiskIO {
+  const DiskIO({required this.read, required this.write, required this.readTotal, required this.writeTotal});
+  final int read;
+  final int write;
+  final int readTotal;
+  final int writeTotal;
+
+  static DiskIO? sum(List<Map<String, dynamic>>? list) {
+    if (list == null || list.isEmpty) return null;
+    var r = 0, w = 0, rt = 0, wt = 0;
+    for (final d in list) {
+      r += _int(d['read_speed']) ?? 0;
+      w += _int(d['write_speed']) ?? 0;
+      rt += _int(d['read_bytes']) ?? 0;
+      wt += _int(d['write_bytes']) ?? 0;
+    }
+    return DiskIO(read: r, write: w, readTotal: rt, writeTotal: wt);
   }
 }
 

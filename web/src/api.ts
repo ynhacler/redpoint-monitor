@@ -305,6 +305,11 @@ export function rolloutAction(id: number, action: 'pause' | 'resume' | 'cancel')
   return request('post', '/upgrade-rollouts/{id}/{action}', { params: { id, action } })
 }
 
+/** 面板版本（git describe，设计 40.3.2），显示在页脚 */
+export async function getPanelVersion() {
+  return (await request('get', '/version')).version
+}
+
 // ---- 告警（设计 16、19.9） ----
 
 /** 告警事件，按时间倒序；state 默认 active（正在告警） */

@@ -185,6 +185,7 @@
 - [x] iOS 通知服务扩展：CryptoKit HPKE 解密、共享钥匙串中的各中心私钥（make ios-push-check 与面板向量互通）
 - [x] iOS 桌面小组件（小 / 中 / 大）：App Group 快照、最近告警、过期提示（设计 1.5.4）
 - [x] Android 版：FCM 推送（本机解密、通知渠道）、桌面小组件、网络与备份安全设置（设计 1.5.4、30.3.3）
+- [x] App 节点卡片与首页统计改为与 Web 一致：三个环 + 网络 / IO、温度 / 开机 / 负载、流量条；卡片为表面色 + 边框（设计 13、41.3）
 - [ ] 正式构建：Firebase 项目（google-services.json）、Android 发布签名、iOS APNs Token（需开发者凭证）
 - [x] E2E 推送（App 端第二步）：Android 接入 firebase_messaging 取得 FCM Token、后台处理器解密
 - [ ] iOS 取得 APNs Token 并登记（需要开发者团队与 aps-environment 授权）
