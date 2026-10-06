@@ -201,7 +201,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
         <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
         <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
       </dl>
-      <dl class="totals" title="开机以来累计（网卡计数，重启后清零）；计费用量见“周期流量”">
+      <dl class="totals" title="开机以来累计（网卡计数，重启后清零）；计费用量见“流量”">
         <div><dt>↓<i style="background: var(--accent)" /></dt><dd><Qty :text="fmtBytesShort(totalRx)" /></dd></div>
         <div><dt>↑<i style="background: var(--ok)" /></dt><dd><Qty :text="fmtBytesShort(totalTx)" /></dd></div>
       </dl>
