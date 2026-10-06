@@ -114,6 +114,38 @@ func Doctor(ctx context.Context, o Options) int {
 		}
 	}
 
+	// ---- 远程升级（设计 29.13、27.12） ----
+	if !user {
+		section("远程升级")
+		k := installedInit(p)
+		_, noRemote := os.Stat(p.NoRemoteUpgradeFile())
+		switch {
+		case !RemoteUpgradeInstalled(p):
+			warn("未启用：从面板升级需执行 sudo vpsmon-agent enable-remote-upgrade；也可在本机执行 sudo vpsmon-agent upgrade")
+		case noRemote == nil:
+			warn("已禁止（%s 存在）：升级请在本机执行 sudo vpsmon-agent upgrade", p.NoRemoteUpgradeFile())
+		default:
+			if _, err := os.Stat(p.Updater); err != nil {
+				bad("缺少 updater（%s）：sudo vpsmon-agent enable-remote-upgrade", p.Updater)
+			} else if k == initOpenRC && !crondRunning(o.Sys) {
+				bad("crond 未运行，升级请求不会被处理：sudo rc-service crond start && sudo rc-update add crond default")
+			} else if k == initOpenRC {
+				ok("已启用（crond 每 15 分钟检查升级请求）")
+			} else {
+				ok("已启用")
+			}
+		}
+		// 暂存目录属主不是 Agent 用户时，Agent 无法写入升级文件（permission denied）
+		if uid, _, err := o.Sys.IDs(userName); err == nil {
+			if fi, err := os.Lstat(filepath.Join(p.StateDir, "update")); err == nil {
+				if owner, ok2 := fileOwner(fi); !fi.IsDir() || (ok2 && owner != uid) {
+					bad("暂存目录 %s 属主不是 %s，Agent 无法写入升级文件：sudo vpsmon-agent enable-remote-upgrade 修复",
+						filepath.Join(p.StateDir, "update"), userName)
+				}
+			}
+		}
+	}
+
 	// ---- 网络与面板 ----
 	section("面板连通")
 	if v := firstEnv("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"); v != "" {

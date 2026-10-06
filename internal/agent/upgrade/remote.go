@@ -63,7 +63,7 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 		o.Log = func(string, ...any) {}
 	}
 	if err := os.MkdirAll(o.StageDir, 0o750); err != nil {
-		return err
+		return fmt.Errorf("无法创建暂存目录 %s：%w", o.StageDir, err)
 	}
 	o.reportResult(ctx)
 
@@ -76,7 +76,10 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 		Mirror    string `json:"mirror_path"` // 可选：面板镜像路径，如 /releases（设计 27.5.3）
 	}
 	if err := o.api(ctx, http.MethodGet, "/api/v1/agent/upgrade?current_version="+o.Current+"&os="+runtime.GOOS+"&arch="+ArchLabel(), nil, &task); err != nil {
-		return err
+		if errors.Is(err, errGone) {
+			return nil // 面板版本较旧，没有升级接口：不算错误，不写日志
+		}
+		return fmt.Errorf("查询升级任务失败：%w", err)
 	}
 	if !task.Upgrade {
 		return nil
@@ -86,6 +89,11 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 	}
 	if r, ok := readResult(o.StageDir); ok && r.TaskID == task.TaskID {
 		return nil // updater 已执行，结果尚未送达面板，下一轮重试上报
+	}
+	if err := checkStageWritable(o.StageDir); err != nil {
+		o.Log("upgrade task %d failed: %v", task.TaskID, err)
+		o.status(ctx, task.TaskID, "failed", err.Error())
+		return err
 	}
 	if err := o.stage(ctx, task.TaskID, task.Version, task.Manifest, []byte(task.Signature), task.Mirror); err != nil {
 		o.Log("upgrade task %d failed: %v", task.TaskID, err)
@@ -148,7 +156,7 @@ func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string,
 	if err := os.WriteFile(tmp, b, 0o640); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(o.StageDir, "request.json")) // 触发 systemd path 单元
+	return os.Rename(tmp, filepath.Join(o.StageDir, "request.json")) // 触发 updater（systemd path 单元，或 OpenRC 的定时检查）
 }
 
 // reportResult 上报 updater 留下的结果，成功送达（或任务已不存在）后删除。
@@ -234,6 +242,28 @@ func readRequest(dir string) (*Request, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// StageFixHint 是暂存目录不可写时的修复方法（在主机上以 root 执行，会把目录属主改回 Agent 用户）。
+const StageFixHint = "在主机上执行 sudo vpsmon-agent enable-remote-upgrade 修复"
+
+// checkStageWritable 确认 Agent 能在暂存目录中创建文件。目录属主不对时（例如曾以 root 运行过 Agent、
+// 或旧版本留下 root 所有的目录）说明属主与修复方法，而不是只报 permission denied。
+func checkStageWritable(dir string) error {
+	f, err := os.CreateTemp(dir, ".probe-")
+	if err != nil {
+		owner := ""
+		if fi, e := os.Stat(dir); e == nil {
+			if uid, ok := fileOwner(fi); ok && uid != os.Getuid() {
+				owner = fmt.Sprintf("（属主 uid %d，Agent 以 uid %d 运行）", uid, os.Getuid())
+			}
+		}
+		return fmt.Errorf("暂存目录 %s 不可写%s：%s", dir, owner, StageFixHint)
+	}
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	return nil
 }
 
 // cleanStage 删除暂存目录中上一轮的文件（保留 result.json，等待上报）。

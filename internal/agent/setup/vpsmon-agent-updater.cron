@@ -1,0 +1,9 @@
+#!/bin/sh
+# 远程升级触发器（OpenRC，设计 27.12、29.13）：由 crond 每 15 分钟运行；Agent 写下升级请求时，
+# 以 root 运行特权 updater（从暂存目录读取，不联网，内置公钥复验、拒绝降级，失败自动回滚）。
+# 关闭远程升级：touch /etc/vpsmon-agent/no-remote-upgrade
+# crond 的 PATH 很短：updater 需要找到 rc-service（/sbin）重启 Agent
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[ -e /etc/vpsmon-agent/no-remote-upgrade ] && exit 0
+[ -f /var/lib/vpsmon-agent/update/request.json ] || exit 0
+/usr/local/lib/vpsmon-agent/updater updater 2>&1 | logger -t vpsmon-agent-updater -p daemon.notice

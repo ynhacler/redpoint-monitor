@@ -182,6 +182,10 @@ sudo vpsmon-agent uninstall          # 停止、删除并通知面板
 ```
 
 也可以在 Web 的 **仪表板 → Agent 升级** 页面批量远程升级：面板只能选择官方签名的版本，主机上的 updater 用内置公钥复验并拒绝降级。
+已安装的节点需要先在主机上执行一次 `sudo vpsmon-agent enable-remote-upgrade`（新安装默认启用）。Alpine（OpenRC）由 crond 每 15 分钟
+检查一次升级请求，该命令会启动 crond。远程升级失败并提示暂存目录不可写时，同样执行这条命令修复；`sudo vpsmon-agent doctor` 会检查这些问题。
+
+Agent 日志：systemd 主机 `journalctl -u vpsmon-agent`（只看警告与错误加 `-p warning`），Alpine 在系统日志中（`logread | grep vpsmon-agent`）。
 
 ---
 

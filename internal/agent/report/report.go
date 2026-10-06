@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"vpsmon/internal/agent/alog"
 	"vpsmon/internal/protocol"
 )
 
@@ -97,7 +97,7 @@ func (r *Reporter) logf(format string, args ...any) {
 		r.Logf(format, args...)
 		return
 	}
-	log.Printf(format, args...)
+	alog.Printf(format, args...)
 }
 
 // Enqueue 加入一份上报。超过数量或时间上限时丢弃最旧的；凭证失效期间只保留最新一份用于试探。

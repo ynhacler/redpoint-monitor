@@ -256,3 +256,34 @@ func TestCheckRemoteRejects(t *testing.T) {
 		})
 	}
 }
+
+// 暂存目录不可写（例如曾以 root 创建）：上报失败并说明修复方法，而不是只报 permission denied。
+func TestCheckRemoteStageNotWritable(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root 可以写入任何目录")
+	}
+	_, panel, o := remoteFixture(t)
+	if err := os.MkdirAll(o.StageDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(o.StageDir, 0o500)
+	t.Cleanup(func() { os.Chmod(o.StageDir, 0o750) })
+	err := CheckRemote(context.Background(), o)
+	if err == nil || !strings.Contains(err.Error(), "不可写") {
+		t.Fatalf("应报告暂存目录不可写：%v", err)
+	}
+	if len(panel.statuses) != 1 || !strings.Contains(panel.statuses[0], "enable-remote-upgrade") {
+		t.Errorf("上报的原因应包含修复方法：%v", panel.statuses)
+	}
+}
+
+// 旧版面板没有升级接口（404）：不算错误。
+func TestCheckRemoteOldPanel(t *testing.T) {
+	_, _, o := remoteFixture(t)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	o.Server = srv.URL
+	if err := CheckRemote(context.Background(), o); err != nil {
+		t.Fatalf("旧版面板应安静跳过：%v", err)
+	}
+}
