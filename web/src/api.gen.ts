@@ -423,6 +423,65 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface ServiceMonitorInput {
+  name: string
+  kind: 'http' | 'tcp' | 'dns'
+  /** http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名 */
+  target: string
+  /** 关联的节点（可选，0 表示不关联）；关联后只能查看该节点的 App 设备也会收到推送 */
+  server_id?: number
+  /** 检查间隔，默认 60 */
+  interval_s?: number
+  /** 超时，默认 10 */
+  timeout_s?: number
+  /** 连续失败几次判为异常，默认 2 */
+  fail_threshold?: number
+  /** 默认 critical */
+  severity?: 'critical' | 'warning'
+  /** http：期望的状态码，如 200、200-299、200,301；默认 200-399 */
+  expect_status?: string
+  /** http：响应内容（前 64 KB）必须包含的文字 */
+  keyword?: string
+  /** dns：查询类型，默认 A */
+  dns_type?: 'A' | 'AAAA'
+  /** dns：解析结果必须包含的 IP */
+  dns_expect?: string
+  /** 默认 true */
+  enabled?: boolean
+}
+
+/** 服务监控（设计 33.2） */
+export interface ServiceMonitor {
+  id: number
+  name: string
+  kind: 'http' | 'tcp' | 'dns'
+  target: string
+  server_id: number
+  interval_s: number
+  timeout_s: number
+  fail_threshold: number
+  severity: 'critical' | 'warning'
+  expect_status: string
+  keyword: string
+  dns_type: string
+  dns_expect: string
+  enabled: boolean
+  /** unknown 表示还没有检查或刚开始失败、尚未达到连续失败次数 */
+  status: 'up' | 'down' | 'unknown'
+  /** 进入当前状态的时间 */
+  status_since: number
+  /** 当前连续失败次数 */
+  fails: number
+  /** 最近一次成功检查的耗时；最近一次失败时为 null */
+  last_latency_ms: number | null
+  last_error: string
+  checked_at: number
+  /** 最近 24 小时成功率（0～100）；没有记录时为 null */
+  uptime_24h: number | null
+  uptime_7d: number | null
+  created_at: number
+}
+
 export interface SSLMonitor {
   id: number
   host: string
@@ -1519,6 +1578,71 @@ export interface Paths {
         /** 空表示没有更多 */
         next_cursor: string
         items: Delivery[]
+      }
+    }
+  }
+  '/service-monitors': {
+    /** 服务监控（设计 33.2），异常的在前 */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: ServiceMonitor[]
+      }
+    }
+    /** 添加服务监控并立即检查一次 */
+    post: {
+      body: ServiceMonitorInput
+      response: ServiceMonitor
+    }
+  }
+  '/service-monitors/{id}': {
+    /** 修改服务监控（检查结果与历史保留） */
+    put: {
+      params: {
+        id: number
+      }
+      body: ServiceMonitorInput
+      response: ServiceMonitor
+    }
+    /** 删除服务监控与它的检查记录 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/service-monitors/{id}/check': {
+    /** 立即检查一次（不改变检查周期；结果计入状态判断） */
+    post: {
+      params: {
+        id: number
+      }
+      response: ServiceMonitor
+    }
+  }
+  '/service-monitors/{id}/checks': {
+    /** 检查记录（最近 24 小时或 7 天；7 天按 10 分钟汇总） */
+    get: {
+      params: {
+        id: number
+      }
+      query?: {
+        range?: '24h' | '7d'
+      }
+      response: {
+        /** 始终为空（一次返回整个时间范围） */
+        next_cursor: string
+        items: ({
+          ts: number
+          /** 成功次数（24h 时每点一次检查，为 0 或 1） */
+          ok: number
+          /** 检查次数 */
+          total: number
+          /** 成功检查的平均耗时；全部失败时为 null */
+          latency_ms: number | null
+        })[]
       }
     }
   }

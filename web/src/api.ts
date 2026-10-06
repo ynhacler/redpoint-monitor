@@ -5,7 +5,7 @@ import type * as G from './api.gen'
 
 export type {
   AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
-  NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, TrafficView, UpgradeRollout, UpgradeTask,
+  NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
 // ---- 由契约派生的类型 ----
@@ -506,6 +506,31 @@ export function checkSSLMonitor(id: number) {
 
 export function deleteSSLMonitor(id: number) {
   return request('delete', '/ssl-monitors/{id}', { params: { id } })
+}
+
+// 服务监控（设计 33.2）
+export async function listServiceMonitors() {
+  return (await request('get', '/service-monitors')).items
+}
+
+export function createServiceMonitor(body: G.ServiceMonitorInput) {
+  return request('post', '/service-monitors', { body })
+}
+
+export function updateServiceMonitor(id: number, body: G.ServiceMonitorInput) {
+  return request('put', '/service-monitors/{id}', { params: { id }, body })
+}
+
+export function deleteServiceMonitor(id: number) {
+  return request('delete', '/service-monitors/{id}', { params: { id } })
+}
+
+export function checkServiceMonitor(id: number) {
+  return request('post', '/service-monitors/{id}/check', { params: { id } })
+}
+
+export async function serviceChecks(id: number, range: '24h' | '7d') {
+  return (await request('get', '/service-monitors/{id}/checks', { params: { id }, query: { range } })).items
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----

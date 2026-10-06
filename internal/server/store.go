@@ -637,6 +637,39 @@ var migrations = []string{
 	ALTER TABLE upgrade_tasks ADD COLUMN rollout_id INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE upgrade_tasks ADD COLUMN stage INTEGER NOT NULL DEFAULT 0;
 	CREATE INDEX upgrade_tasks_rollout ON upgrade_tasks(rollout_id, stage);`,
+
+	// 迁移 31：服务监控（设计 33.2）。面板按间隔检查 HTTP / TCP / DNS；检查记录保留 7 天
+	`CREATE TABLE service_monitors (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		target TEXT NOT NULL,
+		server_id INTEGER NOT NULL DEFAULT 0,
+		interval_s INTEGER NOT NULL DEFAULT 60,
+		timeout_s INTEGER NOT NULL DEFAULT 10,
+		fail_threshold INTEGER NOT NULL DEFAULT 2,
+		severity TEXT NOT NULL DEFAULT 'critical',
+		expect_status TEXT NOT NULL DEFAULT '',
+		keyword TEXT NOT NULL DEFAULT '',
+		dns_type TEXT NOT NULL DEFAULT 'A',
+		dns_expect TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		status TEXT NOT NULL DEFAULT 'unknown',
+		status_since INTEGER NOT NULL DEFAULT 0,
+		fails INTEGER NOT NULL DEFAULT 0,
+		last_latency_ms INTEGER,
+		last_error TEXT NOT NULL DEFAULT '',
+		checked_at INTEGER NOT NULL DEFAULT 0,
+		event_started INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL
+	);
+	CREATE TABLE service_checks (
+		monitor_id INTEGER NOT NULL,
+		ts INTEGER NOT NULL,
+		ok INTEGER NOT NULL,
+		latency_ms INTEGER NOT NULL
+	);
+	CREATE INDEX service_checks_monitor ON service_checks(monitor_id, ts);`,
 }
 
 func (s *Store) migrate() error {

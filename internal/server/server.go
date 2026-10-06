@@ -75,6 +75,7 @@ type Server struct {
 	pairLimit     *enrollLimiter // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
 	push          *pushState     // App 原生推送（设计 30）
 	sslRoots      *x509.CertPool // SSL 证书监控的根证书；nil 表示系统根证书（测试中替换，设计 33.3）
+	services      serviceRunner  // 服务监控：正在检查的监控（设计 33.2）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -160,6 +161,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "cloud", s.cloudLoop)
 	go s.runTask(ctx, "ws-status", s.statusLoop)
 	go s.runTask(ctx, "reminders", s.reminderLoop)
+	go s.runTask(ctx, "services", s.serviceLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -303,6 +305,12 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/ssl-monitors", accessAdmin, s.handleCreateSSLMonitor)
 	handle("POST /api/v1/ssl-monitors/{id}/check", accessAdmin, s.handleCheckSSLMonitor)
 	handle("DELETE /api/v1/ssl-monitors/{id}", accessAdmin, s.handleDeleteSSLMonitor)
+	handle("GET /api/v1/service-monitors", accessAdmin, s.handleServiceMonitors)
+	handle("POST /api/v1/service-monitors", accessAdmin, s.handleCreateServiceMonitor)
+	handle("PUT /api/v1/service-monitors/{id}", accessAdmin, s.handleUpdateServiceMonitor)
+	handle("DELETE /api/v1/service-monitors/{id}", accessAdmin, s.handleDeleteServiceMonitor)
+	handle("POST /api/v1/service-monitors/{id}/check", accessAdmin, s.handleCheckServiceMonitor)
+	handle("GET /api/v1/service-monitors/{id}/checks", accessAdmin, s.handleServiceChecks)
 	handle("GET /api/v1/silences", accessOps, s.handleSilences)
 	handle("POST /api/v1/silences", accessOps, s.handleCreateSilence)
 	handle("DELETE /api/v1/silences/{id}", accessOps, s.handleEndSilence)
@@ -707,6 +715,11 @@ func (s *Server) maintenance(ctx context.Context) {
 				s.log.Error("alert prune failed", "component", "alert", "err", err)
 			} else if n > 0 {
 				s.log.Info("expired alert events deleted", "component", "alert", "rows", n)
+			}
+			if n, err := s.store.PruneServiceChecks(now); err != nil {
+				s.log.Error("service check prune failed", "component", "service", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired service checks deleted", "component", "service", "rows", n)
 			}
 			if n, err := s.store.PruneDeliveries(now); err != nil {
 				s.log.Error("delivery prune failed", "component", "notify", "err", err)
