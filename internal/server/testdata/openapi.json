@@ -2597,6 +2597,283 @@
         }
       }
     },
+    "/service-monitors": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "服务监控（设计 33.2），异常的在前",
+        "responses": {
+          "200": {
+            "description": "列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "next_cursor",
+                    "items"
+                  ],
+                  "properties": {
+                    "next_cursor": {
+                      "type": "string",
+                      "description": "空表示没有更多"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceMonitor"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "添加服务监控并立即检查一次",
+        "description": "面板按 interval_s 检查：http（HTTP / HTTPS，始终校验证书）、tcp（端口能否连接）、dns（能否解析，可要求包含某个 IP）。\n连续 fail_threshold 次失败判为异常并发送通知，恢复时再通知一次（经通知渠道与 App 推送，遵守免打扰）。最多 200 个。\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceMonitorInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已添加",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceMonitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/service-monitors/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "修改服务监控（检查结果与历史保留）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceMonitorInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceMonitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "删除服务监控与它的检查记录",
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/service-monitors/{id}/check": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "立即检查一次（不改变检查周期；结果计入状态判断）",
+        "responses": {
+          "200": {
+            "description": "检查后的状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceMonitor"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/service-monitors/{id}/checks": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "检查记录（最近 24 小时或 7 天；7 天按 10 分钟汇总）",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d"
+              ],
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "按时间排序",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "next_cursor",
+                    "items"
+                  ],
+                  "properties": {
+                    "next_cursor": {
+                      "type": "string",
+                      "description": "始终为空（一次返回整个时间范围）"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "ts",
+                          "ok",
+                          "total",
+                          "latency_ms"
+                        ],
+                        "properties": {
+                          "ts": {
+                            "type": "integer"
+                          },
+                          "ok": {
+                            "type": "integer",
+                            "description": "成功次数（24h 时每点一次检查，为 0 或 1）"
+                          },
+                          "total": {
+                            "type": "integer",
+                            "description": "检查次数"
+                          },
+                          "latency_ms": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "成功检查的平均耗时；全部失败时为 null"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/ssl-monitors": {
       "get": {
         "tags": [
@@ -6264,6 +6541,219 @@
           },
           "resolved_value": {
             "type": "number"
+          }
+        }
+      },
+      "ServiceMonitorInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "target"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "http",
+              "tcp",
+              "dns"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名"
+          },
+          "server_id": {
+            "type": "integer",
+            "description": "关联的节点（可选，0 表示不关联）；关联后只能查看该节点的 App 设备也会收到推送"
+          },
+          "interval_s": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 3600,
+            "description": "检查间隔，默认 60"
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "超时，默认 10"
+          },
+          "fail_threshold": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "连续失败几次判为异常，默认 2"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning"
+            ],
+            "description": "默认 critical"
+          },
+          "expect_status": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "http：期望的状态码，如 200、200-299、200,301；默认 200-399"
+          },
+          "keyword": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "http：响应内容（前 64 KB）必须包含的文字"
+          },
+          "dns_type": {
+            "type": "string",
+            "enum": [
+              "A",
+              "AAAA"
+            ],
+            "description": "dns：查询类型，默认 A"
+          },
+          "dns_expect": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "dns：解析结果必须包含的 IP"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "默认 true"
+          }
+        }
+      },
+      "ServiceMonitor": {
+        "type": "object",
+        "description": "服务监控（设计 33.2）",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "target",
+          "server_id",
+          "interval_s",
+          "timeout_s",
+          "fail_threshold",
+          "severity",
+          "expect_status",
+          "keyword",
+          "dns_type",
+          "dns_expect",
+          "enabled",
+          "status",
+          "status_since",
+          "fails",
+          "last_latency_ms",
+          "last_error",
+          "checked_at",
+          "uptime_24h",
+          "uptime_7d",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "http",
+              "tcp",
+              "dns"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "integer"
+          },
+          "interval_s": {
+            "type": "integer"
+          },
+          "timeout_s": {
+            "type": "integer"
+          },
+          "fail_threshold": {
+            "type": "integer"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning"
+            ]
+          },
+          "expect_status": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "dns_type": {
+            "type": "string"
+          },
+          "dns_expect": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ],
+            "description": "unknown 表示还没有检查或刚开始失败、尚未达到连续失败次数"
+          },
+          "status_since": {
+            "type": "integer",
+            "description": "进入当前状态的时间"
+          },
+          "fails": {
+            "type": "integer",
+            "description": "当前连续失败次数"
+          },
+          "last_latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "最近一次成功检查的耗时；最近一次失败时为 null"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "checked_at": {
+            "type": "integer"
+          },
+          "uptime_24h": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "最近 24 小时成功率（0～100）；没有记录时为 null"
+          },
+          "uptime_7d": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
           }
         }
       },

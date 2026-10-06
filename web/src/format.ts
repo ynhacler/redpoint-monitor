@@ -68,6 +68,21 @@ export function fmtPct(p: number | null | undefined): string {
  * 时间：今天显示 16:31；本年显示 10-02 16:31；更早显示 2025-10-02（设计 41.4.1）。
  * @param unix Unix 秒；0 或空显示 “—”
  */
+/** 可用率（服务监控，设计 33.2）：保留两位小数，不四舍五入到 100%（99.996% 显示 99.99%，只有全部成功才显示 100%） */
+export function fmtAvailability(p: number | null | undefined): string {
+  if (p == null || Number.isNaN(p)) return DASH
+  if (p >= 100) return '100%'
+  return `${(Math.floor(p * 100) / 100).toFixed(2)}%`
+}
+
+/** 响应耗时：1 秒以内为毫秒（10 ms 以内的小数保留一位，坐标轴刻度不会重复），否则为秒（一位小数） */
+export function fmtLatency(ms: number | null | undefined): string {
+  if (ms == null || Number.isNaN(ms)) return DASH
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`
+  if (ms < 10 && !Number.isInteger(ms)) return `${(Math.round(ms * 10) / 10)} ms`
+  return `${Math.round(ms)} ms`
+}
+
 export function fmtTime(unix: number | null | undefined, now = new Date()): string {
   if (!unix) return DASH
   const d = new Date(unix * 1000)
