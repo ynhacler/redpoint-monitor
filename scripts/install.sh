@@ -4,7 +4,7 @@
 # 仅限开发自测（设计 27、40.4.2）；正式安装走注册码流程（设计 27.3）。
 #
 # 用法：
-#   git pull && make build && sudo scripts/install.sh server
+#   git pull && make build && sudo scripts/install.sh server        （指定端口：sudo PORT=9090 scripts/install.sh server）
 #   sudo scripts/install.sh agent https://monitor.example.com ./jp-store.token
 #
 # 重复执行即升级二进制，保留数据与 Token。
@@ -23,12 +23,29 @@ server)
   # 2. 安装二进制与 systemd 单元
   install -m 0755 bin/vpsmon-server /usr/local/bin/vpsmon-server
   install -m 0644 deploy/systemd/vpsmon-server.service /etc/systemd/system/vpsmon-server.service
+  # 3. 端口等参数在 /etc/vpsmon/server.env（设计 28.1）：首次安装时创建，之后只在指定 PORT 时修改监听地址
+  case "${PORT:-}" in
+    '') ;;
+    *[!0-9]*) echo "PORT must be a number (1-65535)"; exit 1 ;;
+    *) if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then echo "PORT must be 1-65535"; exit 1; fi ;;
+  esac
+  install -d -m 0755 /etc/vpsmon
+  if [ ! -f /etc/vpsmon/server.env ]; then
+    printf '# vpsmon-server 参数（VPSMON_<参数名>），修改后 systemctl restart vpsmon-server\nVPSMON_LISTEN=127.0.0.1:%s\n' "${PORT:-8080}" > /etc/vpsmon/server.env
+    chmod 0644 /etc/vpsmon/server.env
+  elif [ -n "${PORT:-}" ]; then
+    if grep -q '^VPSMON_LISTEN=' /etc/vpsmon/server.env; then
+      sed -i "s|^VPSMON_LISTEN=.*|VPSMON_LISTEN=127.0.0.1:${PORT}|" /etc/vpsmon/server.env
+    else
+      echo "VPSMON_LISTEN=127.0.0.1:${PORT}" >> /etc/vpsmon/server.env
+    fi
+  fi
   if [ ! -f /var/lib/vpsmon/monitor.db ]; then
     echo "first install — admin login (username admin; password shown once, change it at first login):"
-    # 3. 首次安装时初始化数据库；以 vpsmon 身份执行，数据库文件归服务用户所有
+    # 4. 首次安装时初始化数据库；以 vpsmon 身份执行，数据库文件归服务用户所有
     sudo -u vpsmon /usr/local/bin/vpsmon-server init --data /var/lib/vpsmon
   fi
-  # 4. 启用并重启服务
+  # 5. 启用并重启服务
   systemctl daemon-reload
   systemctl enable vpsmon-server >/dev/null
   systemctl restart vpsmon-server
@@ -41,6 +58,7 @@ server)
     echo "  sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon"
   fi
   echo
+  echo "Listening on: $(grep '^VPSMON_LISTEN=' /etc/vpsmon/server.env | cut -d= -f2-)  (change: edit /etc/vpsmon/server.env or make install-server PORT=…)"
   echo "Add a node:  sudo -u vpsmon vpsmon-server add-server --data /var/lib/vpsmon --name NAME > NAME.token"
   ;;
 

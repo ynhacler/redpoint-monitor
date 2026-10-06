@@ -6,9 +6,13 @@ Wants=network-online.target
 [Service]
 User=vpsmon
 Group=vpsmon
-# Default: loopback, HTTPS by a reverse proxy (Caddy etc.). For built-in HTTPS (--domain, design 25)
-# install deploy/systemd/vpsmon-server-https.conf as a drop-in.
-ExecStart=/usr/local/bin/vpsmon-server run --data /var/lib/vpsmon --listen 127.0.0.1:8080
+# 默认只监听 127.0.0.1:8080，由反向代理（Caddy 等）提供 HTTPS。内置 HTTPS（--domain，设计 25）见 vpsmon-server-https.conf。
+# 端口与其他参数写在 /etc/vpsmon/server.env（升级不会覆盖，设计 28.1），例如：
+#   VPSMON_LISTEN=127.0.0.1:9090      （只写端口 9090 也可以，表示 127.0.0.1:9090）
+#   VPSMON_PUBLIC_URL=https://monitor.example.com
+# 修改后：sudo systemctl restart vpsmon-server
+EnvironmentFile=-/etc/vpsmon/server.env
+ExecStart=/usr/local/bin/vpsmon-server run --data /var/lib/vpsmon
 Restart=always
 RestartSec=5
 

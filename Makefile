@@ -9,6 +9,8 @@ GOBUILD := go build -trimpath
 DEV     := .dev
 DATA    := $(DEV)/data
 LISTEN  ?= 127.0.0.1:8080
+# 开发面板的端口（取自 LISTEN；LISTEN=9090 也可以，设计 28.1）
+DEV_PORT = $(lastword $(subst :, ,$(LISTEN)))
 VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -49,10 +51,10 @@ dev-server: ## Run the server on $(LISTEN)
 	go run ./cmd/server run --data $(DATA) --listen $(LISTEN)
 
 dev-agent: ## Run an agent with fake metrics against the local server
-	go run ./cmd/agent --server http://127.0.0.1:8080 --token-file $(DEV)/agent.token --fake --interval 3s
+	go run ./cmd/agent --server http://127.0.0.1:$(DEV_PORT) --token-file $(DEV)/agent.token --fake --interval 3s
 
-dev-web: ## Run Vite dev server on :5173 (proxies /api to :8080)
-	cd web && npm run dev
+dev-web: ## Run Vite dev server on :5173 (proxies /api to the panel on $(LISTEN))
+	cd web && VPSMON_DEV_API=http://127.0.0.1:$(DEV_PORT) npm run dev
 
 test: ## Run Go tests
 	go test ./...
@@ -157,8 +159,8 @@ build-relay: ## Cross-compile the push relay (design 30.2) for linux amd64/arm64
 	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GOBUILD) -ldflags "$(LDFLAGS)" -o dist/push-relay-linux-$$arch ./cmd/push-relay || exit 1; \
 	done
 
-install-server: ## On the VPS, after `make build`: install/upgrade the server as a systemd service
-	sudo scripts/install.sh server
+install-server: ## On the VPS, after `make build`: install/upgrade the server (custom port: make install-server PORT=9090)
+	sudo PORT=$(PORT) scripts/install.sh server
 
 install-agent: ## On the VPS, after `make build`: make install-agent SERVER=https://... TOKEN_FILE=path
 	@test -n "$(SERVER)" -a -n "$(TOKEN_FILE)" || (echo "usage: make install-agent SERVER=https://monitor.example.com TOKEN_FILE=./node.token" && exit 1)

@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 110 | 面板端口与参数可自定义：VPSMON_* 环境变量、/etc/vpsmon/server.env、监听地址只写端口 | 28.1 |
 | 109 | Android 版：FCM 推送与本机解密通知、桌面小组件、只允许 HTTPS、关闭云备份 | 1.5.4、12、30.3.3 |
 | 108 | iOS 桌面小组件：App Group 概览快照、最近告警、过期提示，配色由设计令牌生成 | 1.5.4、41.2 |
 | 107 | 邮件通知渠道：自有 SMTP、始终加密并校验证书（回环中转除外）、防邮件头注入、密码换服务器需重填 | 31 |
@@ -7123,6 +7124,17 @@ CI 在 Debian 容器中以普通用户执行完整流程：安装 → 首次上�
 优先使用 systemd，但安装器必须支持 systemd、OpenRC、SysVinit、runit，并允许前台直接运行。
 
 ## 28.1 Systemd
+
+面板参数与端口（修订第 110 条）：
+
+```text
+vpsmon-server run 的每个参数都可以用环境变量 VPSMON_<参数名> 设置（VPSMON_LISTEN、VPSMON_PUBLIC_URL、
+VPSMON_PUSH_RELAY、VPSMON_HTTPS_LISTEN……）；命令行 > 环境变量 > 默认值；值不合法时拒绝启动
+systemd 单元读取 EnvironmentFile=-/etc/vpsmon/server.env，安装与升级只覆盖单元文件，不覆盖这个文件
+监听地址可以只写端口：--listen 9090 = 127.0.0.1:9090（默认仍只监听本机，由反向代理对外）；
+--https-listen / --http-listen 只写端口时监听所有地址
+开发：LISTEN=9090 make dev，Agent 与 Vite 代理随之改变；源码安装：make install-server PORT=9090
+```
 
 Agent 主服务（非 root，加固）：
 
