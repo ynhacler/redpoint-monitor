@@ -2,7 +2,7 @@
 // 节点卡片（设计 41.3 ServerCard）：紧凑的一行五列，便于在一屏里扫过很多台节点。
 //   头部：国旗、名称、状态；右侧温度、运行时间、1 分钟负载
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
-//   底部：周期流量（本计费周期；流量是本产品的核心，保留在卡片上）
+//   底部：流量（本计费周期；流量是本产品的核心，保留在卡片上）
 // 整张卡片可点击进入详情（设计 11）。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
@@ -119,7 +119,7 @@ const diskTip = computed(() => {
     </div>
 
     <div class="traffic num" :title="`本计费周期 ${s.traffic.cycle_start} 起`">
-      <span class="muted">周期流量</span>
+      <span class="muted">流量</span>
       <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限' }}</span></span>
       <span v-if="traffic != null" class="tbar"><span :class="tlv" :style="{ width: `${Math.min(100, traffic)}%` }" /></span>
       <span v-if="traffic != null" :class="tlv">{{ fmtPct(traffic) }}</span>
