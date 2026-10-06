@@ -20,6 +20,7 @@ type fakeSystem struct {
 	root, systemd bool
 	openrc        bool
 	busybox       bool // 只有 BusyBox 的 adduser / addgroup，没有 useradd（Alpine）
+	crond         bool // OpenRC 上 crond 正在运行（远程升级的触发器，设计 27.12）
 	users         map[string]bool
 	cmds          []string
 	failOn        string // 执行到包含该字符串的命令时返回错误
@@ -54,6 +55,13 @@ func (f *fakeSystem) Run(name string, args ...string) (string, error) {
 		delete(f.users, userName)
 	case (strings.HasPrefix(cmd, "systemctl enable") || strings.HasPrefix(cmd, "rc-service vpsmon-agent start")) && f.onEnable != nil:
 		f.onEnable()
+	case cmd == "rc-service crond status":
+		if !f.crond {
+			return " * status: stopped", errors.New("exit status 3")
+		}
+		return " * status: started", nil
+	case cmd == "rc-service crond start":
+		f.crond = true
 	}
 	return "", nil
 }
@@ -85,7 +93,8 @@ func testPaths(t *testing.T) (Paths, string) {
 		InitScript:     filepath.Join(dir, "init.d/vpsmon-agent"),
 		Updater:        filepath.Join(dir, "lib/vpsmon-agent/updater"),
 		UpdaterPath:    filepath.Join(dir, "systemd/vpsmon-agent-updater.path"),
-		UpdaterService: filepath.Join(dir, "systemd/vpsmon-agent-updater.service")}
+		UpdaterService: filepath.Join(dir, "systemd/vpsmon-agent-updater.service"),
+		UpdaterCron:    filepath.Join(dir, "periodic/15min/vpsmon-agent-updater")}
 	for _, d := range []string{filepath.Dir(p.Bin), filepath.Dir(p.Unit), p.StateDir, filepath.Join(dir, "host/etc")} {
 		os.MkdirAll(d, 0o755)
 	}

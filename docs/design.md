@@ -361,6 +361,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 112 | Agent：OpenRC 远程升级（crond 触发）、暂存目录属主检查与修复、日志级别与 journald 优先级、升级检查防刷屏 | 24.5、27.12、29.13 |
 | 111 | 灰度升级：分批、观察期、失败或离线自动暂停、继续时确认、取消撤回任务 | 29.16 |
 | 110 | 面板端口与参数可自定义：VPSMON_* 环境变量、/etc/vpsmon/server.env、监听地址只写端口 | 28.1 |
 | 109 | Android 版：FCM 推送与本机解密通知、桌面小组件、只允许 HTTPS、关闭云备份 | 1.5.4、12、30.3.3 |
@@ -6225,6 +6226,11 @@ systemd 下写入 journald：journalctl -u monitor-agent
 monitor-agent status 显示最近一次错误
 ```
 
+实现（修订第 112 条）：每行都有级别（INFO / WARN / ERROR）。systemd 下行首加 `<6>` / `<4>` / `<3>`，
+journald 记录真实优先级（`journalctl -u vpsmon-agent -p warning` 只看警告与错误），不重复写时间；
+OpenRC 经 logger 写入 syslog，前台运行时为“时间 级别 内容”。升级检查的同一错误每小时只记录一次并附带次数；
+旧版面板没有升级接口（404）时不记录。启动参数错误以 ERROR 记录并以退出码 1 退出。
+
 ---
 
 ## 24.6 面板运行日志
@@ -7084,7 +7090,10 @@ OpenRC 已支持（`vpsmon-agent install` 自动识别，systemd 优先）：
 参数      固定写在脚本中；面板地址由 Agent 以 --env-file 从 /etc/vpsmon-agent/env 读取。
           【安全】脚本不 source env 文件：其中的节点名来自面板，交给 shell 执行就等于远程执行
 存活      没有 systemd watchdog：Agent 主循环 3 分钟未转动时自行退出，由 supervise-daemon 重启（见 43.5）
-升级      不启用远程升级（写入 no-remote-upgrade），提示 sudo vpsmon-agent upgrade；本机升级后用 rc-service 重启
+升级      远程升级由 crond 触发（修订第 112 条）：/etc/periodic/15min/vpsmon-agent-updater 每 15 分钟运行一次，
+          有升级请求时以 root 运行同一个 updater（设置完整 PATH 以找到 rc-service；输出经 logger 写入 syslog）；
+          安装时 crond 正在运行则默认启用，否则写入 no-remote-upgrade 并提示；sudo vpsmon-agent enable-remote-upgrade
+          会启动 crond 并设为开机启动；本机升级后用 rc-service 重启
 命令      status / uninstall / refresh-unit / rotate-token 都按已安装的服务文件选择 systemctl 或 rc-service
 ```
 
@@ -7786,8 +7795,13 @@ updater（root）
 
 开关
   安装时 --no-remote-upgrade：不安装 updater，写入 no-remote-upgrade
-  sudo monitor-agent enable-remote-upgrade：为已安装的节点启用
+  sudo monitor-agent enable-remote-upgrade：为已安装的节点启用（systemd 与 OpenRC，见 27.12）
   关闭：sudo touch /etc/monitor-agent/no-remote-upgrade（updater 单元也以此为 ConditionPathExists）
+
+暂存目录属主（修订第 112 条）
+  暂存目录不是 Agent 用户所有时（曾以 root 运行过 Agent 等），Agent 无法写入，任务失败原因说明属主与修复方法
+  root 执行的 enable-remote-upgrade、本机 upgrade 修复状态目录与暂存目录的属主（只改这两个目录本身，不递归；
+  暂存目录经 os.Root 操作，是符号链接或普通文件时删除，不跟随）；doctor 检查并提示
 ```
 
 ---

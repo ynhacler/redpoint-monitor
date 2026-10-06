@@ -46,6 +46,39 @@ func TestOpenRCE2E(t *testing.T) {
 	}
 	t.Logf("status 输出：\n%s", out.String())
 
+	// 远程升级（设计 27.12）：enable-remote-upgrade 启动 crond 并写入检查脚本，run-parts 会执行它
+	out.Reset()
+	if err := EnableRemoteUpgrade(Options{Self: bin, Out: &out}); err != nil {
+		t.Fatalf("启用远程升级失败：%v\n%s", err, out.String())
+	}
+	t.Logf("enable-remote-upgrade 输出：\n%s", out.String())
+	if !crondRunning(realSystem{}) {
+		t.Error("应启动 crond")
+	}
+	if rp, _ := exec.Command("run-parts", "--test", "/etc/periodic/15min").CombinedOutput(); !strings.Contains(string(rp), "vpsmon-agent-updater") {
+		t.Errorf("run-parts 应执行检查脚本：%s", rp)
+	}
+	if b, err := exec.Command(DefaultPaths.UpdaterCron).CombinedOutput(); err != nil {
+		t.Errorf("没有升级请求时检查脚本应直接退出：%v %s", err, b)
+	}
+	// 暂存目录被 root 占用（远程升级报 permission denied 的情形）：FixStageDir 把属主改回 Agent 用户
+	stage := DefaultPaths.StateDir + "/update"
+	os.MkdirAll(stage, 0o755)
+	os.Chown(stage, 0, 0)
+	if fixed, err := FixStageDir(Options{}); err != nil || !fixed {
+		t.Errorf("应修复暂存目录：%v %v", fixed, err)
+	}
+	uid, _, _ := (realSystem{}).IDs(userName)
+	if fi, err := os.Stat(stage); err != nil {
+		t.Error(err)
+	} else if owner, _ := fileOwner(fi); owner != uid {
+		t.Errorf("暂存目录属主应为 %s（uid %d），实际 %d", userName, uid, owner)
+	}
+	out.Reset()
+	if n := Doctor(context.Background(), Options{Out: &out, Version: "e2e"}); strings.Contains(out.String(), "暂存目录") {
+		t.Errorf("修复后 doctor 不应再报告暂存目录（%d 个问题）：\n%s", n, out.String())
+	}
+
 	out.Reset()
 	if err := Uninstall(context.Background(), Options{Out: &out}); err != nil {
 		t.Fatalf("卸载失败：%v\n%s", err, out.String())
@@ -55,6 +88,9 @@ func TestOpenRCE2E(t *testing.T) {
 	}
 	if _, err := os.Stat(DefaultPaths.InitScript); err == nil {
 		t.Error("卸载后应删除 OpenRC 脚本")
+	}
+	if _, err := os.Stat(DefaultPaths.UpdaterCron); err == nil {
+		t.Error("卸载后应删除 crond 检查脚本")
 	}
 	if (realSystem{}).UserExists(userName) {
 		t.Error("卸载后应删除用户")

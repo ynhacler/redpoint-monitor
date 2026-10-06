@@ -16,7 +16,7 @@
 //	vpsmon-agent re-enroll --enroll ENR-… [--server URL] 换绑到其他节点或其他面板（需要 root，设计 27.11）
 //	vpsmon-agent doctor                                 兼容性与连通性诊断，只读（设计 27.11）
 //	vpsmon-agent enable-remote-upgrade                  为已安装的 Agent 启用远程升级（需要 root，设计 29.13）
-//	vpsmon-agent refresh-unit                           把 systemd 单元更新为本版本内嵌的版本（需要 root，设计 43.5）
+//	vpsmon-agent refresh-unit                           把服务文件更新为本版本内嵌的版本（需要 root，设计 43.5）
 //	vpsmon-agent updater                                特权 updater，由 vpsmon-agent-updater.service 调用
 //	vpsmon-agent [run] --server URL --token-file F      前台运行（systemd 单元使用）
 //
@@ -29,7 +29,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -42,6 +41,7 @@ import (
 	"syscall"
 	"time"
 
+	"vpsmon/internal/agent/alog"
 	"vpsmon/internal/agent/collector"
 	"vpsmon/internal/agent/report"
 	"vpsmon/internal/agent/sdnotify"
@@ -170,18 +170,18 @@ func cmdUpgrade(args []string) int {
 	if err := setup.RefreshUpdater(setup.Options{}); err != nil {
 		fmt.Fprintln(os.Stderr, "! 刷新 updater 失败："+err.Error())
 	}
-	// 服务文件内嵌在二进制中：由刚安装的新版本写入它自己的版本（如新增的 watchdog，设计 43.5）
+	// 服务文件（systemd 单元或 OpenRC 脚本）内嵌在二进制中：由刚安装的新版本写入它自己的版本（如新增的 watchdog，设计 43.5）
 	if setup.Installed(setup.Options{}) {
 		cmd := exec.Command(p.Bin, "refresh-unit")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "! 更新 systemd 单元失败（可稍后执行 sudo vpsmon-agent refresh-unit）："+err.Error())
+			fmt.Fprintln(os.Stderr, "! 更新服务文件失败（可稍后执行 sudo vpsmon-agent refresh-unit）："+err.Error())
 		}
 	}
 	return 0
 }
 
-// cmdRefreshUnit 执行 vpsmon-agent refresh-unit：把 systemd 单元更新为本版本内嵌的版本。
+// cmdRefreshUnit 执行 vpsmon-agent refresh-unit：把服务文件（systemd 单元或 OpenRC 脚本）更新为本版本内嵌的版本。
 func cmdRefreshUnit() int {
 	changed, err := setup.RefreshUnit(setup.Options{Out: os.Stdout})
 	if err != nil {
@@ -189,7 +189,7 @@ func cmdRefreshUnit() int {
 		return 1
 	}
 	if !changed {
-		fmt.Println("✓ systemd 单元已是最新")
+		fmt.Println("✓ 服务文件已是最新")
 	}
 	return 0
 }
@@ -283,20 +283,14 @@ func readStatus(p setup.Paths) func() (string, int64, error) {
 	}
 }
 
-// remoteUpgradeEnabled：主机安装了 updater 且未禁止时才查询升级任务（设计 29.13）。
-func remoteUpgradeEnabled() bool {
-	p := setup.DefaultPaths
-	if _, err := os.Stat(p.UpdaterPath); err != nil {
-		return false
-	}
-	_, err := os.Stat(p.NoRemoteUpgradeFile())
-	return errors.Is(err, os.ErrNotExist)
-}
+// remoteUpgradeEnabled：主机安装了 updater 触发器（systemd path 单元或 OpenRC 的 crond 脚本）且未禁止时
+// 才查询升级任务（设计 29.13、27.12）。
+func remoteUpgradeEnabled() bool { return setup.RemoteUpgradeEnabled(setup.DefaultPaths) }
 
 // pollUpgrades 定期查询升级任务：启动 30 秒后一次，之后每 5 分钟（设计 29.13）。在独立 goroutine 中运行，下载不阻塞上报。
 func pollUpgrades(server, token, stateDir string) {
 	o := upgrade.RemoteOptions{Server: server, Token: token, Current: version, Keys: release.TrustedKeys(),
-		StageDir: filepath.Join(stateDir, "update"), Log: log.Printf}
+		StageDir: filepath.Join(stateDir, "update"), Log: alog.Printf}
 	time.Sleep(30 * time.Second)
 	for {
 		checkUpgradeOnce(o)
@@ -304,12 +298,15 @@ func pollUpgrades(server, token, stateDir string) {
 	}
 }
 
+// upgradeLog 限制升级检查的重复日志：同一错误每小时只记录一次，附带重复次数（设计 24.5）
+var upgradeLog = alog.Throttle{Every: time.Hour}
+
 // checkUpgradeOnce 执行一次升级查询。后台 goroutine 中的 panic 会让整个进程退出、中断上报，
 // 因此在这里捕获，下一轮照常查询（设计 43.5）。
 func checkUpgradeOnce(o upgrade.RemoteOptions) {
 	defer func() {
 		if v := recover(); v != nil {
-			log.Printf("upgrade check panicked: %v", v)
+			alog.Errorf("upgrade check panicked: %v", v)
 		}
 	}()
 	if !remoteUpgradeEnabled() {
@@ -318,8 +315,16 @@ func checkUpgradeOnce(o upgrade.RemoteOptions) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	if err := upgrade.CheckRemote(ctx, o); err != nil {
-		log.Printf("upgrade check: %v", err)
+		upgradeLog.Logf(alog.Warn, err.Error(), "upgrade check failed: %v", err)
+		return
 	}
+	upgradeLog.Reset()
+}
+
+// fatalf 记录错误并退出（退出码 1，由服务管理器显示为失败，设计 43.5）。
+func fatalf(format string, args ...any) {
+	alog.Errorf(format, args...)
+	os.Exit(1)
 }
 
 // cmdUninstall 执行 vpsmon-agent uninstall（设计 27.11），返回进程退出码。
@@ -369,7 +374,7 @@ const stallLimit = 3 * time.Minute
 func stallGuard(last *atomic.Int64, limit time.Duration) {
 	for range time.Tick(15 * time.Second) {
 		if d := time.Since(time.Unix(0, last.Load())); d > limit {
-			log.Printf("ERROR main loop stalled for %s; exiting so the service manager restarts the agent", d.Round(time.Second))
+			alog.Printf("ERROR main loop stalled for %s; exiting so the service manager restarts the agent", d.Round(time.Second))
 			os.Exit(2)
 		}
 	}
@@ -380,6 +385,7 @@ const agentMemoryLimit = 20 << 20
 
 // run 前台运行：定时采集并上报，直到收到 SIGTERM / SIGINT。
 func run() {
+	alog.RedirectStd() // 依赖库若用标准 log，也带级别输出（设计 24.5）
 	server := flag.String("server", "", "server base URL, e.g. https://monitor.example.com")
 	token := flag.String("token", "", "agent token (prefer --token-file or MONITOR_AGENT_TOKEN)")
 	tokenFile := flag.String("token-file", "", "file containing the agent token")
@@ -413,10 +419,10 @@ func run() {
 	if *lockFile != "" {
 		release, ok, err := setup.AcquireRunLock(*lockFile)
 		if err != nil {
-			log.Fatalf("lock %s: %v", *lockFile, err)
+			fatalf("lock %s: %v", *lockFile, err)
 		}
 		if !ok {
-			log.Printf("another vpsmon-agent is already running (%s); exiting", *lockFile)
+			alog.Printf("another vpsmon-agent is already running (%s); exiting", *lockFile)
 			return
 		}
 		defer release()
@@ -430,10 +436,10 @@ func run() {
 	// 配置错误立即退出（设计 43.5）：启动后静默不上报，比让 systemd 显示失败更难发现。
 	tok, err := loadToken(*token, *tokenFile)
 	if err != nil {
-		log.Fatal(err)
+		fatalf("%v", err)
 	}
 	if err := setup.ValidateServerURL(*server, *allowHTTP); err != nil {
-		log.Fatal(err)
+		fatalf("%v", err)
 	}
 
 	// --fake 在 Linux 上也强制使用假数据；macOS 上 collector.New 会自动退回假数据，不需要虚拟机即可联调。
@@ -459,13 +465,13 @@ func run() {
 	if *stateDir != "" {
 		r.StatePath = filepath.Join(*stateDir, "queue.json")
 		if err := r.Load(); err != nil {
-			log.Printf("discarded unreadable report queue: %v", err)
+			alog.Printf("discarded unreadable report queue: %v", err)
 		} else if q := r.Status().Queued; q > 0 {
-			log.Printf("restored %d unsent reports from the previous run", q)
+			alog.Printf("restored %d unsent reports from the previous run", q)
 		}
 	}
 	// 【安全】只记录上报地址，不记录 Token（设计 24.7）。
-	log.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
+	alog.Printf("vpsmon-agent %s → %s every %s", version, *server, *interval)
 
 	if *stateDir != "" && runtime.GOOS == "linux" {
 		go pollUpgrades(*server, tok, *stateDir)
@@ -477,10 +483,10 @@ func run() {
 	// systemd 存活检测（设计 43.5）：Type=notify 启动后报告就绪；主循环每轮喂一次看门狗，
 	// 主循环卡住（而不是退出）超过 WatchdogSec 时由 systemd 重启。不在 systemd 下运行时为空操作。
 	if _, err := sdnotify.Notify("READY=1"); err != nil {
-		log.Printf("sd_notify: %v", err)
+		alog.Printf("sd_notify: %v", err)
 	}
 	if wd := sdnotify.WatchdogInterval(); wd > 0 && wd < 2**interval {
-		log.Printf("WARN systemd WatchdogSec (%s) is shorter than two report intervals (%s); the agent may be restarted spuriously", wd, *interval)
+		alog.Printf("WARN systemd WatchdogSec (%s) is shorter than two report intervals (%s); the agent may be restarted spuriously", wd, *interval)
 	}
 	// 主循环卡死自检：OpenRC 等没有 systemd watchdog 的环境，卡住时由 Agent 自行退出，交给服务管理器重启（设计 43.5）
 	var lastLoop atomic.Int64
@@ -514,7 +520,7 @@ func run() {
 			msg = err.Error()
 		}
 		if msg != "" && msg != saveErr {
-			log.Printf("save report queue: %s", msg)
+			alog.Printf("save report queue: %s", msg)
 		}
 		saveErr = msg
 	}
@@ -532,7 +538,7 @@ func run() {
 	current := *interval
 	applyInterval := func() {
 		if iv := r.Interval(); iv > 0 && iv != current {
-			log.Printf("report interval changed by the panel: %s → %s", current, iv)
+			alog.Printf("report interval changed by the panel: %s → %s", current, iv)
 			current = iv
 			tick.Reset(iv)
 		}
@@ -575,11 +581,11 @@ func run() {
 			cancel()
 			save(true) // 未送达的（含本次补报）落盘，下次启动继续补发
 			if q := r.Status().Queued; q > 0 && r.StatePath != "" && saveErr == "" {
-				log.Printf("stopped with %d unsent reports (saved, will be sent after restart)", q)
+				alog.Printf("stopped with %d unsent reports (saved, will be sent after restart)", q)
 			} else if q > 0 {
-				log.Printf("stopped with %d unsent reports (traffic counters are cumulative and will catch up)", q)
+				alog.Printf("stopped with %d unsent reports (traffic counters are cumulative and will catch up)", q)
 			} else {
-				log.Println("stopped")
+				alog.Printf("stopped")
 			}
 			return
 		}
@@ -592,13 +598,13 @@ func run() {
 func collect(col collector.Collector, final bool) (rep protocol.Report, ok bool) {
 	defer func() {
 		if v := recover(); v != nil {
-			log.Printf("collect panicked: %v", v)
+			alog.Printf("collect panicked: %v", v)
 			rep, ok = protocol.Report{}, false
 		}
 	}()
 	rep, err := col.Collect()
 	if err != nil {
-		log.Printf("collect: %v", err)
+		alog.Printf("collect: %v", err)
 		return rep, false
 	}
 	rep.Timestamp = time.Now().Unix()

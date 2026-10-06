@@ -5,12 +5,12 @@ package collector
 
 import (
 	"fmt"
-	"log"
 	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
 
+	"vpsmon/internal/agent/alog"
 	"vpsmon/internal/protocol"
 )
 
@@ -46,9 +46,9 @@ func guard(errs *errorList, item string, f func()) {
 		}
 		errs.add(item, "panic: %v", v)
 		if _, seen := panicLogged.LoadOrStore(item, true); !seen {
-			log.Printf("collect %s panicked: %v\n%s", item, v, debug.Stack())
+			alog.Printf("collect %s panicked: %v\n%s", item, v, debug.Stack())
 		} else {
-			log.Printf("collect %s panicked: %v", item, v)
+			alog.Printf("collect %s panicked: %v", item, v)
 		}
 	}()
 	f()

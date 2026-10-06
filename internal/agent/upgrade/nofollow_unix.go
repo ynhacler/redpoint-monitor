@@ -11,3 +11,11 @@ import (
 func openNoFollow(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 }
+
+// fileOwner 返回文件属主的 uid。
+func fileOwner(fi os.FileInfo) (int, bool) {
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+		return int(st.Uid), true
+	}
+	return 0, false
+}

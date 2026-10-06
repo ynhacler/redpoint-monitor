@@ -3,7 +3,6 @@
 package collector
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"vpsmon/internal/agent/alog"
 	"vpsmon/internal/protocol"
 )
 
@@ -266,7 +266,7 @@ func (c *linux) collectMemory(errs *errorList) (protocol.Memory, protocol.Swap) 
 	}
 	if estimated && !c.memEstimate {
 		c.memEstimate = true
-		log.Println("collect memory: MemAvailable not provided by this kernel, estimating from MemFree + Buffers + Cached")
+		alog.Printf("collect memory: MemAvailable not provided by this kernel, estimating from MemFree + Buffers + Cached")
 	}
 	if lim := c.cgLimit.get(time.Now(), refreshEvery, readCgroupLimit); lim.limit > 0 {
 		inactive, cache := parseCgroupStat(readFile(lim.dir + "/memory.stat"))
@@ -275,7 +275,7 @@ func (c *linux) collectMemory(errs *errorList) (protocol.Memory, protocol.Swap) 
 		mem, applied = applyCgroupMemory(mem, cgroupMemory{Limit: lim.limit, Usage: usage, Inactive: inactive, Cache: cache})
 		if applied && !c.cgLogged {
 			c.cgLogged = true
-			log.Printf("collect memory: container memory limit %d MiB is below /proc/meminfo, using cgroup accounting", lim.limit>>20)
+			alog.Printf("collect memory: container memory limit %d MiB is below /proc/meminfo, using cgroup accounting", lim.limit>>20)
 		}
 	}
 	return mem, swapFrom(m)

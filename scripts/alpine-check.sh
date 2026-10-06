@@ -17,7 +17,7 @@ cp dist/vpsmon-agent-linux-amd64 "$work/vpsmon-agent"
 docker run --rm -v "$work:/w:ro" "$image" sh -euc '
   cat /etc/alpine-release | sed "s/^/alpine /"
   /w/collector.test -test.run TestLinuxCollect -test.v
-  apk add --no-cache openrc >/dev/null
+  apk add --no-cache openrc busybox-openrc >/dev/null
   # 容器里的 OpenRC 没有经过开机初始化：补上 /run/openrc 的状态目录（缺少 exclusive 时 rc-service 误报
   # “already starting”），并声明运行在容器中
   sed -i "s/^#*rc_sys=.*/rc_sys=\"docker\"/" /etc/rc.conf

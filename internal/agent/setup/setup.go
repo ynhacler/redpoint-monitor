@@ -36,6 +36,9 @@ var unitFile string
 //go:embed vpsmon-agent-updater.path
 var updaterPathFile string
 
+//go:embed vpsmon-agent-updater.cron
+var updaterCronFile string
+
 //go:embed vpsmon-agent-updater.service
 var updaterServiceFile string
 
@@ -56,6 +59,8 @@ type Paths struct {
 	Updater        string // /usr/local/lib/vpsmon-agent/updater：updater 的独立副本，不随远程升级替换
 	UpdaterPath    string // /etc/systemd/system/vpsmon-agent-updater.path
 	UpdaterService string // /etc/systemd/system/vpsmon-agent-updater.service
+	// UpdaterCron 是 OpenRC 主机的远程升级触发器（BusyBox crond 每 15 分钟运行，设计 27.12）
+	UpdaterCron string // /etc/periodic/15min/vpsmon-agent-updater
 }
 
 // DefaultPaths 是 Linux 主机上的默认路径。
@@ -69,6 +74,7 @@ var DefaultPaths = Paths{
 	Updater:        "/usr/local/lib/vpsmon-agent/updater",
 	UpdaterPath:    "/etc/systemd/system/vpsmon-agent-updater.path",
 	UpdaterService: "/etc/systemd/system/vpsmon-agent-updater.service",
+	UpdaterCron:    "/etc/periodic/15min/vpsmon-agent-updater",
 }
 
 func (p Paths) tokenFile() string  { return filepath.Join(p.ConfDir, "token") }
@@ -256,10 +262,10 @@ func Install(ctx context.Context, o Options) error {
 			o.Sys.Run("systemctl", "daemon-reload")
 		}
 	})
-	if initSys == initOpenRC && !o.NoRemoteUpgrade {
-		// 特权 updater 依赖 systemd path 单元（设计 29.13）：OpenRC 上不启用远程升级，改为本机手动升级（设计 27.12）
+	if initSys == initOpenRC && !o.NoRemoteUpgrade && !crondRunning(o.Sys) {
+		// OpenRC 的远程升级由 crond 定时触发（设计 27.12）：安装时不替用户启动 crond，没有运行时先不启用
 		o.NoRemoteUpgrade = true
-		say("! OpenRC 上不支持从面板远程升级；升级请在本机执行 sudo vpsmon-agent upgrade")
+		say("! crond 未运行，暂未启用远程升级；启用：sudo vpsmon-agent enable-remote-upgrade（会启动 crond），或本机执行 sudo vpsmon-agent upgrade")
 	}
 	if o.NoRemoteUpgrade {
 		if err := writeFile(o.Sys, p.NoRemoteUpgradeFile(), "# 存在时拒绝远程升级（设计 29.13）\n", 0o644, 0); err != nil {
@@ -270,7 +276,7 @@ func Install(ctx context.Context, o Options) error {
 		}
 	} else {
 		undo = append(undo, func() { removeUpdater(o) })
-		if err := installUpdater(o); err != nil {
+		if err := installUpdater(o, initSys); err != nil {
 			return rollback(fmt.Errorf("安装远程升级组件失败：%w", err))
 		}
 		say("✓ 已启用远程升级：只安装官方签名、版本更高的 Agent（关闭：sudo touch %s）", p.NoRemoteUpgradeFile())
@@ -295,10 +301,11 @@ func Install(ctx context.Context, o Options) error {
 	return nil
 }
 
-// installUpdater 安装或刷新远程升级组件（设计 29.13）：updater 的独立副本与 systemd path / service 单元。
+// installUpdater 安装或刷新远程升级组件（设计 29.13）：updater 的独立副本，以及触发器——
+// systemd 主机为 path / service 单元；OpenRC 主机为 crond 每 15 分钟运行的检查脚本（设计 27.12）。
 // 【安全】updater 以 root 运行，只从暂存目录读取并用内置公钥复验；它自身只随 install / 本机 upgrade 更新，
 // 远程升级只替换 /usr/local/bin/vpsmon-agent，因此被替换的程序无法改变执行替换的程序。
-func installUpdater(o Options) error {
+func installUpdater(o Options, k initKind) error {
 	p := o.Paths
 	src := o.Self
 	if src == "" {
@@ -309,6 +316,9 @@ func installUpdater(o Options) error {
 	}
 	if err := copyFile(src, p.Updater, 0o755); err != nil {
 		return err
+	}
+	if k == initOpenRC {
+		return installUpdaterCron(o)
 	}
 	if err := os.WriteFile(p.UpdaterService, []byte(updaterServiceFile), 0o644); err != nil {
 		return err
@@ -330,8 +340,10 @@ func removeUpdater(o Options) {
 	if _, err := os.Stat(p.UpdaterPath); err == nil {
 		o.Sys.Run("systemctl", "disable", "--now", "vpsmon-agent-updater.path")
 	}
-	for _, f := range []string{p.UpdaterPath, p.UpdaterService, p.Updater} {
-		os.Remove(f)
+	for _, f := range []string{p.UpdaterPath, p.UpdaterService, p.UpdaterCron, p.Updater} {
+		if f != "" {
+			os.Remove(f)
+		}
 	}
 	os.Remove(filepath.Dir(p.Updater))
 }
@@ -345,16 +357,28 @@ func EnableRemoteUpgrade(o Options) error {
 	if _, err := os.Stat(o.Paths.tokenFile()); err != nil {
 		return errors.New("本机尚未安装 Agent，请先执行面板中的安装命令")
 	}
-	if installedInit(o.Paths) == initOpenRC {
-		return errors.New("OpenRC 上不支持远程升级（特权 updater 依赖 systemd，设计 27.12）；升级请执行 sudo vpsmon-agent upgrade")
+	k := installedInit(o.Paths)
+	if k == initOpenRC {
+		if err := ensureCrond(o); err != nil {
+			return err
+		}
 	}
-	if err := installUpdater(o); err != nil {
+	if err := installUpdater(o, k); err != nil {
 		return err
 	}
 	if err := os.Remove(o.Paths.NoRemoteUpgradeFile()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// 修复暂存目录的属主（曾以 root 运行过 Agent 等情况下，Agent 无法写入，远程升级报 permission denied）
+	if fixed, err := FixStageDir(o); err != nil {
+		fmt.Fprintf(o.Out, "! 检查暂存目录失败：%v\n", err)
+	} else if fixed {
+		fmt.Fprintln(o.Out, "✓ 已修复暂存目录的属主")
+	}
 	fmt.Fprintf(o.Out, "✓ 已启用远程升级：只安装官方签名、版本更高的 Agent（关闭：sudo touch %s）\n", o.Paths.NoRemoteUpgradeFile())
+	if k == initOpenRC {
+		fmt.Fprintln(o.Out, "  OpenRC：由 crond 每 15 分钟检查一次升级请求，面板中的任务可能需要等待片刻")
+	}
 	return nil
 }
 
@@ -398,10 +422,20 @@ func RefreshUnit(o Options) (bool, error) {
 // RefreshUpdater 在本机升级后刷新 updater 副本（只在已启用远程升级时）。
 func RefreshUpdater(o Options) error {
 	o.defaults()
-	if _, err := os.Stat(o.Paths.UpdaterPath); err != nil {
+	if !RemoteUpgradeInstalled(o.Paths) {
 		return nil
 	}
-	return copyFile(o.Paths.Bin, o.Paths.Updater, 0o755)
+	if err := copyFile(o.Paths.Bin, o.Paths.Updater, 0o755); err != nil {
+		return err
+	}
+	// OpenRC 的检查脚本也随新版本更新
+	if _, err := os.Stat(o.Paths.UpdaterCron); err == nil {
+		if err := writeFile(o.Sys, o.Paths.UpdaterCron, updaterCronFile, 0o755, 0); err != nil {
+			return err
+		}
+	}
+	_, err := FixStageDir(o)
+	return err
 }
 
 // RotateToken 执行 vpsmon-agent rotate-token --enroll ENR-…（设计 17.2）：已安装的主机用新的一次性注册码换取新 Token，
