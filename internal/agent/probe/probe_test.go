@@ -28,9 +28,9 @@ func TestProber(t *testing.T) {
 		return d * time.Millisecond, nil
 	}
 	calls := 0
-	p.echo = func(ctx context.Context, ip net.IP) (time.Duration, error) {
+	p.ping = func(ip net.IP) (pinger, error) {
 		calls++
-		return 0, netprobe.ErrICMPUnavailable
+		return nil, netprobe.ErrICMPUnavailable
 	}
 	if p.Version() != "" {
 		t.Error("尚未收到目标时版本为空")
@@ -78,6 +78,49 @@ func TestProber(t *testing.T) {
 	p.Update("0", "", "")
 	if len(p.Targets()) != 0 {
 		t.Error("版本 0 表示没有目标")
+	}
+}
+
+// fakePinger 按顺序返回样本结果，并记录是否关闭。
+type fakePinger struct {
+	seq    []error
+	n      int
+	closed bool
+}
+
+func (f *fakePinger) Echo(ctx context.Context) (time.Duration, error) {
+	err := f.seq[f.n%len(f.seq)]
+	f.n++
+	return 15 * time.Millisecond, err
+}
+func (f *fakePinger) Close() error { f.closed = true; return nil }
+
+// 资源（修订第 129 条）：一个 ICMP 目标的样本共用一个套接字；确定的失败不再发剩下的样本；偶发超时照常测完。
+func TestProberEfficiency(t *testing.T) {
+	p := New(nil)
+	p.gap = 0
+	opened := 0
+	fp := &fakePinger{seq: []error{nil, netprobe.ErrNoReply}}
+	p.ping = func(ip net.IP) (pinger, error) { opened++; return fp, nil }
+	tcpCalls := 0
+	p.tcp = func(ctx context.Context, addr string) (time.Duration, error) {
+		tcpCalls++
+		return 0, &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}
+	}
+	p.Update("v1", protocol.EncodeProbeTargets([]protocol.ProbeTarget{
+		{ID: 1, Proto: "icmp", Addr: netip.MustParseAddr("1.1.1.1")},
+		{ID: 2, Proto: "tcp", Addr: netip.MustParseAddr("8.8.8.8"), Port: 80},
+	}), "300")
+	p.RunOnce(context.Background())
+	got := p.Drain()
+	if opened != 1 || fp.n != Samples || !fp.closed {
+		t.Errorf("ICMP 目标应只打开一次套接字、测满 %d 个样本并关闭：opened=%d n=%d closed=%v", Samples, opened, fp.n, fp.closed)
+	}
+	if r := got[0]; r.Latency == nil || r.Loss != 40 {
+		t.Errorf("偶发超时照常计入丢包：%+v", r)
+	}
+	if r := got[1]; tcpCalls != 1 || r.Loss != 100 || r.Error != "refused" {
+		t.Errorf("拒绝连接时只试一次：calls=%d %+v", tcpCalls, r)
 	}
 }
 
