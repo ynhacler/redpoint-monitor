@@ -7,6 +7,7 @@ import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getNodeProbe, getProbeSettings, listProbeTargets, putNodeProbe,
   type NodeProbe, type ProbeTarget, type ProbeTargetInput,
 } from '../api'
+import ProbeTargetHint from './ProbeTargetHint.vue'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
 
 const props = defineProps<{ serverId: number }>()
@@ -147,6 +148,7 @@ defineExpose({ save })
               <button type="button" class="secondary small" @click="adding = false">取消</button>
               <span class="small muted">只有这台节点测，不出现在全局列表中；最多 20 个</span>
             </div>
+            <ProbeTargetHint />
           </div>
         </div>
       </template>

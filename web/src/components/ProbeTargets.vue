@@ -3,6 +3,7 @@
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
 // 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
+import ProbeTargetHint from './ProbeTargetHint.vue'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
 import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
@@ -152,9 +153,9 @@ async function remove(t: ProbeTarget) {
     </form>
 
     <p v-if="!items.length && !adding" class="panel empty small">
-      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP（如运营商的 DNS、测速服务器，或你常访问的国内服务器），
-      境外地址运营商选“境外”；先用 ping 或 TCP 连接确认从 VPS 能连通。
+      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP，境外地址运营商选“境外”。
     </p>
+    <ProbeTargetHint v-if="!items.length || adding" class="hint-line" />
     <section v-if="items.length" class="panel block">
       <h3>目标（勾选的对所有“跟随全局”的节点生效）</h3>
       <ProbeTargetPicker :targets="items" :selected="selected" :busy="busy" @toggle="toggle">
@@ -178,7 +179,8 @@ async function remove(t: ProbeTarget) {
 .grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .actions { margin-top: var(--space-3); }
 .block { padding: var(--space-4); margin-bottom: var(--space-4); }
-.empty { padding: var(--space-4); margin: 0 0 var(--space-4); }
+.empty { padding: var(--space-4); margin: 0 0 var(--space-2); }
+.hint-line { margin: 0 0 var(--space-4); }
 .block h3 { margin: 0 0 var(--space-3); }
 .foot { margin: var(--space-3) 0 0; }
 .warn { color: var(--warn); }
