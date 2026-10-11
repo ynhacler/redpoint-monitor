@@ -44,13 +44,14 @@ onUnmounted(stopPolling)
         <RouterLink to="/cloud" active-class="active">云账户</RouterLink>
         <RouterLink to="/app" active-class="active" title="App 接入">App</RouterLink>
         <RouterLink to="/logs" active-class="active">日志</RouterLink>
+        <RouterLink to="/settings" active-class="active">设置</RouterLink>
       </nav>
       <div class="tools">
         <button class="text" type="button" :title="`主题：${themeLabels[themeMode]}（点击切换）`" @click="cycleTheme">
           <Icon :name="themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor'" />
         </button>
         <template v-if="state.me">
-          <RouterLink to="/account" class="user small" title="账号与密码">
+          <RouterLink to="/settings?tab=account" class="user small" title="账号与密码">
             <Icon name="user" /><span class="username">{{ state.me.username }}</span>
           </RouterLink>
           <button class="text" type="button" title="退出登录" @click="logout">

@@ -159,7 +159,7 @@ async function remove(t: ProbeTarget) {
           <button type="button" class="text small del" @click="remove(target)">删除</button>
         </template>
       </ProbeTargetPicker>
-      <p class="small muted foot">单台节点可在节点详情的“三网延迟 → 设置”中自己选择目标与频率，或关闭。</p>
+      <p class="small muted foot">单台节点可在节点的“编辑 → 三网延迟”中自己选择目标与频率，或关闭。</p>
     </section>
   </div>
 </template>
