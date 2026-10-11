@@ -125,8 +125,12 @@ func TestProbeTargetsAPI(t *testing.T) {
 	admin := adminToken(t, s)
 	var list struct{ Items []ProbeTargetRow }
 	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
-	if len(list.Items) != 93 || !list.Items[0].Builtin || list.Items[0].Province != "北京" {
-		t.Fatalf("应有 93 个内置目标，北京在前：%d %+v", len(list.Items), list.Items[0])
+	if len(list.Items) != 105 || !list.Items[0].Builtin || list.Items[0].Province != "北京" {
+		t.Fatalf("应有 93 个三网 + 12 个境外内置目标，北京在前：%d %+v", len(list.Items), list.Items[0])
+	}
+	intl := list.Items[93]
+	if intl.ISP != "intl" || intl.Province != "香港" || intl.Enabled || intl.Note != "Leaseweb" {
+		t.Errorf("境外目标在三网之后、默认不启用：%+v", intl)
 	}
 	for _, bad := range []string{
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
@@ -139,6 +143,9 @@ func TestProbeTargetsAPI(t *testing.T) {
 		if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(bad)); rec.Code != 422 {
 			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
 		}
+	}
+	if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"intl","province":"台北","address":"1.1.1.1","note":"Cloudflare"}`)); rec.Code != 201 {
+		t.Errorf("可以添加境外自定义目标：%d %s", rec.Code, rec.Body)
 	}
 	rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"cm","province":"杭州","address":"::ffff:117.147.213.41","proto":"icmp","port":22}`))
 	var c ProbeTargetRow

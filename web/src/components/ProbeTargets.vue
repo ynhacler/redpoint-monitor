@@ -15,7 +15,7 @@ const isps = [
   { key: 'cu', name: '联通' },
   { key: 'cm', name: '移动' },
 ] as const
-const ispName = (k: string) => isps.find((i) => i.key === k)?.name ?? k
+const ispName = (k: string) => (k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
 
 const items = ref<ProbeTarget[]>([])
 const error = ref('')
@@ -113,7 +113,7 @@ async function remove(t: ProbeTarget) {
 <template>
   <div>
     <p class="muted small intro">
-      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
+      各节点的 Agent 按下面的频率测一轮到这些地址（三大运营商各省与境外主要地区）的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
       这是从 VPS 出发的方向，反映回程质量。目标只能是公网 IP；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
@@ -131,9 +131,9 @@ async function remove(t: ProbeTarget) {
     <form v-if="adding" class="panel form" novalidate @submit.prevent="add">
       <div class="grid">
         <label>运营商
-          <select v-model="form.isp"><option v-for="i in isps" :key="i.key" :value="i.key">{{ i.name }}</option></select>
+          <select v-model="form.isp"><option v-for="i in isps" :key="i.key" :value="i.key">{{ i.name }}</option><option value="intl">境外</option></select>
           <small v-if="fieldErrors.isp" class="bad">{{ fieldErrors.isp }}</small></label>
-        <label>地区<input v-model="form.province" maxlength="16" placeholder="如 杭州" />
+        <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
           <small v-if="fieldErrors.province" class="bad">{{ fieldErrors.province }}</small></label>
         <label>IP 地址<input v-model="form.address" spellcheck="false" placeholder="公网 IP，如 115.220.14.91" />
           <small v-if="fieldErrors.address" class="bad">{{ fieldErrors.address }}</small></label>
@@ -142,7 +142,7 @@ async function remove(t: ProbeTarget) {
           <small v-if="fieldErrors.proto" class="bad">{{ fieldErrors.proto }}</small></label>
         <label v-if="form.proto === 'tcp'">端口<input v-model.number="form.port" type="number" min="1" max="65535" />
           <small v-if="fieldErrors.port" class="bad">{{ fieldErrors.port }}</small></label>
-        <label>备注（可选）<input v-model="form.note" maxlength="64" />
+        <label>{{ form.isp === 'intl' ? '提供商（可选）' : '备注（可选）' }}<input v-model="form.note" maxlength="64" />
           <small v-if="fieldErrors.note" class="bad">{{ fieldErrors.note }}</small></label>
       </div>
       <p v-if="fieldErrors.enabled || fieldErrors._" class="bad small">{{ fieldErrors.enabled || fieldErrors._ }}</p>

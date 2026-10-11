@@ -799,6 +799,22 @@ var migrations = []string{
 
 	// 迁移 34：节点自己的三网延迟设置（设计 42.3.2，修订第 121 条）：JSON {mode, target_ids, interval_s}；空表示跟随全局
 	`ALTER TABLE servers ADD COLUMN probe_conf TEXT NOT NULL DEFAULT '';`,
+
+	// 迁移 35：境外测试地址（设计 42.3.2，修订第 122 条）：主要地区云厂商的测速主机（公开地址，TCP 80），默认不启用。
+	// 运营商记为 intl，province 为城市，note 为提供商
+	`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, sort, note) VALUES
+		('intl', '香港', '64.120.117.34', 'tcp', 80, 0, 1, 100, 'Leaseweb'),
+		('intl', '东京', '108.61.201.151', 'tcp', 80, 0, 1, 101, 'Vultr'),
+		('intl', '首尔', '141.164.34.61', 'tcp', 80, 0, 1, 102, 'Vultr'),
+		('intl', '新加坡', '45.32.100.168', 'tcp', 80, 0, 1, 103, 'Vultr'),
+		('intl', '孟买', '65.20.66.100', 'tcp', 80, 0, 1, 104, 'Vultr'),
+		('intl', '悉尼', '108.61.212.117', 'tcp', 80, 0, 1, 105, 'Vultr'),
+		('intl', '洛杉矶', '108.61.219.200', 'tcp', 80, 0, 1, 106, 'Vultr'),
+		('intl', '圣何塞', '104.156.230.107', 'tcp', 80, 0, 1, 107, 'Vultr'),
+		('intl', '新泽西', '108.61.149.182', 'tcp', 80, 0, 1, 108, 'Vultr'),
+		('intl', '伦敦', '108.61.196.101', 'tcp', 80, 0, 1, 109, 'Vultr'),
+		('intl', '法兰克福', '108.61.210.117', 'tcp', 80, 0, 1, 110, 'Vultr'),
+		('intl', '阿姆斯特丹', '108.61.198.102', 'tcp', 80, 0, 1, 111, 'Vultr');`,
 }
 
 func (s *Store) migrate() error {
