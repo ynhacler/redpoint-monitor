@@ -143,12 +143,8 @@ func TestProbeTargetsAPI(t *testing.T) {
 	admin := adminToken(t, s)
 	var list struct{ Items []ProbeTargetRow }
 	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
-	if len(list.Items) != 12 {
-		t.Fatalf("内置国内目标已删除，只剩 12 个境外内置目标：%d", len(list.Items))
-	}
-	intl := list.Items[0]
-	if intl.ISP != "intl" || intl.Province != "香港" || !intl.Builtin || intl.Enabled || intl.Note != "Leaseweb" {
-		t.Errorf("境外目标默认不启用：%+v", intl)
+	if len(list.Items) != 0 {
+		t.Fatalf("内置目标已全部删除，目标都由用户添加：%d", len(list.Items))
 	}
 	for _, bad := range []string{
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
@@ -171,7 +167,12 @@ func TestProbeTargetsAPI(t *testing.T) {
 	if rec.Code != 201 || c.Address != "117.147.213.41" || c.Port != 0 || c.Builtin {
 		t.Fatalf("添加自定义目标：%d %+v", rec.Code, c)
 	}
-	// 内置目标：地址等不可改，不能删除
+	// 内置目标（现在没有，保留规则以备以后）：地址等不可改，不能删除
+	if _, err := s.store.DB.Exec(`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, note, server_id)
+		VALUES ('intl', '香港', '64.120.117.34', 'tcp', 80, 0, 1, 'Leaseweb', 0), ('intl', '东京', '108.61.201.151', 'tcp', 80, 0, 1, 'Vultr', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
 	b := list.Items[0]
 	rec = do(h, "PUT", fmt.Sprintf("/api/v1/probe-targets/%d", b.ID), admin, []byte(`{"address":"1.1.1.1","proto":"icmp"}`))
 	var b2 ProbeTargetRow
@@ -183,7 +184,7 @@ func TestProbeTargetsAPI(t *testing.T) {
 		t.Errorf("内置目标不能删除：%d", rec.Code)
 	}
 	// 只改“启用”：其他字段保持不变（自定义目标的地址、境外目标的提供商都不丢）
-	for _, x := range []ProbeTargetRow{c, list.Items[1]} { // Items[0] 上面改过协议
+	for _, x := range []ProbeTargetRow{c, list.Items[1]} { // Items[1] 是东京（内置），Items[0] 上面改过协议
 		rec = do(h, "PUT", fmt.Sprintf("/api/v1/probe-targets/%d", x.ID), admin, []byte(`{"enabled":true}`))
 		var got ProbeTargetRow
 		json.Unmarshal(rec.Body.Bytes(), &got)
@@ -332,7 +333,7 @@ func TestNodeOwnTargets(t *testing.T) {
 		json.Unmarshal(do(h, "GET", "/api/v1/probe-targets"+q, admin, nil).Body.Bytes(), &l)
 		return len(l.Items)
 	}
-	if count("") != 13 || count("?server_id=1") != 14 || count("?server_id=2") != 13 {
+	if count("") != 1 || count("?server_id=1") != 2 || count("?server_id=2") != 1 {
 		t.Errorf("共用列表不含节点自己的目标；节点 1 的列表含它：%d %d %d", count(""), count("?server_id=1"), count("?server_id=2"))
 	}
 	if rec := do(h, "PUT", "/api/v1/servers/2/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[%d],"interval_s":0}`, own.ID))); rec.Code != 422 {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 三网延迟的探测目标（设计 42.3.2）：国内目标由用户自己添加（内置的国内地址已删除，修订第 128 条），境外内置目标勾选启用。
+// 三网延迟的探测目标（设计 42.3.2）：全部由用户自己添加（内置地址已删除，修订第 128 条），勾选的对“跟随全局”的节点生效。
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
 // 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -54,7 +54,6 @@ async function saveInterval() {
 const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
-const hasCN = computed(() => items.value.some((t) => t.isp !== 'intl'))
 const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
 const selected = computed(() => items.value.filter((t) => t.enabled).map((t) => t.id))
 
@@ -152,9 +151,9 @@ async function remove(t: ProbeTarget) {
       </div>
     </form>
 
-    <p v-if="!hasCN && !adding" class="panel empty small">
-      还没有国内目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP（如运营商的 DNS、测速服务器，或你常访问的国内服务器），
-      先用 ping 或 TCP 连接确认从 VPS 能连通。
+    <p v-if="!items.length && !adding" class="panel empty small">
+      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP（如运营商的 DNS、测速服务器，或你常访问的国内服务器），
+      境外地址运营商选“境外”；先用 ping 或 TCP 连接确认从 VPS 能连通。
     </p>
     <section v-if="items.length" class="panel block">
       <h3>目标（勾选的对所有“跟随全局”的节点生效）</h3>
