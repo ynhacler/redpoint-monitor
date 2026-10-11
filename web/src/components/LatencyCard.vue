@@ -6,7 +6,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
 import Chart, { type Series } from './Chart.vue'
-import NodeProbeSettings from './NodeProbeSettings.vue'
 
 const props = defineProps<{ serverId: number }>()
 
@@ -23,7 +22,6 @@ const view = ref<LatencyView | null>(null)
 const error = ref('')
 const range = ref<'24h' | '7d'>('24h')
 const selected = ref('')
-const editing = ref(false) // 这台节点的三网延迟设置（修订第 121 条）
 const modeNames: Record<string, string> = { default: '跟随全局', custom: '自定义', off: '已关闭' }
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -108,13 +106,13 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
         <div v-if="hasData" class="segmented" role="group" aria-label="时间范围">
           <button v-for="r in (['24h', '7d'] as const)" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
         </div>
-        <button type="button" class="secondary small" :aria-expanded="editing" @click="editing = !editing">设置</button>
+        <!-- 这台节点的设置在“编辑”页中（修订第 123 条） -->
+        <RouterLink :to="`/servers/${serverId}/edit#probe`" class="btn secondary small">设置</RouterLink>
       </div>
     </div>
-    <NodeProbeSettings v-if="editing" :server-id="serverId" @saved="editing = false; load()" @cancel="editing = false" />
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，点“设置”开启。</p>
+      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，在“编辑 → 三网延迟”中开启。</p>
       <p v-else-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
       <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持三网延迟，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
       <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“告警 → 三网”中启用。</p>

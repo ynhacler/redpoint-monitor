@@ -815,6 +815,9 @@ var migrations = []string{
 		('intl', '伦敦', '108.61.196.101', 'tcp', 80, 0, 1, 109, 'Vultr'),
 		('intl', '法兰克福', '108.61.210.117', 'tcp', 80, 0, 1, 110, 'Vultr'),
 		('intl', '阿姆斯特丹', '108.61.198.102', 'tcp', 80, 0, 1, 111, 'Vultr');`,
+
+	// 迁移 36：节点自己的测试目标（设计 42.3.2，修订第 123 条）：server_id 为 0 表示所有节点共用，否则只属于该节点
+	`ALTER TABLE probe_targets ADD COLUMN server_id INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {

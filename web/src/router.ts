@@ -24,7 +24,19 @@ export const router = createRouter({
     { path: '/servers/:id(\\d+)/install', name: 'server-install', component: () => import('./pages/InstallPage.vue'), props: true, meta: { title: '安装命令' } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
-  scrollBehavior: () => ({ top: 0 }),
+  // 地址带 #锚点 时滚动到该元素：页面内容多为异步加载，最多等 2 秒；否则回到顶部
+  scrollBehavior: (to) => {
+    if (!to.hash) return { top: 0 }
+    return new Promise((resolve) => {
+      let tries = 0
+      const tick = () => {
+        if (document.querySelector(to.hash)) resolve({ el: to.hash, top: 16 })
+        else if (tries++ >= 40) resolve({ top: 0 })
+        else setTimeout(tick, 50)
+      }
+      tick()
+    })
+  },
 })
 
 // 会话失效（任意请求返回 401）或退出时回到登录页，并记住原页面

@@ -2664,6 +2664,16 @@
           "servers"
         ],
         "summary": "三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址在前，自定义在后",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "再加上这台节点自己的目标；省略时只列共用目标"
+          }
+        ],
         "responses": {
           "200": {
             "description": "列表",
@@ -7014,6 +7024,10 @@
           "note": {
             "type": "string",
             "maxLength": 64
+          },
+          "server_id": {
+            "type": "integer",
+            "description": "只在添加时有效：添加为这台节点自己的目标（每台最多 20 个）；省略或 0 为共用目标"
           }
         }
       },
@@ -7029,7 +7043,8 @@
           "port",
           "enabled",
           "builtin",
-          "note"
+          "note",
+          "server_id"
         ],
         "properties": {
           "id": {
@@ -7071,6 +7086,10 @@
           },
           "note": {
             "type": "string"
+          },
+          "server_id": {
+            "type": "integer",
+            "description": "0 表示所有节点共用；否则是这台节点自己的目标，只在它的自定义设置中使用（enabled 始终为 false）"
           }
         }
       },

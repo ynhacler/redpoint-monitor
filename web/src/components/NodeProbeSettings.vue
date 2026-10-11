@@ -1,15 +1,15 @@
 <script setup lang="ts">
-// 节点自己的三网延迟设置（设计 42.3.2，修订第 121 条）：跟随全局 / 自定义目标与频率 / 关闭。
-// 保存后随这台节点的下一份上报下发；节点本机的 no-probe 文件优先于这里的设置（设计 42.6）。
-import { computed, onMounted, ref } from 'vue'
+// 节点自己的三网延迟设置（设计 42.3.2，修订第 121、123 条）：跟随全局 / 自定义目标与频率 / 关闭。
+// 放在节点“编辑”页中，随“保存”一起提交（父组件调用 save）。自定义时可以添加只属于这台节点的测试目标。
+// 节点本机的 no-probe 文件优先于这里的设置（设计 42.6）。
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  ApiError, errorText, getNodeProbe, getProbeSettings, listProbeTargets, putNodeProbe,
-  type NodeProbe, type ProbeTarget,
+  ApiError, createProbeTarget, deleteProbeTarget, errorText, getNodeProbe, getProbeSettings, listProbeTargets, putNodeProbe,
+  type NodeProbe, type ProbeTarget, type ProbeTargetInput,
 } from '../api'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
 
 const props = defineProps<{ serverId: number }>()
-const emit = defineEmits<{ saved: []; cancel: [] }>()
 
 const MAX = 64
 const intervals: NodeProbe['interval_s'][] = [0, 60, 120, 300, 600, 900, 1800]
@@ -19,12 +19,11 @@ const picked = ref<number[]>([])
 const interval = ref<NodeProbe['interval_s']>(0)
 const globalInterval = ref(300)
 const error = ref('')
-const saving = ref(false)
 const loaded = ref(false)
 
 onMounted(async () => {
   try {
-    const [np, list, g] = await Promise.all([getNodeProbe(props.serverId), listProbeTargets(), getProbeSettings()])
+    const [np, list, g] = await Promise.all([getNodeProbe(props.serverId), listProbeTargets(props.serverId), getProbeSettings()])
     targets.value = list
     globalInterval.value = g.interval_s
     mode.value = np.mode
@@ -33,7 +32,7 @@ onMounted(async () => {
     picked.value = np.mode === 'custom' ? np.target_ids : list.filter((t) => t.enabled).map((t) => t.id)
     loaded.value = true
   } catch (e) {
-    error.value = errorText(e, '设置加载失败')
+    error.value = errorText(e, '三网延迟设置加载失败')
   }
 })
 
@@ -43,25 +42,65 @@ function toggle(t: ProbeTarget) {
 const label = (s: number) => (s === 0 ? `跟随全局（每 ${globalInterval.value / 60} 分钟）` : `每 ${s / 60} 分钟`)
 const tooMany = computed(() => picked.value.length > MAX)
 
-async function save() {
-  saving.value = true
-  error.value = ''
+// ---- 这台节点自己的测试目标（修订第 123 条）----
+const adding = ref(false)
+const form = reactive({ isp: 'ct', province: '', address: '', proto: 'tcp', port: 80, note: '' })
+const addErrors = ref<Record<string, string>>({})
+const addBusy = ref(false)
+
+async function addOwn() {
+  addBusy.value = true
+  addErrors.value = {}
+  const body: ProbeTargetInput = {
+    isp: form.isp as ProbeTargetInput['isp'], province: form.province.trim(), address: form.address.trim(),
+    proto: form.proto as ProbeTargetInput['proto'], port: form.proto === 'tcp' ? form.port : undefined,
+    note: form.note.trim(), server_id: props.serverId,
+  }
   try {
-    const custom = mode.value === 'custom'
+    const t = await createProbeTarget(body)
+    targets.value = [...targets.value, t]
+    picked.value = [...picked.value, t.id] // 添加即选中
+    adding.value = false
+    Object.assign(form, { province: '', address: '', note: '' })
+  } catch (e) {
+    addErrors.value = e instanceof ApiError && e.details.length
+      ? Object.fromEntries(e.details.map((d) => [d.field, d.message]))
+      : { _: errorText(e) }
+  } finally {
+    addBusy.value = false
+  }
+}
+
+async function removeOwn(t: ProbeTarget) {
+  if (!confirm(`删除这台节点的测试目标“${t.province} ${t.address}”？它的探测记录会一并删除。`)) return
+  try {
+    await deleteProbeTarget(t.id)
+    targets.value = targets.value.filter((x) => x.id !== t.id)
+    picked.value = picked.value.filter((id) => id !== t.id)
+  } catch (e) {
+    error.value = errorText(e)
+  }
+}
+
+/** 由“编辑”页的保存调用；校验失败或保存失败时抛出错误（消息已是中文） */
+async function save() {
+  if (!loaded.value) return
+  const custom = mode.value === 'custom'
+  if (custom && !picked.value.length) throw new Error('三网延迟：自定义时请至少选择一个目标；不测请选“关闭”')
+  if (tooMany.value) throw new Error(`三网延迟：最多选择 ${MAX} 个目标`)
+  try {
     await putNodeProbe(props.serverId, {
       mode: mode.value, target_ids: custom ? picked.value : [], interval_s: custom ? interval.value : 0,
     })
-    emit('saved')
   } catch (e) {
-    error.value = e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)
-  } finally {
-    saving.value = false
+    throw new Error(`三网延迟：${e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)}`)
   }
 }
+defineExpose({ save })
 </script>
 
 <template>
-  <form class="settings" novalidate @submit.prevent="save">
+  <div class="settings">
     <p v-if="!loaded && !error" class="small muted">加载中…</p>
     <template v-if="loaded">
       <div class="modes" role="radiogroup" aria-label="这台节点的三网延迟">
@@ -76,31 +115,62 @@ async function save() {
           </select>
         </label>
         <p class="small" :class="tooMany ? 'bad' : 'muted'">已选 <b class="num">{{ picked.length }}</b> / {{ MAX }}（全局未启用的目标也可以选）</p>
-        <ProbeTargetPicker :targets="targets" :selected="picked" @toggle="toggle" />
+        <ProbeTargetPicker :targets="targets" :selected="picked" @toggle="toggle">
+          <template #custom-extra="{ target }">
+            <template v-if="target.server_id">
+              <span class="tag small">本机</span>
+              <button type="button" class="text small del" @click="removeOwn(target)">删除</button>
+            </template>
+            <span v-else class="tag small muted">共用</span>
+          </template>
+        </ProbeTargetPicker>
+
+        <div class="own">
+          <button v-if="!adding" type="button" class="secondary small" @click="adding = true">添加这台节点自己的测试目标</button>
+          <div v-else class="own-form">
+            <div class="grid">
+              <label>运营商
+                <select v-model="form.isp"><option value="ct">电信</option><option value="cu">联通</option><option value="cm">移动</option><option value="intl">境外</option></select></label>
+              <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
+                <small v-if="addErrors.province" class="bad">{{ addErrors.province }}</small></label>
+              <label>IP 地址<input v-model="form.address" spellcheck="false" placeholder="公网 IP" />
+                <small v-if="addErrors.address" class="bad">{{ addErrors.address }}</small></label>
+              <label>协议
+                <select v-model="form.proto"><option value="tcp">TCP 连接</option><option value="icmp">ICMP（Ping）</option></select></label>
+              <label v-if="form.proto === 'tcp'">端口<input v-model.number="form.port" type="number" min="1" max="65535" />
+                <small v-if="addErrors.port" class="bad">{{ addErrors.port }}</small></label>
+              <label>备注（可选）<input v-model="form.note" maxlength="64" /></label>
+            </div>
+            <p v-if="addErrors._ || addErrors.isp || addErrors.server_id" class="small bad">{{ addErrors._ || addErrors.isp || addErrors.server_id }}</p>
+            <div class="actions">
+              <button type="button" class="small" :disabled="addBusy || !form.province.trim() || !form.address.trim()" @click="addOwn">{{ addBusy ? '添加中…' : '添加' }}</button>
+              <button type="button" class="secondary small" @click="adding = false">取消</button>
+              <span class="small muted">只有这台节点测，不出现在全局列表中；最多 20 个</span>
+            </div>
+          </div>
+        </div>
       </template>
     </template>
     <p v-if="error" class="small bad">{{ error }}</p>
-    <div class="actions">
-      <button type="submit" :disabled="!loaded || saving || tooMany || (mode === 'custom' && !picked.length)">{{ saving ? '保存中…' : '保存' }}</button>
-      <button type="button" class="secondary" @click="emit('cancel')">取消</button>
-      <span class="small muted">保存后随这台节点的下一次上报生效</span>
-    </div>
-  </form>
+  </div>
 </template>
 
 <style scoped>
-.settings { padding: var(--space-3) 0 var(--space-4); border-bottom: 1px solid var(--border); margin-bottom: var(--space-4); }
 .modes { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin-bottom: var(--space-3); }
 .modes label { display: inline-flex; align-items: baseline; gap: var(--space-2); cursor: pointer; }
 .modes input { width: auto; margin: 0; }
 .modes small { margin-left: var(--space-1); }
 .freq { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .freq select { width: auto; }
+.tag { padding: 0 var(--space-2); border-radius: 99px; background: var(--surface-2); }
+.own { margin-top: var(--space-3); }
+.own-form { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3); }
+.grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .muted { color: var(--text-muted); }
-.bad { color: var(--bad); }
+.bad, .del { color: var(--bad); }
 @media (max-width: 600px) {
   .modes { flex-direction: column; }
-  .modes small { display: block; }
 }
 </style>
