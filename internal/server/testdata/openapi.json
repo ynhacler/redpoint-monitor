@@ -2597,6 +2597,67 @@
         }
       }
     },
+    "/settings/probe": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "三网延迟的设置（设计 42.3.2）",
+        "responses": {
+          "200": {
+            "description": "设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "修改三网延迟的测试频率（所有节点），随下一份上报下发给各 Agent",
+        "description": "Agent 端硬性限制每轮间隔不短于 60 秒（设计 42.6）；上一轮结束后才计时，目标多时不会重叠。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/probe-targets": {
       "get": {
         "tags": [
@@ -4707,7 +4768,7 @@
           "servers"
         ],
         "summary": "三网延迟（设计 42.3.2）：节点 Agent 到三大运营商各地目标的延迟与丢包",
-        "description": "Agent 每 5 分钟一轮，每个目标 5 个样本：延迟为成功样本的中位数，丢包率为失败样本占比。\ntargets 中的 latency_ms / loss 为最近 1 小时的汇总；series 为曲线（24h 为逐轮，7d 按小时汇总）。保留 7 天。\n",
+        "description": "Agent 按设置的频率（默认每 5 分钟）测一轮，每个目标 5 个样本：延迟为成功样本的中位数，丢包率为失败样本占比。\ntargets 中的 latency_ms / loss 为最近 1 小时的汇总；series 为曲线（24h 为逐轮，7d 按小时汇总）。保留 7 天。\n",
         "parameters": [
           {
             "$ref": "#/components/parameters/ServerID"
@@ -6771,6 +6832,26 @@
           },
           "resolved_value": {
             "type": "number"
+          }
+        }
+      },
+      "ProbeSettings": {
+        "type": "object",
+        "required": [
+          "interval_s"
+        ],
+        "properties": {
+          "interval_s": {
+            "type": "integer",
+            "enum": [
+              60,
+              120,
+              300,
+              600,
+              900,
+              1800
+            ],
+            "description": "每轮间隔（秒），默认 300"
           }
         }
       },

@@ -66,7 +66,7 @@ type Reporter struct {
 	// Probe 同步三网延迟的目标列表（设计 42.3.2）：请求头带当前版本，响应头带新列表；为空时不参与
 	Probe interface {
 		Version() string
-		Update(version, encoded string)
+		Update(version, encoded, interval string)
 	}
 	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
 	StatePath string
@@ -326,7 +326,7 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		r.setInterval(resp.Header.Get("X-Report-Interval"))
 		r.setWatchProcs(resp.Header.Get(protocol.HeaderWatchProcs))
 		if v := resp.Header.Get(protocol.HeaderProbeVersion); v != "" && r.Probe != nil {
-			r.Probe.Update(v, resp.Header.Get(protocol.HeaderProbeTargets))
+			r.Probe.Update(v, resp.Header.Get(protocol.HeaderProbeTargets), resp.Header.Get(protocol.HeaderProbeInterval))
 		}
 	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {

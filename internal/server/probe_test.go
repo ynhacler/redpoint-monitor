@@ -38,12 +38,30 @@ func TestProbeSync(t *testing.T) {
 	hd := report(&empty, base)
 	ver, enc := hd.Get(protocol.HeaderProbeVersion), hd.Get(protocol.HeaderProbeTargets)
 	targets := protocol.ParseProbeTargets(enc)
-	if ver == "" || len(targets) != 12 {
-		t.Fatalf("默认应下发北京、上海、广东、四川三网共 12 个目标：%s %d", ver, len(targets))
+	if ver == "" || len(targets) != 12 || hd.Get(protocol.HeaderProbeInterval) != "300" {
+		t.Fatalf("默认应下发北京、上海、广东、四川三网共 12 个目标，间隔 300 秒：%s %d %s", ver, len(targets), hd.Get(protocol.HeaderProbeInterval))
 	}
 	if hd := report(&ver, base); hd.Get(protocol.HeaderProbeVersion) != "" {
 		t.Error("版本相同时不应重复下发")
 	}
+	// 修改测试频率：版本变化，下发新间隔；不在可选范围的返回 422
+	if rec := do(h, "PUT", "/api/v1/settings/probe", admin, []byte(`{"interval_s":45}`)); rec.Code != 422 {
+		t.Errorf("45 秒不在可选范围：%d", rec.Code)
+	}
+	if rec := do(h, "PUT", "/api/v1/settings/probe", admin, []byte(`{"interval_s":60}`)); rec.Code != 200 {
+		t.Fatalf("修改频率：%d %s", rec.Code, rec.Body)
+	}
+	hd = report(&ver, base)
+	if hd.Get(protocol.HeaderProbeInterval) != "60" || hd.Get(protocol.HeaderProbeVersion) == ver {
+		t.Errorf("修改频率后应下发新版本与间隔：%q", hd.Get(protocol.HeaderProbeInterval))
+	}
+	ver = hd.Get(protocol.HeaderProbeVersion)
+	var ps ProbeSettings
+	json.Unmarshal(do(h, "GET", "/api/v1/settings/probe", admin, nil).Body.Bytes(), &ps)
+	if ps.IntervalS != 60 {
+		t.Errorf("读取设置：%+v", ps)
+	}
+
 	off := protocol.ProbeOff
 	report(&off, base)
 	if s.probeStatus(1) != "off" {
@@ -114,7 +132,7 @@ func TestProbeTargetsAPI(t *testing.T) {
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
 		`{"isp":"ct","province":"家","address":"127.0.0.1"}`,
 		`{"isp":"ct","province":"家","address":"169.254.169.254"}`, // 云厂商元数据地址
-		`{"isp":"ct","province":"家","address":"example.com"}`,    // 不接受域名
+		`{"isp":"ct","province":"家","address":"example.com"}`,     // 不接受域名
 		`{"isp":"xx","province":"家","address":"1.1.1.1"}`,
 		`{"isp":"ct","province":"家","address":"1.1.1.1","proto":"udp"}`,
 	} {

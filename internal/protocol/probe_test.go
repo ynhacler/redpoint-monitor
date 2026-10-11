@@ -32,8 +32,14 @@ func TestProbeTargets(t *testing.T) {
 	if in[1].HostPort() != "[2400:da00::6666]:0" || in[0].HostPort() != "220.181.173.35:80" {
 		t.Errorf("HostPort：%s %s", in[0].HostPort(), in[1].HostPort())
 	}
-	if ProbeVersion("") != "0" || ProbeVersion(enc) == ProbeVersion(enc+";") || len(ProbeVersion(enc)) != 12 {
-		t.Error("版本：空列表为 0，内容不同版本不同")
+	if ProbeVersion("", 300) != "0" || ProbeVersion(enc, 300) == ProbeVersion(enc+";", 300) ||
+		ProbeVersion(enc, 300) == ProbeVersion(enc, 60) || len(ProbeVersion(enc, 300)) != 12 {
+		t.Error("版本：空列表为 0，内容或间隔不同版本不同")
+	}
+	for v, want := range map[string]int{"60": 60, "1800": 1800, "30": 300, "7200": 300, "x": 300, "": 300} {
+		if got := ParseProbeInterval(v); got != want {
+			t.Errorf("ParseProbeInterval(%q) = %d，应为 %d", v, got, want)
+		}
 	}
 	var list []ProbeTarget
 	for i := 1; i <= 100; i++ {

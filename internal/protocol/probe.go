@@ -3,7 +3,7 @@ package protocol
 // 三网延迟（设计 42.3.2）：面板下发探测目标，Agent 每 5 分钟一轮测量到各目标的延迟与丢包，随上报带回。
 //
 // 下发方式：Agent 在上报请求头 X-Probe-Version 中带上当前目标列表的版本（没有时为空，本机关闭探测时为 off）；
-// 版本与面板不同时，面板在响应头 X-Probe-Version 与 X-Probe-Targets 中给出新列表。旧版面板不发送，Agent 不探测；
+// 版本与面板不同时，面板在响应头 X-Probe-Version、X-Probe-Targets 与 X-Probe-Interval 中给出新列表与间隔。旧版面板不发送，Agent 不探测；
 // 旧版 Agent 不带请求头，面板不下发。
 //
 // 【安全】目标只能是公网 IP 地址（不接受域名，避免借 DNS 指向内网），类型只有 tcp / icmp，
@@ -18,12 +18,30 @@ import (
 )
 
 const (
-	HeaderProbeVersion = "X-Probe-Version"
-	HeaderProbeTargets = "X-Probe-Targets"
-	ProbeOff           = "off" // Agent 本机关闭了网络探测
+	HeaderProbeVersion  = "X-Probe-Version"
+	HeaderProbeTargets  = "X-Probe-Targets"
+	HeaderProbeInterval = "X-Probe-Interval" // 每轮间隔（秒），与目标列表一起下发
+	ProbeOff            = "off"              // Agent 本机关闭了网络探测
 
 	MaxProbeTargets = 64 // Agent 端硬性上限（设计 42.6）
+
+	// 每轮间隔：面板可在此范围内设置；Agent 端硬性限制，范围外的值按默认处理（设计 42.6）
+	MinProbeInterval     = 60
+	MaxProbeInterval     = 3600
+	DefaultProbeInterval = 300
 )
+
+// ProbeIntervals 是面板可选的每轮间隔（秒）。
+var ProbeIntervals = []int{60, 120, 300, 600, 900, 1800}
+
+// ParseProbeInterval 解析下发的间隔；不合法或超出 [60, 3600] 秒时返回默认 300 秒。
+func ParseProbeInterval(v string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < MinProbeInterval || n > MaxProbeInterval {
+		return DefaultProbeInterval
+	}
+	return n
+}
 
 // ProbeTarget 是一个探测目标。
 type ProbeTarget struct {
@@ -124,11 +142,11 @@ func ParseProbeTargets(v string) []ProbeTarget {
 	return out
 }
 
-// ProbeVersion 是目标列表的版本：编码结果的哈希前 12 位；没有目标时为 "0"。
-func ProbeVersion(encoded string) string {
+// ProbeVersion 是目标列表与间隔的版本：哈希前 12 位；没有目标时为 "0"。
+func ProbeVersion(encoded string, interval int) string {
 	if encoded == "" {
 		return "0"
 	}
-	sum := sha256.Sum256([]byte(encoded))
+	sum := sha256.Sum256([]byte(encoded + "@" + strconv.Itoa(interval)))
 	return hex.EncodeToString(sum[:6])
 }

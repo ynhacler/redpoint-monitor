@@ -27,7 +27,7 @@ type fakePanel struct {
 	interval string    // X-Report-Interval 响应头
 	procs    string    // X-Watch-Procs 响应头
 	probeVer []string  // 收到的 X-Probe-Version 请求头（nil 表示没有该请求头）
-	probeOut [2]string // 响应的 X-Probe-Version、X-Probe-Targets
+	probeOut [3]string // 响应的 X-Probe-Version、X-Probe-Targets、X-Probe-Interval
 	gzip     string    // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
 	encoded  []string
 }
@@ -60,6 +60,7 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.probeOut[0] != "" {
 		w.Header().Set(protocol.HeaderProbeVersion, p.probeOut[0])
 		w.Header().Set(protocol.HeaderProbeTargets, p.probeOut[1])
+		w.Header().Set(protocol.HeaderProbeInterval, p.probeOut[2])
 	}
 	if enc == "gzip" && p.gzip != "accept" {
 		w.WriteHeader(http.StatusUnsupportedMediaType)
@@ -378,10 +379,10 @@ func TestPanelWatchProcs(t *testing.T) {
 	}
 }
 
-type fakeProbe struct{ ver, enc string }
+type fakeProbe struct{ ver, enc, iv string }
 
-func (f *fakeProbe) Version() string      { return f.ver }
-func (f *fakeProbe) Update(v, enc string) { f.ver, f.enc = v, enc }
+func (f *fakeProbe) Version() string          { return f.ver }
+func (f *fakeProbe) Update(v, enc, iv string) { f.ver, f.enc, f.iv = v, enc, iv }
 
 // 三网延迟目标的同步（设计 42.3.2）：请求头始终带版本（空值表示还没有目标），响应头带新列表时更新。
 func TestProbeHeaders(t *testing.T) {
@@ -389,16 +390,16 @@ func TestProbeHeaders(t *testing.T) {
 	r, _, _ := newReporter(t, p)
 	fp := &fakeProbe{}
 	r.Probe = fp
-	p.probeOut = [2]string{"abc", "1,tcp,220.181.173.35,80"}
+	p.probeOut = [3]string{"abc", "1,tcp,220.181.173.35,80", "600"}
 	r.Enqueue(rep(0))
 	r.Flush(context.Background(), false)
 	if len(p.probeVer) != 1 || p.probeVer[0] != "" {
 		t.Errorf("首次上报应带空的版本请求头：%q", p.probeVer)
 	}
-	if fp.ver != "abc" || fp.enc != "1,tcp,220.181.173.35,80" {
+	if fp.ver != "abc" || fp.enc != "1,tcp,220.181.173.35,80" || fp.iv != "600" {
 		t.Errorf("应保存面板下发的列表：%+v", fp)
 	}
-	p.probeOut = [2]string{}
+	p.probeOut = [3]string{}
 	r.Enqueue(rep(1))
 	r.Flush(context.Background(), false)
 	if len(p.probeVer) != 1 || p.probeVer[0] != "abc" || fp.ver != "abc" {

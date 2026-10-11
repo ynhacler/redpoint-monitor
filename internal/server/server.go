@@ -309,6 +309,8 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/ssl-monitors/{id}", accessAdmin, s.handleDeleteSSLMonitor)
 	// 三网延迟的探测目标（设计 42.3.2）
 	handle("GET /api/v1/probe-targets", accessAdmin, s.handleProbeTargets)
+	handle("GET /api/v1/settings/probe", accessAdmin, s.handleGetProbeSettings)
+	handle("PUT /api/v1/settings/probe", accessAdmin, s.handlePutProbeSettings)
 	handle("POST /api/v1/probe-targets", accessAdmin, s.handleCreateProbeTarget)
 	handle("PUT /api/v1/probe-targets/{id}", accessAdmin, s.handleUpdateProbeTarget)
 	handle("DELETE /api/v1/probe-targets/{id}", accessAdmin, s.handleDeleteProbeTarget)
