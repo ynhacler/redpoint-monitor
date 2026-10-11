@@ -483,6 +483,21 @@ export interface ProbeTarget {
   note: string
   /** 0 表示所有节点共用；否则是这台节点自己的目标，只在它的自定义设置中使用（enabled 始终为 false） */
   server_id: number
+  /** 只在列表中返回：全部节点最近 24 小时到这个目标的汇总（修订第 134 条） */
+  health?: {
+    /** dead：至少 3 轮且平均丢包 ≥ 99%，疑似失效；degraded：丢包 ≥ 20%；nodata：还没有结果 */
+    state: 'ok' | 'degraded' | 'dead' | 'nodata'
+    /** 测过它的节点数 */
+    nodes: number
+    /** 结果条数（每个节点每轮一条） */
+    rounds: number
+    /** 平均丢包率；没有结果时为 null */
+    loss: number | null
+    /** 成功轮次的平均延迟；没有成功时为 null */
+    latency_ms: number | null
+    /** 最近一轮的时间；没有时为 0 */
+    last_at: number
+  }
 }
 
 export interface LatencyView {

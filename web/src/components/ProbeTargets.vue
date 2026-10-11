@@ -63,6 +63,7 @@ async function saveInterval() {
 const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
+const deadCount = computed(() => items.value.filter((t) => t.health?.state === 'dead').length)
 const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
 const selected = computed(() => items.value.filter((t) => t.enabled).map((t) => t.id))
 
@@ -126,6 +127,7 @@ async function remove(t: ProbeTarget) {
       这是从 VPS 出发的方向，反映回程质量。目标是公网 IPv4 / IPv6 或域名（域名由 Agent 每轮解析，只连接公网地址）；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
+    <p v-if="deadCount" class="banner warn small">{{ deadCount }} 个目标最近 24 小时几乎全部失败，疑似失效（地址变更或被拦截），建议在下方更换或删除。</p>
     <div class="toolbar">
       <label class="freq small">测试频率
         <select v-model.number="interval" :disabled="savingInterval" @change="saveInterval">

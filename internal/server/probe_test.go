@@ -454,3 +454,61 @@ func TestProbeTimingAPI(t *testing.T) {
 		t.Errorf("节点超时超出范围应返回 422：%d", rec.Code)
 	}
 }
+
+// 目标健康（修订第 134 条）：汇总全部节点最近 24 小时的结果，长期不可达的标为疑似失效。
+func TestProbeTargetHealth(t *testing.T) {
+	f := func(v float64) *float64 { return &v }
+	for _, c := range []struct {
+		h    ProbeTargetHealth
+		want string
+	}{
+		{ProbeTargetHealth{}, "nodata"},
+		{ProbeTargetHealth{Rounds: 2, Loss: f(100)}, "degraded"}, // 结果太少，不下“失效”的结论
+		{ProbeTargetHealth{Rounds: 3, Loss: f(100)}, "dead"},
+		{ProbeTargetHealth{Rounds: 10, Loss: f(25)}, "degraded"},
+		{ProbeTargetHealth{Rounds: 10, Loss: f(0)}, "ok"},
+	} {
+		if got := probeHealthState(c.h); got != c.want {
+			t.Errorf("%+v → %s，应为 %s", c.h, got, c.want)
+		}
+	}
+
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	s.store.CreateServer("h-1", 0, 1)
+	s.store.CreateServer("h-2", 0, 1)
+	ids := addCNTargets(t, s, 3, 3)
+	now := time.Now().Unix()
+	ins := func(sid, tid int64, ago int64, lat any, loss float64) {
+		if _, err := s.store.DB.Exec(`INSERT INTO probe_results (server_id, target_id, ts, latency_ms, loss, error) VALUES (?,?,?,?,?, '')`,
+			sid, tid, now-ago, lat, loss); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := int64(0); i < 3; i++ {
+		ins(1, ids[0], 300*i, 50.0, 0)  // 正常
+		ins(2, ids[0], 300*i, 70.0, 0)
+		ins(1, ids[1], 300*i, nil, 100) // 失效
+	}
+	ins(1, ids[1], 2*86400, 40.0, 0) // 超过 24 小时，不计入
+	var list struct {
+		Items []struct {
+			ID     int64
+			Health ProbeTargetHealth
+		}
+	}
+	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
+	got := map[int64]ProbeTargetHealth{}
+	for _, it := range list.Items {
+		got[it.ID] = it.Health
+	}
+	if g := got[ids[0]]; g.State != "ok" || g.Nodes != 2 || g.Rounds != 6 || g.Latency == nil || *g.Latency != 60 {
+		t.Errorf("正常目标：%+v", g)
+	}
+	if g := got[ids[1]]; g.State != "dead" || g.Latency != nil || g.Loss == nil || *g.Loss != 100 {
+		t.Errorf("失效目标：%+v", g)
+	}
+	if g := got[ids[2]]; g.State != "nodata" || g.Loss != nil {
+		t.Errorf("没有结果：%+v", g)
+	}
+}

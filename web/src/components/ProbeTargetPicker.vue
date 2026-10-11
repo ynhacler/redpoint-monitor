@@ -3,6 +3,7 @@
 // 全局设置（“设置 → 测速”）与节点自己的设置共用；勾选的含义由调用方决定（全局启用 / 这台节点要测）。
 import { computed } from 'vue'
 import type { ProbeTarget } from '../api'
+import { fmtLatency, fmtPct } from '../format'
 
 const props = defineProps<{
   targets: ProbeTarget[]
@@ -33,6 +34,16 @@ const rows = computed(() => {
 const intl = computed(() => props.targets.filter((t) => t.builtin && t.isp === 'intl'))
 const custom = computed(() => props.targets.filter((t) => !t.builtin))
 const on = (t: ProbeTarget) => props.selected.includes(t.id)
+// 最近 24 小时全部节点的汇总（修订第 134 条）：失效的目标提示更换
+const healthBadge: Record<string, { text: string; cls: string }> = {
+  dead: { text: '疑似失效', cls: 'bad' }, degraded: { text: '丢包偏高', cls: 'warn' },
+}
+function healthText(t: ProbeTarget): string {
+  const h = t.health
+  if (!h || h.state === 'nodata') return '24 小时内没有结果'
+  const lat = h.latency_ms == null ? '全部失败' : fmtLatency(h.latency_ms)
+  return `24 小时：${h.nodes} 个节点 · ${lat} · 丢包 ${fmtPct(h.loss)}`
+}
 const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`
 </script>
 
@@ -71,6 +82,11 @@ const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port
         <label class="check"><input type="checkbox" :checked="on(t)" :disabled="busy === t.id" @change="emit('toggle', t)" />
           <span>{{ t.province }} · {{ ispName(t.isp) }}</span></label>
         <span class="small muted mono">{{ where(t) }}</span>
+        <span v-if="t.health" class="small health">
+          <b v-if="healthBadge[t.health.state]" class="badge" :class="healthBadge[t.health.state].cls"
+            :title="t.health.state === 'dead' ? '最近 24 小时几乎没有一次成功：地址可能已失效，或被防火墙拦截，建议更换' : ''">{{ healthBadge[t.health.state].text }}</b>
+          <span class="muted">{{ healthText(t) }}</span>
+        </span>
         <slot name="custom-extra" :target="t" />
       </li>
     </ul>
@@ -93,6 +109,10 @@ tbody th { font-weight: var(--weight-regular); }
 .custom { list-style: none; margin: 0; padding: 0; }
 .custom li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2) 0; }
 .custom li + li { border-top: 1px solid var(--border); }
+.health { display: inline-flex; align-items: center; gap: var(--space-2); }
+.badge { font-weight: var(--weight-regular); font-size: var(--font-xs); padding: 0 var(--space-2); border-radius: var(--radius-full); border: 1px solid currentColor; }
+.badge.bad { color: var(--bad); }
+.badge.warn { color: var(--warn); }
 @media (max-width: 600px) {
   th, td { padding: var(--space-2) var(--space-1); }
   .addr { display: none; } /* 窄屏只显示勾选框，地址在悬停提示中 */
