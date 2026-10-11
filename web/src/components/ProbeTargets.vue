@@ -115,7 +115,7 @@ async function remove(t: ProbeTarget) {
   <div>
     <p class="muted small intro">
       各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“测速”中查看，保留 7 天。
-      这是从 VPS 出发的方向，反映回程质量。目标只能是公网 IP；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
+      这是从 VPS 出发的方向，反映回程质量。目标是公网 IPv4 / IPv6 或域名（域名由 Agent 每轮解析，只连接公网地址）；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <div class="toolbar">
@@ -136,7 +136,7 @@ async function remove(t: ProbeTarget) {
           <small v-if="fieldErrors.isp" class="bad">{{ fieldErrors.isp }}</small></label>
         <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
           <small v-if="fieldErrors.province" class="bad">{{ fieldErrors.province }}</small></label>
-        <label>IP 地址<input v-model="form.address" spellcheck="false" placeholder="公网 IP，如 115.220.14.91" />
+        <label>IP 或域名<input v-model="form.address" spellcheck="false" autocapitalize="off" placeholder="如 115.220.14.91、2408:8000::1 或域名" />
           <small v-if="fieldErrors.address" class="bad">{{ fieldErrors.address }}</small></label>
         <label>协议
           <select v-model="form.proto"><option value="tcp">TCP 连接</option><option value="icmp">ICMP（Ping）</option></select>
@@ -153,7 +153,7 @@ async function remove(t: ProbeTarget) {
     </form>
 
     <p v-if="!items.length && !adding" class="panel empty small">
-      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP，境外地址运营商选“境外”。
+      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。
     </p>
     <ProbeTargetHint v-if="!items.length || adding" class="hint-line" />
     <section v-if="items.length" class="panel block">

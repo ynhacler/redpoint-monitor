@@ -150,13 +150,26 @@ func TestProbeTargetsAPI(t *testing.T) {
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
 		`{"isp":"ct","province":"家","address":"127.0.0.1"}`,
 		`{"isp":"ct","province":"家","address":"169.254.169.254"}`, // 云厂商元数据地址
-		`{"isp":"ct","province":"家","address":"example.com"}`,     // 不接受域名
+		`{"isp":"ct","province":"家","address":"nas.lan"}`,          // 局域网名称
+		`{"isp":"ct","province":"家","address":"localhost"}`,
+		`{"isp":"ct","province":"家","address":"a.cn:8080"}`, // 端口单独填写
+		`{"isp":"ct","province":"家","address":"fd00::1"}`,   // IPv6 内网
 		`{"isp":"xx","province":"家","address":"1.1.1.1"}`,
 		`{"isp":"ct","province":"家","address":"1.1.1.1","proto":"udp"}`,
 	} {
 		if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(bad)); rec.Code != 422 {
 			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
 		}
+	}
+	// 公网 IPv6 与域名（修订第 132 条）：粘贴的网址只保留域名
+	for in, want := range map[string]string{`[2400:da00::6666]`: "2400:da00::6666", `https://Speed.Test.CN/`: "speed.test.cn"} {
+		rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(fmt.Sprintf(`{"isp":"cu","province":"北京","address":%q}`, in)))
+		var x ProbeTargetRow
+		json.Unmarshal(rec.Body.Bytes(), &x)
+		if rec.Code != 201 || x.Address != want {
+			t.Errorf("添加 %s：%d %+v", in, rec.Code, x)
+		}
+		do(h, "DELETE", fmt.Sprintf("/api/v1/probe-targets/%d", x.ID), admin, nil)
 	}
 	if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"intl","province":"台北","address":"1.1.1.1","note":"Cloudflare"}`)); rec.Code != 201 {
 		t.Errorf("可以添加境外自定义目标：%d %s", rec.Code, rec.Body)
@@ -358,5 +371,16 @@ func TestNodeOwnTargets(t *testing.T) {
 	}
 	if _, err := s.store.GetProbeTarget(own.ID); err == nil {
 		t.Error("节点删除时应删除它自己的目标")
+	}
+}
+
+// 域名目标随下发编码为域名，由 Agent 解析（修订第 132 条）。
+func TestProbeWireHost(t *testing.T) {
+	pt, ok := ProbeTargetRow{ID: 5, Proto: "tcp", Port: 80, Address: "speed.test.cn"}.wire()
+	if !ok || pt.Host != "speed.test.cn" || pt.Addr.IsValid() || protocol.EncodeProbeTargets([]protocol.ProbeTarget{pt}) != "5,tcp,speed.test.cn,80" {
+		t.Errorf("域名目标：%+v %v", pt, ok)
+	}
+	if _, ok := (ProbeTargetRow{ID: 6, Proto: "icmp", Address: "nas.lan"}).wire(); ok {
+		t.Error("【安全】局域网名称不应下发")
 	}
 }

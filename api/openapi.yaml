@@ -2331,7 +2331,7 @@ components:
       properties:
         isp: { type: string, enum: [ct, cu, cm, intl], description: 运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改） }
         province: { type: string, maxLength: 16, description: 地区，如 上海；境外为城市，如 东京（内置目标不可改） }
-        address: { type: string, description: 公网 IP 地址（内置目标不可改） }
+        address: { type: string, description: '公网 IPv4 / IPv6 或域名（修订第 132 条；域名由 Agent 每轮解析，只连接公网地址；粘贴的网址只保留域名）。内置目标不可改' }
         proto: { type: string, enum: [tcp, icmp], description: 默认 tcp }
         port: { type: integer, minimum: 1, maximum: 65535, description: tcp 端口，默认 80；icmp 时忽略 }
         enabled: { type: boolean }
@@ -2373,7 +2373,7 @@ components:
                   latency_ms: { type: ['number', 'null'], description: 最近 1 小时延迟中位数（毫秒）；没有成功的样本时为 null }
                   loss: { type: ['number', 'null'], description: 最近 1 小时平均丢包率 0～100；没有数据时为 null }
                   last_at: { type: integer, description: 最近一轮的时间；0 表示还没有数据 }
-                  last_error: { type: string, description: '最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、error' }
+                  last_error: { type: string, description: '最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、dns（域名解析失败）、blocked（域名只解析到内网地址）、error' }
         series:
           type: object
           description: 键为目标 ID

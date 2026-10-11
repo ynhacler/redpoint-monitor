@@ -15,7 +15,8 @@ const isps = [
   { key: 'cm', name: '移动' },
 ] as const
 const errorNames: Record<string, string> = {
-  timeout: '超时', refused: '连接被拒绝', unreachable: '网络不可达', icmp_unavailable: '本机不允许 ICMP', error: '失败',
+  timeout: '超时', refused: '连接被拒绝', unreachable: '网络不可达', icmp_unavailable: '本机不允许 ICMP', dns: '域名解析失败',
+  blocked: '域名只解析到内网地址，已拒绝', error: '失败',
 }
 
 const view = ref<LatencyView | null>(null)

@@ -4,6 +4,8 @@
 // 目标 ≤ 64 个且只能是公网 IP（protocol.ProbeTarget.Valid）；每轮间隔由面板在 1～60 分钟内设置（默认 5 分钟），
 // 上一轮结束后才计时，不会重叠；同时最多探测 4 个目标；
 // 只做 TCP 连接（不发送数据）与 ICMP 回显。本机存在 no-probe 文件时不做任何探测。
+// 域名目标（修订第 132 条）每轮解析一次，本轮的样本都用同一个地址；【安全】只连接解析结果中的公网地址，
+// 解析到内网、回环等地址时不探测，记为 blocked。
 //
 // 资源（修订第 129 条）：每轮固定 4 个工作 goroutine，不按目标数创建；每个 ICMP 目标的样本复用一个套接字与小缓冲；
 // TCP 关闭时直接复位，不留 TIME_WAIT；目标拒绝连接或不可达时不再测剩下的样本（结果不会变，只是多发包）。
@@ -14,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -46,8 +49,9 @@ type Prober struct {
 	pending  [][]protocol.ProbeResult
 
 	// 以下供测试替换
-	tcp  func(ctx context.Context, addr string) (time.Duration, error)
-	ping func(ip net.IP) (pinger, error) // 打开到一个目标的 ICMP 套接字，这个目标的样本共用
+	tcp    func(ctx context.Context, addr string) (time.Duration, error)
+	ping   func(ip net.IP) (pinger, error) // 打开到一个目标的 ICMP 套接字，这个目标的样本共用
+	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 	gap  time.Duration
 }
 
@@ -68,7 +72,10 @@ func openPinger(ip net.IP) (pinger, error) {
 // New 返回探测器；disabled 为空表示不检查本机开关。
 func New(disabled func() bool) *Prober {
 	return &Prober{Disabled: disabled, Now: time.Now, changed: make(chan struct{}, 1),
-		tcp: netprobe.TCPConnect, ping: openPinger, gap: SampleGap}
+		tcp: netprobe.TCPConnect, ping: openPinger, gap: SampleGap,
+		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}}
 }
 
 func (p *Prober) off() bool { return p.Disabled != nil && p.Disabled() }
@@ -192,9 +199,25 @@ func (p *Prober) RunOnce(ctx context.Context) {
 // measure 对一个目标取 Samples 个样本：延迟取成功样本的中位数，丢包率为失败样本的占比。
 func (p *Prober) measure(ctx context.Context, t protocol.ProbeTarget) protocol.ProbeResult {
 	r := protocol.ProbeResult{TargetID: t.ID}
-	sample := func(ctx context.Context) (time.Duration, error) { return p.tcp(ctx, t.HostPort()) }
+	addr := t.Addr
+	if t.Host != "" {
+		lctx, cancel := context.WithTimeout(ctx, SampleWait)
+		addrs, err := p.lookup(lctx, t.Host)
+		cancel()
+		a, ok := protocol.PickProbeAddr(addrs)
+		switch {
+		case err != nil:
+			r.Loss, r.Error = 100, "dns"
+			return r
+		case !ok:
+			r.Loss, r.Error = 100, "blocked" // 【安全】解析结果没有公网地址：不探测
+			return r
+		}
+		addr = a
+	}
+	sample := func(ctx context.Context) (time.Duration, error) { return p.tcp(ctx, t.HostPort(addr)) }
 	if t.Proto == "icmp" {
-		pg, err := p.ping(net.IP(t.Addr.Unmap().AsSlice()))
+		pg, err := p.ping(net.IP(addr.Unmap().AsSlice()))
 		if err != nil {
 			r.Loss, r.Error = 100, errorCode(err) // 本机不允许 ICMP：不必逐个样本再试
 			return r

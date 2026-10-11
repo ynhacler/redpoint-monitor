@@ -47,9 +47,13 @@ type ProbeTargetRow struct {
 }
 
 func (t ProbeTargetRow) wire() (protocol.ProbeTarget, bool) {
-	a, err := netip.ParseAddr(t.Address)
-	pt := protocol.ProbeTarget{ID: t.ID, Proto: t.Proto, Addr: a, Port: t.Port}
-	return pt, err == nil && pt.Valid()
+	pt := protocol.ProbeTarget{ID: t.ID, Proto: t.Proto, Port: t.Port}
+	if a, err := netip.ParseAddr(t.Address); err == nil {
+		pt.Addr = a
+	} else {
+		pt.Host = t.Address // 域名（修订第 132 条），由 Agent 解析
+	}
+	return pt, pt.Valid()
 }
 
 // ---- 存储 ----
@@ -365,14 +369,21 @@ func (b probeTargetInput) apply(t *ProbeTargetRow) []FieldError {
 		}
 	}
 	if !t.Builtin && (creating || b.Address != nil) {
-		a, err := netip.ParseAddr(strings.TrimSpace(deref(b.Address)))
+		// 公网 IPv4 / IPv6，或域名（修订第 132 条）：面板不解析域名，由 Agent 每轮解析并只连接公网地址
+		raw := strings.TrimSpace(deref(b.Address))
+		a, err := netip.ParseAddr(strings.Trim(raw, "[]"))
+		host := protocol.NormalizeProbeHost(raw)
 		switch {
-		case err != nil:
-			bad("address", "请填写 IP 地址（不接受域名）")
-		case !protocol.PublicProbeAddr(a):
+		case raw == "":
+			bad("address", "请填写 IP 地址或域名")
+		case err == nil && !protocol.PublicProbeAddr(a):
 			bad("address", "【安全】只能探测公网地址，不能是内网、回环或保留地址")
-		default:
+		case err == nil:
 			t.Address = a.Unmap().String()
+		case protocol.ValidProbeHost(host):
+			t.Address = host
+		default:
+			bad("address", "请填写公网 IP（IPv4 / IPv6）或公网域名；不支持 localhost、.lan、.local 等局域网名称，端口请填在“端口”中")
 		}
 	}
 	if b.Proto != "" {

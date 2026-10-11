@@ -134,7 +134,7 @@ defineExpose({ save })
                 <select v-model="form.isp"><option value="ct">电信</option><option value="cu">联通</option><option value="cm">移动</option><option value="intl">境外</option></select></label>
               <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
                 <small v-if="addErrors.province" class="bad">{{ addErrors.province }}</small></label>
-              <label>IP 地址<input v-model="form.address" spellcheck="false" placeholder="公网 IP" />
+              <label>IP 或域名<input v-model="form.address" spellcheck="false" autocapitalize="off" placeholder="公网 IPv4 / IPv6 或域名" />
                 <small v-if="addErrors.address" class="bad">{{ addErrors.address }}</small></label>
               <label>协议
                 <select v-model="form.proto"><option value="tcp">TCP 连接</option><option value="icmp">ICMP（Ping）</option></select></label>

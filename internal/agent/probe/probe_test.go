@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -135,6 +136,60 @@ func TestErrorCode(t *testing.T) {
 	} {
 		if got := errorCode(&net.OpError{Op: "dial", Err: err}); got != want {
 			t.Errorf("%v → %s，应为 %s", err, got, want)
+		}
+	}
+}
+
+// 域名目标（修订第 132 条）：每轮解析一次，用公网地址探测；解析失败记 dns；【安全】只解析到内网时不探测，记 blocked。
+func TestProberHosts(t *testing.T) {
+	p := New(nil)
+	p.gap = 0
+	var mu sync.Mutex // 4 个工作 goroutine 并发调用下面的替身
+	var dialed []string
+	p.tcp = func(ctx context.Context, addr string) (time.Duration, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		dialed = append(dialed, addr)
+		return 20 * time.Millisecond, nil
+	}
+	lookups := 0
+	p.lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		lookups++
+		switch host {
+		case "speed.test.cn":
+			return []netip.Addr{netip.MustParseAddr("2400:da00::6666"), netip.MustParseAddr("220.181.173.35")}, nil
+		case "evil.test-rebind.cn":
+			return []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("10.0.0.5")}, nil
+		}
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	p.Update("v1", "1,tcp,speed.test.cn,443;2,tcp,evil.test-rebind.cn,80;3,tcp,gone.test-nx.cn,80", "300")
+	if len(p.Targets()) != 3 {
+		t.Fatalf("三个域名目标都应接收：%+v", p.Targets())
+	}
+	p.RunOnce(context.Background())
+	got := p.Drain()
+	byID := map[int64]protocol.ProbeResult{}
+	for _, r := range got {
+		byID[r.TargetID] = r
+	}
+	if r := byID[1]; r.Latency == nil || r.Loss != 0 {
+		t.Errorf("正常域名应测出延迟：%+v", r)
+	}
+	if r := byID[2]; r.Error != "blocked" || r.Loss != 100 {
+		t.Errorf("只解析到内网时应拒绝：%+v", r)
+	}
+	if r := byID[3]; r.Error != "dns" || r.Loss != 100 {
+		t.Errorf("解析失败：%+v", r)
+	}
+	if lookups != 3 || len(dialed) != Samples {
+		t.Errorf("每个域名每轮只解析一次，只连接公网地址：lookups=%d dialed=%v", lookups, dialed)
+	}
+	for _, d := range dialed {
+		if d != "220.181.173.35:443" {
+			t.Errorf("应优先连接公网 IPv4：%s", d)
 		}
 	}
 }

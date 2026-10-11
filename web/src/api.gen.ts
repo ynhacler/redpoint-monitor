@@ -447,7 +447,7 @@ export interface ProbeTargetInput {
   isp?: 'ct' | 'cu' | 'cm' | 'intl'
   /** 地区，如 上海；境外为城市，如 东京（内置目标不可改） */
   province?: string
-  /** 公网 IP 地址（内置目标不可改） */
+  /** 公网 IPv4 / IPv6 或域名（修订第 132 条；域名由 Agent 每轮解析，只连接公网地址；粘贴的网址只保留域名）。内置目标不可改 */
   address?: string
   /** 默认 tcp */
   proto?: 'tcp' | 'icmp'
@@ -492,7 +492,7 @@ export interface LatencyView {
     loss: number | null
     /** 最近一轮的时间；0 表示还没有数据 */
     last_at: number
-    /** 最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、error */
+    /** 最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、dns（域名解析失败）、blocked（域名只解析到内网地址）、error */
     last_error: string
   })[]
   /** 键为目标 ID */
