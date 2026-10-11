@@ -123,7 +123,7 @@ function buildInput(): CreateServerInput {
   }
 }
 
-// 三网延迟（设计 42.3.2，修订第 123 条）：编辑时随“保存”一起提交
+// 测速（设计 42.3.2，修订第 123 条）：编辑时随“保存”一起提交
 const probeRef = ref<InstanceType<typeof NodeProbeSettings> | null>(null)
 
 async function submit() {
@@ -365,9 +365,9 @@ async function remove() {
       </div>
     </fieldset>
 
-    <!-- 三网延迟（设计 42.3.2）：只在编辑时显示；随“保存”一起提交 -->
+    <!-- 测速（设计 42.3.2）：只在编辑时显示；随“保存”一起提交 -->
     <fieldset v-if="server" id="probe">
-      <legend>三网延迟</legend>
+      <legend>测速</legend>
       <NodeProbeSettings ref="probeRef" :server-id="server.id" />
     </fieldset>
 

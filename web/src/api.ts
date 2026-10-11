@@ -533,7 +533,7 @@ export async function serviceChecks(id: number, range: '24h' | '7d') {
   return (await request('get', '/service-monitors/{id}/checks', { params: { id }, query: { range } })).items
 }
 
-// 三网延迟（设计 42.3.2）
+// 测速（设计 42.3.2）
 export type LatencyTarget = G.LatencyView['targets'][number]
 
 export function getLatency(id: number, range: '24h' | '7d') {

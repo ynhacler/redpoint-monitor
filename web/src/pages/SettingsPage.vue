@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 设置页（修订第 126 条）：三网延迟目标与频率（设计 42.3.2）、证书监控（设计 33.3）、服务监控（设计 33.2）、账号与密码（设计 17.4）。
+// 设置页（修订第 126 条）：测速目标与频率（设计 42.3.2）、证书监控（设计 33.3）、服务监控（设计 33.2）、账号与密码（设计 17.4）。
 // 原来放在“告警”页的这些标签移到这里，告警页只保留告警、规则、静音与通知；旧地址 /alerts?tab=… 由路由转到这里。
 // 标签写在地址中（?tab=ssl），刷新与分享后保持。
 import { computed } from 'vue'
@@ -10,7 +10,7 @@ import ServiceMonitors from '../components/ServiceMonitors.vue'
 import SslMonitors from '../components/SslMonitors.vue'
 
 const tabs = [
-  { key: 'probes', name: '三网' },
+  { key: 'probes', name: '测速' },
   { key: 'ssl', name: '证书' },
   { key: 'services', name: '服务' },
   { key: 'account', name: '账号' },

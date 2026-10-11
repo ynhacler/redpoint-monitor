@@ -25,7 +25,7 @@ const (
 	AlertAgentClock      = "agent_clock" // Agent 异常：时钟偏差（设计 16.1、43.5）
 	AlertProcess         = "process"     // 关注的进程没有在运行（设计 33.5.1）
 	AlertProbeLatency    = "probe_latency" // 三网延迟偏高（设计 42.3.4）
-	AlertProbeLoss       = "probe_loss"    // 三网丢包偏高（设计 42.3.4）
+	AlertProbeLoss       = "probe_loss"    // 测速丢包偏高（设计 42.3.4）
 )
 
 // 告警级别（设计 16.1）。
@@ -192,9 +192,9 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 	case AlertProcess:
 		return "进程没有在运行：" + detail
 	case AlertProbeLatency:
-		return fmt.Sprintf("三网延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, detail)
+		return fmt.Sprintf("测速延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, detail)
 	case AlertProbeLoss:
-		return fmt.Sprintf("三网丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), detail)
+		return fmt.Sprintf("测速丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), detail)
 	case AlertAgentClock:
 		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
 	}

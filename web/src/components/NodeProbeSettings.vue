@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 节点自己的三网延迟设置（设计 42.3.2，修订第 121、123 条）：跟随全局 / 自定义目标与频率 / 关闭。
+// 节点自己的测速设置（设计 42.3.2，修订第 121、123 条）：跟随全局 / 自定义目标与频率 / 关闭。
 // 放在节点“编辑”页中，随“保存”一起提交（父组件调用 save）。自定义时可以添加只属于这台节点的测试目标。
 // 节点本机的 no-probe 文件优先于这里的设置（设计 42.6）。
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -32,7 +32,7 @@ onMounted(async () => {
     picked.value = np.mode === 'custom' ? np.target_ids : list.filter((t) => t.enabled).map((t) => t.id)
     loaded.value = true
   } catch (e) {
-    error.value = errorText(e, '三网延迟设置加载失败')
+    error.value = errorText(e, '测速设置加载失败')
   }
 })
 
@@ -86,14 +86,14 @@ async function removeOwn(t: ProbeTarget) {
 async function save() {
   if (!loaded.value) return
   const custom = mode.value === 'custom'
-  if (custom && !picked.value.length) throw new Error('三网延迟：自定义时请至少选择一个目标；不测请选“关闭”')
-  if (tooMany.value) throw new Error(`三网延迟：最多选择 ${MAX} 个目标`)
+  if (custom && !picked.value.length) throw new Error('测速：自定义时请至少选择一个目标；不测请选“关闭”')
+  if (tooMany.value) throw new Error(`测速：最多选择 ${MAX} 个目标`)
   try {
     await putNodeProbe(props.serverId, {
       mode: mode.value, target_ids: custom ? picked.value : [], interval_s: custom ? interval.value : 0,
     })
   } catch (e) {
-    throw new Error(`三网延迟：${e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)}`)
+    throw new Error(`测速：${e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)}`)
   }
 }
 defineExpose({ save })
@@ -103,8 +103,8 @@ defineExpose({ save })
   <div class="settings">
     <p v-if="!loaded && !error" class="small muted">加载中…</p>
     <template v-if="loaded">
-      <div class="modes" role="radiogroup" aria-label="这台节点的三网延迟">
-        <label><input v-model="mode" type="radio" value="default" />跟随全局<small class="muted">“设置 → 三网”中启用的目标与频率</small></label>
+      <div class="modes" role="radiogroup" aria-label="这台节点的测速">
+        <label><input v-model="mode" type="radio" value="default" />跟随全局<small class="muted">“设置 → 测速”中启用的目标与频率</small></label>
         <label><input v-model="mode" type="radio" value="custom" />自定义<small class="muted">这台节点自己选择目标与频率</small></label>
         <label><input v-model="mode" type="radio" value="off" />关闭<small class="muted">这台节点不测</small></label>
       </div>

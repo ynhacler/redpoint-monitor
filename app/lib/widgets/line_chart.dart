@@ -30,7 +30,7 @@ class LineChart extends StatelessWidget {
     if (times.length < 2) {
       return SizedBox(height: height, child: Center(child: Text('暂无数据', style: TextStyle(color: muted))));
     }
-    // 值为 NaN 表示该时刻没有数据（如三网延迟全部失败），折线在此断开
+    // 值为 NaN 表示该时刻没有数据（如测速全部失败），折线在此断开
     var max = fixedMax ?? series.expand((s) => s.values).where((v) => v.isFinite).fold<double>(0, math.max);
     if (max <= 0) max = 1;
     final labelStyle = TextStyle(fontSize: 11, color: muted);

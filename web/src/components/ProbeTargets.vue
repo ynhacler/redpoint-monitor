@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 三网延迟的探测目标（设计 42.3.2）：全部由用户自己添加（内置地址已删除，修订第 128 条），勾选的对“跟随全局”的节点生效。
+// 测速的探测目标（设计 42.3.2）：全部由用户自己添加（内置地址已删除，修订第 128 条），勾选的对“跟随全局”的节点生效。
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
 // 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -113,7 +113,7 @@ async function remove(t: ProbeTarget) {
 <template>
   <div>
     <p class="muted small intro">
-      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
+      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“测速”中查看，保留 7 天。
       这是从 VPS 出发的方向，反映回程质量。目标只能是公网 IP；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
@@ -163,7 +163,7 @@ async function remove(t: ProbeTarget) {
           <button type="button" class="text small del" @click="remove(target)">删除</button>
         </template>
       </ProbeTargetPicker>
-      <p class="small muted foot">单台节点可在节点的“编辑 → 三网延迟”中自己选择目标与频率，或关闭。</p>
+      <p class="small muted foot">单台节点可在节点的“编辑 → 测速”中自己选择目标与频率，或关闭。</p>
     </section>
   </div>
 </template>

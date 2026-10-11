@@ -60,12 +60,12 @@ func TestProbeAlertValues(t *testing.T) {
 		t.Error("没有探测结果时不应评估")
 	}
 	msg := alertMessage(AlertRule{Type: AlertProbeLatency, Threshold: 300}, 320, "最慢：上海电信 400 ms")
-	if msg != "三网延迟 320 ms（阈值 300 ms），最慢：上海电信 400 ms" {
+	if msg != "测速延迟 320 ms（阈值 300 ms），最慢：上海电信 400 ms" {
 		t.Errorf("消息 = %q", msg)
 	}
 }
 
-// 端到端：探测结果写入后，启用的“三网丢包”规则按持续时间触发。
+// 端到端：探测结果写入后，启用的“测速丢包”规则按持续时间触发。
 func TestProbeLossAlertFires(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
@@ -99,7 +99,7 @@ func TestProbeLossAlertFires(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := s.alerts.firingFor(ServerRow{ID: sid})
-	if len(f) != 1 || !strings.HasPrefix(f[0].Message, "三网丢包率 100%（阈值 20%），丢包最多：") {
-		t.Fatalf("应触发三网丢包告警：%+v", f)
+	if len(f) != 1 || !strings.HasPrefix(f[0].Message, "测速丢包率 100%（阈值 20%），丢包最多：") {
+		t.Fatalf("应触发测速丢包告警：%+v", f)
 	}
 }

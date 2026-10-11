@@ -114,13 +114,13 @@ func Doctor(ctx context.Context, o Options) int {
 		}
 	}
 
-	// ---- 网络探测（三网延迟，设计 42.3.2、42.6） ----
+	// ---- 网络探测（测速，设计 42.3.2、42.6） ----
 	if !user {
 		section("网络探测")
 		if _, err := os.Stat(p.NoProbeFile()); err == nil {
-			warn("已关闭（%s 存在）：不测三网延迟；删除该文件后开启", p.NoProbeFile())
+			warn("已关闭（%s 存在）：不测测速；删除该文件后开启", p.NoProbeFile())
 		} else {
-			ok("已开启：按面板的目标每 5 分钟测一次三网延迟；关闭：sudo touch %s", p.NoProbeFile())
+			ok("已开启：按面板的目标每 5 分钟测一次测速；关闭：sudo touch %s", p.NoProbeFile())
 		}
 	}
 

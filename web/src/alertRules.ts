@@ -17,13 +17,13 @@ export const ruleNames: Record<string, string> = {
   traffic_forecast: '流量预计超额',
   agent_clock: 'Agent 时钟偏差',
   process: '进程未运行',
-  probe_latency: '三网延迟',
-  probe_loss: '三网丢包',
+  probe_latency: '测速延迟',
+  probe_loss: '测速丢包',
 }
 
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
 
-/** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，三网延迟为毫秒，其余为百分比 */
+/** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，测速为毫秒，其余为百分比 */
 export function thresholdUnit(type: string): string {
   if (type === 'offline' || type === 'agent_clock') return '秒'
   if (type === 'load') return '倍核数'

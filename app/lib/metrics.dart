@@ -71,8 +71,8 @@ String _alertLabel(AlertBrief a) {
     'traffic' => '流量 $pct',
     'traffic_forecast' => '流量预计超额',
     'agent_clock' => '时钟偏差 ${a.value.round()} 秒',
-    'probe_latency' => '三网延迟 ${a.value.round()} ms',
-    'probe_loss' => '三网丢包 $pct',
+    'probe_latency' => '测速延迟 ${a.value.round()} ms',
+    'probe_loss' => '测速丢包 $pct',
     _ => a.message,
   };
 }

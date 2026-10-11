@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 三网延迟（设计 42.3.2、42.3.3）：节点 Agent 到三大运营商各地目标的延迟与丢包。
+// 测速（设计 42.3.2、42.3.3）：节点 Agent 到三大运营商各地目标的延迟与丢包。
 // 表格每行一个地区、每列一个运营商（窄屏也放得下）；数值为最近 1 小时的中位数与平均丢包。
-// 境外目标（修订第 122 条）单独一张表：每行一个城市。点击一行查看该地区三网（或该境外城市）的 24 小时 / 7 天曲线。Agent 按“设置 → 三网”中的频率测量（默认 5 分钟），这里每分钟刷新。
+// 境外目标（修订第 122 条）单独一张表：每行一个城市。点击一行查看该地区三网（或该境外城市）的 24 小时 / 7 天曲线。Agent 按“设置 → 测速”中的频率测量（默认 5 分钟），这里每分钟刷新。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
@@ -31,7 +31,7 @@ async function load() {
     view.value = await getLatency(props.serverId, range.value)
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '三网延迟加载失败')
+    error.value = errorText(e, '测速加载失败')
   }
   timer = setTimeout(load, 60_000)
 }
@@ -100,7 +100,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
 <template>
   <section class="panel latency">
     <div class="head">
-      <h3>三网延迟</h3>
+      <h3>测速</h3>
       <span v-if="view" class="small muted mode">{{ modeNames[view.mode] }}<template v-if="view.mode !== 'off'"> · 每 {{ view.interval_s / 60 }} 分钟</template></span>
       <div class="tools">
         <div v-if="hasData" class="segmented" role="group" aria-label="时间范围">
@@ -112,11 +112,11 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，在“编辑 → 三网延迟”中开启。</p>
+      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭测速，在“编辑 → 测速”中开启。</p>
       <p v-else-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
-      <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持三网延迟，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
-      <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“设置 → 三网”中启用。</p>
-      <p v-else-if="!hasData" class="small muted note">Agent 收到目标后约 20 秒测第一轮，之后按“设置 → 三网”中的频率测量。</p>
+      <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持测速，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
+      <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“设置 → 测速”中启用。</p>
+      <p v-else-if="!hasData" class="small muted note">Agent 收到目标后约 20 秒测第一轮，之后按“设置 → 测速”中的频率测量。</p>
 
       <div v-if="hasData && rows.length" class="table-wrap">
         <table>
