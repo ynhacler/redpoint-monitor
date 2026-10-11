@@ -169,7 +169,7 @@ type probeState struct {
 	mu       sync.Mutex
 	loaded   bool
 	targets  []ProbeTargetRow
-	interval int
+	settings ProbeSettings
 	status   map[int64]string // on / off；没有记录表示 Agent 不支持（旧版）或尚未上报
 }
 
@@ -185,6 +185,8 @@ type NodeProbe struct {
 	Mode      string  `json:"mode"`
 	TargetIDs []int64 `json:"target_ids"` // custom 时有效
 	IntervalS int     `json:"interval_s"` // custom 时有效；0 表示跟随全局
+	TimeoutS  int     `json:"timeout_s"`  // custom 时有效：每个样本的超时 1～10 秒；0 表示跟随全局（修订第 133 条）
+	GapS      int     `json:"gap_s"`      // custom 时有效：样本间隔 1～10 秒；0 表示跟随全局
 }
 
 // parseNodeProbe 解析 servers.probe_conf；空或无法解析时为跟随全局。
@@ -230,6 +232,30 @@ func effectiveProbe(all []ProbeTargetRow, globalInterval int, np NodeProbe, sid 
 	return out, interval
 }
 
+// effectiveTiming 计算节点实际使用的超时与样本间隔（纯函数）：自定义时节点的非 0 值优先，
+// 其次全局设置的非 0 值，最后为默认 4 秒、1 秒（修订第 133 条）。
+func effectiveTiming(global ProbeSettings, np NodeProbe) protocol.ProbeTiming {
+	t := protocol.DefaultTiming
+	pick := func(dst *int, vals ...int) {
+		for _, v := range vals {
+			if v >= 1 && v <= protocol.MaxProbeTiming {
+				*dst = v
+				return
+			}
+		}
+	}
+	var nodeTimeout, nodeGap int
+	if np.Mode == probeModeCustom {
+		nodeTimeout, nodeGap = np.TimeoutS, np.GapS
+	}
+	pick(&t.Timeout, nodeTimeout, global.TimeoutS)
+	pick(&t.Gap, nodeGap, global.GapS)
+	return t
+}
+
+// validTiming 判断超时或样本间隔的取值：0（默认 / 跟随全局）或 1～10 秒。
+func validTiming(v int) bool { return v >= 0 && v <= protocol.MaxProbeTiming }
+
 // invalidate 在目标修改后调用：下一份上报重新读取并下发。
 func (p *probeState) invalidate() {
 	p.mu.Lock()
@@ -240,6 +266,8 @@ func (p *probeState) invalidate() {
 // ProbeSettings 是三网延迟的全局设置（settings 表，键 probe）。
 type ProbeSettings struct {
 	IntervalS int `json:"interval_s"` // 每轮间隔，秒：60 / 120 / 300 / 600 / 900 / 1800
+	TimeoutS  int `json:"timeout_s"`  // 每个样本的超时（最大等待）1～10 秒；0 为默认 4 秒（修订第 133 条）
+	GapS      int `json:"gap_s"`      // 样本间隔 1～10 秒；0 为默认 1 秒
 }
 
 const probeSettingsKey = "probe"
@@ -251,36 +279,43 @@ func (s *Server) probeSettings() (ProbeSettings, error) {
 	if !slices.Contains(protocol.ProbeIntervals, v.IntervalS) {
 		v.IntervalS = protocol.DefaultProbeInterval
 	}
+	if !validTiming(v.TimeoutS) {
+		v.TimeoutS = 0
+	}
+	if !validTiming(v.GapS) {
+		v.GapS = 0
+	}
 	return v, err
 }
 
-// probeBase 返回全部目标与全局频率（缓存，目标或全局设置修改后重新读取）。
-func (s *Server) probeBase() ([]ProbeTargetRow, int, error) {
+// probeBase 返回全部目标与全局设置（缓存，目标或全局设置修改后重新读取）。
+func (s *Server) probeBase() ([]ProbeTargetRow, ProbeSettings, error) {
 	p := &s.probes
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.loaded {
-		return p.targets, p.interval, nil
+		return p.targets, p.settings, nil
 	}
 	list, err := s.store.ListProbeTargets()
 	if err != nil {
-		return nil, 0, err
+		return nil, ProbeSettings{}, err
 	}
 	cfg, err := s.probeSettings()
 	if err != nil {
-		return nil, 0, err
+		return nil, ProbeSettings{}, err
 	}
-	p.targets, p.interval, p.loaded = list, cfg.IntervalS, true
-	return p.targets, p.interval, nil
+	p.targets, p.settings, p.loaded = list, cfg, true
+	return p.targets, p.settings, nil
 }
 
-// probeList 返回节点要下发的目标编码、每轮间隔与版本。
-func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, interval int, err error) {
+// probeList 返回节点要下发的目标编码、每轮间隔、超时与版本。
+func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, interval int, timing protocol.ProbeTiming, err error) {
 	all, global, err := s.probeBase()
 	if err != nil {
-		return "", "", 0, err
+		return "", "", 0, timing, err
 	}
-	targets, interval := effectiveProbe(all, global, np, sid)
+	targets, interval := effectiveProbe(all, global.IntervalS, np, sid)
+	timing = effectiveTiming(global, np)
 	var wire []protocol.ProbeTarget
 	for _, t := range targets {
 		if pt, ok := t.wire(); ok {
@@ -288,7 +323,12 @@ func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, in
 		}
 	}
 	encoded = protocol.EncodeProbeTargets(wire)
-	return protocol.ProbeVersion(encoded, interval), encoded, interval, nil
+	// 超时为默认值时不参与版本，升级面板后已有的版本不变、不必重新下发
+	ver := encoded
+	if timing != protocol.DefaultTiming && encoded != "" {
+		ver += "@t" + timing.Encode()
+	}
+	return protocol.ProbeVersion(ver, interval), encoded, interval, timing, nil
 }
 
 // syncProbe 处理上报请求中的 X-Probe-Version：记录 Agent 的探测状态，版本不同时在响应头中下发新列表。
@@ -315,7 +355,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np
 	if st == "off" {
 		return
 	}
-	version, encoded, interval, err := s.probeList(sid, np)
+	version, encoded, interval, timing, err := s.probeList(sid, np)
 	if err != nil {
 		s.log.Error("probe targets failed", "component", "probe", "err", err)
 		return
@@ -324,6 +364,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np
 		w.Header().Set(protocol.HeaderProbeVersion, version)
 		w.Header().Set(protocol.HeaderProbeTargets, encoded)
 		w.Header().Set(protocol.HeaderProbeInterval, strconv.Itoa(interval))
+		w.Header().Set(protocol.HeaderProbeTiming, timing.Encode())
 	}
 }
 
@@ -594,9 +635,18 @@ func (s *Server) handlePutProbeSettings(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
 		return
 	}
+	var fe []FieldError
 	if !slices.Contains(protocol.ProbeIntervals, b.IntervalS) {
-		s.writeError(w, r, &APIError{Code: CodeValidationFailed,
-			Details: []FieldError{{Field: "interval_s", Message: "测试频率只能是 1、2、5、10、15 或 30 分钟"}}})
+		fe = append(fe, FieldError{Field: "interval_s", Message: "测试频率只能是 1、2、5、10、15 或 30 分钟"})
+	}
+	if !validTiming(b.TimeoutS) {
+		fe = append(fe, FieldError{Field: "timeout_s", Message: "超时为 1～10 秒，0 表示默认 4 秒"})
+	}
+	if !validTiming(b.GapS) {
+		fe = append(fe, FieldError{Field: "gap_s", Message: "样本间隔为 1～10 秒，0 表示默认 1 秒"})
+	}
+	if len(fe) > 0 {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: fe})
 		return
 	}
 	if err := s.store.PutSetting(probeSettingsKey, b, time.Now()); err != nil {
@@ -605,7 +655,7 @@ func (s *Server) handlePutProbeSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	s.probes.invalidate()
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "probe_settings.update", Success: true,
-		Details: map[string]any{"interval_s": b.IntervalS}})
+		Details: map[string]any{"interval_s": b.IntervalS, "timeout_s": b.TimeoutS, "gap_s": b.GapS}})
 	writeJSON(w, b)
 }
 
@@ -644,10 +694,16 @@ func (s *Server) handlePutNodeProbe(w http.ResponseWriter, r *http.Request) {
 	var errs []FieldError
 	switch b.Mode {
 	case probeModeDefault, probeModeOff:
-		b.TargetIDs, b.IntervalS = []int64{}, 0
+		b.TargetIDs, b.IntervalS, b.TimeoutS, b.GapS = []int64{}, 0, 0, 0
 	case probeModeCustom:
 		if b.IntervalS != 0 && !slices.Contains(protocol.ProbeIntervals, b.IntervalS) {
 			errs = append(errs, FieldError{Field: "interval_s", Message: "测试频率只能是跟随全局，或 1、2、5、10、15、30 分钟"})
+		}
+		if !validTiming(b.TimeoutS) {
+			errs = append(errs, FieldError{Field: "timeout_s", Message: "超时为 1～10 秒，0 表示跟随全局"})
+		}
+		if !validTiming(b.GapS) {
+			errs = append(errs, FieldError{Field: "gap_s", Message: "样本间隔为 1～10 秒，0 表示跟随全局"})
 		}
 		all, _, err := s.probeBase()
 		if err != nil {
@@ -685,7 +741,8 @@ func (s *Server) handlePutNodeProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	s.forgetInterval(id) // 节点设置缓存：下一份上报重新读取并下发
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.probe", Success: true,
-		Details: map[string]any{"server_id": id, "mode": b.Mode, "targets": len(b.TargetIDs), "interval_s": b.IntervalS}})
+		Details: map[string]any{"server_id": id, "mode": b.Mode, "targets": len(b.TargetIDs), "interval_s": b.IntervalS,
+			"timeout_s": b.TimeoutS, "gap_s": b.GapS}})
 	writeJSON(w, b)
 }
 
@@ -775,7 +832,7 @@ func (s *Server) handleLatency(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	active, interval := effectiveProbe(targets, global, row.Probe, id)
+	active, interval := effectiveProbe(targets, global.IntervalS, row.Probe, id)
 	raw, err := s.store.probeSeries(id, since)
 	if err != nil {
 		s.writeError(w, r, internalError(err))

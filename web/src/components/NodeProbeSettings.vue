@@ -19,6 +19,11 @@ const mode = ref<NodeProbe['mode']>('default')
 const picked = ref<number[]>([])
 const interval = ref<NodeProbe['interval_s']>(0)
 const globalInterval = ref(300)
+// 超时与样本间隔（修订第 133 条）：0 为跟随全局
+const timingOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const timeout = ref(0)
+const gap = ref(0)
+const globalTiming = ref({ timeout: 4, gap: 1 })
 const error = ref('')
 const loaded = ref(false)
 
@@ -27,6 +32,9 @@ onMounted(async () => {
     const [np, list, g] = await Promise.all([getNodeProbe(props.serverId), listProbeTargets(props.serverId), getProbeSettings()])
     targets.value = list
     globalInterval.value = g.interval_s
+    globalTiming.value = { timeout: g.timeout_s || 4, gap: g.gap_s || 1 }
+    timeout.value = np.timeout_s ?? 0
+    gap.value = np.gap_s ?? 0
     mode.value = np.mode
     interval.value = np.interval_s
     // 自定义尚未选择时，以全局启用的目标为起点
@@ -92,6 +100,7 @@ async function save() {
   try {
     await putNodeProbe(props.serverId, {
       mode: mode.value, target_ids: custom ? picked.value : [], interval_s: custom ? interval.value : 0,
+      timeout_s: custom ? timeout.value : 0, gap_s: custom ? gap.value : 0,
     })
   } catch (e) {
     throw new Error(`测速：${e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)}`)
@@ -115,6 +124,18 @@ defineExpose({ save })
             <option v-for="s in intervals" :key="s" :value="s">{{ label(s) }}</option>
           </select>
         </label>
+        <div class="freq small">
+          <label>超时
+            <select v-model.number="timeout">
+              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : `跟随全局（${globalTiming.timeout} 秒）` }}</option>
+            </select>
+          </label>
+          <label>样本间隔
+            <select v-model.number="gap">
+              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : `跟随全局（${globalTiming.gap} 秒）` }}</option>
+            </select>
+          </label>
+        </div>
         <p class="small" :class="tooMany ? 'bad' : 'muted'">已选 <b class="num">{{ picked.length }}</b> / {{ MAX }}（全局未启用的目标也可以选）</p>
         <ProbeTargetPicker :targets="targets" :selected="picked" @toggle="toggle">
           <template #custom-extra="{ target }">
@@ -164,6 +185,8 @@ defineExpose({ save })
 .modes small { margin-left: var(--space-1); }
 .freq { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .freq select { width: auto; }
+.freq label { display: inline-flex; align-items: center; gap: var(--space-2); }
+.freq { flex-wrap: wrap; }
 .tag { padding: 0 var(--space-2); border-radius: 99px; background: var(--surface-2); }
 .own { margin-top: var(--space-3); }
 .own-form { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
