@@ -1,5 +1,5 @@
 // 页面路由（设计 3.3、8.1、10、11）。地址可刷新、可分享；服务端对未知路径返回 index.html（SPA 回退）。
-// 未登录访问任何页面都先到 /login，登录后回到原页面；使用初始密码时只能停留在 /account（设计 17.4）。
+// 未登录访问任何页面都先到 /login，登录后回到原页面；使用初始密码时只能停留在 /account（设计 17.4），之后 /account 转到“设置 → 账号”。
 import { createRouter, createWebHistory } from 'vue-router'
 import { checkAuth, setSignedOutHandler, startPolling, state } from './store'
 
@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { title: '登录', public: true } },
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { title: '账号' } },
     { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { title: '告警' } },
+    { path: '/settings', name: 'settings', component: () => import('./pages/SettingsPage.vue'), meta: { title: '设置' } },
     { path: '/upgrades', name: 'upgrades', component: () => import('./pages/UpgradesPage.vue'), meta: { title: 'Agent 升级' } },
     { path: '/app', name: 'app', component: () => import('./pages/AppAccessPage.vue'), meta: { title: 'App 接入' } },
     { path: '/costs', name: 'costs', component: () => import('./pages/CostsPage.vue'), meta: { title: '费用统计' } },
@@ -45,6 +46,8 @@ setSignedOutHandler(() => {
   if (cur.name !== 'login') router.push({ name: 'login', query: { redirect: cur.fullPath } })
 })
 
+const movedTabs = ['services', 'ssl', 'probes']
+
 router.beforeEach(async (to) => {
   if (!state.authChecked) {
     await checkAuth()
@@ -55,6 +58,9 @@ router.beforeEach(async (to) => {
   }
   if (!state.me) return { name: 'login', query: { redirect: to.fullPath } }
   if (state.me.must_change_password && to.name !== 'account') return { name: 'account' }
+  // 账号页平时在“设置 → 账号”；服务、证书、三网从告警页移到设置页，旧地址与书签照常可用（修订第 126 条）
+  if (to.name === 'account') return { name: 'settings', query: { tab: 'account' } }
+  if (to.name === 'alerts' && movedTabs.includes(to.query.tab as string)) return { name: 'settings', query: { tab: to.query.tab } }
   return true
 })
 

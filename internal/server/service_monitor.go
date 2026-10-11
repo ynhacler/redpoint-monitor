@@ -657,7 +657,7 @@ func (s *Server) serviceNotice(m ServiceMonitor, kind string, r serviceResult, n
 		n.Message = fmt.Sprintf("%s无法访问：%s（%s）", kindName, r.err, m.Target)
 	}
 	if s.publicURL != "" {
-		n.Link = s.publicURL + "/alerts?tab=services"
+		n.Link = s.publicURL + "/settings?tab=services"
 	}
 	return n
 }
