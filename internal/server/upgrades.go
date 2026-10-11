@@ -343,6 +343,12 @@ func (s *Server) handleAgentUpgrade(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"upgrade": false})
 		return
 	}
+	// 节点已是（或高于）目标版本：多半已在本机执行过 sudo vpsmon-agent upgrade。任务直接完成，不再下发
+	if alreadyAt(r.URL.Query().Get("current_version"), t.TargetVersion) {
+		s.store.SetUpgradeStatus(t.ID, sid, UpgradeSuccess, alreadyAtReason, time.Now())
+		writeJSON(w, map[string]any{"upgrade": false})
+		return
+	}
 	rel, data, sig, err := s.releaseByVersion(t.TargetVersion)
 	if err != nil {
 		// 版本已不可用（数据库被改动或公钥轮换）：任务失败，不下发任何内容
@@ -385,6 +391,12 @@ func (s *Server) handleAgentUpgradeStatus(w http.ResponseWriter, r *http.Request
 	if utf8.RuneCountInString(reason) > 300 {
 		reason = string([]rune(reason)[:300])
 	}
+	// 旧版 Agent 在本机已是目标版本时报告 failed（“已是 x，无需升级”）：按面板看到的当前版本改记为成功
+	if b.Status == UpgradeFailed {
+		if t, _ := s.store.ActiveUpgradeTask(sid); t != nil && t.ID == b.TaskID && alreadyAt(s.currentAgentVersion(sid), t.TargetVersion) {
+			b.Status, reason = UpgradeSuccess, alreadyAtReason
+		}
+	}
 	ok, err := s.store.SetUpgradeStatus(b.TaskID, sid, b.Status, reason, time.Now())
 	if err != nil {
 		s.writeError(w, r, internalError(err))
@@ -399,6 +411,15 @@ func (s *Server) handleAgentUpgradeStatus(w http.ResponseWriter, r *http.Request
 			TargetID: sid, Success: b.Status == UpgradeSuccess, Details: map[string]any{"task_id": b.TaskID, "status": b.Status, "reason": reason}})
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+const alreadyAtReason = "节点已是目标版本（已在本机升级）"
+
+// alreadyAt 判断当前版本是否已不低于目标版本；无法解析时为 false。
+func alreadyAt(current, target string) bool {
+	c, err1 := release.ParseVersion(current)
+	t, err2 := release.ParseVersion(target)
+	return err1 == nil && err2 == nil && c.Compare(t) >= 0
 }
 
 func parsePositive(s string) (int64, error) {

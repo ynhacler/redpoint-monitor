@@ -238,7 +238,7 @@ func TestCheckRemoteRejects(t *testing.T) {
 	cases := map[string]func(task map[string]any, o *RemoteOptions){
 		"签名无效":  func(task map[string]any, _ *RemoteOptions) { task["manifest_signature"] = "bad" },
 		"版本不一致": func(task map[string]any, _ *RemoteOptions) { task["version"] = "0.4.0" },
-		"不是升级":  func(_ map[string]any, o *RemoteOptions) { o.Current = "0.3.0" },
+		"降级":    func(_ map[string]any, o *RemoteOptions) { o.Current = "0.4.0" }, // 【安全】拒绝降级
 	}
 	for name, mod := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -254,6 +254,21 @@ func TestCheckRemoteRejects(t *testing.T) {
 				t.Errorf("应上报失败：%v", panel.statuses)
 			}
 		})
+	}
+}
+
+// 本机已是目标版本（已在本机升级过）：报告成功，不下载、不写入 request.json。
+func TestCheckRemoteAlreadyCurrent(t *testing.T) {
+	_, panel, o := remoteFixture(t)
+	o.Current = "0.3.0"
+	if err := CheckRemote(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(o.StageDir, "request.json")); err == nil {
+		t.Error("不应写入 request.json")
+	}
+	if len(panel.statuses) != 1 || !strings.HasPrefix(panel.statuses[0], "success:") {
+		t.Errorf("应上报成功：%v", panel.statuses)
 	}
 }
 

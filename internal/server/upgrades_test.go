@@ -122,6 +122,71 @@ func TestUpgradeTasks(t *testing.T) {
 	}
 }
 
+// 任务创建后节点已在本机升级到目标版本：任务记为成功，而不是“升级失败（已是 x，无需升级）”
+func TestUpgradeAlreadyCurrent(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	f := newFakeReleases(t)
+	s.releaseBase, s.releaseKeys = f.srv.URL, []release.PublicKey{f.key}
+	f.publish("0.5.0", "stable")
+	do(h, "POST", "/api/v1/agent-releases/sync", admin, nil)
+	_, v, _ := createNode(t, h, admin, `{"name":"jp-1"}`)
+	_, res := enroll(h, v.EnrollCode, "jp-1", "m1")
+	agent := res.AgentToken
+	report := func(ver string) {
+		do(h, "POST", "/api/v1/agent/report", agent, []byte(`{"agent_version":"`+ver+`","system":{"boot_id":"b"}}`))
+	}
+	create := func() int64 {
+		var cr struct{ Created []UpgradeTask }
+		json.Unmarshal(do(h, "POST", "/api/v1/upgrade-tasks", admin, []byte(`{"server_ids":[`+itoa(v.ServerID)+`],"version":"0.5.0"}`)).Body.Bytes(), &cr)
+		if len(cr.Created) != 1 {
+			t.Fatalf("创建任务失败")
+		}
+		return cr.Created[0].ID
+	}
+	last := func() UpgradeTask {
+		var list struct{ Items []UpgradeTask }
+		json.Unmarshal(do(h, "GET", "/api/v1/upgrade-tasks?server_id="+itoa(v.ServerID), admin, nil).Body.Bytes(), &list)
+		return list.Items[0]
+	}
+
+	// 1. 新版 Agent 查询时带 current_version：面板直接完成任务，不下发
+	report("0.4.1")
+	create()
+	if rec := do(h, "GET", "/api/v1/agent/upgrade?current_version=0.5.0", agent, nil); !strings.Contains(rec.Body.String(), `"upgrade":false`) {
+		t.Errorf("已是目标版本时不应下发：%s", rec.Body)
+	}
+	if tk := last(); tk.Status != UpgradeSuccess || tk.Reason != alreadyAtReason {
+		t.Errorf("应记为成功：%+v", tk)
+	}
+
+	// 2. 旧版 Agent 报告 failed（已是 0.5.0，无需升级），面板看到的版本已是 0.5.0：改记为成功
+	report("0.4.1")
+	id := create()
+	do(h, "GET", "/api/v1/agent/upgrade?current_version=0.4.1", agent, nil)
+	report("0.5.0")
+	b, _ := json.Marshal(map[string]any{"task_id": id, "status": "failed", "reason": "已是 0.5.0，无需升级"})
+	if rec := do(h, "POST", "/api/v1/agent/upgrade/status", agent, b); rec.Code != 204 {
+		t.Fatalf("上报：%d", rec.Code)
+	}
+	if tk := last(); tk.Status != UpgradeSuccess {
+		t.Errorf("应改记为成功：%+v", tk)
+	}
+
+	// 3. 真正的失败（版本仍低于目标）照常记为失败
+	report("0.4.1")
+	id = create()
+	do(h, "GET", "/api/v1/agent/upgrade?current_version=0.4.1", agent, nil)
+	b, _ = json.Marshal(map[string]any{"task_id": id, "status": "failed", "reason": "下载失败"})
+	do(h, "POST", "/api/v1/agent/upgrade/status", agent, b)
+	if tk := last(); tk.Status != UpgradeFailed {
+		t.Errorf("真正的失败应保留：%+v", tk)
+	}
+	if alreadyAt("0.5.0", "0.5.0") != true || alreadyAt("0.6.0", "0.5.0") != true || alreadyAt("0.4.1", "0.5.0") || alreadyAt("", "0.5.0") {
+		t.Error("alreadyAt")
+	}
+}
+
 // 不能远程升级的节点在创建任务时直接说明原因，而不是让任务一直“等待获取”（设计 29.13）
 func TestUpgradeBlockers(t *testing.T) {
 	s, h, _ := testServer(t)
