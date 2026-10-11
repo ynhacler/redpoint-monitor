@@ -25,6 +25,7 @@ type fakePanel struct {
 	date     func() time.Time // 响应的 Date 头；与 Reporter 使用同一个假时钟，避免误报时钟偏差
 	sentAt   []int64
 	interval string // X-Report-Interval 响应头
+	procs    string // X-Watch-Procs 响应头
 	gzip     string // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
 	encoded  []string
 }
@@ -49,6 +50,9 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.interval != "" {
 		w.Header().Set("X-Report-Interval", p.interval)
+	}
+	if p.procs != "" {
+		w.Header().Set(protocol.HeaderWatchProcs, p.procs)
 	}
 	if enc == "gzip" && p.gzip != "accept" {
 		w.WriteHeader(http.StatusUnsupportedMediaType)
@@ -346,6 +350,24 @@ func TestPanelInterval(t *testing.T) {
 		if got := send(c.h); got != c.want {
 			t.Errorf("X-Report-Interval: %s → %s，应为 %s", c.h, got, c.want)
 		}
+	}
+}
+
+// 面板下发关注的进程名（设计 33.5.1）：不合法的名称被跳过；没有该响应头时清空，Agent 停止统计。
+func TestPanelWatchProcs(t *testing.T) {
+	p := &fakePanel{}
+	r, _, _ := newReporter(t, p)
+	send := func(h string) []string {
+		p.procs = h
+		r.Enqueue(rep(0))
+		r.Flush(context.Background(), false)
+		return r.WatchProcs()
+	}
+	if got := send("nginx, sshd,bad name,$(id),nginx"); strings.Join(got, ",") != "nginx,sshd" {
+		t.Errorf("应只保留合法且不重复的名称：%q", got)
+	}
+	if got := send(""); got != nil {
+		t.Errorf("没有响应头时应清空：%q", got)
 	}
 }
 

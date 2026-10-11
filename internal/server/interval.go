@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
+
+	"vpsmon/internal/protocol"
 )
 
 // 采样（上报）间隔可按节点选择（设计 4.2、6.1）。面板通过上报响应头 X-Report-Interval 告诉 Agent，
@@ -48,6 +51,7 @@ func ruleForInterval(r AlertRule, iv time.Duration) AlertRule {
 type nodeConf struct {
 	interval time.Duration
 	loc      *time.Location
+	procs    string // 关注的进程名，逗号分隔（设计 33.5.1）
 }
 
 // nodeConfOf 返回节点的上报设置；读取失败时 ok 为 false（调用方按默认处理）。
@@ -62,7 +66,7 @@ func (s *Server) nodeConfOf(sid int64) (nodeConf, bool) {
 	if err != nil {
 		return nodeConf{interval: DefaultReportInterval, loc: time.Local}, false
 	}
-	c = nodeConf{interval: reportInterval(*row), loc: trafficLocation(*row)}
+	c = nodeConf{interval: reportInterval(*row), loc: trafficLocation(*row), procs: strings.Join(row.WatchProcs, ",")}
 	s.mu.Lock()
 	s.nodeConfs[sid] = c
 	s.mu.Unlock()
@@ -108,6 +112,10 @@ func (s *Server) setIntervalHeader(w http.ResponseWriter, sid int64, c nodeConf,
 		iv = liveInterval
 	}
 	w.Header().Set("X-Report-Interval", strconv.Itoa(int(iv/time.Second)))
+	// 关注的进程名（设计 33.5.1）：没有时不发送该响应头，Agent 随即停止统计
+	if c.procs != "" {
+		w.Header().Set(protocol.HeaderWatchProcs, c.procs)
+	}
 }
 
 // forgetInterval 在节点修改或删除后清除缓存的节点设置，下一份上报重新读取。

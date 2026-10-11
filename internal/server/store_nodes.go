@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"vpsmon/internal/logging"
+
+	"vpsmon/internal/protocol"
 )
 
 // 节点、注册码与审计日志的数据访问（设计 18.2、18.13、18.16）。
@@ -54,6 +56,7 @@ type NodeInput struct {
 	BandwidthMbps    int     // 标称带宽，Mbps；0 = 未填
 	ReportIntervalS  int     // 采样间隔，秒；0 = 默认
 	TrafficTimezone  string  // 计费时区（IANA），空 = 面板时区
+	WatchProcs       *string // 关注的进程名（逗号分隔）；nil 表示修改时保持不变（设计 33.5.1）
 	Unit             string  // decimal / binary（设计 5.8）
 	Factor           float64 // 统计系数（设计 5.7）
 	LimitBytes       int64   // 月流量额度，字节；0 = 不限
@@ -86,12 +89,12 @@ func (s *Store) CreatePendingServer(in NodeInput, code newCode, now time.Time) (
 	res, err := tx.Exec(`INSERT INTO servers (name, enroll_state, expected_hostname, expected_ipv4, expected_ipv6,
 			verify_mode, group_name, note, provider, plan, region, traffic_limit_bytes, traffic_reset_day,
 			traffic_count_mode, price_cents, currency, billing_period, expire_date, created_at, updated_at, country,
-			traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone, watch_procs)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		in.Name, enrollPending, in.ExpectedHostname, in.ExpectedIPv4, in.ExpectedIPv6, in.VerifyMode,
 		in.Group, in.Note, in.Provider, in.Plan, in.Region, in.LimitBytes, in.ResetDay, in.CountMode,
 		in.PriceCents, in.Currency, in.BillingPeriod, in.ExpireDate, now.Unix(), now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps,
-		in.ReportIntervalS, in.TrafficTimezone)
+		in.ReportIntervalS, in.TrafficTimezone, deref(in.WatchProcs))
 	if isUniqueName(err) {
 		return 0, errNameTaken
 	}
@@ -117,10 +120,11 @@ func (s *Store) UpdateServer(id int64, in NodeInput, now time.Time) error {
 			verify_mode = ?, group_name = ?, note = ?, provider = ?, plan = ?, region = ?, traffic_limit_bytes = ?,
 			traffic_reset_day = ?, traffic_count_mode = ?, price_cents = ?, currency = ?, billing_period = ?,
 			expire_date = ?, updated_at = ?, country = ?, traffic_unit = ?, traffic_factor = ?, bandwidth_mbps = ?,
-			report_interval_s = ?, traffic_timezone = ? WHERE id = ?`,
+			report_interval_s = ?, traffic_timezone = ?, watch_procs = COALESCE(?, watch_procs) WHERE id = ?`,
 		in.Name, in.ExpectedHostname, in.ExpectedIPv4, in.ExpectedIPv6, in.VerifyMode, in.Group, in.Note,
 		in.Provider, in.Plan, in.Region, in.LimitBytes, in.ResetDay, in.CountMode, in.PriceCents, in.Currency,
-		in.BillingPeriod, in.ExpireDate, now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps, in.ReportIntervalS, in.TrafficTimezone, id)
+		in.BillingPeriod, in.ExpireDate, now.Unix(), in.Country, in.Unit, in.Factor, in.BandwidthMbps, in.ReportIntervalS, in.TrafficTimezone,
+		in.WatchProcs, id)
 	if isUniqueName(err) {
 		return errNameTaken
 	}
@@ -364,17 +368,22 @@ func splitIP(ip string) (string, string) {
 const serverColumns = `id, name, traffic_limit_bytes, traffic_reset_day, traffic_count_mode, last_seen_at,
 	enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, hostname, ipv4, ipv6,
 	machine_id_hash, enrolled_at, group_name, note, provider, plan, region, price_cents, currency,
-	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone`
+	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone, watch_procs`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanServer(row scanner) (*ServerRow, error) {
 	var r ServerRow
+	var procs string
 	err := row.Scan(&r.ID, &r.Name, &r.LimitBytes, &r.ResetDay, &r.CountMode, &r.LastSeenAt,
 		&r.EnrollState, &r.ExpectedHostname, &r.ExpectedIPv4, &r.ExpectedIPv6, &r.VerifyMode, &r.Hostname,
 		&r.IPv4, &r.IPv6, &r.MachineIDHash, &r.EnrolledAt, &r.Group, &r.Note, &r.Provider, &r.Plan, &r.Region,
 		&r.PriceCents, &r.Currency, &r.BillingPeriod, &r.ExpireDate, &r.CreatedAt, &r.Country, &r.TrafficUnit, &r.TrafficFactor,
-		&r.BandwidthMbps, &r.ReportIntervalS, &r.TrafficTimezone)
+		&r.BandwidthMbps, &r.ReportIntervalS, &r.TrafficTimezone, &procs)
+	r.WatchProcs = protocol.ParseWatchProcs(procs)
+	if r.WatchProcs == nil {
+		r.WatchProcs = []string{}
+	}
 	return &r, err
 }
 
@@ -441,4 +450,12 @@ func (s *Store) Audit(e AuditEntry, now time.Time) error {
 		client_ip, user_agent, details) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		now.Unix(), e.ActorType, logging.Redact(actor), e.Action, e.TargetType, target, result, e.ClientIP, logging.Redact(ua), details)
 	return err
+}
+
+// deref 返回字符串指针的值；nil 为空字符串。
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }

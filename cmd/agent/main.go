@@ -478,7 +478,7 @@ func run() {
 	}
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
-	_, _ = collect(col, false)
+	_, _ = collect(col, false, nil)
 
 	// systemd 存活检测（设计 43.5）：Type=notify 启动后报告就绪；主循环每轮喂一次看门狗，
 	// 主循环卡住（而不是退出）超过 WatchdogSec 时由 systemd 重启。不在 systemd 下运行时为空操作。
@@ -553,14 +553,14 @@ func run() {
 	for {
 		select {
 		case <-first.C:
-			if rep, ok := collect(col, false); ok {
+			if rep, ok := collect(col, false, r.WatchProcs()); ok {
 				r.Enqueue(rep)
 			}
 			flush(context.Background(), false)
 			applyInterval()
 			alive()
 		case <-tick.C:
-			if rep, ok := collect(col, false); ok {
+			if rep, ok := collect(col, false, r.WatchProcs()); ok {
 				r.Enqueue(rep)
 			}
 			flush(context.Background(), false)
@@ -573,7 +573,7 @@ func run() {
 			_, _ = sdnotify.Notify("STOPPING=1")
 			// 退出前补报，避免最后一个周期到停止之间的流量丢失（设计 5.5）。忽略退避，立即尝试。
 			// 2 秒超时：停止过久会被 systemd 强制 SIGKILL（单元中 TimeoutStopSec=5）。
-			if rep, ok := collect(col, true); ok {
+			if rep, ok := collect(col, true, r.WatchProcs()); ok {
 				r.Enqueue(rep)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -595,7 +595,8 @@ func run() {
 // collect 采集一份上报并填写时间戳与版本。采集失败只记录，不影响下一个周期。
 // Timestamp 是采集时间：断网后补发时，面板按它把数据放回正确的位置（设计 1.6.14）。
 // 采集项的 panic 已在采集器内按项捕获；这里再兜底一层，任何意外都不能让 Agent 退出、停止上报（设计 43.5）。
-func collect(col collector.Collector, final bool) (rep protocol.Report, ok bool) {
+// procs 是面板下发的关注进程名，为空时不统计（设计 33.5.1）。
+func collect(col collector.Collector, final bool, procs []string) (rep protocol.Report, ok bool) {
 	defer func() {
 		if v := recover(); v != nil {
 			alog.Printf("collect panicked: %v", v)
@@ -610,6 +611,9 @@ func collect(col collector.Collector, final bool) (rep protocol.Report, ok bool)
 	rep.Timestamp = time.Now().Unix()
 	rep.AgentVersion = version
 	rep.Final = final
+	if len(procs) > 0 {
+		rep.WatchProcs = collector.WatchProcs(procs)
+	}
 	// 告诉面板本机是否启用了远程升级，未启用时面板创建任务会直接说明原因（设计 29.13）；只在 Linux 上有意义
 	if runtime.GOOS == "linux" {
 		on := remoteUpgradeEnabled()

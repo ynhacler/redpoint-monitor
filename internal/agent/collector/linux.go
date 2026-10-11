@@ -432,6 +432,52 @@ func countProcesses() int {
 	}
 }
 
+// WatchProcs 统计各关注进程名当前有几个进程在运行（设计 33.5.1）：只读每个进程的 /proc/PID/comm（所有用户可读），
+// 不读取命令行、环境变量与其他任何内容，也不上报进程列表。/proc 以 hidepid 挂载时看不到其他用户的进程，计数会偏少。
+func WatchProcs(names []string) []protocol.ProcWatch {
+	out := make([]protocol.ProcWatch, len(names))
+	for i, n := range names {
+		out[i].Name = n
+	}
+	f, err := os.Open("/proc")
+	if err != nil {
+		return out
+	}
+	defer f.Close()
+	buf := make([]byte, 64)
+	for {
+		ents, err := f.Readdirnames(256)
+		for _, pid := range ents {
+			if pid == "" || pid[0] < '0' || pid[0] > '9' {
+				continue
+			}
+			comm := readComm("/proc/"+pid+"/comm", buf)
+			if comm == "" {
+				continue // 进程已退出
+			}
+			for i, n := range names {
+				if protocol.ProcNameMatches(comm, n) {
+					out[i].Count++
+				}
+			}
+		}
+		if err != nil || len(ents) == 0 {
+			return out
+		}
+	}
+}
+
+// readComm 读取一个进程的名称；复用 buf，避免每个进程分配一次。
+func readComm(path string, buf []byte) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	n, _ := f.Read(buf)
+	f.Close()
+	return strings.TrimRight(string(buf[:n]), "\n")
+}
+
 // findCPUSensors 扫描 hwmon 与 thermal_zone，返回可信 CPU 温度传感器的读数文件（设计 4.4）。
 // 由调用方缓存：传感器在运行期间几乎不变，没必要每轮扫描整个目录。
 // 【安全】只读 /sys，不需要任何权限。

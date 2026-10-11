@@ -515,6 +515,50 @@ func TestReportIntervalHeader(t *testing.T) {
 	}
 }
 
+// 关注的进程名随上报响应下发；修改节点时省略表示不变，清空后不再下发；Agent 上报的计数驱动“进程未运行”告警（设计 33.5.1）。
+func TestWatchProcs(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, n, _ := createNode(t, h, admin, `{"name":"wp-1","watch_procs":["nginx"," sshd ","nginx"]}`)
+	_, res := enroll(h, n.EnrollCode, "wp-host", "wp-machine")
+	report := func(body string) string {
+		rec := do(h, "POST", "/api/v1/agent/report", res.AgentToken, []byte(body))
+		return rec.Header().Get(protocol.HeaderWatchProcs)
+	}
+	if got := report(`{"system":{"boot_id":"b"}}`); got != "nginx,sshd" {
+		t.Fatalf("应下发去重、去空白后的进程名：%q", got)
+	}
+	base := "/api/v1/servers/" + itoa(n.ServerID)
+	if rec := do(h, "PUT", base, admin, []byte(`{"name":"wp-1"}`)); rec.Code != 200 {
+		t.Fatalf("修改失败：%d %s", rec.Code, rec.Body)
+	}
+	if got := report(`{"system":{"boot_id":"b"}}`); got != "nginx,sshd" {
+		t.Errorf("省略 watch_procs 时应保持不变：%q", got)
+	}
+	for _, bad := range []string{`["ngi nx"]`, `["rm;-rf"]`, `["$(id)"]`} {
+		if rec := do(h, "PUT", base, admin, []byte(`{"name":"wp-1","watch_procs":`+bad+`}`)); rec.Code != 422 {
+			t.Errorf("【安全】非法进程名 %s 应返回 422：%d", bad, rec.Code)
+		}
+	}
+	do(h, "PUT", base, admin, []byte(`{"name":"wp-1","watch_procs":[]}`))
+	if got := report(`{"system":{"boot_id":"b"}}`); got != "" {
+		t.Errorf("清空后不应下发：%q", got)
+	}
+	var sv ServerRow
+	json.Unmarshal(do(h, "GET", base, admin, nil).Body.Bytes(), &sv)
+	if sv.WatchProcs == nil || len(sv.WatchProcs) != 0 {
+		t.Errorf("节点详情应返回空数组：%#v", sv.WatchProcs)
+	}
+
+	in := alertInput{Report: &protocol.Report{WatchProcs: []protocol.ProcWatch{{Name: "nginx", Count: 0}, {Name: "sshd", Count: 2}, {Name: "redis-server", Count: 0}}}}
+	if v, detail, ok := alertValue(AlertProcess, in); !ok || v != 2 || detail != "nginx、redis-server" {
+		t.Errorf("应有 2 个进程未运行：%v %q %v", v, detail, ok)
+	}
+	if _, _, ok := alertValue(AlertProcess, alertInput{Report: &protocol.Report{}}); ok {
+		t.Error("没有关注进程（或旧版 Agent）时没有数据")
+	}
+}
+
 // 扩展指标每分钟才上报一次：其余上报沿用上一次的值，节点详情始终能显示虚拟化类型等（设计 46.3）
 func TestExtraCarriedForward(t *testing.T) {
 	s, h, _ := testServer(t)

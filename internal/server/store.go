@@ -670,6 +670,13 @@ var migrations = []string{
 		latency_ms INTEGER NOT NULL
 	);
 	CREATE INDEX service_checks_monitor ON service_checks(monitor_id, ts);`,
+
+	// 迁移 32：进程监控（设计 33.5.1）。节点关注的进程名（逗号分隔，下发给 Agent）与默认规则：
+	// 至少 1 个关注的进程没有在运行、持续 60 秒触发，全部恢复运行即恢复，级别严重。
+	`ALTER TABLE servers ADD COLUMN watch_procs TEXT NOT NULL DEFAULT '';
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('process', 'process', '>=', 1, 1, 60, 0, 'critical', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {
@@ -774,14 +781,16 @@ type ServerRow struct {
 	// ReportIntervalS 是采样（上报）间隔，秒；0 表示默认 10 秒（设计 4.2、6.1）
 	ReportIntervalS int `json:"report_interval_s"`
 	// TrafficTimezone 是计费时区（IANA 名称）；空表示面板本地时区（设计 5.4）
-	TrafficTimezone string  `json:"traffic_timezone"`
-	TrafficUnit     string  `json:"traffic_unit"`   // decimal / binary（设计 5.8）
-	TrafficFactor   float64 `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
-	PriceCents      int64   `json:"price_cents"`    // 续费价格 × 100
-	Currency        string  `json:"currency"`
-	BillingPeriod   string  `json:"billing_period"`
-	ExpireDate      string  `json:"expire_date"` // YYYY-MM-DD，空表示未填
-	CreatedAt       int64   `json:"created_at"`
+	TrafficTimezone string `json:"traffic_timezone"`
+	// WatchProcs 是关注的进程名，下发给 Agent 统计是否在运行（设计 33.5.1）
+	WatchProcs    []string `json:"watch_procs"`
+	TrafficUnit   string   `json:"traffic_unit"`   // decimal / binary（设计 5.8）
+	TrafficFactor float64  `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
+	PriceCents    int64    `json:"price_cents"`    // 续费价格 × 100
+	Currency      string   `json:"currency"`
+	BillingPeriod string   `json:"billing_period"`
+	ExpireDate    string   `json:"expire_date"` // YYYY-MM-DD，空表示未填
+	CreatedAt     int64    `json:"created_at"`
 }
 
 // ListServers 返回全部节点，按名称排序。

@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"vpsmon/internal/protocol"
@@ -22,6 +23,7 @@ const (
 	AlertTraffic         = "traffic"
 	AlertTrafficForecast = "traffic_forecast"
 	AlertAgentClock      = "agent_clock" // Agent 异常：时钟偏差（设计 16.1、43.5）
+	AlertProcess         = "process"     // 关注的进程没有在运行（设计 33.5.1）
 )
 
 // 告警级别（设计 16.1）。
@@ -133,6 +135,17 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if t := in.Traffic; t != nil && t.Limit > 0 && t.Forecast != nil {
 			return float64(t.Forecast.Total) * 100 / float64(t.Limit), "", true
 		}
+	case AlertProcess:
+		// 值为没有在运行的关注进程数；说明列出名称。节点没有关注进程或 Agent 不支持时没有数据
+		if r != nil && len(r.WatchProcs) > 0 {
+			var down []string
+			for _, p := range r.WatchProcs {
+				if p.Count == 0 {
+					down = append(down, p.Name)
+				}
+			}
+			return float64(len(down)), strings.Join(down, "、"), true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -165,6 +178,8 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return fmt.Sprintf("本周期流量已用 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertTrafficForecast:
 		return fmt.Sprintf("预计周期结束用量为额度的 %s", pct(v))
+	case AlertProcess:
+		return "进程没有在运行：" + detail
 	case AlertAgentClock:
 		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"vpsmon/internal/protocol"
 )
 
 // Web 新建节点与安装命令（设计 19.11、27.1～27.4）。全部接口要求 Web 管理员权限（设计 17.2）。
@@ -54,6 +57,7 @@ type createServerBody struct {
 	ExpireDate       string   `json:"expire_date"` // YYYY-MM-DD
 	EnrollTTL        string   `json:"enroll_ttl"`  // 1h / 24h / 7d，默认 24h
 	VerifyMode       string   `json:"verify_mode"` // warn / strict，默认 warn
+	WatchProcs       []string `json:"watch_procs"` // 关注的进程名；修改时省略表示不变（设计 33.5.1）
 }
 
 // validate 校验并规范化输入，返回字段级错误（设计 43.4 validation_failed）。
@@ -157,6 +161,27 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		} else {
 			in.ReportIntervalS = *b.ReportIntervalS
 		}
+	}
+	if b.WatchProcs != nil {
+		var names []string
+		seen := map[string]bool{}
+		for _, n := range b.WatchProcs {
+			n = strings.TrimSpace(n)
+			if n == "" || seen[n] {
+				continue
+			}
+			if !protocol.ValidProcName(n) {
+				bad("watch_procs", "进程名只能包含字母、数字与 . _ - + : @，最多 64 个字符："+n)
+				break
+			}
+			seen[n] = true
+			names = append(names, n)
+		}
+		if len(names) > protocol.MaxWatchProcs {
+			bad("watch_procs", fmt.Sprintf("每个节点最多关注 %d 个进程", protocol.MaxWatchProcs))
+		}
+		joined := strings.Join(names, ",")
+		in.WatchProcs = &joined
 	}
 	in.ResetDay = 1
 	if b.TrafficResetDay != nil {

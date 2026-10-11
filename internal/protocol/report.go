@@ -22,6 +22,8 @@ type Report struct {
 	Processes *Processes   `json:"processes,omitempty"` // 可选（设计 4.9）
 	Conns     *Conns       `json:"conns,omitempty"`     // 可选（设计 4.9）
 	Ports     []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
+	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
+	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：本轮失败的采集项及原因；对应字段留空，其余照常上报（设计 43.5）
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
 	// 可选：扩展指标（设计 4.10）。面板保存在实时状态中、随接口返回，暂不入库也不展示
@@ -136,6 +138,12 @@ type ListenPort struct {
 	Proto string   `json:"proto"` // tcp / udp
 	Port  int      `json:"port"`
 	Addrs []string `json:"addrs"` // 监听地址，如 0.0.0.0、::、127.0.0.1
+}
+
+// ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。
+type ProcWatch struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // Conns 是套接字数（设计 4.9），取自 /proc/net/sockstat 与 sockstat6 的 inuse（IPv4 + IPv6）。
