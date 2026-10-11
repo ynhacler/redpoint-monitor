@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vpsmon_app/format.dart';
+import 'package:vpsmon_app/models.dart';
 
 // 与 web/src/format.ts 同一口径（设计 41.4.1）
 void main() {
@@ -41,5 +42,37 @@ void main() {
     expect(flagEmoji('hk'), '🇭🇰');
     expect(flagEmoji(''), '');
     expect(flagEmoji('X1'), '');
+  });
+
+  test('fmtLatency：与 Web 一致', () {
+    expect(fmtLatency(null), '—');
+    expect(fmtLatency(0.4), '0.4 ms');
+    expect(fmtLatency(5), '5 ms');
+    expect(fmtLatency(182.6), '183 ms');
+    expect(fmtLatency(1500), '1.5 s');
+  });
+
+  test('LatencyView：解析目标、曲线（全部失败的点为 null），旧版面板没有 mode 时按 default', () {
+    final v = LatencyView.fromJson({
+      'status': 'on',
+      'targets': [
+        {'id': 1, 'isp': 'ct', 'province': '北京', 'address': '220.181.173.35', 'proto': 'tcp', 'port': 80, 'enabled': true,
+          'builtin': true, 'note': '', 'latency_ms': 182.5, 'loss': 0, 'last_at': 100, 'last_error': ''},
+        {'id': 95, 'isp': 'intl', 'province': '东京', 'address': '108.61.201.151', 'proto': 'tcp', 'port': 80, 'enabled': false,
+          'builtin': true, 'note': 'Vultr', 'latency_ms': null, 'loss': null, 'last_at': 0, 'last_error': ''},
+      ],
+      'series': {
+        '1': [
+          {'ts': 100, 'latency_ms': 182.5, 'loss': 0},
+          {'ts': 400, 'latency_ms': null, 'loss': 100},
+        ],
+      },
+    });
+    expect(v.mode, 'default');
+    expect(v.intervalS, 300);
+    expect(v.targets[0].latency, 182.5);
+    expect(v.targets[1].isp, 'intl');
+    expect(v.targets[1].enabled, false);
+    expect(v.series[1]![1].latency, isNull);
   });
 }

@@ -30,7 +30,8 @@ class LineChart extends StatelessWidget {
     if (times.length < 2) {
       return SizedBox(height: height, child: Center(child: Text('暂无数据', style: TextStyle(color: muted))));
     }
-    var max = fixedMax ?? series.expand((s) => s.values).fold<double>(0, math.max);
+    // 值为 NaN 表示该时刻没有数据（如三网延迟全部失败），折线在此断开
+    var max = fixedMax ?? series.expand((s) => s.values).where((v) => v.isFinite).fold<double>(0, math.max);
     if (max <= 0) max = 1;
     final labelStyle = TextStyle(fontSize: 11, color: muted);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -42,7 +43,7 @@ class LineChart extends StatelessWidget {
           const SizedBox(width: 12),
         ],
         const Spacer(),
-        Text('最高 ${formatY(series.expand((s) => s.values).fold<double>(0, math.max))}', style: labelStyle),
+        Text('最高 ${formatY(series.expand((s) => s.values).where((v) => v.isFinite).fold<double>(0, math.max))}', style: labelStyle),
       ]),
       const SizedBox(height: 6),
       SizedBox(
@@ -89,11 +90,17 @@ class _Painter extends CustomPainter {
       final n = math.min(s.values.length, times.length);
       if (n < 2) continue;
       final path = Path();
+      var broken = true;
       for (var i = 0; i < n; i++) {
+        if (!s.values[i].isFinite) {
+          broken = true;
+          continue;
+        }
         final x = size.width * (times[i] - t0) / span;
         final y = size.height * (1 - (s.values[i] / max).clamp(0.0, 1.0));
         final gap = i > 0 && times[i] - times[i - 1] > step * 3;
-        i == 0 || gap ? path.moveTo(x, y) : path.lineTo(x, y);
+        broken || gap ? path.moveTo(x, y) : path.lineTo(x, y);
+        broken = false;
       }
       canvas.drawPath(
           path,
