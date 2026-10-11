@@ -158,14 +158,69 @@ func insertProbeResults(tx *sql.Tx, serverID int64, list []protocol.ProbeResult,
 
 // ---- 下发给 Agent ----
 
-// probeState 缓存下发给 Agent 的目标列表，并记录各节点 Agent 的探测状态。
+// probeState 缓存全部目标与全局频率，并记录各节点 Agent 的探测状态。
 type probeState struct {
 	mu       sync.Mutex
 	loaded   bool
-	version  string
-	encoded  string
+	targets  []ProbeTargetRow
 	interval int
 	status   map[int64]string // on / off；没有记录表示 Agent 不支持（旧版）或尚未上报
+}
+
+// 节点的三网延迟模式（修订第 121 条）
+const (
+	probeModeDefault = "default" // 跟随全局：全局启用的目标与频率
+	probeModeCustom  = "custom"  // 自定义：节点自己勾选的目标（不受全局启用影响），频率可单独设置
+	probeModeOff     = "off"     // 这台节点不测
+)
+
+// NodeProbe 是节点自己的三网延迟设置。
+type NodeProbe struct {
+	Mode      string  `json:"mode"`
+	TargetIDs []int64 `json:"target_ids"` // custom 时有效
+	IntervalS int     `json:"interval_s"` // custom 时有效；0 表示跟随全局
+}
+
+// parseNodeProbe 解析 servers.probe_conf；空或无法解析时为跟随全局。
+func parseNodeProbe(raw string) NodeProbe {
+	np := NodeProbe{Mode: probeModeDefault, TargetIDs: []int64{}}
+	if raw == "" || json.Unmarshal([]byte(raw), &np) != nil || (np.Mode != probeModeCustom && np.Mode != probeModeOff) {
+		return NodeProbe{Mode: probeModeDefault, TargetIDs: []int64{}}
+	}
+	if np.TargetIDs == nil {
+		np.TargetIDs = []int64{}
+	}
+	return np
+}
+
+// effectiveProbe 计算节点实际使用的目标与频率（纯函数）：
+// 跟随全局时为全局启用的目标；自定义时为节点勾选且仍存在的目标；关闭时没有目标。最多 64 个。
+func effectiveProbe(all []ProbeTargetRow, globalInterval int, np NodeProbe) ([]ProbeTargetRow, int) {
+	interval := globalInterval
+	var out []ProbeTargetRow
+	switch np.Mode {
+	case probeModeOff:
+		return nil, interval
+	case probeModeCustom:
+		if slices.Contains(protocol.ProbeIntervals, np.IntervalS) {
+			interval = np.IntervalS
+		}
+		for _, t := range all {
+			if slices.Contains(np.TargetIDs, t.ID) {
+				out = append(out, t)
+			}
+		}
+	default:
+		for _, t := range all {
+			if t.Enabled {
+				out = append(out, t)
+			}
+		}
+	}
+	if len(out) > protocol.MaxProbeTargets {
+		out = out[:protocol.MaxProbeTargets]
+	}
+	return out, interval
 }
 
 // invalidate 在目标修改后调用：下一份上报重新读取并下发。
@@ -192,38 +247,46 @@ func (s *Server) probeSettings() (ProbeSettings, error) {
 	return v, err
 }
 
-// probeList 返回当前启用目标的编码、每轮间隔与版本。
-func (s *Server) probeList() (version, encoded string, interval int, err error) {
+// probeBase 返回全部目标与全局频率（缓存，目标或全局设置修改后重新读取）。
+func (s *Server) probeBase() ([]ProbeTargetRow, int, error) {
 	p := &s.probes
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.loaded {
-		return p.version, p.encoded, p.interval, nil
+		return p.targets, p.interval, nil
 	}
 	list, err := s.store.ListProbeTargets()
 	if err != nil {
-		return "", "", 0, err
+		return nil, 0, err
 	}
 	cfg, err := s.probeSettings()
 	if err != nil {
+		return nil, 0, err
+	}
+	p.targets, p.interval, p.loaded = list, cfg.IntervalS, true
+	return p.targets, p.interval, nil
+}
+
+// probeList 返回节点要下发的目标编码、每轮间隔与版本。
+func (s *Server) probeList(np NodeProbe) (version, encoded string, interval int, err error) {
+	all, global, err := s.probeBase()
+	if err != nil {
 		return "", "", 0, err
 	}
+	targets, interval := effectiveProbe(all, global, np)
 	var wire []protocol.ProbeTarget
-	for _, t := range list {
-		if pt, ok := t.wire(); ok && t.Enabled && len(wire) < protocol.MaxProbeTargets {
+	for _, t := range targets {
+		if pt, ok := t.wire(); ok {
 			wire = append(wire, pt)
 		}
 	}
-	p.encoded = protocol.EncodeProbeTargets(wire)
-	p.interval = cfg.IntervalS
-	p.version = protocol.ProbeVersion(p.encoded, p.interval)
-	p.loaded = true
-	return p.version, p.encoded, p.interval, nil
+	encoded = protocol.EncodeProbeTargets(wire)
+	return protocol.ProbeVersion(encoded, interval), encoded, interval, nil
 }
 
 // syncProbe 处理上报请求中的 X-Probe-Version：记录 Agent 的探测状态，版本不同时在响应头中下发新列表。
 // 旧版 Agent 不带该请求头，面板不下发（设计 42.3.2）。
-func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64) {
+func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np NodeProbe) {
 	vals, ok := r.Header[protocol.HeaderProbeVersion]
 	if !ok {
 		return
@@ -245,7 +308,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64) {
 	if st == "off" {
 		return
 	}
-	version, encoded, interval, err := s.probeList()
+	version, encoded, interval, err := s.probeList(np)
 	if err != nil {
 		s.log.Error("probe targets failed", "component", "probe", "err", err)
 		return
@@ -488,6 +551,85 @@ func (s *Server) handlePutProbeSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, b)
 }
 
+// handleGetNodeProbe：GET /api/v1/servers/{id}/probe，admin。节点自己的三网延迟设置。
+func (s *Server) handleGetNodeProbe(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	row, err := s.store.GetServer(id)
+	if errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	} else if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	writeJSON(w, row.Probe)
+}
+
+// handlePutNodeProbe：PUT /api/v1/servers/{id}/probe，admin。随这台节点的下一份上报下发。
+func (s *Server) handlePutNodeProbe(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var b NodeProbe
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&b); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	var errs []FieldError
+	switch b.Mode {
+	case probeModeDefault, probeModeOff:
+		b.TargetIDs, b.IntervalS = []int64{}, 0
+	case probeModeCustom:
+		if b.IntervalS != 0 && !slices.Contains(protocol.ProbeIntervals, b.IntervalS) {
+			errs = append(errs, FieldError{Field: "interval_s", Message: "测试频率只能是跟随全局，或 1、2、5、10、15、30 分钟"})
+		}
+		all, _, err := s.probeBase()
+		if err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		ids := []int64{}
+		for _, tid := range b.TargetIDs {
+			if !slices.Contains(ids, tid) && slices.ContainsFunc(all, func(t ProbeTargetRow) bool { return t.ID == tid }) {
+				ids = append(ids, tid)
+			}
+		}
+		if len(ids) != len(b.TargetIDs) {
+			errs = append(errs, FieldError{Field: "target_ids", Message: "有目标不存在或重复，请刷新后重试"})
+		} else if len(ids) == 0 {
+			errs = append(errs, FieldError{Field: "target_ids", Message: "请至少选择一个目标；不测请选“关闭”"})
+		} else if len(ids) > protocol.MaxProbeTargets {
+			errs = append(errs, FieldError{Field: "target_ids", Message: fmt.Sprintf("每台节点最多 %d 个目标（Agent 的上限）", protocol.MaxProbeTargets)})
+		}
+		b.TargetIDs = ids
+	default:
+		errs = append(errs, FieldError{Field: "mode", Message: "模式只能是 default（跟随全局）、custom（自定义）或 off（关闭）"})
+	}
+	if len(errs) > 0 {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
+		return
+	}
+	if err := s.store.SetNodeProbe(id, b); errors.Is(err, errNoServer) {
+		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
+		return
+	} else if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.forgetInterval(id) // 节点设置缓存：下一份上报重新读取并下发
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.probe", Success: true,
+		Details: map[string]any{"server_id": id, "mode": b.Mode, "targets": len(b.TargetIDs), "interval_s": b.IntervalS}})
+	writeJSON(w, b)
+}
+
 // ---- 节点的三网延迟 ----
 
 // LatencyTarget 是节点详情中一个目标的最近 1 小时汇总。
@@ -508,9 +650,11 @@ type LatencyPoint struct {
 
 // LatencyView 是 GET /servers/{id}/latency 的响应。
 type LatencyView struct {
-	Status  string                    `json:"status"` // on / off / unsupported
-	Targets []LatencyTarget           `json:"targets"`
-	Series  map[string][]LatencyPoint `json:"series"` // 键为目标 ID
+	Status    string                    `json:"status"`     // on / off / unsupported
+	Mode      string                    `json:"mode"`       // 节点设置：default / custom / off
+	IntervalS int                       `json:"interval_s"` // 节点实际的测试频率（秒）
+	Targets   []LatencyTarget           `json:"targets"`
+	Series    map[string][]LatencyPoint `json:"series"` // 键为目标 ID
 }
 
 // summarizeLatency 汇总一个目标最近 1 小时的结果：延迟取各轮（成功的）中位数，丢包率取平均。纯函数。
@@ -549,7 +693,8 @@ func (s *Server) handleLatency(w http.ResponseWriter, r *http.Request) {
 	if !s.requireServerInScope(w, r, id) {
 		return
 	}
-	if _, err := s.store.GetServer(id); errors.Is(err, errNoServer) {
+	row, err := s.store.GetServer(id)
+	if errors.Is(err, errNoServer) {
 		s.writeError(w, r, errorf(CodeNotFound, "节点不存在或已删除"))
 		return
 	} else if err != nil {
@@ -566,24 +711,28 @@ func (s *Server) handleLatency(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "range", Message: "只能是 24h 或 7d"}}})
 		return
 	}
-	targets, err := s.store.ListProbeTargets()
+	targets, global, err := s.probeBase()
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	active, interval := effectiveProbe(targets, global, row.Probe)
 	raw, err := s.store.probeSeries(id, since)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	v := LatencyView{Status: s.probeStatus(id), Targets: []LatencyTarget{}, Series: map[string][]LatencyPoint{}}
+	v := LatencyView{Status: s.probeStatus(id), Mode: row.Probe.Mode, IntervalS: interval,
+		Targets: []LatencyTarget{}, Series: map[string][]LatencyPoint{}}
 	hour := now.Add(-time.Hour).Unix()
 	for _, t := range targets {
 		pts := raw[t.ID]
-		if !t.Enabled && len(pts) == 0 {
-			continue // 停用且范围内没有数据的不显示
+		isActive := slices.ContainsFunc(active, func(a ProbeTargetRow) bool { return a.ID == t.ID })
+		if !isActive && len(pts) == 0 {
+			continue // 这台节点不测、范围内也没有数据的不显示
 		}
 		lt := LatencyTarget{ProbeTargetRow: t}
+		lt.Enabled = isActive // 对这台节点：是否在测
 		var recent []LatencyPoint
 		for _, p := range pts {
 			if p.TS >= hour {

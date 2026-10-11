@@ -51,7 +51,8 @@ func ruleForInterval(r AlertRule, iv time.Duration) AlertRule {
 type nodeConf struct {
 	interval time.Duration
 	loc      *time.Location
-	procs    string // 关注的进程名，逗号分隔（设计 33.5.1）
+	procs    string    // 关注的进程名，逗号分隔（设计 33.5.1）
+	probe    NodeProbe // 节点自己的三网延迟设置（设计 42.3.2）
 }
 
 // nodeConfOf 返回节点的上报设置；读取失败时 ok 为 false（调用方按默认处理）。
@@ -66,7 +67,7 @@ func (s *Server) nodeConfOf(sid int64) (nodeConf, bool) {
 	if err != nil {
 		return nodeConf{interval: DefaultReportInterval, loc: time.Local}, false
 	}
-	c = nodeConf{interval: reportInterval(*row), loc: trafficLocation(*row), procs: strings.Join(row.WatchProcs, ",")}
+	c = nodeConf{interval: reportInterval(*row), loc: trafficLocation(*row), procs: strings.Join(row.WatchProcs, ","), probe: row.Probe}
 	s.mu.Lock()
 	s.nodeConfs[sid] = c
 	s.mu.Unlock()

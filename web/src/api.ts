@@ -5,7 +5,7 @@ import type * as G from './api.gen'
 
 export type {
   AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
-  LatencyView, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
+  LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
 // ---- 由契约派生的类型 ----
@@ -538,6 +538,14 @@ export type LatencyTarget = G.LatencyView['targets'][number]
 
 export function getLatency(id: number, range: '24h' | '7d') {
   return request('get', '/servers/{id}/latency', { params: { id }, query: { range } })
+}
+
+export function getNodeProbe(id: number) {
+  return request('get', '/servers/{id}/probe', { params: { id } })
+}
+
+export function putNodeProbe(id: number, body: G.NodeProbe) {
+  return request('put', '/servers/{id}/probe', { params: { id }, body })
 }
 
 export function getProbeSettings() {

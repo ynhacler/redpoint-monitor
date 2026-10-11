@@ -4809,6 +4809,83 @@
         }
       }
     },
+    "/servers/{id}/probe": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "节点自己的三网延迟设置（设计 42.3.2）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeProbe"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "修改节点自己的三网延迟设置，随这台节点的下一份上报下发",
+        "description": "default：跟随全局（“告警 → 三网”中启用的目标与频率）；custom：这台节点自己勾选目标（不受全局启用影响，最多 64 个），\n频率可单独设置（0 表示跟随全局）；off：这台节点不测。节点本机的 no-probe 文件优先于这里的设置（设计 42.6）。\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeProbe"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeProbe"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/servers/{id}/traffic/current": {
       "get": {
         "security": [
@@ -6835,6 +6912,46 @@
           }
         }
       },
+      "NodeProbe": {
+        "type": "object",
+        "required": [
+          "mode",
+          "target_ids",
+          "interval_s"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "custom",
+              "off"
+            ],
+            "description": "default：跟随全局；custom：自定义；off：这台节点不测"
+          },
+          "target_ids": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "integer"
+            },
+            "description": "custom 时这台节点要测的目标 ID；其他模式为空数组"
+          },
+          "interval_s": {
+            "type": "integer",
+            "enum": [
+              0,
+              60,
+              120,
+              300,
+              600,
+              900,
+              1800
+            ],
+            "description": "custom 时的测试频率（秒），0 表示跟随全局"
+          }
+        }
+      },
       "ProbeSettings": {
         "type": "object",
         "required": [
@@ -6958,10 +7075,25 @@
         "type": "object",
         "required": [
           "status",
+          "mode",
+          "interval_s",
           "targets",
           "series"
         ],
         "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "custom",
+              "off"
+            ],
+            "description": "节点的三网延迟设置（GET /servers/{id}/probe）"
+          },
+          "interval_s": {
+            "type": "integer",
+            "description": "这台节点实际的测试频率（秒）"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -6973,7 +7105,7 @@
           },
           "targets": {
             "type": "array",
-            "description": "启用的目标，以及范围内有数据的已停用目标",
+            "description": "这台节点在测的目标（enabled 为 true），以及范围内有数据、现在不测的目标（enabled 为 false）",
             "items": {
               "allOf": [
                 {

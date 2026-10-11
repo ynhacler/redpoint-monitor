@@ -182,3 +182,91 @@ func TestLatencyMath(t *testing.T) {
 		t.Errorf("按小时汇总：%+v", out)
 	}
 }
+
+// 每台节点可以跟随全局、自定义目标与频率，或关闭；修改后这台节点的下一份上报下发新列表（修订第 121 条）。
+func TestNodeProbe(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, tok1, _ := s.store.CreateServer("np-1", 0, 1)
+	_, tok2, _ := s.store.CreateServer("np-2", 0, 1)
+	report := func(tok, have string) http.Header {
+		req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(`{"system":{"boot_id":"b"}}`))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		req.Header[protocol.HeaderProbeVersion] = []string{have}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Header()
+	}
+	var np NodeProbe
+	json.Unmarshal(do(h, "GET", "/api/v1/servers/1/probe", admin, nil).Body.Bytes(), &np)
+	if np.Mode != "default" || np.TargetIDs == nil {
+		t.Fatalf("默认跟随全局：%+v", np)
+	}
+	// 自定义：选一个默认未启用的目标（天津电信，id 13）与北京电信（id 1），频率 10 分钟
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(`{"mode":"custom","target_ids":[13,1],"interval_s":600}`)); rec.Code != 200 {
+		t.Fatalf("保存自定义：%d %s", rec.Code, rec.Body)
+	}
+	hd := report(tok1, "")
+	got := protocol.ParseProbeTargets(hd.Get(protocol.HeaderProbeTargets))
+	if len(got) != 2 || got[0].ID != 1 || got[1].ID != 13 || hd.Get(protocol.HeaderProbeInterval) != "600" {
+		t.Errorf("节点 1 应只测自己选的 2 个目标、10 分钟：%+v %s", got, hd.Get(protocol.HeaderProbeInterval))
+	}
+	// 其他节点不受影响
+	if n := len(protocol.ParseProbeTargets(report(tok2, "").Get(protocol.HeaderProbeTargets))); n != 12 {
+		t.Errorf("节点 2 仍跟随全局 12 个：%d", n)
+	}
+	// 关闭：下发空列表（版本 0）
+	do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(`{"mode":"off","target_ids":[5],"interval_s":60}`))
+	hd = report(tok1, hd.Get(protocol.HeaderProbeVersion))
+	if hd.Get(protocol.HeaderProbeVersion) != "0" || hd.Get(protocol.HeaderProbeTargets) != "" {
+		t.Errorf("关闭后应下发空列表：%q %q", hd.Get(protocol.HeaderProbeVersion), hd.Get(protocol.HeaderProbeTargets))
+	}
+	json.Unmarshal(do(h, "GET", "/api/v1/servers/1/probe", admin, nil).Body.Bytes(), &np)
+	if np.Mode != "off" || len(np.TargetIDs) != 0 || np.IntervalS != 0 {
+		t.Errorf("关闭时不保存目标与频率：%+v", np)
+	}
+	var v LatencyView
+	json.Unmarshal(do(h, "GET", "/api/v1/servers/1/latency", admin, nil).Body.Bytes(), &v)
+	if v.Mode != "off" || len(v.Targets) != 0 {
+		t.Errorf("关闭且没有数据时不列出目标：%s %d", v.Mode, len(v.Targets))
+	}
+	for _, bad := range []string{
+		`{"mode":"custom","target_ids":[],"interval_s":0}`,
+		`{"mode":"custom","target_ids":[99999],"interval_s":0}`,
+		`{"mode":"custom","target_ids":[1,1],"interval_s":0}`,
+		`{"mode":"custom","target_ids":[1],"interval_s":45}`,
+		`{"mode":"x","target_ids":[],"interval_s":0}`,
+	} {
+		if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(bad)); rec.Code != 422 {
+			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
+		}
+	}
+	if rec := do(h, "PUT", "/api/v1/servers/999/probe", admin, []byte(`{"mode":"off","target_ids":[],"interval_s":0}`)); rec.Code != 404 {
+		t.Errorf("节点不存在应返回 404：%d", rec.Code)
+	}
+}
+
+func TestEffectiveProbe(t *testing.T) {
+	all := []ProbeTargetRow{{ID: 1, Enabled: true}, {ID: 2}, {ID: 3, Enabled: true}}
+	ids := func(ts []ProbeTargetRow) (out []int64) {
+		for _, t := range ts {
+			out = append(out, t.ID)
+		}
+		return
+	}
+	if ts, iv := effectiveProbe(all, 300, parseNodeProbe("")); fmt.Sprint(ids(ts)) != "[1 3]" || iv != 300 {
+		t.Errorf("跟随全局：%v %d", ids(ts), iv)
+	}
+	if ts, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[2,9],"interval_s":60}`)); fmt.Sprint(ids(ts)) != "[2]" || iv != 60 {
+		t.Errorf("自定义：已删除的目标忽略，未全局启用的也可以选：%v %d", ids(ts), iv)
+	}
+	if _, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[1],"interval_s":0}`)); iv != 300 {
+		t.Errorf("频率 0 跟随全局：%d", iv)
+	}
+	if ts, _ := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"off"}`)); len(ts) != 0 {
+		t.Error("关闭时没有目标")
+	}
+	if np := parseNodeProbe("{bad"); np.Mode != "default" {
+		t.Error("无法解析时跟随全局")
+	}
+}

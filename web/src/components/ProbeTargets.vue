@@ -3,6 +3,7 @@
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
 // 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
+import ProbeTargetPicker from './ProbeTargetPicker.vue'
 import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
   type ProbeSettings, type ProbeTarget, type ProbeTargetInput,
@@ -54,19 +55,7 @@ const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
 const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
-// 内置目标按地区分行
-const provinces = computed(() => {
-  const out: { province: string; cells: Partial<Record<string, ProbeTarget>> }[] = []
-  for (const t of items.value) {
-    if (!t.builtin) continue
-    let r = out.find((x) => x.province === t.province)
-    if (!r) out.push((r = { province: t.province, cells: {} }))
-    r.cells[t.isp] = t
-  }
-  return out
-})
-const custom = computed(() => items.value.filter((t) => !t.builtin))
-const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`
+const selected = computed(() => items.value.filter((t) => t.enabled).map((t) => t.id))
 
 async function toggle(t: ProbeTarget) {
   busy.value = t.id
@@ -162,36 +151,15 @@ async function remove(t: ProbeTarget) {
       </div>
     </form>
 
-    <section v-if="custom.length" class="panel block">
-      <h3>自定义</h3>
-      <ul class="custom">
-        <li v-for="t in custom" :key="t.id" :class="{ off: !t.enabled }">
-          <label class="check"><input type="checkbox" :checked="t.enabled" :disabled="busy === t.id" @change="toggle(t)" />
-            <span>{{ t.province }} · {{ ispName(t.isp) }}</span></label>
-          <span class="small muted mono">{{ where(t) }}</span>
-          <span v-if="t.note" class="small muted">{{ t.note }}</span>
-          <button type="button" class="text small del" @click="remove(t)">删除</button>
-        </li>
-      </ul>
-    </section>
-
-    <section v-if="provinces.length" class="panel block">
-      <h3>内置（三大运营商各省地址）</h3>
-      <table>
-        <thead><tr><th scope="col">地区</th><th v-for="i in isps" :key="i.key" scope="col">{{ i.name }}</th></tr></thead>
-        <tbody>
-          <tr v-for="r in provinces" :key="r.province">
-            <th scope="row">{{ r.province }}</th>
-            <td v-for="i in isps" :key="i.key">
-              <label v-if="r.cells[i.key]" class="check" :title="where(r.cells[i.key]!)">
-                <input type="checkbox" :checked="r.cells[i.key]!.enabled" :disabled="busy === r.cells[i.key]!.id"
-                  :aria-label="`${r.province}${i.name}`" @change="toggle(r.cells[i.key]!)" />
-                <span class="small muted mono addr">{{ r.cells[i.key]!.address }}</span>
-              </label>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <section v-if="items.length" class="panel block">
+      <h3>目标（勾选的对所有“跟随全局”的节点生效）</h3>
+      <ProbeTargetPicker :targets="items" :selected="selected" :busy="busy" @toggle="toggle">
+        <template #custom-extra="{ target }">
+          <span v-if="target.note" class="small muted">{{ target.note }}</span>
+          <button type="button" class="text small del" @click="remove(target)">删除</button>
+        </template>
+      </ProbeTargetPicker>
+      <p class="small muted foot">单台节点可在节点详情的“三网延迟 → 设置”中自己选择目标与频率，或关闭。</p>
     </section>
   </div>
 </template>
@@ -207,24 +175,8 @@ async function remove(t: ProbeTarget) {
 .actions { margin-top: var(--space-3); }
 .block { padding: var(--space-4); margin-bottom: var(--space-4); }
 .block h3 { margin: 0 0 var(--space-3); }
-table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
-th, td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--border); }
-th:first-child { padding-left: 0; width: 5em; }
-thead th { color: var(--text-muted); font-weight: var(--weight-regular); }
-tbody th { font-weight: var(--weight-regular); }
-.check { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-.check input { width: auto; margin: 0; }
-.mono { font-family: var(--font-mono); }
-.custom { list-style: none; margin: 0; padding: 0; }
-.custom li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2) 0; }
-.custom li + li { border-top: 1px solid var(--border); }
-.custom li.off { opacity: 0.6; }
-.custom .del { margin-left: auto; }
+.foot { margin: var(--space-3) 0 0; }
 .warn { color: var(--warn); }
 .bad, .del { color: var(--bad); }
 .muted { color: var(--text-muted); }
-@media (max-width: 600px) {
-  th, td { padding: var(--space-2) var(--space-1); }
-  .addr { display: none; } /* 窄屏只显示勾选框，地址在悬停提示中 */
-}
 </style>

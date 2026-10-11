@@ -796,6 +796,9 @@ var migrations = []string{
 		('ct', '新疆', '110.157.243.45', 'tcp', 80, 0, 1, 91),
 		('cu', '新疆', '116.178.77.40', 'tcp', 80, 0, 1, 92),
 		('cm', '新疆', '36.189.208.164', 'tcp', 80, 0, 1, 93);`,
+
+	// 迁移 34：节点自己的三网延迟设置（设计 42.3.2，修订第 121 条）：JSON {mode, target_ids, interval_s}；空表示跟随全局
+	`ALTER TABLE servers ADD COLUMN probe_conf TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
@@ -902,14 +905,16 @@ type ServerRow struct {
 	// TrafficTimezone 是计费时区（IANA 名称）；空表示面板本地时区（设计 5.4）
 	TrafficTimezone string `json:"traffic_timezone"`
 	// WatchProcs 是关注的进程名，下发给 Agent 统计是否在运行（设计 33.5.1）
-	WatchProcs    []string `json:"watch_procs"`
-	TrafficUnit   string   `json:"traffic_unit"`   // decimal / binary（设计 5.8）
-	TrafficFactor float64  `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
-	PriceCents    int64    `json:"price_cents"`    // 续费价格 × 100
-	Currency      string   `json:"currency"`
-	BillingPeriod string   `json:"billing_period"`
-	ExpireDate    string   `json:"expire_date"` // YYYY-MM-DD，空表示未填
-	CreatedAt     int64    `json:"created_at"`
+	WatchProcs []string `json:"watch_procs"`
+	// Probe 是节点自己的三网延迟设置（设计 42.3.2）；通过 /servers/{id}/probe 读写，不在节点 JSON 中
+	Probe         NodeProbe `json:"-"`
+	TrafficUnit   string    `json:"traffic_unit"`   // decimal / binary（设计 5.8）
+	TrafficFactor float64   `json:"traffic_factor"` // 统计系数，默认 1（设计 5.7）
+	PriceCents    int64     `json:"price_cents"`    // 续费价格 × 100
+	Currency      string    `json:"currency"`
+	BillingPeriod string    `json:"billing_period"`
+	ExpireDate    string    `json:"expire_date"` // YYYY-MM-DD，空表示未填
+	CreatedAt     int64     `json:"created_at"`
 }
 
 // ListServers 返回全部节点，按名称排序。
