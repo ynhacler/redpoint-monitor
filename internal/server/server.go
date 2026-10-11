@@ -333,6 +333,8 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/metrics/history", accessRead, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/health", accessRead, s.handleHealth)
 	handle("GET /api/v1/servers/{id}/latency", accessRead, s.handleLatency)
+	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
+	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
 	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
@@ -382,7 +384,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Encoding", "gzip")
 	conf, confOK := s.nodeConfOf(sid)
 	s.setIntervalHeader(w, sid, conf, confOK)
-	s.syncProbe(w, r, sid) // 三网延迟目标（设计 42.3.2）
+	s.syncProbe(w, r, sid, conf.probe) // 三网延迟目标（设计 42.3.2）
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)

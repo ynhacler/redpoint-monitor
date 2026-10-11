@@ -6,6 +6,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
 import Chart, { type Series } from './Chart.vue'
+import NodeProbeSettings from './NodeProbeSettings.vue'
 
 const props = defineProps<{ serverId: number }>()
 
@@ -22,6 +23,8 @@ const view = ref<LatencyView | null>(null)
 const error = ref('')
 const range = ref<'24h' | '7d'>('24h')
 const selected = ref('')
+const editing = ref(false) // 这台节点的三网延迟设置（修订第 121 条）
+const modeNames: Record<string, string> = { default: '跟随全局', custom: '自定义', off: '已关闭' }
 let timer: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
@@ -63,6 +66,7 @@ function level(t?: LatencyTarget): string {
 function cellTitle(t?: LatencyTarget): string {
   if (!t) return ''
   const where = `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`
+  if (!t.enabled) return `${where}\n这台节点已不再测这个目标，显示的是之前的数据`
   if (!t.last_at) return `${where}\n还没有数据`
   const err = t.latency_ms == null && t.last_error ? `\n最近一轮：${errorNames[t.last_error] ?? t.last_error}` : ''
   return `${where}\n最近 1 小时中位数，最近一轮 ${fmtTime(t.last_at)}${err}`
@@ -87,13 +91,19 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
   <section class="panel latency">
     <div class="head">
       <h3>三网延迟</h3>
-      <div v-if="hasData" class="segmented" role="group" aria-label="时间范围">
-        <button v-for="r in (['24h', '7d'] as const)" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
+      <span v-if="view" class="small muted mode">{{ modeNames[view.mode] }}<template v-if="view.mode !== 'off'"> · 每 {{ view.interval_s / 60 }} 分钟</template></span>
+      <div class="tools">
+        <div v-if="hasData" class="segmented" role="group" aria-label="时间范围">
+          <button v-for="r in (['24h', '7d'] as const)" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
+        </div>
+        <button type="button" class="secondary small" :aria-expanded="editing" @click="editing = !editing">设置</button>
       </div>
     </div>
+    <NodeProbeSettings v-if="editing" :server-id="serverId" @saved="editing = false; load()" @cancel="editing = false" />
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
+      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，点“设置”开启。</p>
+      <p v-else-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
       <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持三网延迟，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
       <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“告警 → 三网”中启用。</p>
       <p v-else-if="!hasData" class="small muted note">Agent 收到目标后约 20 秒测第一轮，之后按“告警 → 三网”中的频率测量。</p>
@@ -107,7 +117,8 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
             <tr v-for="r in rows" :key="r.province" :class="{ sel: r.province === selected }" tabindex="0"
               @click="selected = r.province" @keydown.enter="selected = r.province">
               <th scope="row">{{ r.province }}</th>
-              <td v-for="isp in isps" :key="isp.key" :class="level(r.cells[isp.key])" :title="cellTitle(r.cells[isp.key])">
+              <td v-for="isp in isps" :key="isp.key" :class="[level(r.cells[isp.key]), { stale: r.cells[isp.key] && !r.cells[isp.key]!.enabled }]"
+                :title="cellTitle(r.cells[isp.key])">
                 <template v-if="r.cells[isp.key]?.loss != null">
                   <b class="num">{{ r.cells[isp.key]!.latency_ms == null ? '不可达' : fmtLatency(r.cells[isp.key]!.latency_ms) }}</b>
                   <small>{{ fmtPct(r.cells[isp.key]!.loss) }}</small>
@@ -130,6 +141,8 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .head h3 { margin: 0; }
+.head .mode { margin-right: auto; }
+.tools { display: flex; align-items: center; gap: var(--space-2); }
 .note { margin: 0; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
@@ -145,6 +158,7 @@ td small { margin-left: var(--space-2); color: var(--text-muted); font-family: v
 td.ok b { color: var(--ok); }
 td.warn b, td.warn small { color: var(--warn); }
 td.bad b { color: var(--bad); }
+td.stale { opacity: 0.45; } /* 这台节点已不再测：只是之前的数据 */
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
 .foot { margin: var(--space-3) 0 0; }
 @media (max-width: 600px) {

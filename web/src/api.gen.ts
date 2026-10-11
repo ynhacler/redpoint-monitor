@@ -427,6 +427,15 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface NodeProbe {
+  /** default：跟随全局；custom：自定义；off：这台节点不测 */
+  mode: 'default' | 'custom' | 'off'
+  /** custom 时这台节点要测的目标 ID；其他模式为空数组 */
+  target_ids: number[]
+  /** custom 时的测试频率（秒），0 表示跟随全局 */
+  interval_s: 0 | 60 | 120 | 300 | 600 | 900 | 1800
+}
+
 export interface ProbeSettings {
   /** 每轮间隔（秒），默认 300 */
   interval_s: 60 | 120 | 300 | 600 | 900 | 1800
@@ -463,9 +472,13 @@ export interface ProbeTarget {
 }
 
 export interface LatencyView {
+  /** 节点的三网延迟设置（GET /servers/{id}/probe） */
+  mode: 'default' | 'custom' | 'off'
+  /** 这台节点实际的测试频率（秒） */
+  interval_s: number
   /** on：Agent 在探测；off：节点本机关闭了探测（no-probe 文件）；unsupported：旧版 Agent 或面板重启后尚未收到上报 */
   status: 'on' | 'off' | 'unsupported'
-  /** 启用的目标，以及范围内有数据的已停用目标 */
+  /** 这台节点在测的目标（enabled 为 true），以及范围内有数据、现在不测的目标（enabled 为 false） */
   targets: (ProbeTarget & {
     /** 最近 1 小时延迟中位数（毫秒）；没有成功的样本时为 null */
     latency_ms: number | null
@@ -2130,6 +2143,23 @@ export interface Paths {
         range?: '24h' | '7d'
       }
       response: LatencyView
+    }
+  }
+  '/servers/{id}/probe': {
+    /** 节点自己的三网延迟设置（设计 42.3.2） */
+    get: {
+      params: {
+        id: number
+      }
+      response: NodeProbe
+    }
+    /** 修改节点自己的三网延迟设置，随这台节点的下一份上报下发 */
+    put: {
+      params: {
+        id: number
+      }
+      body: NodeProbe
+      response: NodeProbe
     }
   }
   '/servers/{id}/traffic/current': {
