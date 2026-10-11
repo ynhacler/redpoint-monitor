@@ -75,4 +75,14 @@ void main() {
     expect(v.targets[1].enabled, false);
     expect(v.series[1]![1].latency, isNull);
   });
+
+  test('fmtProbeError 与 fmtProbeWhere：与 Web 一致', () {
+    expect(fmtProbeError('timeout'), '超时');
+    expect(fmtProbeError('dns'), '域名解析失败');
+    expect(fmtProbeError('blocked'), '域名只解析到内网地址，已拒绝');
+    expect(fmtProbeError('xyz'), '失败');
+    expect(fmtProbeError(''), '');
+    expect(fmtProbeWhere('tcp', 80, '1.2.3.4'), 'TCP 80 → 1.2.3.4');
+    expect(fmtProbeWhere('icmp', 0, 'speed.example.cn'), 'ICMP → speed.example.cn');
+  });
 }
