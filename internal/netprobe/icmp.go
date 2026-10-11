@@ -78,27 +78,43 @@ func parseICMPReply(v6 bool, b []byte, seq uint16) bool {
 	return b[0] == want && b[1] == 0 && binary.BigEndian.Uint16(b[6:]) == seq
 }
 
-// Echo 向 ip 发送一个回显请求，返回往返时间；ctx 的截止时间即等待上限（没有截止时间时最多等 5 秒）。
-func Echo(ctx context.Context, ip net.IP) (time.Duration, error) {
+// Pinger 向一个地址连续发送回显请求，复用同一个套接字与接收缓冲（Agent 每个目标取多个样本时用，设计 42.3.2）。
+// 迟到的旧回复按序号丢弃，不会算到下一个样本上。
+type Pinger struct {
+	conn net.PacketConn
+	dst  net.Addr
+	v6   bool
+	buf  []byte
+}
+
+// NewPinger 打开到 ip 的 ICMP 套接字；本机不允许 ICMP 时返回 ErrICMPUnavailable。用完后调用 Close。
+func NewPinger(ip net.IP) (*Pinger, error) {
 	v6 := ip.To4() == nil
 	conn, dst, err := listenICMP(v6, ip)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	defer conn.Close()
+	// 回显回复只有几十字节：缓冲按 IP 头 + ICMP 头 + 负载给足即可，不必按 MTU 分配
+	return &Pinger{conn: conn, dst: dst, v6: v6, buf: make([]byte, 128)}, nil
+}
+
+// Close 关闭套接字。
+func (p *Pinger) Close() error { return p.conn.Close() }
+
+// Echo 发送一个回显请求，返回往返时间；ctx 的截止时间即等待上限（没有截止时间时最多等 5 秒）。
+func (p *Pinger) Echo(ctx context.Context) (time.Duration, error) {
 	dl, ok := ctx.Deadline()
 	if !ok {
 		dl = time.Now().Add(5 * time.Second)
 	}
-	_ = conn.SetDeadline(dl)
+	_ = p.conn.SetDeadline(dl)
 	seq := uint16(icmpSeq.Add(1))
 	start := time.Now()
-	if _, err := conn.WriteTo(icmpPacket(v6, uint16(os.Getpid()), seq, []byte("vpsmon")), dst); err != nil {
+	if _, err := p.conn.WriteTo(icmpPacket(p.v6, uint16(os.Getpid()), seq, []byte("vpsmon")), p.dst); err != nil {
 		return 0, err
 	}
-	buf := make([]byte, 1500)
 	for {
-		n, _, err := conn.ReadFrom(buf)
+		n, _, err := p.conn.ReadFrom(p.buf)
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
@@ -109,13 +125,24 @@ func Echo(ctx context.Context, ip net.IP) (time.Duration, error) {
 			}
 			return 0, err
 		}
-		if parseICMPReply(v6, buf[:n], seq) {
+		if parseICMPReply(p.v6, p.buf[:n], seq) {
 			return time.Since(start), nil
 		}
 	}
 }
 
+// Echo 向 ip 发送一个回显请求，返回往返时间（单次探测，如面板的服务监控）。
+func Echo(ctx context.Context, ip net.IP) (time.Duration, error) {
+	p, err := NewPinger(ip)
+	if err != nil {
+		return 0, err
+	}
+	defer p.Close()
+	return p.Echo(ctx)
+}
+
 // TCPConnect 返回建立 TCP 连接的耗时（约等于一个往返）；连接建立后立即关闭，不发送任何数据。
+// 关闭时直接复位（SO_LINGER 0）：省去 FIN 往返，本机也不留 TIME_WAIT 连接，每个样本只有握手加一个 RST。
 func TCPConnect(ctx context.Context, addr string) (time.Duration, error) {
 	start := time.Now()
 	c, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
@@ -123,6 +150,9 @@ func TCPConnect(ctx context.Context, addr string) (time.Duration, error) {
 		return 0, err
 	}
 	rtt := time.Since(start)
+	if tc, ok := c.(*net.TCPConn); ok {
+		_ = tc.SetLinger(0)
+	}
 	c.Close()
 	return rtt, nil
 }
