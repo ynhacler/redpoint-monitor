@@ -434,11 +434,19 @@ export interface NodeProbe {
   target_ids: number[]
   /** custom 时的测试频率（秒），0 表示跟随全局 */
   interval_s: 0 | 60 | 120 | 300 | 600 | 900 | 1800
+  /** custom 时每个样本的超时（最大等待，秒），0 表示跟随全局（修订第 133 条）；省略为 0 */
+  timeout_s?: number
+  /** custom 时的样本间隔（秒），0 表示跟随全局；省略为 0 */
+  gap_s?: number
 }
 
 export interface ProbeSettings {
   /** 每轮间隔（秒），默认 300 */
   interval_s: 60 | 120 | 300 | 600 | 900 | 1800
+  /** 每个样本的超时（最大等待，秒），0 表示默认 4 秒（修订第 133 条）；省略为 0 */
+  timeout_s?: number
+  /** 样本间隔（秒），0 表示默认 1 秒；省略为 0 */
+  gap_s?: number
 }
 
 /** 添加时 isp、province、address 必填；修改时省略的字段保持不变（修订第 128 条） */

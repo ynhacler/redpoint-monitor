@@ -6961,6 +6961,18 @@
               1800
             ],
             "description": "custom 时的测试频率（秒），0 表示跟随全局"
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "custom 时每个样本的超时（最大等待，秒），0 表示跟随全局（修订第 133 条）；省略为 0"
+          },
+          "gap_s": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "custom 时的样本间隔（秒），0 表示跟随全局；省略为 0"
           }
         }
       },
@@ -6981,6 +6993,18 @@
               1800
             ],
             "description": "每轮间隔（秒），默认 300"
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "每个样本的超时（最大等待，秒），0 表示默认 4 秒（修订第 133 条）；省略为 0"
+          },
+          "gap_s": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "样本间隔（秒），0 表示默认 1 秒；省略为 0"
           }
         }
       },

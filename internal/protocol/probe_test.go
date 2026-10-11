@@ -89,3 +89,16 @@ func TestProbeHosts(t *testing.T) {
 		t.Error("只有内网地址时不应探测")
 	}
 }
+
+func TestProbeTiming(t *testing.T) {
+	for v, want := range map[string]ProbeTiming{
+		"": {4, 1}, "6,2": {6, 2}, "0,0": {4, 1}, "11,3": {4, 3}, "x,y": {4, 1}, "2": {4, 1}, " 10 , 10 ": {10, 10},
+	} {
+		if got := ParseProbeTiming(v); got != want {
+			t.Errorf("ParseProbeTiming(%q) = %+v，应为 %+v", v, got, want)
+		}
+	}
+	if (ProbeTiming{6, 2}).Encode() != "6,2" {
+		t.Error("编码")
+	}
+}

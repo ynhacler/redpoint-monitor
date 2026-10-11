@@ -22,6 +22,7 @@ const (
 	HeaderProbeVersion  = "X-Probe-Version"
 	HeaderProbeTargets  = "X-Probe-Targets"
 	HeaderProbeInterval = "X-Probe-Interval" // 每轮间隔（秒），与目标列表一起下发
+	HeaderProbeTiming   = "X-Probe-Timing"   // 每个样本的超时与样本间隔（秒）：“timeout,gap”（修订第 133 条）；旧版 Agent 忽略
 	ProbeOff            = "off"              // Agent 本机关闭了网络探测
 
 	MaxProbeTargets = 64 // Agent 端硬性上限（设计 42.6）
@@ -31,6 +32,39 @@ const (
 	MaxProbeInterval     = 3600
 	DefaultProbeInterval = 300
 )
+
+// 每个样本的超时（最大等待）与样本间隔（修订第 133 条）：面板可设 1～10 秒，0 表示默认；
+// Agent 端硬性限制，范围外的值按默认处理。
+const (
+	DefaultProbeTimeout = 4
+	DefaultProbeGap     = 1
+	MaxProbeTiming      = 10
+)
+
+// ProbeTiming 是解析后的超时与样本间隔（秒）。
+type ProbeTiming struct{ Timeout, Gap int }
+
+// DefaultTiming 是不设置时的超时 4 秒、样本间隔 1 秒。
+var DefaultTiming = ProbeTiming{DefaultProbeTimeout, DefaultProbeGap}
+
+// Encode 编码为响应头的值“timeout,gap”。
+func (t ProbeTiming) Encode() string { return strconv.Itoa(t.Timeout) + "," + strconv.Itoa(t.Gap) }
+
+// ParseProbeTiming 解析下发的超时与样本间隔；缺少、不合法或超出 1～10 秒的项按默认值。
+func ParseProbeTiming(v string) ProbeTiming {
+	out := DefaultTiming
+	f := strings.Split(v, ",")
+	if len(f) != 2 {
+		return out
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(f[0])); err == nil && n >= 1 && n <= MaxProbeTiming {
+		out.Timeout = n
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(f[1])); err == nil && n >= 1 && n <= MaxProbeTiming {
+		out.Gap = n
+	}
+	return out
+}
 
 // ProbeIntervals 是面板可选的每轮间隔（秒）。
 var ProbeIntervals = []int{60, 120, 300, 600, 900, 1800}

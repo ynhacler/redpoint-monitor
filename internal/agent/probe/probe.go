@@ -1,7 +1,8 @@
 // Package probe 是 Agent 端的三网延迟探测（设计 42.3.2）：按面板下发的目标，每 5 分钟一轮测量延迟与丢包。
 //
 // 【安全】以下上限写在 Agent 代码中，面板无法放宽（设计 42.6）：
-// 目标 ≤ 64 个且只能是公网 IP（protocol.ProbeTarget.Valid）；每轮间隔由面板在 1～60 分钟内设置（默认 5 分钟），
+// 目标 ≤ 64 个且只能是公网 IP 或域名（protocol.ProbeTarget.Valid）；每轮间隔由面板在 1～60 分钟内设置（默认 5 分钟），
+// 每个样本的超时与样本间隔由面板在 1～10 秒内设置（默认 4 秒、1 秒），
 // 上一轮结束后才计时，不会重叠；同时最多探测 4 个目标；
 // 只做 TCP 连接（不发送数据）与 ICMP 回显。本机存在 no-probe 文件时不做任何探测。
 // 域名目标（修订第 132 条）每轮解析一次，本轮的样本都用同一个地址；【安全】只连接解析结果中的公网地址，
@@ -30,8 +31,6 @@ import (
 const (
 	FirstDelay  = 20 * time.Second // 启动或目标变化后第一轮的延迟
 	Samples     = 5                // 每个目标每轮的样本数
-	SampleGap   = time.Second      // 样本之间的间隔
-	SampleWait  = 2 * time.Second  // 单个样本的等待上限
 	Concurrency = 4
 	maxPending  = 3 // 上报失败时最多保留几轮结果（断网时不无限堆积）
 )
@@ -45,6 +44,7 @@ type Prober struct {
 	version  string
 	targets  []protocol.ProbeTarget
 	interval time.Duration
+	timing   protocol.ProbeTiming // 每个样本的超时与样本间隔（修订第 133 条）
 	changed  chan struct{}
 	pending  [][]protocol.ProbeResult
 
@@ -52,7 +52,7 @@ type Prober struct {
 	tcp    func(ctx context.Context, addr string) (time.Duration, error)
 	ping   func(ip net.IP) (pinger, error) // 打开到一个目标的 ICMP 套接字，这个目标的样本共用
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
-	gap  time.Duration
+	sleep  func(ctx context.Context, d time.Duration) // 样本之间的等待
 }
 
 // pinger 是 netprobe.Pinger 的接口，便于测试替换。
@@ -72,7 +72,8 @@ func openPinger(ip net.IP) (pinger, error) {
 // New 返回探测器；disabled 为空表示不检查本机开关。
 func New(disabled func() bool) *Prober {
 	return &Prober{Disabled: disabled, Now: time.Now, changed: make(chan struct{}, 1),
-		tcp: netprobe.TCPConnect, ping: openPinger, gap: SampleGap,
+		timing: protocol.DefaultTiming,
+		tcp:    netprobe.TCPConnect, ping: openPinger, sleep: sleepCtx,
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		}}
@@ -90,8 +91,9 @@ func (p *Prober) Version() string {
 	return p.version
 }
 
-// Update 保存面板下发的目标列表与间隔（响应头 X-Probe-Version、X-Probe-Targets、X-Probe-Interval）；版本相同时忽略。
-func (p *Prober) Update(version, encoded, interval string) {
+// Update 保存面板下发的目标列表、间隔与超时（响应头 X-Probe-Version、X-Probe-Targets、X-Probe-Interval、
+// X-Probe-Timing）；版本相同时忽略。旧版面板不发 X-Probe-Timing，按默认超时 4 秒、样本间隔 1 秒。
+func (p *Prober) Update(version, encoded, interval, timing string) {
 	if version == "" || len(version) > 64 {
 		return
 	}
@@ -102,7 +104,7 @@ func (p *Prober) Update(version, encoded, interval string) {
 		p.mu.Unlock()
 		return
 	}
-	p.version, p.targets, p.interval = version, targets, iv
+	p.version, p.targets, p.interval, p.timing = version, targets, iv, protocol.ParseProbeTiming(timing)
 	p.mu.Unlock()
 	select {
 	case p.changed <- struct{}{}:
@@ -125,6 +127,22 @@ func (p *Prober) Interval() time.Duration {
 		return protocol.DefaultProbeInterval * time.Second
 	}
 	return p.interval
+}
+
+// Timing 返回每个样本的超时与样本间隔。
+func (p *Prober) Timing() protocol.ProbeTiming {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.timing
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
 }
 
 // Drain 取出待上报的结果（随下一份上报带回）；没有时返回 nil。
@@ -199,9 +217,11 @@ func (p *Prober) RunOnce(ctx context.Context) {
 // measure 对一个目标取 Samples 个样本：延迟取成功样本的中位数，丢包率为失败样本的占比。
 func (p *Prober) measure(ctx context.Context, t protocol.ProbeTarget) protocol.ProbeResult {
 	r := protocol.ProbeResult{TargetID: t.ID}
+	tm := p.Timing()
+	wait, gap := time.Duration(tm.Timeout)*time.Second, time.Duration(tm.Gap)*time.Second
 	addr := t.Addr
 	if t.Host != "" {
-		lctx, cancel := context.WithTimeout(ctx, SampleWait)
+		lctx, cancel := context.WithTimeout(ctx, wait)
 		addrs, err := p.lookup(lctx, t.Host)
 		cancel()
 		a, ok := protocol.PickProbeAddr(addrs)
@@ -229,12 +249,9 @@ func (p *Prober) measure(ctx context.Context, t protocol.ProbeTarget) protocol.P
 	var lastErr error
 	for i := 0; i < Samples && ctx.Err() == nil; i++ {
 		if i > 0 {
-			select {
-			case <-ctx.Done():
-			case <-time.After(p.gap):
-			}
+			p.sleep(ctx, gap)
 		}
-		sctx, cancel := context.WithTimeout(ctx, SampleWait)
+		sctx, cancel := context.WithTimeout(ctx, wait)
 		rtt, err := sample(sctx)
 		cancel()
 		if err != nil {

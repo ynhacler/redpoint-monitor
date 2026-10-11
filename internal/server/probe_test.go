@@ -384,3 +384,73 @@ func TestProbeWireHost(t *testing.T) {
 		t.Error("【安全】局域网名称不应下发")
 	}
 }
+
+// 超时与样本间隔（修订第 133 条）：节点自定义的非 0 值优先，其次全局，最后默认 4 秒、1 秒。
+func TestEffectiveTiming(t *testing.T) {
+	custom := func(to, gap int) NodeProbe { return NodeProbe{Mode: probeModeCustom, TimeoutS: to, GapS: gap} }
+	for _, c := range []struct {
+		g    ProbeSettings
+		np   NodeProbe
+		want protocol.ProbeTiming
+	}{
+		{ProbeSettings{}, NodeProbe{Mode: probeModeDefault}, protocol.ProbeTiming{Timeout: 4, Gap: 1}},
+		{ProbeSettings{TimeoutS: 6}, NodeProbe{Mode: probeModeDefault, TimeoutS: 9}, protocol.ProbeTiming{Timeout: 6, Gap: 1}}, // 跟随全局时节点的值不生效
+		{ProbeSettings{TimeoutS: 6, GapS: 2}, custom(0, 3), protocol.ProbeTiming{Timeout: 6, Gap: 3}},
+		{ProbeSettings{}, custom(10, 0), protocol.ProbeTiming{Timeout: 10, Gap: 1}},
+		{ProbeSettings{TimeoutS: 99}, custom(0, 0), protocol.ProbeTiming{Timeout: 4, Gap: 1}},
+	} {
+		if got := effectiveTiming(c.g, c.np); got != c.want {
+			t.Errorf("%+v %+v → %+v，应为 %+v", c.g, c.np, got, c.want)
+		}
+	}
+}
+
+func TestProbeTimingAPI(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, tok, _ := s.store.CreateServer("tm-1", 0, 1)
+	addCNTargets(t, s, 2, 2)
+	report := func(have string) http.Header {
+		req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(`{"system":{"boot_id":"b"}}`))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		req.Header[protocol.HeaderProbeVersion] = []string{have}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Header()
+	}
+	hd := report("")
+	ver := hd.Get(protocol.HeaderProbeVersion)
+	if hd.Get(protocol.HeaderProbeTiming) != "4,1" {
+		t.Errorf("默认下发 4 秒、1 秒：%q", hd.Get(protocol.HeaderProbeTiming))
+	}
+	for _, bad := range []string{`{"interval_s":300,"timeout_s":11,"gap_s":0}`, `{"interval_s":300,"timeout_s":0,"gap_s":-1}`} {
+		if rec := do(h, "PUT", "/api/v1/settings/probe", admin, []byte(bad)); rec.Code != 422 {
+			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
+		}
+	}
+	if rec := do(h, "PUT", "/api/v1/settings/probe", admin, []byte(`{"interval_s":300,"timeout_s":6,"gap_s":2}`)); rec.Code != 200 {
+		t.Fatalf("保存：%d %s", rec.Code, rec.Body)
+	}
+	hd = report(ver)
+	if hd.Get(protocol.HeaderProbeTiming) != "6,2" || hd.Get(protocol.HeaderProbeVersion) == ver {
+		t.Errorf("修改超时后应下发新版本：%q %q", hd.Get(protocol.HeaderProbeVersion), hd.Get(protocol.HeaderProbeTiming))
+	}
+	var ps ProbeSettings
+	json.Unmarshal(do(h, "GET", "/api/v1/settings/probe", admin, nil).Body.Bytes(), &ps)
+	if ps.TimeoutS != 6 || ps.GapS != 2 {
+		t.Errorf("读取：%+v", ps)
+	}
+	// 节点自定义：超时 10 秒、间隔跟随全局
+	var list struct{ Items []ProbeTargetRow }
+	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
+	body := fmt.Sprintf(`{"mode":"custom","target_ids":[%d],"interval_s":0,"timeout_s":10,"gap_s":0}`, list.Items[0].ID)
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(body)); rec.Code != 200 {
+		t.Fatalf("节点自定义：%d %s", rec.Code, rec.Body)
+	}
+	if got := report("").Get(protocol.HeaderProbeTiming); got != "10,2" {
+		t.Errorf("节点的超时优先、间隔跟随全局：%q", got)
+	}
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(strings.Replace(body, `"timeout_s":10`, `"timeout_s":11`, 1))); rec.Code != 422 {
+		t.Errorf("节点超时超出范围应返回 422：%d", rec.Code)
+	}
+}

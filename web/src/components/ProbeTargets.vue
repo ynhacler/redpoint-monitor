@@ -26,12 +26,18 @@ const busy = ref<number | null>(null)
 const intervals: ProbeSettings['interval_s'][] = [60, 120, 300, 600, 900, 1800]
 const interval = ref<ProbeSettings['interval_s']>(300)
 const savingInterval = ref(false)
+// 每个样本的超时（最大等待）与样本间隔（修订第 133 条）：0 为默认 4 秒、1 秒
+const timingOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const timeout = ref(0)
+const gap = ref(0)
 
 async function load() {
   try {
     const [list, cfg] = await Promise.all([listProbeTargets(), getProbeSettings()])
     items.value = list
     interval.value = cfg.interval_s
+    timeout.value = cfg.timeout_s ?? 0
+    gap.value = cfg.gap_s ?? 0
     error.value = ''
   } catch (e) {
     error.value = errorText(e, '探测目标加载失败')
@@ -41,8 +47,10 @@ async function load() {
 async function saveInterval() {
   savingInterval.value = true
   try {
-    const r = await putProbeSettings({ interval_s: interval.value })
+    const r = await putProbeSettings({ interval_s: interval.value, timeout_s: timeout.value, gap_s: gap.value })
     interval.value = r.interval_s
+    timeout.value = r.timeout_s ?? 0
+    gap.value = r.gap_s ?? 0
     error.value = ''
   } catch (e) {
     error.value = errorText(e)
@@ -125,6 +133,19 @@ async function remove(t: ProbeTarget) {
         </select>
         <span class="muted">每个节点每天 {{ roundsPerDay }} 轮 × 已启用 {{ enabledCount }} 个目标</span>
       </label>
+      <div class="freq small">
+        <label>超时
+          <select v-model.number="timeout" :disabled="savingInterval" @change="saveInterval">
+            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : '默认 4 秒' }}</option>
+          </select>
+        </label>
+        <label>样本间隔
+          <select v-model.number="gap" :disabled="savingInterval" @change="saveInterval">
+            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : '默认 1 秒' }}</option>
+          </select>
+        </label>
+        <span class="muted">每个目标每轮 5 个样本：超时为每个样本最多等多久，超过算丢包；样本间隔为两个样本之间等多久</span>
+      </div>
       <span class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
       <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加目标' }}</button>
     </div>
@@ -174,6 +195,7 @@ async function remove(t: ProbeTarget) {
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .freq { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; flex-basis: 100%; }
 .freq select { width: auto; }
+.freq label { display: inline-flex; align-items: center; gap: var(--space-2); }
 .form { padding: var(--space-4); margin-bottom: var(--space-4); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
 .grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }

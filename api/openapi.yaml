@@ -2318,12 +2318,16 @@ components:
         mode: { type: string, enum: [default, custom, 'off'], description: 'default：跟随全局；custom：自定义；off：这台节点不测' }
         target_ids: { type: array, maxItems: 64, items: { type: integer }, description: custom 时这台节点要测的目标 ID；其他模式为空数组 }
         interval_s: { type: integer, enum: [0, 60, 120, 300, 600, 900, 1800], description: custom 时的测试频率（秒），0 表示跟随全局 }
+        timeout_s: { type: integer, minimum: 0, maximum: 10, description: custom 时每个样本的超时（最大等待，秒），0 表示跟随全局（修订第 133 条）；省略为 0 }
+        gap_s: { type: integer, minimum: 0, maximum: 10, description: custom 时的样本间隔（秒），0 表示跟随全局；省略为 0 }
 
     ProbeSettings:
       type: object
       required: [interval_s]
       properties:
         interval_s: { type: integer, enum: [60, 120, 300, 600, 900, 1800], description: 每轮间隔（秒），默认 300 }
+        timeout_s: { type: integer, minimum: 0, maximum: 10, description: 每个样本的超时（最大等待，秒），0 表示默认 4 秒（修订第 133 条）；省略为 0 }
+        gap_s: { type: integer, minimum: 0, maximum: 10, description: 样本间隔（秒），0 表示默认 1 秒；省略为 0 }
 
     ProbeTargetInput:
       type: object
