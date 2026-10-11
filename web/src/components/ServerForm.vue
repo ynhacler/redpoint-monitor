@@ -9,6 +9,7 @@ import {
 import { countryOptions } from '../countries'
 import { bytesToGB, fmtBytes } from '../format'
 import Flag from './Flag.vue'
+import NodeProbeSettings from './NodeProbeSettings.vue'
 
 const countries = countryOptions()
 
@@ -122,6 +123,9 @@ function buildInput(): CreateServerInput {
   }
 }
 
+// 三网延迟（设计 42.3.2，修订第 123 条）：编辑时随“保存”一起提交
+const probeRef = ref<InstanceType<typeof NodeProbeSettings> | null>(null)
+
 async function submit() {
   fieldErrors.value = {}
   formError.value = ''
@@ -133,6 +137,7 @@ async function submit() {
   try {
     if (props.server) {
       await updateServer(props.server.id, buildInput())
+      await probeRef.value?.save()
       emit('done')
     } else {
       emit('created', await createServer(buildInput()))
@@ -358,6 +363,12 @@ async function remove() {
           <small class="muted">NAT、IPv6-only 主机建议仅提示</small>
         </label>
       </div>
+    </fieldset>
+
+    <!-- 三网延迟（设计 42.3.2）：只在编辑时显示；随“保存”一起提交 -->
+    <fieldset v-if="server" id="probe">
+      <legend>三网延迟</legend>
+      <NodeProbeSettings ref="probeRef" :server-id="server.id" />
     </fieldset>
 
     <fieldset v-if="!editing">

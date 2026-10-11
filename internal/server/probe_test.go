@@ -125,8 +125,12 @@ func TestProbeTargetsAPI(t *testing.T) {
 	admin := adminToken(t, s)
 	var list struct{ Items []ProbeTargetRow }
 	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
-	if len(list.Items) != 93 || !list.Items[0].Builtin || list.Items[0].Province != "北京" {
-		t.Fatalf("应有 93 个内置目标，北京在前：%d %+v", len(list.Items), list.Items[0])
+	if len(list.Items) != 105 || !list.Items[0].Builtin || list.Items[0].Province != "北京" {
+		t.Fatalf("应有 93 个三网 + 12 个境外内置目标，北京在前：%d %+v", len(list.Items), list.Items[0])
+	}
+	intl := list.Items[93]
+	if intl.ISP != "intl" || intl.Province != "香港" || intl.Enabled || intl.Note != "Leaseweb" {
+		t.Errorf("境外目标在三网之后、默认不启用：%+v", intl)
 	}
 	for _, bad := range []string{
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
@@ -139,6 +143,9 @@ func TestProbeTargetsAPI(t *testing.T) {
 		if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(bad)); rec.Code != 422 {
 			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
 		}
+	}
+	if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"intl","province":"台北","address":"1.1.1.1","note":"Cloudflare"}`)); rec.Code != 201 {
+		t.Errorf("可以添加境外自定义目标：%d %s", rec.Code, rec.Body)
 	}
 	rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"cm","province":"杭州","address":"::ffff:117.147.213.41","proto":"icmp","port":22}`))
 	var c ProbeTargetRow
@@ -254,19 +261,72 @@ func TestEffectiveProbe(t *testing.T) {
 		}
 		return
 	}
-	if ts, iv := effectiveProbe(all, 300, parseNodeProbe("")); fmt.Sprint(ids(ts)) != "[1 3]" || iv != 300 {
+	if ts, iv := effectiveProbe(all, 300, parseNodeProbe(""), 1); fmt.Sprint(ids(ts)) != "[1 3]" || iv != 300 {
 		t.Errorf("跟随全局：%v %d", ids(ts), iv)
 	}
-	if ts, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[2,9],"interval_s":60}`)); fmt.Sprint(ids(ts)) != "[2]" || iv != 60 {
+	if ts, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[2,9],"interval_s":60}`), 1); fmt.Sprint(ids(ts)) != "[2]" || iv != 60 {
 		t.Errorf("自定义：已删除的目标忽略，未全局启用的也可以选：%v %d", ids(ts), iv)
 	}
-	if _, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[1],"interval_s":0}`)); iv != 300 {
+	if _, iv := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"custom","target_ids":[1],"interval_s":0}`), 1); iv != 300 {
 		t.Errorf("频率 0 跟随全局：%d", iv)
 	}
-	if ts, _ := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"off"}`)); len(ts) != 0 {
+	if ts, _ := effectiveProbe(all, 300, parseNodeProbe(`{"mode":"off"}`), 1); len(ts) != 0 {
 		t.Error("关闭时没有目标")
+	}
+	// 【安全】节点自己的目标只下发给该节点
+	own := append(all, ProbeTargetRow{ID: 4, ServerID: 1}, ProbeTargetRow{ID: 5, ServerID: 2, Enabled: true})
+	if ts, _ := effectiveProbe(own, 300, parseNodeProbe(`{"mode":"custom","target_ids":[4,5],"interval_s":0}`), 1); fmt.Sprint(ids(ts)) != "[4]" {
+		t.Errorf("只能使用自己的目标：%v", ids(ts))
+	}
+	if ts, _ := effectiveProbe(own, 300, parseNodeProbe(""), 1); fmt.Sprint(ids(ts)) != "[1 3]" {
+		t.Errorf("跟随全局时不含任何节点自己的目标：%v", ids(ts))
 	}
 	if np := parseNodeProbe("{bad"); np.Mode != "default" {
 		t.Error("无法解析时跟随全局")
+	}
+}
+
+// 节点自己的测试目标：只在该节点的列表与下发中出现；其他节点不能选；节点删除时一并删除（修订第 123 条）。
+func TestNodeOwnTargets(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, tok1, _ := s.store.CreateServer("own-1", 0, 1)
+	s.store.CreateServer("own-2", 0, 1)
+	rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"ct","province":"杭州","address":"115.220.14.91","server_id":1}`))
+	var own ProbeTargetRow
+	json.Unmarshal(rec.Body.Bytes(), &own)
+	if rec.Code != 201 || own.ServerID != 1 || own.Enabled {
+		t.Fatalf("添加节点自己的目标：%d %+v", rec.Code, own)
+	}
+	count := func(q string) int {
+		var l struct{ Items []ProbeTargetRow }
+		json.Unmarshal(do(h, "GET", "/api/v1/probe-targets"+q, admin, nil).Body.Bytes(), &l)
+		return len(l.Items)
+	}
+	if count("") != 105 || count("?server_id=1") != 106 || count("?server_id=2") != 105 {
+		t.Errorf("共用列表不含节点自己的目标；节点 1 的列表含它：%d %d %d", count(""), count("?server_id=1"), count("?server_id=2"))
+	}
+	if rec := do(h, "PUT", "/api/v1/servers/2/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[%d],"interval_s":0}`, own.ID))); rec.Code != 422 {
+		t.Errorf("【安全】其他节点不能选这个目标：%d", rec.Code)
+	}
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[1,%d],"interval_s":0}`, own.ID))); rec.Code != 200 {
+		t.Fatalf("节点 1 选择自己的目标：%d %s", rec.Code, rec.Body)
+	}
+	req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(`{"system":{"boot_id":"b"}}`))
+	req.Header.Set("Authorization", "Bearer "+tok1)
+	req.Header[protocol.HeaderProbeVersion] = []string{""}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if got := protocol.ParseProbeTargets(w.Header().Get(protocol.HeaderProbeTargets)); len(got) != 2 || got[1].ID != own.ID {
+		t.Errorf("节点 1 应测共用的北京电信与自己的目标：%+v", got)
+	}
+	if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"ct","province":"x","address":"1.1.1.1","server_id":999}`)); rec.Code != 422 {
+		t.Errorf("节点不存在应返回 422：%d", rec.Code)
+	}
+	if _, err := s.store.DeleteServer(1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.store.GetProbeTarget(own.ID); err == nil {
+		t.Error("节点删除时应删除它自己的目标")
 	}
 }

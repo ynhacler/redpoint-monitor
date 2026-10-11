@@ -1,12 +1,11 @@
 <script setup lang="ts">
 // 三网延迟（设计 42.3.2、42.3.3）：节点 Agent 到三大运营商各地目标的延迟与丢包。
 // 表格每行一个地区、每列一个运营商（窄屏也放得下）；数值为最近 1 小时的中位数与平均丢包。
-// 点击一行查看该地区三网的 24 小时 / 7 天曲线。Agent 按“告警 → 三网”中的频率测量（默认 5 分钟），这里每分钟刷新。
+// 境外目标（修订第 122 条）单独一张表：每行一个城市。点击一行查看该地区三网（或该境外城市）的 24 小时 / 7 天曲线。Agent 按“告警 → 三网”中的频率测量（默认 5 分钟），这里每分钟刷新。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
 import Chart, { type Series } from './Chart.vue'
-import NodeProbeSettings from './NodeProbeSettings.vue'
 
 const props = defineProps<{ serverId: number }>()
 
@@ -23,7 +22,6 @@ const view = ref<LatencyView | null>(null)
 const error = ref('')
 const range = ref<'24h' | '7d'>('24h')
 const selected = ref('')
-const editing = ref(false) // 这台节点的三网延迟设置（修订第 121 条）
 const modeNames: Record<string, string> = { default: '跟随全局', custom: '自定义', off: '已关闭' }
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -40,19 +38,26 @@ async function load() {
 watch([() => props.serverId, range], load, { immediate: true })
 onBeforeUnmount(() => clearTimeout(timer))
 
-// 按地区分行，保持目标列表的顺序
+// 三网按地区分行，保持目标列表的顺序；选中的行以 “p:地区” 或 “i:目标 ID” 表示
 const rows = computed(() => {
   const out: { province: string; cells: Partial<Record<string, LatencyTarget>> }[] = []
   for (const t of view.value?.targets ?? []) {
+    if (t.isp === 'intl') continue
     let r = out.find((x) => x.province === t.province)
     if (!r) out.push((r = { province: t.province, cells: {} }))
     if (!r.cells[t.isp]) r.cells[t.isp] = t
   }
   return out
 })
+const intl = computed(() => (view.value?.targets ?? []).filter((t) => t.isp === 'intl'))
 const hasData = computed(() => (view.value?.targets ?? []).some((t) => t.last_at > 0))
-watch(rows, (rs) => {
-  if (!rs.some((r) => r.province === selected.value)) selected.value = rs[0]?.province ?? ''
+watch([rows, intl], ([rs, it]) => {
+  const keys = [...rs.map((r) => `p:${r.province}`), ...it.map((t) => `i:${t.id}`)]
+  if (!keys.includes(selected.value)) selected.value = keys[0] ?? ''
+})
+const selectedName = computed(() => {
+  if (selected.value.startsWith('i:')) return intl.value.find((t) => `i:${t.id}` === selected.value)?.province ?? ''
+  return selected.value.slice(2)
 })
 
 // 颜色分级（设计 42.3.3）：< 100 ms 好；> 200 ms 或丢包 > 5% 警告；全部失败为不可达
@@ -73,15 +78,20 @@ function cellTitle(t?: LatencyTarget): string {
 }
 
 const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
-  const r = rows.value.find((x) => x.province === selected.value)
   const lat: Series[] = []
   const loss: Series[] = []
-  for (const isp of isps) {
-    const t = r?.cells[isp.key]
-    if (!t) continue
+  const add = (name: string, t?: LatencyTarget) => {
+    if (!t) return
     const pts = view.value?.series[String(t.id)] ?? []
-    lat.push({ name: isp.name, data: pts.map((p) => [p.ts * 1000, p.latency_ms ?? null]) })
-    loss.push({ name: isp.name, data: pts.map((p) => [p.ts * 1000, p.loss]) })
+    lat.push({ name, data: pts.map((p) => [p.ts * 1000, p.latency_ms ?? null]) })
+    loss.push({ name, data: pts.map((p) => [p.ts * 1000, p.loss]) })
+  }
+  if (selected.value.startsWith('i:')) {
+    const t = intl.value.find((x) => `i:${x.id}` === selected.value)
+    add(t?.note || t?.province || '', t)
+  } else {
+    const r = rows.value.find((x) => `p:${x.province}` === selected.value)
+    for (const isp of isps) add(isp.name, r?.cells[isp.key])
   }
   return { lat, loss }
 })
@@ -96,26 +106,26 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
         <div v-if="hasData" class="segmented" role="group" aria-label="时间范围">
           <button v-for="r in (['24h', '7d'] as const)" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
         </div>
-        <button type="button" class="secondary small" :aria-expanded="editing" @click="editing = !editing">设置</button>
+        <!-- 这台节点的设置在“编辑”页中（修订第 123 条） -->
+        <RouterLink :to="`/servers/${serverId}/edit#probe`" class="btn secondary small">设置</RouterLink>
       </div>
     </div>
-    <NodeProbeSettings v-if="editing" :server-id="serverId" @saved="editing = false; load()" @cancel="editing = false" />
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，点“设置”开启。</p>
+      <p v-if="view.mode === 'off'" class="small muted note">这台节点已关闭三网延迟，在“编辑 → 三网延迟”中开启。</p>
       <p v-else-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
       <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持三网延迟，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
       <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“告警 → 三网”中启用。</p>
       <p v-else-if="!hasData" class="small muted note">Agent 收到目标后约 20 秒测第一轮，之后按“告警 → 三网”中的频率测量。</p>
 
-      <div v-if="hasData" class="table-wrap">
+      <div v-if="hasData && rows.length" class="table-wrap">
         <table>
           <thead>
             <tr><th scope="col">地区</th><th v-for="isp in isps" :key="isp.key" scope="col">{{ isp.name }}</th></tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.province" :class="{ sel: r.province === selected }" tabindex="0"
-              @click="selected = r.province" @keydown.enter="selected = r.province">
+            <tr v-for="r in rows" :key="r.province" :class="{ sel: `p:${r.province}` === selected }" tabindex="0"
+              @click="selected = `p:${r.province}`" @keydown.enter="selected = `p:${r.province}`">
               <th scope="row">{{ r.province }}</th>
               <td v-for="isp in isps" :key="isp.key" :class="[level(r.cells[isp.key]), { stale: r.cells[isp.key] && !r.cells[isp.key]!.enabled }]"
                 :title="cellTitle(r.cells[isp.key])">
@@ -129,9 +139,31 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
           </tbody>
         </table>
       </div>
+      <!-- 境外（修订第 122 条）：每行一个城市 -->
+      <div v-if="hasData && intl.length" class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col">境外</th><th scope="col">提供商</th><th scope="col">延迟</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in intl" :key="t.id" :class="{ sel: `i:${t.id}` === selected }" tabindex="0"
+              @click="selected = `i:${t.id}`" @keydown.enter="selected = `i:${t.id}`">
+              <th scope="row">{{ t.province }}</th>
+              <td class="muted">{{ t.note || DASH }}</td>
+              <td :class="[level(t), { stale: !t.enabled }]" :title="cellTitle(t)">
+                <template v-if="t.loss != null">
+                  <b class="num">{{ t.latency_ms == null ? '不可达' : fmtLatency(t.latency_ms) }}</b>
+                  <small>{{ fmtPct(t.loss) }}</small>
+                </template>
+                <span v-else class="muted">{{ DASH }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div v-if="hasData && series.lat.length" class="charts">
-        <Chart :title="`${selected} · 延迟`" :series="series.lat" :format="fmtLatency" />
-        <Chart :title="`${selected} · 丢包率`" :series="series.loss" :format="fmtPct" :max="100" />
+        <Chart :title="`${selectedName} · 延迟`" :series="series.lat" :format="fmtLatency" />
+        <Chart :title="`${selectedName} · 丢包率`" :series="series.loss" :format="fmtPct" :max="100" />
       </div>
       <p v-if="hasData" class="small muted foot">数值为最近 1 小时的中位数与丢包率；从这台 VPS 出发测量（设计 42.3.2），点击一行查看曲线。</p>
     </template>
@@ -145,6 +177,8 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
 .tools { display: flex; align-items: center; gap: var(--space-2); }
 .note { margin: 0; }
 .table-wrap { overflow-x: auto; }
+.table-wrap + .table-wrap { margin-top: var(--space-4); }
+td.muted { color: var(--text-muted); }
 table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
 th, td { padding: var(--space-2) var(--space-3); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
 thead th { color: var(--text-muted); font-weight: var(--weight-regular); }

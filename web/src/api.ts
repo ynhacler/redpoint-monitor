@@ -556,8 +556,9 @@ export function putProbeSettings(body: G.ProbeSettings) {
   return request('put', '/settings/probe', { body })
 }
 
-export async function listProbeTargets() {
-  return (await request('get', '/probe-targets')).items
+/** 探测目标：默认只列共用目标；传 serverId 时再加上这台节点自己的目标 */
+export async function listProbeTargets(serverId?: number) {
+  return (await request('get', '/probe-targets', { query: serverId ? { server_id: serverId } : {} })).items
 }
 
 export function createProbeTarget(body: G.ProbeTargetInput) {

@@ -442,9 +442,9 @@ export interface ProbeSettings {
 }
 
 export interface ProbeTargetInput {
-  /** 运营商：ct 电信、cu 联通、cm 移动（内置目标不可改） */
-  isp?: 'ct' | 'cu' | 'cm'
-  /** 地区，如 上海（内置目标不可改） */
+  /** 运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改） */
+  isp?: 'ct' | 'cu' | 'cm' | 'intl'
+  /** 地区，如 上海；境外为城市，如 东京（内置目标不可改） */
   province?: string
   /** 公网 IP 地址（内置目标不可改） */
   address?: string
@@ -454,12 +454,15 @@ export interface ProbeTargetInput {
   port?: number
   enabled?: boolean
   note?: string
+  /** 只在添加时有效：添加为这台节点自己的目标（每台最多 20 个）；省略或 0 为共用目标 */
+  server_id?: number
 }
 
 /** 三网延迟的探测目标（设计 42.3.2） */
 export interface ProbeTarget {
   id: number
-  isp: 'ct' | 'cu' | 'cm'
+  /** intl：境外，province 为城市，note 为提供商 */
+  isp: 'ct' | 'cu' | 'cm' | 'intl'
   province: string
   address: string
   proto: 'tcp' | 'icmp'
@@ -469,6 +472,8 @@ export interface ProbeTarget {
   /** 内置目标（随版本发布）只能停用，不能删除 */
   builtin: boolean
   note: string
+  /** 0 表示所有节点共用；否则是这台节点自己的目标，只在它的自定义设置中使用（enabled 始终为 false） */
+  server_id: number
 }
 
 export interface LatencyView {
@@ -1675,6 +1680,10 @@ export interface Paths {
   '/probe-targets': {
     /** 三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址在前，自定义在后 */
     get: {
+      query?: {
+        /** 再加上这台节点自己的目标；省略时只列共用目标 */
+        server_id?: number
+      }
       response: {
         /** 始终为空 */
         next_cursor: string

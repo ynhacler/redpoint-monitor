@@ -23,17 +23,18 @@ import (
 
 const (
 	probeKeep          = 7 * 24 * time.Hour
-	maxCustomTargets   = 100
+	maxCustomTargets   = 100 // 共用的自定义目标
+	maxNodeTargets     = 20  // 每台节点自己的目标
 	maxProbeResultsRep = protocol.MaxProbeTargets * 3 // 一份上报最多带 3 轮结果（Agent 断网时保留的上限）
 )
 
 // 运营商代码 → 名称
-var ispNames = map[string]string{"ct": "电信", "cu": "联通", "cm": "移动"}
+var ispNames = map[string]string{"ct": "电信", "cu": "联通", "cm": "移动", "intl": "境外"}
 
 // ProbeTargetRow 是一个探测目标。
 type ProbeTargetRow struct {
 	ID       int64  `json:"id"`
-	ISP      string `json:"isp"` // ct / cu / cm
+	ISP      string `json:"isp"` // ct / cu / cm；intl 为境外（province 为城市，note 为提供商）
 	Province string `json:"province"`
 	Address  string `json:"address"`
 	Proto    string `json:"proto"` // tcp / icmp
@@ -41,6 +42,7 @@ type ProbeTargetRow struct {
 	Enabled  bool   `json:"enabled"`
 	Builtin  bool   `json:"builtin"`
 	Note     string `json:"note"`
+	ServerID int64  `json:"server_id"` // 0：所有节点共用；否则只属于该节点（修订第 123 条）
 	sort     int
 }
 
@@ -52,11 +54,11 @@ func (t ProbeTargetRow) wire() (protocol.ProbeTarget, bool) {
 
 // ---- 存储 ----
 
-const probeTargetColumns = `id, isp, province, address, proto, port, enabled, builtin, sort, note`
+const probeTargetColumns = `id, isp, province, address, proto, port, enabled, builtin, sort, note, server_id`
 
 func scanProbeTarget(sc interface{ Scan(...any) error }) (ProbeTargetRow, error) {
 	var t ProbeTargetRow
-	err := sc.Scan(&t.ID, &t.ISP, &t.Province, &t.Address, &t.Proto, &t.Port, &t.Enabled, &t.Builtin, &t.sort, &t.Note)
+	err := sc.Scan(&t.ID, &t.ISP, &t.Province, &t.Address, &t.Proto, &t.Port, &t.Enabled, &t.Builtin, &t.sort, &t.Note, &t.ServerID)
 	return t, err
 }
 
@@ -88,8 +90,8 @@ func (s *Store) GetProbeTarget(id int64) (ProbeTargetRow, error) {
 
 func (s *Store) saveProbeTarget(t *ProbeTargetRow) error {
 	if t.ID == 0 {
-		res, err := s.DB.Exec(`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, note)
-			VALUES (?,?,?,?,?,?,0,?)`, t.ISP, t.Province, t.Address, t.Proto, t.Port, t.Enabled, t.Note)
+		res, err := s.DB.Exec(`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, note, server_id)
+			VALUES (?,?,?,?,?,?,0,?,?)`, t.ISP, t.Province, t.Address, t.Proto, t.Port, t.Enabled, t.Note, t.ServerID)
 		if err != nil {
 			return err
 		}
@@ -193,9 +195,10 @@ func parseNodeProbe(raw string) NodeProbe {
 	return np
 }
 
-// effectiveProbe 计算节点实际使用的目标与频率（纯函数）：
-// 跟随全局时为全局启用的目标；自定义时为节点勾选且仍存在的目标；关闭时没有目标。最多 64 个。
-func effectiveProbe(all []ProbeTargetRow, globalInterval int, np NodeProbe) ([]ProbeTargetRow, int) {
+// effectiveProbe 计算节点 sid 实际使用的目标与频率（纯函数）：
+// 跟随全局时为全局启用的共用目标；自定义时为节点勾选且仍存在的共用目标或这台节点自己的目标；关闭时没有目标。最多 64 个。
+// 【安全】其他节点自己的目标永远不会下发给这台节点。
+func effectiveProbe(all []ProbeTargetRow, globalInterval int, np NodeProbe, sid int64) ([]ProbeTargetRow, int) {
 	interval := globalInterval
 	var out []ProbeTargetRow
 	switch np.Mode {
@@ -206,13 +209,13 @@ func effectiveProbe(all []ProbeTargetRow, globalInterval int, np NodeProbe) ([]P
 			interval = np.IntervalS
 		}
 		for _, t := range all {
-			if slices.Contains(np.TargetIDs, t.ID) {
+			if slices.Contains(np.TargetIDs, t.ID) && (t.ServerID == 0 || t.ServerID == sid) {
 				out = append(out, t)
 			}
 		}
 	default:
 		for _, t := range all {
-			if t.Enabled {
+			if t.Enabled && t.ServerID == 0 {
 				out = append(out, t)
 			}
 		}
@@ -268,12 +271,12 @@ func (s *Server) probeBase() ([]ProbeTargetRow, int, error) {
 }
 
 // probeList 返回节点要下发的目标编码、每轮间隔与版本。
-func (s *Server) probeList(np NodeProbe) (version, encoded string, interval int, err error) {
+func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, interval int, err error) {
 	all, global, err := s.probeBase()
 	if err != nil {
 		return "", "", 0, err
 	}
-	targets, interval := effectiveProbe(all, global, np)
+	targets, interval := effectiveProbe(all, global, np, sid)
 	var wire []protocol.ProbeTarget
 	for _, t := range targets {
 		if pt, ok := t.wire(); ok {
@@ -308,7 +311,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np
 	if st == "off" {
 		return
 	}
-	version, encoded, interval, err := s.probeList(np)
+	version, encoded, interval, err := s.probeList(sid, np)
 	if err != nil {
 		s.log.Error("probe targets failed", "component", "probe", "err", err)
 		return
@@ -339,6 +342,7 @@ type probeTargetInput struct {
 	Port     *int   `json:"port"`
 	Enabled  *bool  `json:"enabled"`
 	Note     string `json:"note"`
+	ServerID *int64 `json:"server_id"` // 只在添加时有效：这台节点自己的目标
 }
 
 // apply 校验并写入 t。内置目标只能修改协议、端口、启用与备注。
@@ -348,7 +352,7 @@ func (b probeTargetInput) apply(t *ProbeTargetRow) []FieldError {
 	if !t.Builtin {
 		t.ISP = b.ISP
 		if ispNames[t.ISP] == "" {
-			bad("isp", "运营商只能是 ct（电信）、cu（联通）或 cm（移动）")
+			bad("isp", "运营商只能是 ct（电信）、cu（联通）、cm（移动）或 intl（境外）")
 		}
 		t.Province = strings.TrimSpace(b.Province)
 		if t.Province == "" || utf8.RuneCountInString(t.Province) > 16 {
@@ -405,11 +409,11 @@ func decodeProbeTarget(w http.ResponseWriter, r *http.Request) (probeTargetInput
 
 // checkEnabledLimit：启用的目标不能超过 Agent 的上限（设计 42.6）。
 func (s *Server) checkEnabledLimit(t ProbeTargetRow) []FieldError {
-	if !t.Enabled {
+	if !t.Enabled || t.ServerID != 0 {
 		return nil
 	}
 	var n int
-	s.store.DB.QueryRow(`SELECT COUNT(*) FROM probe_targets WHERE enabled = 1 AND id <> ?`, t.ID).Scan(&n)
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM probe_targets WHERE enabled = 1 AND server_id = 0 AND id <> ?`, t.ID).Scan(&n)
 	if n >= protocol.MaxProbeTargets {
 		return []FieldError{{Field: "enabled", Message: fmt.Sprintf("最多同时启用 %d 个目标（Agent 的上限）", protocol.MaxProbeTargets)}}
 	}
@@ -417,13 +421,29 @@ func (s *Server) checkEnabledLimit(t ProbeTargetRow) []FieldError {
 }
 
 // handleProbeTargets：GET /api/v1/probe-targets，admin。
+// 默认只列共用目标；带 server_id 时再加上该节点自己的目标（修订第 123 条）。
 func (s *Server) handleProbeTargets(w http.ResponseWriter, r *http.Request) {
+	var sid int64
+	if v := r.URL.Query().Get("server_id"); v != "" {
+		n, err := parsePositive(v)
+		if err != nil {
+			s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "server_id", Message: "server_id 无效"}}})
+			return
+		}
+		sid = n
+	}
 	list, err := s.store.ListProbeTargets()
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	writeList(w, list, "", nil)
+	out := []ProbeTargetRow{}
+	for _, t := range list {
+		if t.ServerID == 0 || (sid > 0 && t.ServerID == sid) {
+			out = append(out, t)
+		}
+	}
+	writeList(w, out, "", nil)
 }
 
 // handleCreateProbeTarget：POST /api/v1/probe-targets，admin。添加自定义目标。
@@ -435,18 +455,33 @@ func (s *Server) handleCreateProbeTarget(w http.ResponseWriter, r *http.Request)
 	}
 	t := ProbeTargetRow{Proto: "tcp", Enabled: true}
 	errs := b.apply(&t)
+	if b.ServerID != nil && *b.ServerID > 0 {
+		// 节点自己的目标：只在这台节点的自定义设置中使用，“全局启用”对它没有意义
+		if _, err := s.store.GetServer(*b.ServerID); err != nil {
+			errs = append(errs, FieldError{Field: "server_id", Message: "节点不存在"})
+		}
+		t.ServerID, t.Enabled = *b.ServerID, false
+	}
 	errs = append(errs, s.checkEnabledLimit(t)...)
 	if len(errs) > 0 {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
 		return
 	}
+	limit, q := maxCustomTargets, `SELECT COUNT(*) FROM probe_targets WHERE builtin = 0 AND server_id = ?`
+	if t.ServerID > 0 {
+		limit = maxNodeTargets
+	}
 	var n int
-	if err := s.store.DB.QueryRow(`SELECT COUNT(*) FROM probe_targets WHERE builtin = 0`).Scan(&n); err != nil {
+	if err := s.store.DB.QueryRow(q, t.ServerID).Scan(&n); err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	if n >= maxCustomTargets {
-		s.writeError(w, r, errorf(CodeConflict, fmt.Sprintf("最多添加 %d 个自定义目标", maxCustomTargets)))
+	if n >= limit {
+		msg := fmt.Sprintf("最多添加 %d 个共用的自定义目标", maxCustomTargets)
+		if t.ServerID > 0 {
+			msg = fmt.Sprintf("每台节点最多添加 %d 个自己的目标", maxNodeTargets)
+		}
+		s.writeError(w, r, errorf(CodeConflict, msg))
 		return
 	}
 	if err := s.store.saveProbeTarget(&t); err != nil {
@@ -455,7 +490,7 @@ func (s *Server) handleCreateProbeTarget(w http.ResponseWriter, r *http.Request)
 	}
 	s.probes.invalidate()
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "probe_target.create", Success: true,
-		Details: map[string]any{"id": t.ID, "address": t.Address, "proto": t.Proto, "port": t.Port}})
+		Details: map[string]any{"id": t.ID, "address": t.Address, "proto": t.Proto, "port": t.Port, "server_id": t.ServerID}})
 	writeJSONStatus(w, http.StatusCreated, t)
 }
 
@@ -477,6 +512,9 @@ func (s *Server) handleUpdateProbeTarget(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	errs := b.apply(&t)
+	if t.ServerID != 0 {
+		t.Enabled = false // 节点自己的目标不参与全局启用
+	}
 	errs = append(errs, s.checkEnabledLimit(t)...)
 	if len(errs) > 0 {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
@@ -598,7 +636,8 @@ func (s *Server) handlePutNodeProbe(w http.ResponseWriter, r *http.Request) {
 		}
 		ids := []int64{}
 		for _, tid := range b.TargetIDs {
-			if !slices.Contains(ids, tid) && slices.ContainsFunc(all, func(t ProbeTargetRow) bool { return t.ID == tid }) {
+			// 【安全】只能选择共用目标或这台节点自己的目标
+			if !slices.Contains(ids, tid) && slices.ContainsFunc(all, func(t ProbeTargetRow) bool { return t.ID == tid && (t.ServerID == 0 || t.ServerID == id) }) {
 				ids = append(ids, tid)
 			}
 		}
@@ -716,7 +755,7 @@ func (s *Server) handleLatency(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	active, interval := effectiveProbe(targets, global, row.Probe)
+	active, interval := effectiveProbe(targets, global, row.Probe, id)
 	raw, err := s.store.probeSeries(id, since)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
