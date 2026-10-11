@@ -299,3 +299,75 @@ class MetricPoint {
     );
   }
 }
+
+/// 三网延迟的一个目标及最近 1 小时汇总（GET /servers/{id}/latency，设计 42.3.2）。
+class LatencyTarget {
+  LatencyTarget({required this.id, required this.isp, required this.province, required this.address, required this.proto,
+      required this.port, required this.enabled, required this.note, this.latency, this.loss, required this.lastAt, required this.lastError});
+  final int id;
+
+  /// ct / cu / cm；intl 为境外（province 为城市，note 为提供商）
+  final String isp;
+  final String province;
+  final String address;
+  final String proto;
+  final int port;
+
+  /// 这台节点是否还在测；false 表示只是之前的数据
+  final bool enabled;
+  final String note;
+  final double? latency;
+  final double? loss;
+  final int lastAt;
+  final String lastError;
+
+  factory LatencyTarget.fromJson(Map<String, dynamic> j) => LatencyTarget(
+        id: j['id'] as int,
+        isp: j['isp'] as String,
+        province: j['province'] as String,
+        address: j['address'] as String,
+        proto: j['proto'] as String,
+        port: j['port'] as int,
+        enabled: j['enabled'] as bool,
+        note: (j['note'] as String?) ?? '',
+        latency: (j['latency_ms'] as num?)?.toDouble(),
+        loss: (j['loss'] as num?)?.toDouble(),
+        lastAt: j['last_at'] as int,
+        lastError: (j['last_error'] as String?) ?? '',
+      );
+}
+
+/// 三网延迟曲线上的一个点；latency 为 null 表示这一轮全部失败。
+class LatencyPoint {
+  LatencyPoint(this.ts, this.latency, this.loss);
+  final int ts;
+  final double? latency;
+  final double loss;
+}
+
+class LatencyView {
+  LatencyView({required this.status, required this.mode, required this.intervalS, required this.targets, required this.series});
+
+  /// on / off（节点本机关闭）/ unsupported（旧版 Agent）
+  final String status;
+
+  /// default / custom / off（较旧的面板没有该字段，按 default）
+  final String mode;
+  final int intervalS;
+  final List<LatencyTarget> targets;
+  final Map<int, List<LatencyPoint>> series;
+
+  factory LatencyView.fromJson(Map<String, dynamic> j) => LatencyView(
+        status: j['status'] as String,
+        mode: (j['mode'] as String?) ?? 'default',
+        intervalS: (j['interval_s'] as int?) ?? 300,
+        targets: [for (final t in (j['targets'] as List<dynamic>)) LatencyTarget.fromJson(t as Map<String, dynamic>)],
+        series: {
+          for (final e in (j['series'] as Map<String, dynamic>).entries)
+            int.parse(e.key): [
+              for (final p in (e.value as List<dynamic>).cast<Map<String, dynamic>>())
+                LatencyPoint(p['ts'] as int, (p['latency_ms'] as num?)?.toDouble(), (p['loss'] as num).toDouble()),
+            ],
+        },
+      );
+}

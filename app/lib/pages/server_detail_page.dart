@@ -44,6 +44,10 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   bool _busy = false;
   HealthSummary? _health;
   int _ticks = 0;
+  // 三网延迟（设计 42.3.2）：与 Web 相同的表格与曲线；旧版面板没有接口时不显示
+  LatencyView? _latency;
+  String _latencyRange = '24h';
+  String _latencySel = ''; // “p:地区” 或 “i:目标 ID”
 
   @override
   void initState() {
@@ -51,9 +55,13 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     _refresh();
     _loadHistory();
     _loadHealth();
+    _loadLatency();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) {
       _refresh();
-      if (++_ticks % 6 == 0) _loadHealth(); // 摘要变化慢：每分钟刷新一次
+      if (++_ticks % 6 == 0) {
+        _loadHealth(); // 摘要变化慢：每分钟刷新一次
+        _loadLatency(); // 三网延迟每几分钟才测一轮
+      }
     });
   }
 
@@ -103,6 +111,18 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       _revoked();
     } catch (_) {
       // 网络失败：保留上次的摘要
+    }
+  }
+
+  Future<void> _loadLatency() async {
+    if (_s.status == 'pending') return;
+    try {
+      final v = await widget.api.latency(_s.id, _latencyRange);
+      if (mounted) setState(() => _latency = v);
+    } on DeviceRevoked {
+      _revoked();
+    } catch (_) {
+      // 网络失败或旧版面板：保留上次的数据
     }
   }
 
@@ -182,7 +202,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       appBar: AppBar(title: Text('${flagEmoji(s.country).isNotEmpty ? '${flagEmoji(s.country)} ' : ''}${s.name}')),
       body: RefreshIndicator(
         onRefresh: () async {
-          await Future.wait([_refresh(), _loadHistory(), _loadHealth()]);
+          await Future.wait([_refresh(), _loadHistory(), _loadHealth(), _loadLatency()]);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 32), children: [
           Row(children: [
@@ -245,6 +265,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           if (_health != null) _section(context, '健康摘要', _healthView(context)),
           _section(context, '趋势', _trend(context)),
           _section(context, '流量', _traffic(context)),
+          if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
+            _section(context, '三网延迟', _latencyView(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '操作', _ops(context)),
@@ -282,6 +304,132 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             Expanded(child: Text(it.text, style: const TextStyle(fontSize: 13))),
           ]),
         ),
+    ]);
+  }
+
+  static const _isps = [('ct', '电信'), ('cu', '联通'), ('cm', '移动')];
+
+  /// 三网延迟（设计 42.3.2、42.3.3）：每行一个地区、每列一个运营商；境外单独一张表。数值为最近 1 小时中位数与丢包率。
+  /// 点一行看该地区三网（或该境外城市）的延迟曲线。App 只读：设置在 Web 的节点“编辑”中。
+  Widget _latencyView(BuildContext context) {
+    final v = _latency!;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final small = TextStyle(fontSize: 12, color: muted);
+    if (v.mode == 'off') return Text('这台节点已关闭三网延迟（在 Web 的节点“编辑”中开启）', style: small);
+    if (v.status == 'off') return Text('节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe）', style: small);
+    final hasData = v.targets.any((t) => t.lastAt > 0);
+    if (!hasData) {
+      return Text(v.status == 'unsupported' ? '当前 Agent 不支持三网延迟，升级 Agent 后显示' : 'Agent 每 ${v.intervalS ~/ 60} 分钟测一轮，结果稍后出现',
+          style: small);
+    }
+    final rows = <String, Map<String, LatencyTarget>>{};
+    final intl = <LatencyTarget>[];
+    for (final t in v.targets) {
+      if (t.isp == 'intl') {
+        intl.add(t);
+      } else {
+        rows.putIfAbsent(t.province, () => {})[t.isp] ??= t;
+      }
+    }
+    final keys = [...rows.keys.map((p) => 'p:$p'), ...intl.map((t) => 'i:${t.id}')];
+    final sel = keys.contains(_latencySel) ? _latencySel : (keys.isEmpty ? '' : keys.first);
+
+    Widget cell(LatencyTarget? t) {
+      if (t == null || t.loss == null) return Text('—', textAlign: TextAlign.right, style: small);
+      final colors = StatusColors.of(context);
+      final lat = t.latency;
+      final c = lat == null
+          ? colors.bad
+          : (lat > 200 || t.loss! > 5)
+              ? colors.warn
+              : lat < 100
+                  ? colors.ok
+                  : null;
+      return Opacity(
+        opacity: t.enabled ? 1 : 0.45, // 这台节点已不再测：只是之前的数据
+        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(lat == null ? '不可达' : fmtLatency(lat), style: TextStyle(fontSize: 13, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
+          Text(fmtPct(t.loss), style: small),
+        ]),
+      );
+    }
+
+    TableRow row(String key, List<Widget> cells) => TableRow(
+          decoration: BoxDecoration(color: key == sel ? Theme.of(context).colorScheme.surfaceContainerHighest : null),
+          children: [
+            for (final c in cells)
+              TableRowInkWell(
+                onTap: () => setState(() => _latencySel = key),
+                child: Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: c),
+              ),
+          ],
+        );
+
+    // 选中行的曲线：同一轮各运营商的时间相同，按第一条的时间对齐；缺的点为 NaN（断开）
+    final picked = <(String, LatencyTarget)>[];
+    if (sel.startsWith('i:')) {
+      final t = intl.where((x) => 'i:${x.id}' == sel).firstOrNull;
+      if (t != null) picked.add((t.note.isEmpty ? t.province : t.note, t));
+    } else if (sel.isNotEmpty) {
+      for (final (k, name) in _isps) {
+        final t = rows[sel.substring(2)]?[k];
+        if (t != null) picked.add((name, t));
+      }
+    }
+    final times = <int>{for (final (_, t) in picked) ...(v.series[t.id] ?? []).map((p) => p.ts)}.toList()..sort();
+    final series = [
+      for (final (i, (name, t)) in picked.indexed)
+        ChartSeries(name, [
+          for (final ts in times)
+            (v.series[t.id] ?? []).where((p) => p.ts == ts).firstOrNull?.latency ?? double.nan,
+        ], seriesColor(context, i)),
+    ];
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (rows.isNotEmpty)
+        Table(
+          columnWidths: const {0: FlexColumnWidth(1.2)},
+          children: [
+            TableRow(children: [
+              Padding(padding: const EdgeInsets.all(4), child: Text('地区', style: small)),
+              for (final (_, name) in _isps) Padding(padding: const EdgeInsets.all(4), child: Text(name, textAlign: TextAlign.right, style: small)),
+            ]),
+            for (final e in rows.entries)
+              row('p:${e.key}', [Text(e.key, style: const TextStyle(fontSize: 13)), for (final (k, _) in _isps) cell(e.value[k])]),
+          ],
+        ),
+      if (intl.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Table(
+          columnWidths: const {0: FlexColumnWidth(1.2)},
+          children: [
+            TableRow(children: [
+              Padding(padding: const EdgeInsets.all(4), child: Text('境外', style: small)),
+              Padding(padding: const EdgeInsets.all(4), child: Text('提供商', style: small)),
+              Padding(padding: const EdgeInsets.all(4), child: Text('延迟', textAlign: TextAlign.right, style: small)),
+            ]),
+            for (final t in intl)
+              row('i:${t.id}', [Text(t.province, style: const TextStyle(fontSize: 13)), Text(t.note.isEmpty ? '—' : t.note, style: small), cell(t)]),
+          ],
+        ),
+      ],
+      const SizedBox(height: 10),
+      Wrap(spacing: 6, children: [
+        for (final r in const ['24h', '7d'])
+          ChoiceChip(
+            label: Text(r.toUpperCase()),
+            selected: _latencyRange == r,
+            visualDensity: VisualDensity.compact,
+            onSelected: (_) {
+              setState(() => _latencyRange = r);
+              _loadLatency();
+            },
+          ),
+      ]),
+      const SizedBox(height: 8),
+      LineChart(times: times, series: series, formatY: (x) => fmtLatency(x)),
+      const SizedBox(height: 6),
+      Text('从这台 VPS 出发测量；${v.mode == 'custom' ? '自定义' : '跟随全局'} · 每 ${v.intervalS ~/ 60} 分钟', style: small),
     ]);
   }
 

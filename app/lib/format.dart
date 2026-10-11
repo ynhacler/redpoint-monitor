@@ -96,3 +96,11 @@ String fmtUptimeShort(num? seconds) {
   if (days <= 999) return '${days.floor()}天';
   return '${(days / 365).toStringAsFixed(1)}年';
 }
+
+/// 延迟：≥ 1 秒显示秒，< 10 ms 保留 1 位小数（与 Web 的 fmtLatency 一致）。
+String fmtLatency(num? ms) {
+  if (ms == null || ms.isNaN) return '—';
+  if (ms >= 1000) return '${(ms / 1000).toStringAsFixed(1)} s';
+  if (ms < 10 && ms != ms.roundToDouble()) return '${(ms * 10).round() / 10} ms';
+  return '${ms.round()} ms';
+}
