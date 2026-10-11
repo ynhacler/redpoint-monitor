@@ -138,6 +138,8 @@ func thresholdRange(typ string) (lo, hi float64, unit string) {
 		return 10, 86400, "秒"
 	case AlertProcess:
 		return 1, 20, "个"
+	case AlertProbeLatency:
+		return 20, 2000, "ms"
 	}
 	return 1, 100, "%"
 }

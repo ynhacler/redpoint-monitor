@@ -395,7 +395,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */

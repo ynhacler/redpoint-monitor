@@ -818,6 +818,14 @@ var migrations = []string{
 
 	// 迁移 36：节点自己的测试目标（设计 42.3.2，修订第 123 条）：server_id 为 0 表示所有节点共用，否则只属于该节点
 	`ALTER TABLE probe_targets ADD COLUMN server_id INTEGER NOT NULL DEFAULT 0;`,
+
+	// 迁移 37：三网延迟告警（设计 42.3.4，修订第 127 条）。默认不启用：正常延迟因节点所在地区差别很大，由用户按需开启。
+	// 延迟：国内目标的典型延迟 > 300 ms 持续 10 分钟触发，< 250 ms 持续 10 分钟恢复；
+	// 丢包：平均丢包率 ≥ 20% 持续 10 分钟触发，< 10% 持续 10 分钟恢复。级别均为警告
+	`INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('probe_latency', 'probe_latency', '>', 300, 250, 600, 600, 'warning', 0, 0, unixepoch(), unixepoch()),
+		('probe_loss', 'probe_loss', '>=', 20, 10, 600, 600, 'warning', 0, 0, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

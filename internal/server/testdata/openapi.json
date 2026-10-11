@@ -6808,7 +6808,9 @@
               "traffic",
               "traffic_forecast",
               "agent_clock",
-              "process"
+              "process",
+              "probe_latency",
+              "probe_loss"
             ]
           },
           "operator": {

@@ -12,7 +12,7 @@ import (
 // 告警规则与状态机（设计 16）。本文件只有纯函数，不读写数据库与内存状态，便于表测试；
 // 定时评估、持久化与对外接口见 alert_engine.go、store_alerts.go、alert_api.go。
 
-// 告警类型（设计 16.1、18.7）。国内不可达、三网延迟、即将到期、Agent 异常、面板自身随对应功能加入。
+// 告警类型（设计 16.1、18.7）。国内不可达、即将到期、面板自身随对应功能加入。
 const (
 	AlertOffline         = "offline"
 	AlertCPU             = "cpu"
@@ -24,6 +24,8 @@ const (
 	AlertTrafficForecast = "traffic_forecast"
 	AlertAgentClock      = "agent_clock" // Agent 异常：时钟偏差（设计 16.1、43.5）
 	AlertProcess         = "process"     // 关注的进程没有在运行（设计 33.5.1）
+	AlertProbeLatency    = "probe_latency" // 三网延迟偏高（设计 42.3.4）
+	AlertProbeLoss       = "probe_loss"    // 三网丢包偏高（设计 42.3.4）
 )
 
 // 告警级别（设计 16.1）。
@@ -90,6 +92,7 @@ type alertInput struct {
 	Report     *protocol.Report // 最新上报；离线时为 nil（资源规则暂停评估，设计 16.3 NODATA）
 	Traffic    *trafficView     // 本周期流量；未计算时为 nil
 	ClockSkew  *float64         // Agent 时钟偏差（秒，正数为偏快）；离线或无法测量时为 nil
+	Probe      *probeAlertView  // 最近 30 分钟的三网延迟汇总；没有探测结果时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -146,6 +149,14 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 			}
 			return float64(len(down)), strings.Join(down, "、"), true
 		}
+	case AlertProbeLatency:
+		if p := in.Probe; p != nil && p.Latency != nil {
+			return *p.Latency, p.LatencyDetail, true
+		}
+	case AlertProbeLoss:
+		if p := in.Probe; p != nil {
+			return p.Loss, p.LossDetail, true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -180,6 +191,10 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return fmt.Sprintf("预计周期结束用量为额度的 %s", pct(v))
 	case AlertProcess:
 		return "进程没有在运行：" + detail
+	case AlertProbeLatency:
+		return fmt.Sprintf("三网延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, detail)
+	case AlertProbeLoss:
+		return fmt.Sprintf("三网丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), detail)
 	case AlertAgentClock:
 		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
 	}
