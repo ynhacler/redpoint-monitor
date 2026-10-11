@@ -6562,13 +6562,14 @@
             "enum": [
               "http",
               "tcp",
-              "dns"
+              "dns",
+              "icmp"
             ]
           },
           "target": {
             "type": "string",
             "maxLength": 500,
-            "description": "http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名"
+            "description": "http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名；icmp：主机名或 IP"
           },
           "server_id": {
             "type": "integer",
@@ -6669,7 +6670,8 @@
             "enum": [
               "http",
               "tcp",
-              "dns"
+              "dns",
+              "icmp"
             ]
           },
           "target": {

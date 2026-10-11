@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 服务监控（设计 33.2）：面板按间隔检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口与 DNS 解析；
+// 服务监控（设计 33.2）：面板按间隔检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 解析与 Ping；
 // 连续失败达到次数判为异常并通知，恢复时再通知一次。异常在前；点开一行查看 24 小时 / 7 天的耗时与可用率。
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
@@ -14,10 +14,10 @@ const items = ref<ServiceMonitor[]>([])
 const error = ref('')
 const busy = ref<number | null>(null)
 
-const kindNames: Record<string, string> = { http: '网址', tcp: 'TCP 端口', dns: 'DNS' }
+const kindNames: Record<string, string> = { http: '网址', tcp: 'TCP 端口', dns: 'DNS', icmp: 'Ping' }
 const statusNames: Record<string, string> = { up: '正常', down: '异常', unknown: '未知' }
 const placeholders: Record<string, string> = {
-  http: 'https://example.com/health', tcp: 'db.example.com:5432', dns: 'example.com',
+  http: 'https://example.com/health', tcp: 'db.example.com:5432', dns: 'example.com', icmp: 'example.com 或 203.0.113.10',
 }
 
 let timer: number | undefined
@@ -35,7 +35,7 @@ onMounted(load)
 onBeforeUnmount(() => timer && clearTimeout(timer))
 
 // ---- 添加与编辑 ----
-type Form = { name: string; kind: 'http' | 'tcp' | 'dns'; target: string; server_id: number; interval_s: number; timeout_s: number
+type Form = { name: string; kind: 'http' | 'tcp' | 'dns' | 'icmp'; target: string; server_id: number; interval_s: number; timeout_s: number
   fail_threshold: number; severity: 'critical' | 'warning'; expect_status: string; keyword: string; dns_type: 'A' | 'AAAA'
   dns_expect: string; enabled: boolean }
 const blank = (): Form => ({ name: '', kind: 'http', target: '', server_id: 0, interval_s: 60, timeout_s: 10, fail_threshold: 2,
@@ -138,7 +138,7 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
 <template>
   <div>
     <p class="muted small intro">
-      面板按间隔检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口与 DNS 解析。连续失败达到设定次数判为异常并通知，
+      面板按间隔检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 解析与 Ping（ICMP）。连续失败达到设定次数判为异常并通知，
       恢复时再通知一次；通知经“通知”中的渠道与 App 推送发送，遵守免打扰。检查记录保留 7 天。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
@@ -156,9 +156,11 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
             <option value="http">网址（HTTP / HTTPS）</option>
             <option value="tcp">TCP 端口</option>
             <option value="dns">DNS 解析</option>
+            <option value="icmp">Ping（ICMP）</option>
           </select></label>
         <label class="wide">目标<input v-model="form.target" spellcheck="false" :placeholder="placeholders[form.kind]" />
-          <small v-if="fieldErrors.target" class="bad">{{ fieldErrors.target }}</small></label>
+          <small v-if="fieldErrors.target" class="bad">{{ fieldErrors.target }}</small>
+          <small v-else-if="form.kind === 'icmp'" class="muted">每次最多发 3 个请求，收到任一回复即为正常；域名优先解析为 IPv4</small></label>
         <template v-if="form.kind === 'http'">
           <label>期望状态码<input v-model="form.expect_status" placeholder="默认 200-399" spellcheck="false" />
             <small v-if="fieldErrors.expect_status" class="bad">{{ fieldErrors.expect_status }}</small></label>
@@ -207,7 +209,7 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
             <span v-if="m.last_error && m.enabled" class="small bad">{{ m.last_error }}<template v-if="m.fails > 1">（连续 {{ m.fails }} 次）</template></span>
           </button>
           <div class="nums small">
-            <span><span class="muted">耗时</span> <b class="num">{{ fmtLatency(m.last_latency_ms) }}</b></span>
+            <span><span class="muted">耗时</span> <b class="num">{{ m.last_latency_ms === 0 ? '<1 ms' : fmtLatency(m.last_latency_ms) }}</b></span>
             <span><span class="muted">24 小时</span> <b class="num" :class="uptimeTone(m.uptime_24h)">{{ fmtAvailability(m.uptime_24h) }}</b></span>
             <span><span class="muted">7 天</span> <b class="num" :class="uptimeTone(m.uptime_7d)">{{ fmtAvailability(m.uptime_7d) }}</b></span>
             <span class="muted">{{ m.checked_at ? `检查于 ${fmtTime(m.checked_at)}` : DASH }}</span>

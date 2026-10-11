@@ -425,8 +425,8 @@ export interface AlertEvent {
 
 export interface ServiceMonitorInput {
   name: string
-  kind: 'http' | 'tcp' | 'dns'
-  /** http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名 */
+  kind: 'http' | 'tcp' | 'dns' | 'icmp'
+  /** http：网址（https://example.com/health）；tcp：主机:端口（db.example.com:5432）；dns：域名；icmp：主机名或 IP */
   target: string
   /** 关联的节点（可选，0 表示不关联）；关联后只能查看该节点的 App 设备也会收到推送 */
   server_id?: number
@@ -454,7 +454,7 @@ export interface ServiceMonitorInput {
 export interface ServiceMonitor {
   id: number
   name: string
-  kind: 'http' | 'tcp' | 'dns'
+  kind: 'http' | 'tcp' | 'dns' | 'icmp'
   target: string
   server_id: number
   interval_s: number

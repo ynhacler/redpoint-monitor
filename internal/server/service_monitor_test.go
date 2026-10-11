@@ -47,6 +47,9 @@ func TestServiceInputValidation(t *testing.T) {
 		{"tcp", "DB.example.com:5432", "db.example.com:5432"},
 		{"tcp", "[2001:db8::1]:22", "[2001:db8::1]:22"},
 		{"dns", "Example.COM.", "example.com"},
+		{"icmp", "1.1.1.1", "1.1.1.1"},
+		{"icmp", "[2001:DB8::1]", "2001:db8::1"},
+		{"icmp", "Host.Example.com", "host.example.com"},
 	}
 	for _, c := range ok {
 		got, msg := normalizeServiceTarget(c.kind, c.in)
@@ -60,7 +63,9 @@ func TestServiceInputValidation(t *testing.T) {
 		{"tcp", "example.com"},
 		{"tcp", "example.com:70000"},
 		{"dns", "localhost"},
-		{"icmp", "1.1.1.1"},
+		{"icmp", "example.com:22"},
+		{"icmp", "https://example.com"},
+		{"ftp", "example.com"},
 	} {
 		if _, msg := normalizeServiceTarget(c.kind, c.in); msg == "" {
 			t.Errorf("应拒绝 %s %q", c.kind, c.in)
@@ -222,5 +227,41 @@ func TestServiceMonitorTCPAndDNS(t *testing.T) {
 	d.DNSExpect = "192.0.2.1"
 	if r := checkService(ctx, d, nil); r.ok || !strings.Contains(r.err, "不包含") {
 		t.Errorf("应说明解析结果不包含期望的 IP：%+v", r)
+	}
+}
+
+func TestICMPPacket(t *testing.T) {
+	b := icmpPacket(false, 0x1234, 7, []byte("vpsmon"))
+	if b[0] != icmpEchoRequest4 || icmpChecksum(b) != 0 {
+		t.Fatalf("IPv4 回显请求的校验和应使整包校验为 0：% x", b)
+	}
+	// 回复：类型 0，同一 seq；带 20 字节 IP 头（macOS）与不带（Linux）都应识别
+	reply := append([]byte(nil), b...)
+	reply[0] = icmpEchoReply4
+	withIP := append(append([]byte{0x45}, make([]byte, 19)...), reply...)
+	for _, r := range [][]byte{reply, withIP} {
+		if !parseICMPReply(false, r, 7) {
+			t.Errorf("应识别为回复：% x", r)
+		}
+	}
+	if parseICMPReply(false, reply, 8) || parseICMPReply(false, b, 7) || parseICMPReply(false, reply[:6], 7) {
+		t.Error("seq 不同、请求本身或过短的报文不应识别为回复")
+	}
+	v6 := icmpPacket(true, 1, 9, nil)
+	v6[0] = icmpEchoReply6
+	if !parseICMPReply(true, v6, 9) {
+		t.Error("应识别 IPv6 回复")
+	}
+}
+
+// TestServiceMonitorICMP 实际 ping 本机；本机不允许非特权 ICMP 时跳过。
+func TestServiceMonitorICMP(t *testing.T) {
+	m := ServiceMonitor{Kind: "icmp", Target: "127.0.0.1", TimeoutS: 3}
+	r := checkService(context.Background(), m, nil)
+	if !r.ok && strings.Contains(r.err, "ping_group_range") {
+		t.Skip(r.err)
+	}
+	if !r.ok || r.latency <= 0 || r.latency > time.Second {
+		t.Fatalf("ping 127.0.0.1 应成功：%+v", r)
 	}
 }
