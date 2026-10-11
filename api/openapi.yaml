@@ -2281,7 +2281,7 @@ components:
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
         scope_type: { type: string, enum: [global, group, server] }
         scope_id: { type: string }
-        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process] }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process, probe_latency, probe_loss] }
         operator: { type: string, enum: ['>', '>='] }
         threshold: { type: number }
         recover_threshold: { type: number, description: 低于此值恢复（回差） }

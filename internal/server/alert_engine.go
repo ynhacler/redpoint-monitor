@@ -38,6 +38,7 @@ type alertEngine struct {
 	active    map[alertKey]*alertState // pending 与 firing
 	meta      map[alertKey]AlertRule   // 活动告警对应的规则（级别、类型），供列表展示
 	traffic   map[int64]*trafficView   // 各节点最近一次计算的本周期流量
+	probe     map[int64]probeAlertView // 各节点最近 30 分钟的三网延迟汇总（设计 42.3.4），随流量每分钟刷新
 	silences  []Silence                // 生效中的静音与维护（每轮评估与每次修改后刷新）
 	trafficAt time.Time
 	startedAt time.Time
@@ -186,6 +187,14 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 	refreshTraffic := now.Sub(e.trafficAt) >= alertTrafficInterval
 	if refreshTraffic {
 		e.trafficAt = now
+		if list, err := s.store.probeAlertRows(now.Add(-probeAlertWindow)); err == nil {
+			p := summarizeProbeAlerts(list)
+			e.mu.Lock()
+			e.probe = p
+			e.mu.Unlock()
+		} else {
+			s.log.Error("alert probe summary failed", "component", "alert", "err", err)
+		}
 	}
 	seen := map[alertKey]bool{}
 	seenServers := map[int64]bool{}
@@ -279,6 +288,9 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 	}
 	s.alerts.mu.Lock()
 	in.Traffic = s.alerts.traffic[row.ID]
+	if p, ok := s.alerts.probe[row.ID]; ok && in.Report != nil {
+		in.Probe = &p // 离线时与资源规则一样暂停评估（设计 16.3 NODATA）
+	}
 	s.alerts.mu.Unlock()
 	return in
 }

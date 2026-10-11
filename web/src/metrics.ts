@@ -90,6 +90,8 @@ function alertLabel(a: AlertBrief): string {
     case 'traffic': return `流量 ${pct}`
     case 'traffic_forecast': return '流量预计超额'
     case 'agent_clock': return `时钟偏差 ${Math.round(a.value)} 秒`
+    case 'probe_latency': return `三网延迟 ${Math.round(a.value)} ms`
+    case 'probe_loss': return `三网丢包 ${pct}`
     default: return a.message
   }
 }
