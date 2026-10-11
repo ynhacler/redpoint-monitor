@@ -18,18 +18,19 @@ const isps = [
   { key: 'cu', name: '联通' },
   { key: 'cm', name: '移动' },
 ] as const
-const ispName = (k: string) => isps.find((i) => i.key === k)?.name ?? k
+const ispName = (k: string) => (k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
 
 const rows = computed(() => {
   const out: { province: string; cells: Partial<Record<string, ProbeTarget>> }[] = []
   for (const t of props.targets) {
-    if (!t.builtin) continue
+    if (!t.builtin || t.isp === 'intl') continue
     let r = out.find((x) => x.province === t.province)
     if (!r) out.push((r = { province: t.province, cells: {} }))
     r.cells[t.isp] = t
   }
   return out
 })
+const intl = computed(() => props.targets.filter((t) => t.builtin && t.isp === 'intl'))
 const custom = computed(() => props.targets.filter((t) => !t.builtin))
 const on = (t: ProbeTarget) => props.selected.includes(t.id)
 const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`
@@ -52,6 +53,19 @@ const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port
         </tr>
       </tbody>
     </table>
+    <!-- 境外（修订第 122 条）：主要地区云厂商的测速主机 -->
+    <template v-if="intl.length">
+      <h4 class="sub">境外</h4>
+      <ul class="intl">
+        <li v-for="t in intl" :key="t.id">
+          <label class="check" :title="where(t)">
+            <input type="checkbox" :checked="on(t)" :disabled="busy === t.id" :aria-label="`境外${t.province}`" @change="emit('toggle', t)" />
+            <span>{{ t.province }}</span><small class="muted">{{ t.note }}</small>
+          </label>
+        </li>
+      </ul>
+    </template>
+    <h4 v-if="custom.length" class="sub">自定义</h4>
     <ul v-if="custom.length" class="custom">
       <li v-for="t in custom" :key="t.id">
         <label class="check"><input type="checkbox" :checked="on(t)" :disabled="busy === t.id" @change="emit('toggle', t)" />
@@ -73,7 +87,10 @@ tbody th { font-weight: var(--weight-regular); }
 .check input { width: auto; margin: 0; }
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--text-muted); }
-.custom { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
+.sub { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-sm); font-weight: var(--weight-strong); }
+.intl { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-2) var(--space-3); font-size: var(--font-sm); }
+.intl small { margin-left: var(--space-1); }
+.custom { list-style: none; margin: 0; padding: 0; }
 .custom li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2) 0; }
 .custom li + li { border-top: 1px solid var(--border); }
 @media (max-width: 600px) {

@@ -28,12 +28,12 @@ const (
 )
 
 // 运营商代码 → 名称
-var ispNames = map[string]string{"ct": "电信", "cu": "联通", "cm": "移动"}
+var ispNames = map[string]string{"ct": "电信", "cu": "联通", "cm": "移动", "intl": "境外"}
 
 // ProbeTargetRow 是一个探测目标。
 type ProbeTargetRow struct {
 	ID       int64  `json:"id"`
-	ISP      string `json:"isp"` // ct / cu / cm
+	ISP      string `json:"isp"` // ct / cu / cm；intl 为境外（province 为城市，note 为提供商）
 	Province string `json:"province"`
 	Address  string `json:"address"`
 	Proto    string `json:"proto"` // tcp / icmp
@@ -348,7 +348,7 @@ func (b probeTargetInput) apply(t *ProbeTargetRow) []FieldError {
 	if !t.Builtin {
 		t.ISP = b.ISP
 		if ispNames[t.ISP] == "" {
-			bad("isp", "运营商只能是 ct（电信）、cu（联通）或 cm（移动）")
+			bad("isp", "运营商只能是 ct（电信）、cu（联通）、cm（移动）或 intl（境外）")
 		}
 		t.Province = strings.TrimSpace(b.Province)
 		if t.Province == "" || utf8.RuneCountInString(t.Province) > 16 {

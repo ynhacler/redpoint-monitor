@@ -6980,14 +6980,15 @@
             "enum": [
               "ct",
               "cu",
-              "cm"
+              "cm",
+              "intl"
             ],
-            "description": "运营商：ct 电信、cu 联通、cm 移动（内置目标不可改）"
+            "description": "运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改）"
           },
           "province": {
             "type": "string",
             "maxLength": 16,
-            "description": "地区，如 上海（内置目标不可改）"
+            "description": "地区，如 上海；境外为城市，如 东京（内置目标不可改）"
           },
           "address": {
             "type": "string",
@@ -7039,8 +7040,10 @@
             "enum": [
               "ct",
               "cu",
-              "cm"
-            ]
+              "cm",
+              "intl"
+            ],
+            "description": "intl：境外，province 为城市，note 为提供商"
           },
           "province": {
             "type": "string"

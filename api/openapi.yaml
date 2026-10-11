@@ -2326,8 +2326,8 @@ components:
     ProbeTargetInput:
       type: object
       properties:
-        isp: { type: string, enum: [ct, cu, cm], description: 运营商：ct 电信、cu 联通、cm 移动（内置目标不可改） }
-        province: { type: string, maxLength: 16, description: 地区，如 上海（内置目标不可改） }
+        isp: { type: string, enum: [ct, cu, cm, intl], description: 运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改） }
+        province: { type: string, maxLength: 16, description: 地区，如 上海；境外为城市，如 东京（内置目标不可改） }
         address: { type: string, description: 公网 IP 地址（内置目标不可改） }
         proto: { type: string, enum: [tcp, icmp], description: 默认 tcp }
         port: { type: integer, minimum: 1, maximum: 65535, description: tcp 端口，默认 80；icmp 时忽略 }
@@ -2340,7 +2340,7 @@ components:
       required: [id, isp, province, address, proto, port, enabled, builtin, note]
       properties:
         id: { type: integer }
-        isp: { type: string, enum: [ct, cu, cm] }
+        isp: { type: string, enum: [ct, cu, cm, intl], description: 'intl：境外，province 为城市，note 为提供商' }
         province: { type: string }
         address: { type: string }
         proto: { type: string, enum: [tcp, icmp] }
