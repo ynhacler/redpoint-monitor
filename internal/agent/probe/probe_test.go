@@ -39,9 +39,9 @@ func TestProber(t *testing.T) {
 		{ID: 7, Proto: "tcp", Addr: netip.MustParseAddr("220.181.173.35"), Port: 80},
 		{ID: 8, Proto: "icmp", Addr: netip.MustParseAddr("1.1.1.1")},
 	})
-	p.Update("v1", enc+";9,tcp,10.0.0.1,22") // 【安全】内网目标被丢弃
-	if p.Version() != "v1" || len(p.Targets()) != 2 {
-		t.Fatalf("目标：%s %+v", p.Version(), p.Targets())
+	p.Update("v1", enc+";9,tcp,10.0.0.1,22", "10") // 【安全】内网目标被丢弃；间隔低于 60 秒按默认
+	if p.Version() != "v1" || len(p.Targets()) != 2 || p.Interval() != 5*time.Minute {
+		t.Fatalf("目标：%s %+v %s", p.Version(), p.Targets(), p.Interval())
 	}
 	p.RunOnce(context.Background())
 	got := p.Drain()
@@ -71,7 +71,11 @@ func TestProber(t *testing.T) {
 		t.Errorf("最多保留 3 轮：%d", n)
 	}
 	// 清空目标
-	p.Update("0", "")
+	p.Update("v2", enc, "600")
+	if p.Interval() != 10*time.Minute {
+		t.Errorf("应采用面板下发的间隔：%s", p.Interval())
+	}
+	p.Update("0", "", "")
 	if len(p.Targets()) != 0 {
 		t.Error("版本 0 表示没有目标")
 	}

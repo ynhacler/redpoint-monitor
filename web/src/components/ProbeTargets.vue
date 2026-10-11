@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址（勾选启用）与自定义目标。
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
+// 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  ApiError, createProbeTarget, deleteProbeTarget, errorText, listProbeTargets, updateProbeTarget,
-  type ProbeTarget, type ProbeTargetInput,
+  ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
+  type ProbeSettings, type ProbeTarget, type ProbeTargetInput,
 } from '../api'
 
 const MAX_ENABLED = 64
@@ -19,14 +20,37 @@ const items = ref<ProbeTarget[]>([])
 const error = ref('')
 const busy = ref<number | null>(null)
 
+// 测试频率（秒）
+const intervals: ProbeSettings['interval_s'][] = [60, 120, 300, 600, 900, 1800]
+const interval = ref<ProbeSettings['interval_s']>(300)
+const savingInterval = ref(false)
+
 async function load() {
   try {
-    items.value = await listProbeTargets()
+    const [list, cfg] = await Promise.all([listProbeTargets(), getProbeSettings()])
+    items.value = list
+    interval.value = cfg.interval_s
     error.value = ''
   } catch (e) {
     error.value = errorText(e, '探测目标加载失败')
   }
 }
+
+async function saveInterval() {
+  savingInterval.value = true
+  try {
+    const r = await putProbeSettings({ interval_s: interval.value })
+    interval.value = r.interval_s
+    error.value = ''
+  } catch (e) {
+    error.value = errorText(e)
+    await load()
+  } finally {
+    savingInterval.value = false
+  }
+}
+// 每天的探测轮数，用于提示数据量
+const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
 const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
@@ -100,11 +124,17 @@ async function remove(t: ProbeTarget) {
 <template>
   <div>
     <p class="muted small intro">
-      各节点的 Agent 每 5 分钟测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
+      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
       这是从 VPS 出发的方向，反映回程质量。目标只能是公网 IP；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <div class="toolbar">
+      <label class="freq small">测试频率
+        <select v-model.number="interval" :disabled="savingInterval" @change="saveInterval">
+          <option v-for="s in intervals" :key="s" :value="s">每 {{ s / 60 }} 分钟{{ s === 300 ? '（默认）' : '' }}</option>
+        </select>
+        <span class="muted">每个节点每天 {{ roundsPerDay }} 轮 × 已启用 {{ enabledCount }} 个目标</span>
+      </label>
       <span class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
       <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加自定义目标' }}</button>
     </div>
@@ -168,7 +198,9 @@ async function remove(t: ProbeTarget) {
 
 <style scoped>
 .intro { margin: 0 0 var(--space-3); max-width: 80ch; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.freq { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; flex-basis: 100%; }
+.freq select { width: auto; }
 .form { padding: var(--space-4); margin-bottom: var(--space-4); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
 .grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }

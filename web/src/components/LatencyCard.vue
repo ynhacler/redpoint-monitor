@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 三网延迟（设计 42.3.2、42.3.3）：节点 Agent 到三大运营商各地目标的延迟与丢包。
 // 表格每行一个地区、每列一个运营商（窄屏也放得下）；数值为最近 1 小时的中位数与平均丢包。
-// 点击一行查看该地区三网的 24 小时 / 7 天曲线。Agent 每 5 分钟测一轮，这里每分钟刷新。
+// 点击一行查看该地区三网的 24 小时 / 7 天曲线。Agent 按“告警 → 三网”中的频率测量（默认 5 分钟），这里每分钟刷新。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
@@ -96,7 +96,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
       <p v-if="view.status === 'off'" class="small muted note">节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe 存在），删除该文件后开启。</p>
       <p v-else-if="view.status === 'unsupported' && !hasData" class="small muted note">当前 Agent 不支持三网延迟，升级 Agent 后显示（面板刚重启时，等下一次上报）。</p>
       <p v-else-if="!view.targets.length" class="small muted note">没有启用的探测目标，在“告警 → 三网”中启用。</p>
-      <p v-else-if="!hasData" class="small muted note">Agent 每 5 分钟测一轮，第一轮结果几分钟内出现。</p>
+      <p v-else-if="!hasData" class="small muted note">Agent 收到目标后约 20 秒测第一轮，之后按“告警 → 三网”中的频率测量。</p>
 
       <div v-if="hasData" class="table-wrap">
         <table>

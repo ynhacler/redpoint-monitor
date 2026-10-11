@@ -1,7 +1,8 @@
 // Package probe 是 Agent 端的三网延迟探测（设计 42.3.2）：按面板下发的目标，每 5 分钟一轮测量延迟与丢包。
 //
 // 【安全】以下上限写在 Agent 代码中，面板无法放宽（设计 42.6）：
-// 目标 ≤ 64 个且只能是公网 IP（protocol.ProbeTarget.Valid）；每轮间隔固定 5 分钟；同时最多探测 4 个目标；
+// 目标 ≤ 64 个且只能是公网 IP（protocol.ProbeTarget.Valid）；每轮间隔由面板在 1～60 分钟内设置（默认 5 分钟），
+// 上一轮结束后才计时，不会重叠；同时最多探测 4 个目标；
 // 只做 TCP 连接（不发送数据）与 ICMP 回显。本机存在 no-probe 文件时不做任何探测。
 package probe
 
@@ -19,7 +20,6 @@ import (
 )
 
 const (
-	Interval    = 5 * time.Minute  // 每轮间隔
 	FirstDelay  = 20 * time.Second // 启动或目标变化后第一轮的延迟
 	Samples     = 5                // 每个目标每轮的样本数
 	SampleGap   = time.Second      // 样本之间的间隔
@@ -33,11 +33,12 @@ type Prober struct {
 	Disabled func() bool // 本机是否关闭了探测（no-probe 文件）
 	Now      func() time.Time
 
-	mu      sync.Mutex
-	version string
-	targets []protocol.ProbeTarget
-	changed chan struct{}
-	pending [][]protocol.ProbeResult
+	mu       sync.Mutex
+	version  string
+	targets  []protocol.ProbeTarget
+	interval time.Duration
+	changed  chan struct{}
+	pending  [][]protocol.ProbeResult
 
 	// 以下供测试替换
 	tcp  func(ctx context.Context, addr string) (time.Duration, error)
@@ -63,18 +64,19 @@ func (p *Prober) Version() string {
 	return p.version
 }
 
-// Update 保存面板下发的目标列表（响应头 X-Probe-Version、X-Probe-Targets）；版本相同时忽略。
-func (p *Prober) Update(version, encoded string) {
+// Update 保存面板下发的目标列表与间隔（响应头 X-Probe-Version、X-Probe-Targets、X-Probe-Interval）；版本相同时忽略。
+func (p *Prober) Update(version, encoded, interval string) {
 	if version == "" || len(version) > 64 {
 		return
 	}
 	targets := protocol.ParseProbeTargets(encoded)
+	iv := time.Duration(protocol.ParseProbeInterval(interval)) * time.Second
 	p.mu.Lock()
 	if version == p.version {
 		p.mu.Unlock()
 		return
 	}
-	p.version, p.targets = version, targets
+	p.version, p.targets, p.interval = version, targets, iv
 	p.mu.Unlock()
 	select {
 	case p.changed <- struct{}{}:
@@ -87,6 +89,16 @@ func (p *Prober) Targets() []protocol.ProbeTarget {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.targets
+}
+
+// Interval 返回每轮间隔；面板未指定时为 5 分钟。
+func (p *Prober) Interval() time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.interval <= 0 {
+		return protocol.DefaultProbeInterval * time.Second
+	}
+	return p.interval
 }
 
 // Drain 取出待上报的结果（随下一份上报带回）；没有时返回 nil。
@@ -120,7 +132,7 @@ func (p *Prober) Run(ctx context.Context) {
 			timer.Reset(FirstDelay)
 		case <-timer.C:
 			p.RunOnce(ctx)
-			timer.Reset(Interval)
+			timer.Reset(p.Interval()) // 本轮结束后才开始计时：目标多、间隔短时也不会重叠
 		}
 	}
 }

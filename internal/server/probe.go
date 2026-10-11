@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -158,11 +160,12 @@ func insertProbeResults(tx *sql.Tx, serverID int64, list []protocol.ProbeResult,
 
 // probeState 缓存下发给 Agent 的目标列表，并记录各节点 Agent 的探测状态。
 type probeState struct {
-	mu      sync.Mutex
-	loaded  bool
-	version string
-	encoded string
-	status  map[int64]string // on / off；没有记录表示 Agent 不支持（旧版）或尚未上报
+	mu       sync.Mutex
+	loaded   bool
+	version  string
+	encoded  string
+	interval int
+	status   map[int64]string // on / off；没有记录表示 Agent 不支持（旧版）或尚未上报
 }
 
 // invalidate 在目标修改后调用：下一份上报重新读取并下发。
@@ -172,17 +175,38 @@ func (p *probeState) invalidate() {
 	p.mu.Unlock()
 }
 
-// probeList 返回当前启用目标的编码与版本。
-func (s *Server) probeList() (version, encoded string, err error) {
+// ProbeSettings 是三网延迟的全局设置（settings 表，键 probe）。
+type ProbeSettings struct {
+	IntervalS int `json:"interval_s"` // 每轮间隔，秒：60 / 120 / 300 / 600 / 900 / 1800
+}
+
+const probeSettingsKey = "probe"
+
+// probeSettings 读取设置；没有保存过时为默认 5 分钟。
+func (s *Server) probeSettings() (ProbeSettings, error) {
+	v := ProbeSettings{IntervalS: protocol.DefaultProbeInterval}
+	_, err := s.store.GetSetting(probeSettingsKey, &v)
+	if !slices.Contains(protocol.ProbeIntervals, v.IntervalS) {
+		v.IntervalS = protocol.DefaultProbeInterval
+	}
+	return v, err
+}
+
+// probeList 返回当前启用目标的编码、每轮间隔与版本。
+func (s *Server) probeList() (version, encoded string, interval int, err error) {
 	p := &s.probes
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.loaded {
-		return p.version, p.encoded, nil
+		return p.version, p.encoded, p.interval, nil
 	}
 	list, err := s.store.ListProbeTargets()
 	if err != nil {
-		return "", "", err
+		return "", "", 0, err
+	}
+	cfg, err := s.probeSettings()
+	if err != nil {
+		return "", "", 0, err
 	}
 	var wire []protocol.ProbeTarget
 	for _, t := range list {
@@ -191,9 +215,10 @@ func (s *Server) probeList() (version, encoded string, err error) {
 		}
 	}
 	p.encoded = protocol.EncodeProbeTargets(wire)
-	p.version = protocol.ProbeVersion(p.encoded)
+	p.interval = cfg.IntervalS
+	p.version = protocol.ProbeVersion(p.encoded, p.interval)
 	p.loaded = true
-	return p.version, p.encoded, nil
+	return p.version, p.encoded, p.interval, nil
 }
 
 // syncProbe 处理上报请求中的 X-Probe-Version：记录 Agent 的探测状态，版本不同时在响应头中下发新列表。
@@ -220,7 +245,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64) {
 	if st == "off" {
 		return
 	}
-	version, encoded, err := s.probeList()
+	version, encoded, interval, err := s.probeList()
 	if err != nil {
 		s.log.Error("probe targets failed", "component", "probe", "err", err)
 		return
@@ -228,6 +253,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64) {
 	if have != version {
 		w.Header().Set(protocol.HeaderProbeVersion, version)
 		w.Header().Set(protocol.HeaderProbeTargets, encoded)
+		w.Header().Set(protocol.HeaderProbeInterval, strconv.Itoa(interval))
 	}
 }
 
@@ -426,6 +452,40 @@ func (s *Server) handleDeleteProbeTarget(w http.ResponseWriter, r *http.Request)
 	s.probes.invalidate()
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "probe_target.delete", Success: true, Details: map[string]any{"id": id}})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleGetProbeSettings：GET /api/v1/settings/probe，admin。
+func (s *Server) handleGetProbeSettings(w http.ResponseWriter, r *http.Request) {
+	v, err := s.probeSettings()
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	writeJSON(w, v)
+}
+
+// handlePutProbeSettings：PUT /api/v1/settings/probe，admin。随下一份上报下发给各 Agent。
+func (s *Server) handlePutProbeSettings(w http.ResponseWriter, r *http.Request) {
+	var b ProbeSettings
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&b); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	if !slices.Contains(protocol.ProbeIntervals, b.IntervalS) {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed,
+			Details: []FieldError{{Field: "interval_s", Message: "测试频率只能是 1、2、5、10、15 或 30 分钟"}}})
+		return
+	}
+	if err := s.store.PutSetting(probeSettingsKey, b, time.Now()); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.probes.invalidate()
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "probe_settings.update", Success: true,
+		Details: map[string]any{"interval_s": b.IntervalS}})
+	writeJSON(w, b)
 }
 
 // ---- 节点的三网延迟 ----

@@ -427,6 +427,11 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface ProbeSettings {
+  /** 每轮间隔（秒），默认 300 */
+  interval_s: 60 | 120 | 300 | 600 | 900 | 1800
+}
+
 export interface ProbeTargetInput {
   /** 运营商：ct 电信、cu 联通、cm 移动（内置目标不可改） */
   isp?: 'ct' | 'cu' | 'cm'
@@ -1641,6 +1646,17 @@ export interface Paths {
         next_cursor: string
         items: Delivery[]
       }
+    }
+  }
+  '/settings/probe': {
+    /** 三网延迟的设置（设计 42.3.2） */
+    get: {
+      response: ProbeSettings
+    }
+    /** 修改三网延迟的测试频率（所有节点），随下一份上报下发给各 Agent */
+    put: {
+      body: ProbeSettings
+      response: ProbeSettings
     }
   }
   '/probe-targets': {

@@ -494,6 +494,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/ssl-monitors/{id}/check":            accessAdmin,
 		"DELETE /api/v1/ssl-monitors/{id}":                accessAdmin,
 		"GET /api/v1/probe-targets":                       accessAdmin,
+		"GET /api/v1/settings/probe":                      accessAdmin,
+		"PUT /api/v1/settings/probe":                      accessAdmin,
 		"POST /api/v1/probe-targets":                      accessAdmin,
 		"PUT /api/v1/probe-targets/{id}":                  accessAdmin,
 		"DELETE /api/v1/probe-targets/{id}":               accessAdmin,
