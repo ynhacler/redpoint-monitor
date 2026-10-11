@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 三网延迟目标的勾选表（设计 42.3.2）：每行一个地区、每列一个运营商；自定义目标在表后单独列出。
+// 三网延迟目标的勾选表（设计 42.3.2）：内置目标按地区 × 运营商排列（现在只剩境外），自己添加的目标在后面单独列出。
 // 全局设置（“设置 → 三网”）与节点自己的设置共用；勾选的含义由调用方决定（全局启用 / 这台节点要测）。
 import { computed } from 'vue'
 import type { ProbeTarget } from '../api'
@@ -65,7 +65,7 @@ const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port
         </li>
       </ul>
     </template>
-    <h4 v-if="custom.length" class="sub">自定义</h4>
+    <h4 v-if="custom.length" class="sub">自己添加的</h4>
     <ul v-if="custom.length" class="custom">
       <li v-for="t in custom" :key="t.id">
         <label class="check"><input type="checkbox" :checked="on(t)" :disabled="busy === t.id" @change="emit('toggle', t)" />

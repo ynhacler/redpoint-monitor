@@ -441,6 +441,7 @@ export interface ProbeSettings {
   interval_s: 60 | 120 | 300 | 600 | 900 | 1800
 }
 
+/** 添加时 isp、province、address 必填；修改时省略的字段保持不变（修订第 128 条） */
 export interface ProbeTargetInput {
   /** 运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改） */
   isp?: 'ct' | 'cu' | 'cm' | 'intl'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址（勾选启用）与自定义目标。
+// 三网延迟的探测目标（设计 42.3.2）：国内目标由用户自己添加（内置的国内地址已删除，修订第 128 条），境外内置目标勾选启用。
 // 修改后随下一份上报下发给各节点 Agent；启用的目标最多 64 个（Agent 的上限，设计 42.6）。
 // 测试频率对所有节点生效：1～30 分钟，Agent 端不短于 1 分钟。
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -54,6 +54,7 @@ async function saveInterval() {
 const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
+const hasCN = computed(() => items.value.some((t) => t.isp !== 'intl'))
 const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
 const selected = computed(() => items.value.filter((t) => t.enabled).map((t) => t.id))
 
@@ -113,7 +114,7 @@ async function remove(t: ProbeTarget) {
 <template>
   <div>
     <p class="muted small intro">
-      各节点的 Agent 按下面的频率测一轮到这些地址（三大运营商各省与境外主要地区）的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
+      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“三网延迟”中查看，保留 7 天。
       这是从 VPS 出发的方向，反映回程质量。目标只能是公网 IP；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
@@ -125,7 +126,7 @@ async function remove(t: ProbeTarget) {
         <span class="muted">每个节点每天 {{ roundsPerDay }} 轮 × 已启用 {{ enabledCount }} 个目标</span>
       </label>
       <span class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
-      <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加自定义目标' }}</button>
+      <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加目标' }}</button>
     </div>
 
     <form v-if="adding" class="panel form" novalidate @submit.prevent="add">
@@ -151,6 +152,10 @@ async function remove(t: ProbeTarget) {
       </div>
     </form>
 
+    <p v-if="!hasCN && !adding" class="panel empty small">
+      还没有国内目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP（如运营商的 DNS、测速服务器，或你常访问的国内服务器），
+      先用 ping 或 TCP 连接确认从 VPS 能连通。
+    </p>
     <section v-if="items.length" class="panel block">
       <h3>目标（勾选的对所有“跟随全局”的节点生效）</h3>
       <ProbeTargetPicker :targets="items" :selected="selected" :busy="busy" @toggle="toggle">
@@ -174,6 +179,7 @@ async function remove(t: ProbeTarget) {
 .grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .actions { margin-top: var(--space-3); }
 .block { padding: var(--space-4); margin-bottom: var(--space-4); }
+.empty { padding: var(--space-4); margin: 0 0 var(--space-4); }
 .block h3 { margin: 0 0 var(--space-3); }
 .foot { margin: var(--space-3) 0 0; }
 .warn { color: var(--warn); }

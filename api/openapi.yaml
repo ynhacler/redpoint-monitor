@@ -2327,6 +2327,7 @@ components:
 
     ProbeTargetInput:
       type: object
+      description: 添加时 isp、province、address 必填；修改时省略的字段保持不变（修订第 128 条）
       properties:
         isp: { type: string, enum: [ct, cu, cm, intl], description: 运营商：ct 电信、cu 联通、cm 移动、intl 境外（内置目标不可改） }
         province: { type: string, maxLength: 16, description: 地区，如 上海；境外为城市，如 东京（内置目标不可改） }

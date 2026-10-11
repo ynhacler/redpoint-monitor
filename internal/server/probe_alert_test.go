@@ -75,10 +75,7 @@ func TestProbeLossAlertFires(t *testing.T) {
 	}
 	sid := v.ServerID
 	now := time.Now().Add(time.Hour) // 越过启动宽限期
-	var tid int64
-	if err := s.store.DB.QueryRow(`SELECT id FROM probe_targets WHERE isp = 'ct' AND enabled = 1 ORDER BY id LIMIT 1`).Scan(&tid); err != nil {
-		t.Fatal(err)
-	}
+	tid := addCNTargets(t, s, 1, 1)[0]
 	if _, err := s.store.DB.Exec(`INSERT INTO probe_results (server_id, target_id, ts, latency_ms, loss, error) VALUES (?, ?, ?, NULL, 100, 'timeout')`,
 		sid, tid, now.Add(-time.Minute).Unix()); err != nil {
 		t.Fatal(err)

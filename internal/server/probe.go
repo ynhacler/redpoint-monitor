@@ -335,13 +335,14 @@ func (s *Server) probeStatus(sid int64) string {
 // ---- 目标管理接口 ----
 
 type probeTargetInput struct {
-	ISP      string `json:"isp"`
-	Province string `json:"province"`
-	Address  string `json:"address"`
-	Proto    string `json:"proto"`
-	Port     *int   `json:"port"`
-	Enabled  *bool  `json:"enabled"`
-	Note     string `json:"note"`
+	// 修改时省略的字段保持不变（只改“启用”时不必带上其他字段）；添加时运营商、地区、地址必填
+	ISP      *string `json:"isp"`
+	Province *string `json:"province"`
+	Address  *string `json:"address"`
+	Proto    string  `json:"proto"`
+	Port     *int    `json:"port"`
+	Enabled  *bool   `json:"enabled"`
+	Note     *string `json:"note"`
 	ServerID *int64 `json:"server_id"` // 只在添加时有效：这台节点自己的目标
 }
 
@@ -349,16 +350,22 @@ type probeTargetInput struct {
 func (b probeTargetInput) apply(t *ProbeTargetRow) []FieldError {
 	var errs []FieldError
 	bad := func(f, msg string) { errs = append(errs, FieldError{Field: f, Message: msg}) }
-	if !t.Builtin {
-		t.ISP = b.ISP
+	creating := t.ID == 0
+	// 内置目标的运营商、地区、地址不可修改
+	if !t.Builtin && (creating || b.ISP != nil) {
+		t.ISP = deref(b.ISP)
 		if ispNames[t.ISP] == "" {
 			bad("isp", "运营商只能是 ct（电信）、cu（联通）、cm（移动）或 intl（境外）")
 		}
-		t.Province = strings.TrimSpace(b.Province)
+	}
+	if !t.Builtin && (creating || b.Province != nil) {
+		t.Province = strings.TrimSpace(deref(b.Province))
 		if t.Province == "" || utf8.RuneCountInString(t.Province) > 16 {
 			bad("province", "请填写地区（最多 16 个字符），如 上海")
 		}
-		a, err := netip.ParseAddr(strings.TrimSpace(b.Address))
+	}
+	if !t.Builtin && (creating || b.Address != nil) {
+		a, err := netip.ParseAddr(strings.TrimSpace(deref(b.Address)))
 		switch {
 		case err != nil:
 			bad("address", "请填写 IP 地址（不接受域名）")
@@ -390,7 +397,9 @@ func (b probeTargetInput) apply(t *ProbeTargetRow) []FieldError {
 	if b.Enabled != nil {
 		t.Enabled = *b.Enabled
 	}
-	t.Note = strings.TrimSpace(b.Note)
+	if b.Note != nil {
+		t.Note = strings.TrimSpace(*b.Note)
+	}
 	if utf8.RuneCountInString(t.Note) > 64 {
 		bad("note", "备注最多 64 个字符")
 	}
