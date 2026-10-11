@@ -300,7 +300,7 @@ class MetricPoint {
   }
 }
 
-/// 三网延迟的一个目标及最近 1 小时汇总（GET /servers/{id}/latency，设计 42.3.2）。
+/// 测速的一个目标及最近 1 小时汇总（GET /servers/{id}/latency，设计 42.3.2）。
 class LatencyTarget {
   LatencyTarget({required this.id, required this.isp, required this.province, required this.address, required this.proto,
       required this.port, required this.enabled, required this.note, this.latency, this.loss, required this.lastAt, required this.lastError});
@@ -337,7 +337,7 @@ class LatencyTarget {
       );
 }
 
-/// 三网延迟曲线上的一个点；latency 为 null 表示这一轮全部失败。
+/// 测速曲线上的一个点；latency 为 null 表示这一轮全部失败。
 class LatencyPoint {
   LatencyPoint(this.ts, this.latency, this.loss);
   final int ts;

@@ -44,7 +44,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   bool _busy = false;
   HealthSummary? _health;
   int _ticks = 0;
-  // 三网延迟（设计 42.3.2）：与 Web 相同的表格与曲线；旧版面板没有接口时不显示
+  // 测速（设计 42.3.2）：与 Web 相同的表格与曲线；旧版面板没有接口时不显示
   LatencyView? _latency;
   String _latencyRange = '24h';
   String _latencySel = ''; // “p:地区” 或 “i:目标 ID”
@@ -60,7 +60,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       _refresh();
       if (++_ticks % 6 == 0) {
         _loadHealth(); // 摘要变化慢：每分钟刷新一次
-        _loadLatency(); // 三网延迟每几分钟才测一轮
+        _loadLatency(); // 测速每几分钟才测一轮
       }
     });
   }
@@ -266,7 +266,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           _section(context, '趋势', _trend(context)),
           _section(context, '流量', _traffic(context)),
           if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
-            _section(context, '三网延迟', _latencyView(context)),
+            _section(context, '测速延迟', _latencyView(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '操作', _ops(context)),
@@ -309,17 +309,17 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
 
   static const _isps = [('ct', '电信'), ('cu', '联通'), ('cm', '移动')];
 
-  /// 三网延迟（设计 42.3.2、42.3.3）：每行一个地区、每列一个运营商；境外单独一张表。数值为最近 1 小时中位数与丢包率。
+  /// 测速（设计 42.3.2、42.3.3）：每行一个地区、每列一个运营商；境外单独一张表。数值为最近 1 小时中位数与丢包率。
   /// 点一行看该地区三网（或该境外城市）的延迟曲线。App 只读：设置在 Web 的节点“编辑”中。
   Widget _latencyView(BuildContext context) {
     final v = _latency!;
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final small = TextStyle(fontSize: 12, color: muted);
-    if (v.mode == 'off') return Text('这台节点已关闭三网延迟（在 Web 的节点“编辑”中开启）', style: small);
+    if (v.mode == 'off') return Text('这台节点已关闭测速（在 Web 的节点“编辑”中开启）', style: small);
     if (v.status == 'off') return Text('节点本机已关闭网络探测（/etc/vpsmon-agent/no-probe）', style: small);
     final hasData = v.targets.any((t) => t.lastAt > 0);
     if (!hasData) {
-      return Text(v.status == 'unsupported' ? '当前 Agent 不支持三网延迟，升级 Agent 后显示' : 'Agent 每 ${v.intervalS ~/ 60} 分钟测一轮，结果稍后出现',
+      return Text(v.status == 'unsupported' ? '当前 Agent 不支持测速，升级 Agent 后显示' : 'Agent 每 ${v.intervalS ~/ 60} 分钟测一轮，结果稍后出现',
           style: small);
     }
     final rows = <String, Map<String, LatencyTarget>>{};

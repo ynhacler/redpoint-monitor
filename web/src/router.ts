@@ -58,7 +58,7 @@ router.beforeEach(async (to) => {
   }
   if (!state.me) return { name: 'login', query: { redirect: to.fullPath } }
   if (state.me.must_change_password && to.name !== 'account') return { name: 'account' }
-  // 账号页平时在“设置 → 账号”；服务、证书、三网从告警页移到设置页，旧地址与书签照常可用（修订第 126 条）
+  // 账号页平时在“设置 → 账号”；服务、证书、测速从告警页移到设置页，旧地址与书签照常可用（修订第 126 条）
   if (to.name === 'account') return { name: 'settings', query: { tab: 'account' } }
   if (to.name === 'alerts' && movedTabs.includes(to.query.tab as string)) return { name: 'settings', query: { tab: to.query.tab } }
   return true

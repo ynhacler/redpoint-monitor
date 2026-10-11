@@ -245,7 +245,7 @@ const charts = computed(() => [
         <CloudInstanceCard :server="s" class="section-tight" />
       </section>
 
-      <!-- 三网延迟（设计 42.3.2） -->
+      <!-- 测速（设计 42.3.2） -->
       <LatencyCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 告警记录（设计 16） -->
