@@ -826,6 +826,12 @@ var migrations = []string{
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('probe_latency', 'probe_latency', '>', 300, 250, 600, 600, 'warning', 0, 0, unixepoch(), unixepoch()),
 		('probe_loss', 'probe_loss', '>=', 20, 10, 600, 600, 'warning', 0, 0, unixepoch(), unixepoch());`,
+
+	// 迁移 38：删除全部内置目标（修订第 128 条）：迁移 33 的国内运营商地址实测大多已不响应，迁移 35 的境外地址也会随厂商调整；
+	// 改由用户在“设置 → 三网”或节点的“编辑 → 三网延迟”中添加自己的目标。一并删除到这些目标的结果；
+	// 节点自定义列表中的这些 ID 在下发时自动忽略
+	`DELETE FROM probe_results WHERE target_id IN (SELECT id FROM probe_targets WHERE builtin = 1);
+	DELETE FROM probe_targets WHERE builtin = 1;`,
 }
 
 func (s *Store) migrate() error {

@@ -12,11 +12,29 @@ import (
 	"vpsmon/internal/protocol"
 )
 
+// addCNTargets 添加 n 个共用的国内目标（内置国内目标已删除，修订第 128 条），前 enabled 个启用；返回 ID。
+func addCNTargets(t *testing.T, s *Server, n, enabled int) []int64 {
+	t.Helper()
+	var ids []int64
+	for i := 0; i < n; i++ {
+		res, err := s.store.DB.Exec(`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, note, server_id)
+			VALUES ('ct', ?, ?, 'tcp', 80, ?, 0, '', 0)`, fmt.Sprintf("地区%d", i), fmt.Sprintf("1.0.%d.%d", i/250, i%250+1), i < enabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := res.LastInsertId()
+		ids = append(ids, id)
+	}
+	s.probes.invalidate()
+	return ids
+}
+
 // 目标随上报响应下发：版本相同不重复下发；旧版 Agent 不下发；本机关闭时记录状态；修改目标后版本变化（设计 42.3.2）。
 func TestProbeSync(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
 	_, tok, _ := s.store.CreateServer("probe-1", 0, 1)
+	addCNTargets(t, s, 12, 12)
 	report := func(version *string, body string) http.Header {
 		req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+tok)
@@ -39,7 +57,7 @@ func TestProbeSync(t *testing.T) {
 	ver, enc := hd.Get(protocol.HeaderProbeVersion), hd.Get(protocol.HeaderProbeTargets)
 	targets := protocol.ParseProbeTargets(enc)
 	if ver == "" || len(targets) != 12 || hd.Get(protocol.HeaderProbeInterval) != "300" {
-		t.Fatalf("默认应下发北京、上海、广东、四川三网共 12 个目标，间隔 300 秒：%s %d %s", ver, len(targets), hd.Get(protocol.HeaderProbeInterval))
+		t.Fatalf("应下发启用的 12 个目标，间隔 300 秒：%s %d %s", ver, len(targets), hd.Get(protocol.HeaderProbeInterval))
 	}
 	if hd := report(&ver, base); hd.Get(protocol.HeaderProbeVersion) != "" {
 		t.Error("版本相同时不应重复下发")
@@ -125,12 +143,8 @@ func TestProbeTargetsAPI(t *testing.T) {
 	admin := adminToken(t, s)
 	var list struct{ Items []ProbeTargetRow }
 	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
-	if len(list.Items) != 105 || !list.Items[0].Builtin || list.Items[0].Province != "北京" {
-		t.Fatalf("应有 93 个三网 + 12 个境外内置目标，北京在前：%d %+v", len(list.Items), list.Items[0])
-	}
-	intl := list.Items[93]
-	if intl.ISP != "intl" || intl.Province != "香港" || intl.Enabled || intl.Note != "Leaseweb" {
-		t.Errorf("境外目标在三网之后、默认不启用：%+v", intl)
+	if len(list.Items) != 0 {
+		t.Fatalf("内置目标已全部删除，目标都由用户添加：%d", len(list.Items))
 	}
 	for _, bad := range []string{
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
@@ -153,7 +167,12 @@ func TestProbeTargetsAPI(t *testing.T) {
 	if rec.Code != 201 || c.Address != "117.147.213.41" || c.Port != 0 || c.Builtin {
 		t.Fatalf("添加自定义目标：%d %+v", rec.Code, c)
 	}
-	// 内置目标：地址等不可改，不能删除
+	// 内置目标（现在没有，保留规则以备以后）：地址等不可改，不能删除
+	if _, err := s.store.DB.Exec(`INSERT INTO probe_targets (isp, province, address, proto, port, enabled, builtin, note, server_id)
+		VALUES ('intl', '香港', '64.120.117.34', 'tcp', 80, 0, 1, 'Leaseweb', 0), ('intl', '东京', '108.61.201.151', 'tcp', 80, 0, 1, 'Vultr', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	json.Unmarshal(do(h, "GET", "/api/v1/probe-targets", admin, nil).Body.Bytes(), &list)
 	b := list.Items[0]
 	rec = do(h, "PUT", fmt.Sprintf("/api/v1/probe-targets/%d", b.ID), admin, []byte(`{"address":"1.1.1.1","proto":"icmp"}`))
 	var b2 ProbeTargetRow
@@ -164,13 +183,21 @@ func TestProbeTargetsAPI(t *testing.T) {
 	if rec := do(h, "DELETE", fmt.Sprintf("/api/v1/probe-targets/%d", b.ID), admin, nil); rec.Code != 409 {
 		t.Errorf("内置目标不能删除：%d", rec.Code)
 	}
+	// 只改“启用”：其他字段保持不变（自定义目标的地址、境外目标的提供商都不丢）
+	for _, x := range []ProbeTargetRow{c, list.Items[1]} { // Items[1] 是东京（内置），Items[0] 上面改过协议
+		rec = do(h, "PUT", fmt.Sprintf("/api/v1/probe-targets/%d", x.ID), admin, []byte(`{"enabled":true}`))
+		var got ProbeTargetRow
+		json.Unmarshal(rec.Body.Bytes(), &got)
+		if rec.Code != 200 || !got.Enabled || got.Address != x.Address || got.Province != x.Province || got.Note != x.Note || got.Proto != x.Proto {
+			t.Errorf("只改启用：%d %+v", rec.Code, got)
+		}
+	}
 	if rec := do(h, "DELETE", fmt.Sprintf("/api/v1/probe-targets/%d", c.ID), admin, nil); rec.Code != 204 {
 		t.Errorf("删除自定义目标：%d", rec.Code)
 	}
 	// 启用数不超过 64
-	s.store.DB.Exec(`UPDATE probe_targets SET enabled = 1 WHERE id <= 64`)
-	s.store.DB.Exec(`UPDATE probe_targets SET enabled = 0 WHERE id > 64`)
-	if rec := do(h, "PUT", "/api/v1/probe-targets/70", admin, []byte(`{"enabled":true}`)); rec.Code != 422 {
+	ids := addCNTargets(t, s, 65, 64)
+	if rec := do(h, "PUT", fmt.Sprintf("/api/v1/probe-targets/%d", ids[64]), admin, []byte(`{"enabled":true}`)); rec.Code != 422 {
 		t.Errorf("超过 64 个启用目标应返回 422：%d", rec.Code)
 	}
 }
@@ -196,6 +223,7 @@ func TestNodeProbe(t *testing.T) {
 	admin := adminToken(t, s)
 	_, tok1, _ := s.store.CreateServer("np-1", 0, 1)
 	_, tok2, _ := s.store.CreateServer("np-2", 0, 1)
+	ids := addCNTargets(t, s, 13, 12)
 	report := func(tok, have string) http.Header {
 		req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(`{"system":{"boot_id":"b"}}`))
 		req.Header.Set("Authorization", "Bearer "+tok)
@@ -209,13 +237,13 @@ func TestNodeProbe(t *testing.T) {
 	if np.Mode != "default" || np.TargetIDs == nil {
 		t.Fatalf("默认跟随全局：%+v", np)
 	}
-	// 自定义：选一个默认未启用的目标（天津电信，id 13）与北京电信（id 1），频率 10 分钟
-	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(`{"mode":"custom","target_ids":[13,1],"interval_s":600}`)); rec.Code != 200 {
+	// 自定义：选一个全局未启用的目标与第一个目标，频率 10 分钟
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[%d,%d],"interval_s":600}`, ids[12], ids[0]))); rec.Code != 200 {
 		t.Fatalf("保存自定义：%d %s", rec.Code, rec.Body)
 	}
 	hd := report(tok1, "")
 	got := protocol.ParseProbeTargets(hd.Get(protocol.HeaderProbeTargets))
-	if len(got) != 2 || got[0].ID != 1 || got[1].ID != 13 || hd.Get(protocol.HeaderProbeInterval) != "600" {
+	if len(got) != 2 || got[0].ID != ids[0] || got[1].ID != ids[12] || hd.Get(protocol.HeaderProbeInterval) != "600" {
 		t.Errorf("节点 1 应只测自己选的 2 个目标、10 分钟：%+v %s", got, hd.Get(protocol.HeaderProbeInterval))
 	}
 	// 其他节点不受影响
@@ -237,11 +265,12 @@ func TestNodeProbe(t *testing.T) {
 	if v.Mode != "off" || len(v.Targets) != 0 {
 		t.Errorf("关闭且没有数据时不列出目标：%s %d", v.Mode, len(v.Targets))
 	}
+	a := ids[0]
 	for _, bad := range []string{
 		`{"mode":"custom","target_ids":[],"interval_s":0}`,
 		`{"mode":"custom","target_ids":[99999],"interval_s":0}`,
-		`{"mode":"custom","target_ids":[1,1],"interval_s":0}`,
-		`{"mode":"custom","target_ids":[1],"interval_s":45}`,
+		fmt.Sprintf(`{"mode":"custom","target_ids":[%d,%d],"interval_s":0}`, a, a),
+		fmt.Sprintf(`{"mode":"custom","target_ids":[%d],"interval_s":45}`, a),
 		`{"mode":"x","target_ids":[],"interval_s":0}`,
 	} {
 		if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(bad)); rec.Code != 422 {
@@ -292,6 +321,7 @@ func TestNodeOwnTargets(t *testing.T) {
 	admin := adminToken(t, s)
 	_, tok1, _ := s.store.CreateServer("own-1", 0, 1)
 	s.store.CreateServer("own-2", 0, 1)
+	shared := addCNTargets(t, s, 1, 1)[0]
 	rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"ct","province":"杭州","address":"115.220.14.91","server_id":1}`))
 	var own ProbeTargetRow
 	json.Unmarshal(rec.Body.Bytes(), &own)
@@ -303,13 +333,13 @@ func TestNodeOwnTargets(t *testing.T) {
 		json.Unmarshal(do(h, "GET", "/api/v1/probe-targets"+q, admin, nil).Body.Bytes(), &l)
 		return len(l.Items)
 	}
-	if count("") != 105 || count("?server_id=1") != 106 || count("?server_id=2") != 105 {
+	if count("") != 1 || count("?server_id=1") != 2 || count("?server_id=2") != 1 {
 		t.Errorf("共用列表不含节点自己的目标；节点 1 的列表含它：%d %d %d", count(""), count("?server_id=1"), count("?server_id=2"))
 	}
 	if rec := do(h, "PUT", "/api/v1/servers/2/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[%d],"interval_s":0}`, own.ID))); rec.Code != 422 {
 		t.Errorf("【安全】其他节点不能选这个目标：%d", rec.Code)
 	}
-	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[1,%d],"interval_s":0}`, own.ID))); rec.Code != 200 {
+	if rec := do(h, "PUT", "/api/v1/servers/1/probe", admin, []byte(fmt.Sprintf(`{"mode":"custom","target_ids":[%d,%d],"interval_s":0}`, shared, own.ID))); rec.Code != 200 {
 		t.Fatalf("节点 1 选择自己的目标：%d %s", rec.Code, rec.Body)
 	}
 	req := httptest.NewRequest("POST", "/api/v1/agent/report", strings.NewReader(`{"system":{"boot_id":"b"}}`))
@@ -318,7 +348,7 @@ func TestNodeOwnTargets(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if got := protocol.ParseProbeTargets(w.Header().Get(protocol.HeaderProbeTargets)); len(got) != 2 || got[1].ID != own.ID {
-		t.Errorf("节点 1 应测共用的北京电信与自己的目标：%+v", got)
+		t.Errorf("节点 1 应测共用的目标与自己的目标：%+v", got)
 	}
 	if rec := do(h, "POST", "/api/v1/probe-targets", admin, []byte(`{"isp":"ct","province":"x","address":"1.1.1.1","server_id":999}`)); rec.Code != 422 {
 		t.Errorf("节点不存在应返回 422：%d", rec.Code)

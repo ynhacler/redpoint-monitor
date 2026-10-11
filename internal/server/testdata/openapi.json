@@ -6986,6 +6986,7 @@
       },
       "ProbeTargetInput": {
         "type": "object",
+        "description": "添加时 isp、province、address 必填；修改时省略的字段保持不变（修订第 128 条）",
         "properties": {
           "isp": {
             "type": "string",
