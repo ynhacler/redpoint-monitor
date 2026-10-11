@@ -191,8 +191,17 @@ func normalizeServiceTarget(kind, raw string) (string, string) {
 			return "", "请填写域名，如 example.com"
 		}
 		return h, ""
+	case "icmp":
+		if ip := net.ParseIP(strings.Trim(raw, "[]")); ip != nil {
+			return ip.String(), ""
+		}
+		h := strings.TrimSuffix(strings.ToLower(raw), ".")
+		if len(h) > 253 || !strings.Contains(h, ".") || strings.ContainsAny(h, "/:@[]") {
+			return "", "请填写主机名或 IP，如 example.com、203.0.113.5"
+		}
+		return h, ""
 	}
-	return "", "类型只能是 http、tcp 或 dns"
+	return "", "类型只能是 http、tcp、dns 或 icmp"
 }
 
 // parseExpectStatus 解析期望的状态码：“200”“200-299”“200,301”；空为 200-399。
@@ -270,6 +279,12 @@ func checkService(ctx context.Context, m ServiceMonitor, roots *x509.CertPool) s
 		}
 	case "dns":
 		err = checkDNS(ctx, m)
+	case "icmp":
+		// 耗时取回显往返时间（不含域名解析）
+		var rtt time.Duration
+		if rtt, err = checkICMP(ctx, m.Target); err == nil {
+			return serviceResult{ok: true, latency: rtt}
+		}
 	default:
 		err = errors.New("未知的检查类型")
 	}
@@ -366,6 +381,8 @@ func serviceErrorText(ctx context.Context, err error) string {
 		return "DNS 解析失败：" + dnsErr.Err
 	case strings.Contains(msg, "connection refused"):
 		return "连接被拒绝（端口未开放或服务未运行）"
+	case errors.Is(err, errICMPUnavailable):
+		return err.Error()
 	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
 		return "网络不可达"
 	case errors.As(err, &opErr) && opErr.Timeout():
@@ -630,7 +647,7 @@ func (s *Server) applyServiceResult(m ServiceMonitor, r serviceResult, now time.
 func (s *Server) serviceNotice(m ServiceMonitor, kind string, r serviceResult, now time.Time) notifyMessage {
 	n := notifyMessage{Kind: kind, ServerID: m.ServerID, ServerName: m.Name, RuleKey: "service:" + strconv.FormatInt(m.ID, 10),
 		Type: "service", Severity: m.Severity, StartedAt: time.Unix(m.eventStarted, 0)}
-	kindName := map[string]string{"http": "网址", "tcp": "端口", "dns": "域名解析"}[m.Kind]
+	kindName := map[string]string{"http": "网址", "tcp": "端口", "dns": "域名解析", "icmp": "Ping"}[m.Kind]
 	if kind == NotifyResolved {
 		n.ResolvedAt = now
 		n.Message = fmt.Sprintf("%s访问正常（%d ms）", kindName, r.latency.Milliseconds())
