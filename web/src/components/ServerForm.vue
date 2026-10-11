@@ -44,6 +44,7 @@ const f = reactive({
   billing_period: sv?.billing_period ?? '', expire_date: sv?.expire_date ?? '',
   enroll_ttl: '24h', verify_mode: sv?.verify_mode ?? 'warn',
   report_interval_s: String(sv?.report_interval_s || 10),
+  watch_procs: (sv?.watch_procs ?? []).join(', '),
 })
 // 常见的服务商计费时区（设计 5.4），也可以输入其他 IANA 时区名
 const commonTimezones = ['UTC', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Seoul',
@@ -105,6 +106,7 @@ function buildInput(): CreateServerInput {
     country: f.country || undefined,
     bandwidth_mbps: num(f.bandwidth_mbps),
     report_interval_s: num(f.report_interval_s) as CreateServerInput['report_interval_s'],
+    watch_procs: f.watch_procs.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_timezone: f.traffic_timezone.trim(),
@@ -236,6 +238,12 @@ async function remove() {
           </select>
           <small v-if="fieldErrors.report_interval_s" class="err">{{ fieldErrors.report_interval_s }}</small>
           <small v-else class="muted">间隔越长越省流量；离线判定随之放宽</small>
+        </label>
+        <!-- 进程监控（设计 33.5.1）：进程名随上报响应下发，Agent 只统计这些名称各有几个进程在运行 -->
+        <label class="wide">关注的进程
+          <input v-model="f.watch_procs" spellcheck="false" placeholder="如 nginx, sshd, mysqld" />
+          <small v-if="fieldErrors.watch_procs" class="err">{{ fieldErrors.watch_procs }}</small>
+          <small v-else class="muted">按进程名（top 中的名称）匹配，最多 20 个；没有在运行时按“进程未运行”规则告警</small>
         </label>
         <label class="wide">备注
           <input v-model="f.note" />

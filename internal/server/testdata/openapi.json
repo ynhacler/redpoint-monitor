@@ -5237,6 +5237,17 @@
             ],
             "description": "采样间隔秒数；0 或省略表示默认 10 秒（设计 4.2、6.1）"
           },
+          "watch_procs": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._+:@-]+$"
+            },
+            "description": "关注的进程名（与 /proc/PID/comm 比较，超过 15 个字符时比较前 15 个），Agent 统计是否在运行（设计 33.5.1）；修改节点时省略表示不变"
+          },
           "traffic_timezone": {
             "type": "string",
             "example": "America/Los_Angeles",
@@ -6125,6 +6136,7 @@
           "country",
           "bandwidth_mbps",
           "report_interval_s",
+          "watch_procs",
           "price_cents",
           "currency",
           "billing_period",
@@ -6220,6 +6232,13 @@
           "report_interval_s": {
             "type": "integer",
             "description": "采样间隔秒数，0 表示默认 10 秒"
+          },
+          "watch_procs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "关注的进程名（设计 33.5.1）"
           },
           "traffic_timezone": {
             "type": "string",
@@ -6430,7 +6449,8 @@
               "load",
               "traffic",
               "traffic_forecast",
-              "agent_clock"
+              "agent_clock",
+              "process"
             ]
           },
           "operator": {
@@ -7245,6 +7265,27 @@
                     "type": "string"
                   },
                   "description": "监听地址，如 0.0.0.0、::、127.0.0.1"
+                }
+              }
+            }
+          },
+          "watch_procs": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "count"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "description": "0 表示没有在运行"
                 }
               }
             }

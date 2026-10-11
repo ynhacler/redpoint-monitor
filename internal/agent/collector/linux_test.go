@@ -135,3 +135,16 @@ func TestReadFileReusesBuffer(t *testing.T) {
 		t.Error("/proc 文件应与 os.ReadFile 一致")
 	}
 }
+
+// WatchProcs 能找到测试进程自己（comm 为测试二进制名的前 15 个字符），找不到的名称计数为 0（设计 33.5.1）。
+func TestWatchProcs(t *testing.T) {
+	self, err := os.ReadFile("/proc/self/comm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := strings.TrimSpace(string(self))
+	got := WatchProcs([]string{name, "no-such-proc-x"})
+	if got[0].Name != name || got[0].Count < 1 || got[1].Count != 0 {
+		t.Errorf("计数不对：%+v", got)
+	}
+}

@@ -71,6 +71,8 @@ export interface CreateServerRequest {
   bandwidth_mbps?: number
   /** 采样间隔秒数；0 或省略表示默认 10 秒（设计 4.2、6.1） */
   report_interval_s?: 0 | 5 | 10 | 15 | 30 | 60
+  /** 关注的进程名（与 /proc/PID/comm 比较，超过 15 个字符时比较前 15 个），Agent 统计是否在运行（设计 33.5.1）；修改节点时省略表示不变 */
+  watch_procs?: string[]
   /** 计费时区（IANA 名称）；空或省略表示面板时区。只影响之后写入的流量（设计 5.4） */
   traffic_timezone?: string
   /** 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 */
@@ -341,6 +343,8 @@ export interface ServerView {
   bandwidth_mbps: number
   /** 采样间隔秒数，0 表示默认 10 秒 */
   report_interval_s: number
+  /** 关注的进程名（设计 33.5.1） */
+  watch_procs: string[]
   /** 计费时区（IANA），空表示面板时区 */
   traffic_timezone: string
   /** 续费价格 × 100 */
@@ -391,7 +395,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -628,6 +632,12 @@ export interface Report {
     /** 监听地址，如 0.0.0.0、::、127.0.0.1 */
     addrs: string[]
   })[]
+  /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
+  watch_procs?: {
+    name: string
+    /** 0 表示没有在运行 */
+    count: number
+  }[]
   /** 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次 */
   disk: {
     mount: string

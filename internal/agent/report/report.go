@@ -80,6 +80,7 @@ type Reporter struct {
 	gzw          *gzip.Writer
 	gzBuf        bytes.Buffer
 	interval     time.Duration // 面板下发的采样间隔（X-Report-Interval）；0 表示面板未指定
+	watchProcs   []string      // 面板下发的关注进程名（X-Watch-Procs，设计 33.5.1）
 	savedAt      time.Time     // 最近一次落盘时间
 	skewLoggedAt time.Time     // 最近一次记录时钟偏差 WARN 的时间
 	onDisk       bool          // 落盘文件存在，队列清空后需要删除
@@ -314,6 +315,7 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 	r.checkClock(resp.Header.Get("Date"))
 	if resp.StatusCode/100 == 2 {
 		r.setInterval(resp.Header.Get("X-Report-Interval"))
+		r.setWatchProcs(resp.Header.Get(protocol.HeaderWatchProcs))
 	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {
 		r.mu.Lock()
@@ -351,6 +353,21 @@ func (r *Reporter) setInterval(v string) {
 	r.mu.Lock()
 	r.interval = iv
 	r.mu.Unlock()
+}
+
+// setWatchProcs 保存面板下发的关注进程名；没有该响应头（未设置或旧版面板）时清空。
+func (r *Reporter) setWatchProcs(v string) {
+	names := protocol.ParseWatchProcs(v)
+	r.mu.Lock()
+	r.watchProcs = names
+	r.mu.Unlock()
+}
+
+// WatchProcs 返回面板下发的关注进程名；没有时返回 nil。
+func (r *Reporter) WatchProcs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.watchProcs
 }
 
 // Interval 返回面板下发的采样间隔；面板未指定（旧版面板）时返回 0。

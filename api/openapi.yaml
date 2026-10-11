@@ -1878,6 +1878,11 @@ components:
         country: { type: string, pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 两位代码（大小写不敏感，保存为大写）；用于显示国旗' }
         bandwidth_mbps: { type: integer, minimum: 0, maximum: 1000000, description: 服务商标称带宽（端口速率），Mbps；0 或省略表示未填（设计 27.2） }
         report_interval_s: { type: integer, enum: [0, 5, 10, 15, 30, 60], description: 采样间隔秒数；0 或省略表示默认 10 秒（设计 4.2、6.1） }
+        watch_procs:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._+:@-]+$' }
+          description: 关注的进程名（与 /proc/PID/comm 比较，超过 15 个字符时比较前 15 个），Agent 统计是否在运行（设计 33.5.1）；修改节点时省略表示不变
         traffic_timezone: { type: string, example: America/Los_Angeles, description: '计费时区（IANA 名称）；空或省略表示面板时区。只影响之后写入的流量（设计 5.4）' }
         traffic_limit_gb: { type: number, minimum: 0, description: 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 }
         traffic_unit: { type: string, enum: [decimal, binary], default: decimal, description: 'decimal：1 GB = 10^9 字节；binary：1 GiB = 2^30 字节（设计 5.8）' }
@@ -2095,7 +2100,7 @@ components:
 
     ServerView:
       type: object
-      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, price_cents, currency, billing_period, expire_date, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
+      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, watch_procs, price_cents, currency, billing_period, expire_date, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -2118,6 +2123,7 @@ components:
         country: { type: string, description: ISO 3166-1 两位代码（大写），空表示未填 }
         bandwidth_mbps: { type: integer, description: 标称带宽 Mbps，0 表示未填 }
         report_interval_s: { type: integer, description: 采样间隔秒数，0 表示默认 10 秒 }
+        watch_procs: { type: array, items: { type: string }, description: 关注的进程名（设计 33.5.1） }
         traffic_timezone: { type: string, description: 计费时区（IANA），空表示面板时区 }
         price_cents: { type: integer, description: 续费价格 × 100 }
         currency: { type: string }
@@ -2170,7 +2176,7 @@ components:
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
         scope_type: { type: string, enum: [global, group, server] }
         scope_id: { type: string }
-        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock] }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process] }
         operator: { type: string, enum: ['>', '>='] }
         threshold: { type: number }
         recover_threshold: { type: number, description: 低于此值恢复（回差） }
@@ -2400,6 +2406,16 @@ components:
               proto: { type: string, enum: [tcp, udp] }
               port: { type: integer }
               addrs: { type: array, items: { type: string }, description: '监听地址，如 0.0.0.0、::、127.0.0.1' }
+        watch_procs:
+          type: array
+          maxItems: 20
+          description: 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name: { type: string }
+              count: { type: integer, description: 0 表示没有在运行 }
         disk:
           type: array
           description: 每个挂载点（设计 4.6）；只采集本地块设备文件系统，同一设备只报一次

@@ -120,6 +120,12 @@ const portCounts = computed(() => {
   for (const p of ports.value ?? []) c[exposure(p)]++
   return c
 })
+// 关注的进程（设计 33.5.1）：按节点设置的顺序列出；Agent 还没上报（刚修改、或旧版 Agent）时计数为 null
+const procs = computed(() => {
+  const counts = new Map((r.value.watch_procs ?? []).map((p) => [p.name, p.count]))
+  return (props.server.watch_procs ?? []).map((name) => ({ name, count: counts.get(name) ?? null }))
+})
+const procsDown = computed(() => procs.value.filter((p) => p.count === 0).length)
 const addrText = (addrs: string[]) => addrs.map((a) => (a === '0.0.0.0' || a === '::' ? `${a}（全部）` : a)).join('、')
 const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Math.round(v)) : v.toFixed(1))
 </script>
@@ -211,6 +217,25 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
         <span>TIME_WAIT <b>{{ r.conns?.time_wait ?? DASH }}</b></span>
         <span>PROC <b>{{ r.processes?.total ?? DASH }}</b></span>
       </p>
+    </section>
+
+    <!-- 关注的进程（设计 33.5.1）：节点设置了才显示 -->
+    <section v-if="procs.length" class="block procs">
+      <h4 class="title">
+        <span class="ico"><Icon name="list" :size="15" /></span>Procs
+        <span class="title-extra">
+          <span v-if="procsDown" class="bad">未运行 <b>{{ procsDown }}</b></span>
+          <span v-else-if="procs.every((p) => p.count != null)">全部运行中</span>
+        </span>
+      </h4>
+      <ul class="port-list">
+        <li v-for="p in procs" :key="p.name" :class="{ risky: p.count === 0 }">
+          <span class="svc mono">{{ p.name }}</span>
+          <span v-if="p.count == null" class="exp" title="Agent 尚未上报：刚修改设置时等下一次上报；旧版 Agent 需升级">等待上报</span>
+          <span v-else-if="p.count === 0" class="exp bad">未运行</span>
+          <span v-else class="exp private">运行中 · {{ p.count }}</span>
+        </li>
+      </ul>
     </section>
 
     <!-- 监听端口（设计 4.9.1） -->
@@ -360,7 +385,10 @@ dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(
 .mono { font-family: var(--font-mono); color: var(--text); }
 
 /* 端口：整行宽度，端口以小块排列 */
-.ports { grid-column: 1 / -1; }
+.ports, .procs { grid-column: 1 / -1; }
+.procs .port-list { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.procs .port-list li { grid-template-columns: minmax(0, 1fr) auto; }
+.procs .bad { color: var(--bad); }
 .empty { margin: 0; }
 .port-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-2); }
 .port-list li { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3);
