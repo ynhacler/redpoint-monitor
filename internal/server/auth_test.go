@@ -283,3 +283,25 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 		t.Errorf("重置后应可登录并要求修改密码：%d %s", rec.Code, rec.Body)
 	}
 }
+
+// 网页打开时 GET /auth/me 没有会话的 401 是正常流程，记为 INFO；其他接口的 401 仍为 WARN（修订第 136 条）。
+func TestAuthMeUnauthorizedLogLevel(t *testing.T) {
+	_, h, logs := testServer(t)
+	do(h, "GET", "/api/v1/auth/me", "", nil)
+	do(h, "GET", "/api/v1/servers", "", nil)
+	var me, other string
+	for _, line := range strings.Split(logs.String(), "\n") {
+		switch {
+		case strings.Contains(line, `"route":"GET /api/v1/auth/me"`):
+			me = line
+		case strings.Contains(line, `"route":"GET /api/v1/servers"`):
+			other = line
+		}
+	}
+	if !strings.Contains(me, `"level":"INFO"`) || !strings.Contains(me, `"status":401`) {
+		t.Errorf("auth/me 的 401 应为 INFO：%s", me)
+	}
+	if !strings.Contains(other, `"level":"WARN"`) {
+		t.Errorf("其他接口的 401 仍为 WARN：%s", other)
+	}
+}

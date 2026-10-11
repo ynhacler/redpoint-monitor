@@ -174,6 +174,10 @@ func (s *Server) logRequest(r *http.Request, ri *reqInfo, status int, dur time.D
 	switch {
 	case status >= 500:
 		level = slog.LevelError
+	case status == http.StatusUnauthorized && route == "GET /api/v1/auth/me":
+		// 网页打开时先问“谁登录了”：没有会话时的 401 是正常流程，不是认证失败（修订第 136 条）。
+		// 真正的登录失败在 POST /auth/login，仍为 WARN 并写入登录日志
+		level = slog.LevelInfo
 	case status == http.StatusUnauthorized || (dur > slowRequest && !ri.hijacked):
 		// 认证失败可能是攻击或配置错误；慢请求说明面板有压力（设计 24.4、24.6）
 		level = slog.LevelWarn
