@@ -7,7 +7,7 @@ const url = 'https://www.zstaticcdn.com/'
 <template>
   <p class="hint small muted">
     找测试地址：推荐 <a :href="url" target="_blank" rel="noopener noreferrer">Zstatic 节点查询</a>，按运营商与省市查找三网节点。
-    这里只能填 IP：查到的是域名时，先在 VPS 上 <code>ping 域名</code> 得到 IP，确认能连通再添加。
+    可填 IPv4、IPv6 或域名（粘贴网址会只保留域名）；添加前可在 VPS 上 <code>ping</code> 一下，确认能连通。
   </p>
 </template>
 
