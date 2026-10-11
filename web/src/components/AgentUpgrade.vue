@@ -22,6 +22,19 @@ const canUpgrade = computed(() => {
   return c !== null && c < 0
 })
 
+// 最近一次任务：进行中的始终显示；结束的显示 24 小时。
+// 失败或回滚后节点已是（或高于）目标版本时不再显示：例如在本机执行过升级，旧任务的失败已无意义
+const showTask = computed(() => {
+  const t = task.value
+  if (!t) return false
+  if (active.value) return true
+  if ((t.status === 'failed' || t.status === 'rolled_back') && props.current) {
+    const c = compareVersions(props.current, t.target_version)
+    if (c !== null && c >= 0) return false
+  }
+  return Date.now() / 1000 - t.updated_at < 86400
+})
+
 const statusText: Record<string, string> = {
   pending: '等待 Agent 获取任务（每 5 分钟检查一次）',
   delivered: 'Agent 正在下载并校验',
@@ -92,11 +105,11 @@ async function cancel() {
       升级到 {{ latest!.version }}
     </button>
     <span v-else-if="latest && current && !active && compareVersions(current, latest.version) === 0" class="muted small">已是最新</span>
-    <p v-if="task && (active || Date.now() / 1000 - task.updated_at < 86400)" class="small task" :class="task.status">
-      {{ task.from_version || '?' }} → {{ task.target_version }}：{{ statusText[task.status] }}
-      <template v-if="task.reason && task.status !== 'success'">（{{ task.reason }}）</template>
-      <span class="muted">· {{ fmtTime(task.updated_at) }}</span>
-      <button v-if="task.status === 'pending' || task.status === 'delivered'" type="button" class="link" :disabled="busy" @click="cancel">取消</button>
+    <p v-if="showTask" class="small task" :class="task!.status">
+      {{ task!.from_version || '?' }} → {{ task!.target_version }}：{{ statusText[task!.status] }}
+      <template v-if="task!.reason && task!.status !== 'success'">（{{ task!.reason }}）</template>
+      <span class="muted">· {{ fmtTime(task!.updated_at) }}</span>
+      <button v-if="task!.status === 'pending' || task!.status === 'delivered'" type="button" class="link" :disabled="busy" @click="cancel">取消</button>
     </p>
     <p v-if="error" class="small err">{{ error }}</p>
   </div>

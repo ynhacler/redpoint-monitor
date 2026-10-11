@@ -90,6 +90,14 @@ func CheckRemote(ctx context.Context, o RemoteOptions) error {
 	if r, ok := readResult(o.StageDir); ok && r.TaskID == task.TaskID {
 		return nil // updater 已执行，结果尚未送达面板，下一轮重试上报
 	}
+	// 本机已是目标版本（多半已在本机执行过 upgrade）：报告成功而不是失败（新版面板在下发前就会判断）
+	if cur, err1 := release.ParseVersion(o.Current); err1 == nil {
+		if want, err2 := release.ParseVersion(task.Version); err2 == nil && cur.Compare(want) == 0 {
+			o.Log("upgrade task %d: already at %s", task.TaskID, task.Version)
+			o.status(ctx, task.TaskID, "success", "本机已是 "+task.Version)
+			return nil
+		}
+	}
 	if err := checkStageWritable(o.StageDir); err != nil {
 		o.Log("upgrade task %d failed: %v", task.TaskID, err)
 		o.status(ctx, task.TaskID, "failed", err.Error())
