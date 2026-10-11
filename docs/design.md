@@ -362,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 118 | 三网延迟（VPS 出发方向）：内置三大运营商 31 省 93 个地址（默认启用北京、上海、广东、四川），面板随上报响应下发目标，Agent 每 5 分钟测延迟与丢包；节点详情“三网延迟”表格与曲线，“告警 → 三网”管理目标 | 42.3.2、42.3.3、42.6、42.7、42.8 |
 | 117 | 进程监控：节点设置关注的进程名，随上报响应下发，Agent 只统计各名称的进程数；默认规则“进程未运行”；详情页 Procs 块 | 33.5.1 |
 | 116 | 服务监控支持 ICMP（Ping）：面板用非特权 ICMP 套接字，不申请特权；每次最多 3 个请求 | 33.2.1 |
 | 115 | 浏览器安全响应头（CSP、防嵌入、nosniff、no-referrer）、接口不缓存、缺失的静态文件返回 404 与升级后自动重新加载；流量记录不再随每次刷新重复请求 | 26.1 |
@@ -9908,6 +9909,25 @@ monitor-server 同步后下发给 Agent；用户可在 Web 中增删、停用目
 目标失效（长期不可达）时在 Web 中提示更换
 ```
 
+实现（修订第 118 条）：
+
+```text
+内置目标  三大运营商在 31 个省级地区各一个公开地址（共 93 个，迁移 33），默认 TCP 80；
+          默认启用北京、上海、广东、四川（12 个），其余在“告警 → 三网”中勾选启用；内置目标只能停用，不能删除。
+          以后更新内置列表时追加新的迁移
+自定义    只能是公网 IP（不接受域名，避免借 DNS 指向内网），协议 tcp / icmp，最多 100 个；启用的目标合计 ≤ 64
+下发      Agent 在上报请求头 X-Probe-Version 中带当前列表的版本（还没有时为空，本机关闭时为 off）；
+          版本不同时面板在响应头 X-Probe-Version、X-Probe-Targets 中给出新列表（“id,proto,addr,port” 以分号分隔）。
+          旧版 Agent 不带请求头，面板不下发；旧版面板不发响应头，Agent 不探测
+测量      每 5 分钟一轮（启动或目标变化后 20 秒先测一轮），同时最多 4 个目标；每个目标 5 个样本，间隔 1 秒、各等 2 秒：
+          延迟取成功样本的中位数，丢包率为失败样本占比；全部失败时记录原因（timeout / refused / unreachable /
+          icmp_unavailable）。TCP 只建立连接，不发送数据。ICMP 用非特权套接字，Agent 不申请特权（约束 8）
+上报      本轮结果随下一份上报的 probes 字段带回（只带一次）；断网时最多保留 3 轮，随补发的上报一起送达
+保存      probe_results 保留 7 天；节点删除时一并删除
+展示      节点详情“三网延迟”：每行一个地区、每列一个运营商（窄屏也放得下，与 42.3.3 的示意转置），
+          数值为最近 1 小时的中位数与平均丢包；点击一行查看该地区三网的延迟与丢包曲线（24 小时逐轮、7 天按小时）
+```
+
 ### 42.3.3 展示
 
 节点详情“三网延迟”表格（数值为最近 1 小时中位数）：
@@ -10009,6 +10029,7 @@ Agent 只返回逐跳地址与耗时；IP 到 ASN 的映射使用随 monitor-ser
         测速每小时 ≤ 1 次，单次流量 ≤ 1 GB
         禁止探测内网、回环、链路本地地址（防止探测用户自己的内网）
 【安全】节点本地可关闭：
+        创建 /etc/vpsmon-agent/no-probe 文件（已实现，vpsmon-agent doctor 显示状态；修订第 118 条）
         probe.enabled: false       关闭全部网络探测
         probe.speedtest: false     只关闭测速
         这两项只能在节点本地修改，面板无法远程开启（与 upgrade.remote 相同，设计 1.6.9）
@@ -10044,6 +10065,8 @@ probe_targets:
 probe_results:
   ts, prober_id (执行探测的节点), target_server_id 或 target_id,
   protocol, port, ip_version, success, latency_ms, loss_pct
+  （修订第 118 条，三网延迟已实现：probe_results(server_id, target_id, ts, latency_ms, loss, error)；
+   probe_targets(id, isp, province, address, proto, port, enabled, builtin, sort, note)）
 
 -- 可达性判定（状态变化时写入，用于时间线与告警）
 reachability_events:
@@ -10071,6 +10094,8 @@ PUT  /api/v1/servers/{id}/probe                   设置探针角色、运营商
 
 GET  /api/v1/agent/probe-tasks                    Agent 拉取探测任务（Agent Token）
 POST /api/v1/agent/probe-results                  Agent 上报探测结果
+（修订第 118 条：三网延迟改为随上报的请求头 / 响应头下发目标、随上报的 probes 字段带回结果，不新增 Agent 接口；
+ 已实现 GET /servers/{id}/latency 与 GET / POST / PUT / DELETE /probe-targets）
 ```
 
 ---

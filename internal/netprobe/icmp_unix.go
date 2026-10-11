@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package server
+package netprobe
 
 import (
 	"net"

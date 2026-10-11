@@ -950,6 +950,50 @@ paths:
           content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/Delivery' } } } } } }
         '401': { $ref: '#/components/responses/Error' }
 
+  /probe-targets:
+    get:
+      tags: [servers]
+      summary: 三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址在前，自定义在后
+      responses:
+        '200':
+          description: 列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 始终为空 }, items: { type: array, items: { $ref: '#/components/schemas/ProbeTarget' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [servers]
+      summary: 添加自定义探测目标
+      description: |
+        【安全】只接受公网 IP（不接受域名，拒绝内网、回环、链路本地与保留地址），协议只有 tcp / icmp。
+        启用的目标最多 64 个（Agent 的上限，设计 42.6）；自定义目标最多 100 个。修改后随下一份上报下发给各 Agent。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProbeTargetInput' } } } }
+      responses:
+        '201': { description: 已添加, content: { application/json: { schema: { $ref: '#/components/schemas/ProbeTarget' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /probe-targets/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [servers]
+      summary: 修改探测目标（内置目标只能修改协议、端口、启用与备注）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProbeTargetInput' } } } }
+      responses:
+        '200': { description: 已修改, content: { application/json: { schema: { $ref: '#/components/schemas/ProbeTarget' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [servers]
+      summary: 删除自定义目标与它的探测记录（内置目标返回 409，只能停用）
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
   /service-monitors:
     get:
       tags: [alerts]
@@ -1600,6 +1644,23 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/latency:
+    get:
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
+      tags: [servers]
+      summary: 三网延迟（设计 42.3.2）：节点 Agent 到三大运营商各地目标的延迟与丢包
+      description: |
+        Agent 每 5 分钟一轮，每个目标 5 个样本：延迟为成功样本的中位数，丢包率为失败样本占比。
+        targets 中的 latency_ms / loss 为最近 1 小时的汇总；series 为曲线（24h 为逐轮，7d 按小时汇总）。保留 7 天。
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+        - { name: range, in: query, schema: { type: string, enum: [24h, 7d], default: 24h } }
+      responses:
+        '200': { description: 三网延迟, content: { application/json: { schema: { $ref: '#/components/schemas/LatencyView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/traffic/current:
     get:
       security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
@@ -2205,6 +2266,63 @@ components:
         fired_at: { type: integer }
         resolved_at: { type: integer }
         resolved_value: { type: number }
+
+    ProbeTargetInput:
+      type: object
+      properties:
+        isp: { type: string, enum: [ct, cu, cm], description: 运营商：ct 电信、cu 联通、cm 移动（内置目标不可改） }
+        province: { type: string, maxLength: 16, description: 地区，如 上海（内置目标不可改） }
+        address: { type: string, description: 公网 IP 地址（内置目标不可改） }
+        proto: { type: string, enum: [tcp, icmp], description: 默认 tcp }
+        port: { type: integer, minimum: 1, maximum: 65535, description: tcp 端口，默认 80；icmp 时忽略 }
+        enabled: { type: boolean }
+        note: { type: string, maxLength: 64 }
+
+    ProbeTarget:
+      type: object
+      description: 三网延迟的探测目标（设计 42.3.2）
+      required: [id, isp, province, address, proto, port, enabled, builtin, note]
+      properties:
+        id: { type: integer }
+        isp: { type: string, enum: [ct, cu, cm] }
+        province: { type: string }
+        address: { type: string }
+        proto: { type: string, enum: [tcp, icmp] }
+        port: { type: integer, description: icmp 时为 0 }
+        enabled: { type: boolean }
+        builtin: { type: boolean, description: 内置目标（随版本发布）只能停用，不能删除 }
+        note: { type: string }
+
+    LatencyView:
+      type: object
+      required: [status, targets, series]
+      properties:
+        status: { type: string, enum: ['on', 'off', unsupported], description: 'on：Agent 在探测；off：节点本机关闭了探测（no-probe 文件）；unsupported：旧版 Agent 或面板重启后尚未收到上报' }
+        targets:
+          type: array
+          description: 启用的目标，以及范围内有数据的已停用目标
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/ProbeTarget' }
+              - type: object
+                required: [latency_ms, loss, last_at, last_error]
+                properties:
+                  latency_ms: { type: ['number', 'null'], description: 最近 1 小时延迟中位数（毫秒）；没有成功的样本时为 null }
+                  loss: { type: ['number', 'null'], description: 最近 1 小时平均丢包率 0～100；没有数据时为 null }
+                  last_at: { type: integer, description: 最近一轮的时间；0 表示还没有数据 }
+                  last_error: { type: string, description: '最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、error' }
+        series:
+          type: object
+          description: 键为目标 ID
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              required: [ts, latency_ms, loss]
+              properties:
+                ts: { type: integer }
+                latency_ms: { type: ['number', 'null'] }
+                loss: { type: number }
 
     ServiceMonitorInput:
       type: object

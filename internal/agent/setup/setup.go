@@ -84,6 +84,9 @@ func (p Paths) statusFile() string { return filepath.Join(p.StateDir, "status.js
 // NoRemoteUpgradeFile 存在时 updater 拒绝远程升级（设计 29.13）。由主机管理员控制，面板无法改变。
 func (p Paths) NoRemoteUpgradeFile() string { return filepath.Join(p.ConfDir, "no-remote-upgrade") }
 
+// NoProbeFile 存在时 Agent 不做任何网络探测（三网延迟，设计 42.6）；只能在本机创建或删除。
+func (p Paths) NoProbeFile() string { return filepath.Join(p.ConfDir, "no-probe") }
+
 // System 抽象安装过程中对主机的修改，便于在非 Linux 环境中测试完整流程。
 type System interface {
 	IsRoot() bool

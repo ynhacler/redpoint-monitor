@@ -45,6 +45,7 @@ type Options struct {
 }
 
 type Server struct {
+	probes  probeState // 三网延迟：下发的目标列表与各节点的探测状态（设计 42.3.2）
 	store   *Store
 	web     fs.FS
 	log     *slog.Logger
@@ -306,6 +307,11 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/ssl-monitors", accessAdmin, s.handleCreateSSLMonitor)
 	handle("POST /api/v1/ssl-monitors/{id}/check", accessAdmin, s.handleCheckSSLMonitor)
 	handle("DELETE /api/v1/ssl-monitors/{id}", accessAdmin, s.handleDeleteSSLMonitor)
+	// 三网延迟的探测目标（设计 42.3.2）
+	handle("GET /api/v1/probe-targets", accessAdmin, s.handleProbeTargets)
+	handle("POST /api/v1/probe-targets", accessAdmin, s.handleCreateProbeTarget)
+	handle("PUT /api/v1/probe-targets/{id}", accessAdmin, s.handleUpdateProbeTarget)
+	handle("DELETE /api/v1/probe-targets/{id}", accessAdmin, s.handleDeleteProbeTarget)
 	handle("GET /api/v1/service-monitors", accessAdmin, s.handleServiceMonitors)
 	handle("POST /api/v1/service-monitors", accessAdmin, s.handleCreateServiceMonitor)
 	handle("PUT /api/v1/service-monitors/{id}", accessAdmin, s.handleUpdateServiceMonitor)
@@ -324,6 +330,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/servers/{id}/revoke-agent-token", accessAdmin, s.handleRevokeAgentToken)
 	handle("GET /api/v1/servers/{id}/metrics/history", accessRead, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/health", accessRead, s.handleHealth)
+	handle("GET /api/v1/servers/{id}/latency", accessRead, s.handleLatency)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
 	handle("POST /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRegenerateCode)
 	handle("DELETE /api/v1/servers/{id}/enroll-code", accessAdmin, s.handleRevokeCode)
@@ -373,6 +380,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Encoding", "gzip")
 	conf, confOK := s.nodeConfOf(sid)
 	s.setIntervalHeader(w, sid, conf, confOK)
+	s.syncProbe(w, r, sid) // 三网延迟目标（设计 42.3.2）
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -503,6 +511,7 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 		}
 	} else if !stale {
 		ns := &snapshot{ReceivedAt: now, At: at, Report: rep}
+		ns.Report.Probes = nil // 探测结果只写入历史（设计 42.3.2），不属于实时状态
 		if snap != nil {
 			ns.ClockSkew = snap.ClockSkew // 由 handleReport 随后更新；旧版 Agent 测不到时沿用上次的值
 			// 扩展指标（含虚拟化类型）每分钟才上报一次：其余上报沿用上一次的值，详情页始终能显示（设计 46.3）
@@ -652,6 +661,12 @@ func (s *Server) flush() {
 				return
 			}
 		}
+		if len(p.rep.Probes) > 0 {
+			if err := insertProbeResults(tx, p.serverID, p.rep.Probes, p.seen); err != nil {
+				s.log.Error("flush probes failed", "component", "store", "err", err)
+				return
+			}
+		}
 		if _, err := tx.Exec(`UPDATE servers SET last_seen_at = MAX(last_seen_at, ?) WHERE id = ?`, p.seen.Unix(), p.serverID); err != nil {
 			s.log.Error("flush last_seen failed", "component", "store", "err", err)
 			return
@@ -721,6 +736,11 @@ func (s *Server) maintenance(ctx context.Context) {
 				s.log.Error("service check prune failed", "component", "service", "err", err)
 			} else if n > 0 {
 				s.log.Info("expired service checks deleted", "component", "service", "rows", n)
+			}
+			if n, err := s.store.PruneProbeResults(now); err != nil {
+				s.log.Error("probe prune failed", "component", "probe", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired probe results deleted", "component", "probe", "rows", n)
 			}
 			if n, err := s.store.PruneDeliveries(now); err != nil {
 				s.log.Error("delivery prune failed", "component", "notify", "err", err)

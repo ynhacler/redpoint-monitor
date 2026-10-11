@@ -63,6 +63,11 @@ type Reporter struct {
 	Client   *http.Client
 	Logf     func(format string, args ...any) // 为空时用标准 log
 	Now      func() time.Time                 // 测试中可替换
+	// Probe 同步三网延迟的目标列表（设计 42.3.2）：请求头带当前版本，响应头带新列表；为空时不参与
+	Probe interface {
+		Version() string
+		Update(version, encoded string)
+	}
 	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
 	StatePath string
 
@@ -306,6 +311,10 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 	if compress {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
+	if r.Probe != nil {
+		// 空值也要发送：表示支持探测但还没有目标，面板据此下发
+		req.Header[protocol.HeaderProbeVersion] = []string{r.Probe.Version()}
+	}
 	resp, err := r.Client.Do(req)
 	if err != nil {
 		return 0, 0, err
@@ -316,6 +325,9 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 	if resp.StatusCode/100 == 2 {
 		r.setInterval(resp.Header.Get("X-Report-Interval"))
 		r.setWatchProcs(resp.Header.Get(protocol.HeaderWatchProcs))
+		if v := resp.Header.Get(protocol.HeaderProbeVersion); v != "" && r.Probe != nil {
+			r.Probe.Update(v, resp.Header.Get(protocol.HeaderProbeTargets))
+		}
 	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {
 		r.mu.Lock()

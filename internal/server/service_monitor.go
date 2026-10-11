@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"vpsmon/internal/netprobe"
 )
 
 const (
@@ -381,7 +383,7 @@ func serviceErrorText(ctx context.Context, err error) string {
 		return "DNS 解析失败：" + dnsErr.Err
 	case strings.Contains(msg, "connection refused"):
 		return "连接被拒绝（端口未开放或服务未运行）"
-	case errors.Is(err, errICMPUnavailable):
+	case errors.Is(err, netprobe.ErrICMPUnavailable):
 		return err.Error()
 	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
 		return "网络不可达"

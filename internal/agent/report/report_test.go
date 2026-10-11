@@ -24,9 +24,11 @@ type fakePanel struct {
 	headers  map[int]string   // 状态码 → Retry-After
 	date     func() time.Time // 响应的 Date 头；与 Reporter 使用同一个假时钟，避免误报时钟偏差
 	sentAt   []int64
-	interval string // X-Report-Interval 响应头
-	procs    string // X-Watch-Procs 响应头
-	gzip     string // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
+	interval string    // X-Report-Interval 响应头
+	procs    string    // X-Watch-Procs 响应头
+	probeVer []string  // 收到的 X-Probe-Version 请求头（nil 表示没有该请求头）
+	probeOut [2]string // 响应的 X-Probe-Version、X-Probe-Targets
+	gzip     string    // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
 	encoded  []string
 }
 
@@ -53,6 +55,11 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.procs != "" {
 		w.Header().Set(protocol.HeaderWatchProcs, p.procs)
+	}
+	p.probeVer = r.Header[protocol.HeaderProbeVersion]
+	if p.probeOut[0] != "" {
+		w.Header().Set(protocol.HeaderProbeVersion, p.probeOut[0])
+		w.Header().Set(protocol.HeaderProbeTargets, p.probeOut[1])
 	}
 	if enc == "gzip" && p.gzip != "accept" {
 		w.WriteHeader(http.StatusUnsupportedMediaType)
@@ -368,6 +375,34 @@ func TestPanelWatchProcs(t *testing.T) {
 	}
 	if got := send(""); got != nil {
 		t.Errorf("没有响应头时应清空：%q", got)
+	}
+}
+
+type fakeProbe struct{ ver, enc string }
+
+func (f *fakeProbe) Version() string      { return f.ver }
+func (f *fakeProbe) Update(v, enc string) { f.ver, f.enc = v, enc }
+
+// 三网延迟目标的同步（设计 42.3.2）：请求头始终带版本（空值表示还没有目标），响应头带新列表时更新。
+func TestProbeHeaders(t *testing.T) {
+	p := &fakePanel{}
+	r, _, _ := newReporter(t, p)
+	fp := &fakeProbe{}
+	r.Probe = fp
+	p.probeOut = [2]string{"abc", "1,tcp,220.181.173.35,80"}
+	r.Enqueue(rep(0))
+	r.Flush(context.Background(), false)
+	if len(p.probeVer) != 1 || p.probeVer[0] != "" {
+		t.Errorf("首次上报应带空的版本请求头：%q", p.probeVer)
+	}
+	if fp.ver != "abc" || fp.enc != "1,tcp,220.181.173.35,80" {
+		t.Errorf("应保存面板下发的列表：%+v", fp)
+	}
+	p.probeOut = [2]string{}
+	r.Enqueue(rep(1))
+	r.Flush(context.Background(), false)
+	if len(p.probeVer) != 1 || p.probeVer[0] != "abc" || fp.ver != "abc" {
+		t.Errorf("之后带当前版本；面板不下发时保持不变：%q %+v", p.probeVer, fp)
 	}
 }
 
