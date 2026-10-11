@@ -427,6 +427,58 @@ export interface AlertEvent {
   resolved_value?: number
 }
 
+export interface ProbeTargetInput {
+  /** 运营商：ct 电信、cu 联通、cm 移动（内置目标不可改） */
+  isp?: 'ct' | 'cu' | 'cm'
+  /** 地区，如 上海（内置目标不可改） */
+  province?: string
+  /** 公网 IP 地址（内置目标不可改） */
+  address?: string
+  /** 默认 tcp */
+  proto?: 'tcp' | 'icmp'
+  /** tcp 端口，默认 80；icmp 时忽略 */
+  port?: number
+  enabled?: boolean
+  note?: string
+}
+
+/** 三网延迟的探测目标（设计 42.3.2） */
+export interface ProbeTarget {
+  id: number
+  isp: 'ct' | 'cu' | 'cm'
+  province: string
+  address: string
+  proto: 'tcp' | 'icmp'
+  /** icmp 时为 0 */
+  port: number
+  enabled: boolean
+  /** 内置目标（随版本发布）只能停用，不能删除 */
+  builtin: boolean
+  note: string
+}
+
+export interface LatencyView {
+  /** on：Agent 在探测；off：节点本机关闭了探测（no-probe 文件）；unsupported：旧版 Agent 或面板重启后尚未收到上报 */
+  status: 'on' | 'off' | 'unsupported'
+  /** 启用的目标，以及范围内有数据的已停用目标 */
+  targets: (ProbeTarget & {
+    /** 最近 1 小时延迟中位数（毫秒）；没有成功的样本时为 null */
+    latency_ms: number | null
+    /** 最近 1 小时平均丢包率 0～100；没有数据时为 null */
+    loss: number | null
+    /** 最近一轮的时间；0 表示还没有数据 */
+    last_at: number
+    /** 最近一轮全部失败时的原因：timeout、refused、unreachable、icmp_unavailable、error */
+    last_error: string
+  })[]
+  /** 键为目标 ID */
+  series: Record<string, ({
+    ts: number
+    latency_ms: number | null
+    loss: number
+  })[]>
+}
+
 export interface ServiceMonitorInput {
   name: string
   kind: 'http' | 'tcp' | 'dns' | 'icmp'
@@ -1591,6 +1643,38 @@ export interface Paths {
       }
     }
   }
+  '/probe-targets': {
+    /** 三网延迟的探测目标（设计 42.3.2）：内置三大运营商各省地址在前，自定义在后 */
+    get: {
+      response: {
+        /** 始终为空 */
+        next_cursor: string
+        items: ProbeTarget[]
+      }
+    }
+    /** 添加自定义探测目标 */
+    post: {
+      body: ProbeTargetInput
+      response: ProbeTarget
+    }
+  }
+  '/probe-targets/{id}': {
+    /** 修改探测目标（内置目标只能修改协议、端口、启用与备注） */
+    put: {
+      params: {
+        id: number
+      }
+      body: ProbeTargetInput
+      response: ProbeTarget
+    }
+    /** 删除自定义目标与它的探测记录（内置目标返回 409，只能停用） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
   '/service-monitors': {
     /** 服务监控（设计 33.2），异常的在前 */
     get: {
@@ -2018,6 +2102,18 @@ export interface Paths {
         id: number
       }
       response: HealthSummary
+    }
+  }
+  '/servers/{id}/latency': {
+    /** 三网延迟（设计 42.3.2）：节点 Agent 到三大运营商各地目标的延迟与丢包 */
+    get: {
+      params: {
+        id: number
+      }
+      query?: {
+        range?: '24h' | '7d'
+      }
+      response: LatencyView
     }
   }
   '/servers/{id}/traffic/current': {

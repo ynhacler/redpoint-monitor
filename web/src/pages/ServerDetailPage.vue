@@ -7,6 +7,7 @@ import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import HealthCard from '../components/HealthCard.vue'
+import LatencyCard from '../components/LatencyCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
@@ -243,6 +244,9 @@ const charts = computed(() => [
         <TrafficHistory :server="s" class="section-tight" />
         <CloudInstanceCard :server="s" class="section-tight" />
       </section>
+
+      <!-- 三网延迟（设计 42.3.2） -->
+      <LatencyCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 告警记录（设计 16） -->
       <section v-if="s.status !== 'pending'" class="section">

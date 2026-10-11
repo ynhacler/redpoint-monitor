@@ -5,7 +5,7 @@ import type * as G from './api.gen'
 
 export type {
   AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
-  NotifyChannelInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
+  LatencyView, NotifyChannelInput, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
 // ---- 由契约派生的类型 ----
@@ -531,6 +531,29 @@ export function checkServiceMonitor(id: number) {
 
 export async function serviceChecks(id: number, range: '24h' | '7d') {
   return (await request('get', '/service-monitors/{id}/checks', { params: { id }, query: { range } })).items
+}
+
+// 三网延迟（设计 42.3.2）
+export type LatencyTarget = G.LatencyView['targets'][number]
+
+export function getLatency(id: number, range: '24h' | '7d') {
+  return request('get', '/servers/{id}/latency', { params: { id }, query: { range } })
+}
+
+export async function listProbeTargets() {
+  return (await request('get', '/probe-targets')).items
+}
+
+export function createProbeTarget(body: G.ProbeTargetInput) {
+  return request('post', '/probe-targets', { body })
+}
+
+export function updateProbeTarget(id: number, body: G.ProbeTargetInput) {
+  return request('put', '/probe-targets/{id}', { params: { id }, body })
+}
+
+export function deleteProbeTarget(id: number) {
+  return request('delete', '/probe-targets/{id}', { params: { id } })
 }
 
 // ---- 登录（设计 8.2、17.4、19.1） ----

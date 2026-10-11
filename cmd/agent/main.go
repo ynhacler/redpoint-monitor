@@ -43,6 +43,7 @@ import (
 
 	"vpsmon/internal/agent/alog"
 	"vpsmon/internal/agent/collector"
+	"vpsmon/internal/agent/probe"
 	"vpsmon/internal/agent/report"
 	"vpsmon/internal/agent/sdnotify"
 	"vpsmon/internal/agent/setup"
@@ -283,6 +284,15 @@ func readStatus(p setup.Paths) func() (string, int64, error) {
 	}
 }
 
+// prober 是三网延迟探测器（设计 42.3.2），在 main 中创建。
+var prober *probe.Prober
+
+// probeDisabled：本机存在 no-probe 文件时关闭全部网络探测（设计 42.6）。
+func probeDisabled() bool {
+	_, err := os.Stat(setup.DefaultPaths.NoProbeFile())
+	return err == nil
+}
+
 // remoteUpgradeEnabled：主机安装了 updater 触发器（systemd path 单元或 OpenRC 的 crond 脚本）且未禁止时
 // 才查询升级任务（设计 29.13、27.12）。
 func remoteUpgradeEnabled() bool { return setup.RemoteUpgradeEnabled(setup.DefaultPaths) }
@@ -476,6 +486,10 @@ func run() {
 	if *stateDir != "" && runtime.GOOS == "linux" {
 		go pollUpgrades(*server, tok, *stateDir)
 	}
+	// 三网延迟探测（设计 42.3.2）：目标由面板随上报响应下发；本机存在 no-probe 文件时关闭（只能在本机修改，设计 42.6）
+	prober = probe.New(probeDisabled)
+	r.Probe = prober
+	go prober.Run(context.Background())
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
 	_, _ = collect(col, false, nil)
@@ -613,6 +627,9 @@ func collect(col collector.Collector, final bool, procs []string) (rep protocol.
 	rep.Final = final
 	if len(procs) > 0 {
 		rep.WatchProcs = collector.WatchProcs(procs)
+	}
+	if prober != nil {
+		rep.Probes = prober.Drain() // 上一轮的探测结果只随一份上报带回；上报失败时随这份上报一起补发
 	}
 	// 告诉面板本机是否启用了远程升级，未启用时面板创建任务会直接说明原因（设计 29.13）；只在 Linux 上有意义
 	if runtime.GOOS == "linux" {

@@ -10,6 +10,7 @@ import {
 import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
+import ProbeTargets from '../components/ProbeTargets.vue'
 import ServiceMonitors from '../components/ServiceMonitors.vue'
 import SslMonitors from '../components/SslMonitors.vue'
 import NotificationChannels from '../components/NotificationChannels.vue'
@@ -18,7 +19,7 @@ import { installed } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const tab = computed(() => (['rules', 'silences', 'notify', 'ssl', 'services'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
+const tab = computed(() => (['rules', 'silences', 'notify', 'ssl', 'services', 'probes'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
@@ -127,7 +128,7 @@ const silenceScope = (x: Silence) =>
   x.scope_type === 'global' ? '全部节点' : x.scope_type === 'group' ? `分组 ${x.scope_id}`
     : x.scope_type === 'rule' ? `规则 ${ruleNames[x.scope_id] ?? x.scope_id}` : `节点 ${serverName(x.scope_id)}`
 
-watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' || tab.value === 'ssl' || tab.value === 'services' ? undefined : loadEvents()), { immediate: true })
+watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' || tab.value === 'ssl' || tab.value === 'services' || tab.value === 'probes' ? undefined : loadEvents()), { immediate: true })
 </script>
 
 <template>
@@ -141,6 +142,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
         <button type="button" role="tab" :class="{ active: tab === 'notify' }" @click="setQuery({ tab: 'notify' })">通知</button>
         <button type="button" role="tab" :class="{ active: tab === 'services' }" @click="setQuery({ tab: 'services' })">服务</button>
         <button type="button" role="tab" :class="{ active: tab === 'ssl' }" @click="setQuery({ tab: 'ssl' })">证书</button>
+        <button type="button" role="tab" :class="{ active: tab === 'probes' }" @click="setQuery({ tab: 'probes' })">三网</button>
       </div>
     </div>
 
@@ -176,6 +178,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
     <NotificationChannels v-else-if="tab === 'notify'" />
     <ServiceMonitors v-else-if="tab === 'services'" />
     <SslMonitors v-else-if="tab === 'ssl'" />
+    <ProbeTargets v-else-if="tab === 'probes'" />
 
     <!-- 静音与维护 -->
     <template v-else-if="tab === 'silences'">
