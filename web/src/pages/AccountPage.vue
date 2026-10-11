@@ -47,7 +47,7 @@ async function submit() {
     <form class="panel account" novalidate @submit.prevent="submit">
       <h1>修改密码</h1>
       <p v-if="forced" class="banner warn">当前使用的是初始密码，请先设置自己的密码。</p>
-      <p class="small muted">账号：{{ state.me?.username }}。新密码至少 12 位；修改后其他设备上的登录会退出。</p>
+      <p class="small muted">账号：{{ state.me?.username }}。新密码至少 8 位；修改后其他设备上的登录会退出。</p>
       <label class="field">
         <span class="small muted">当前密码</span>
         <input v-model="f.current" type="password" autocomplete="current-password" />
@@ -55,7 +55,7 @@ async function submit() {
       </label>
       <label class="field">
         <span class="small muted">新密码</span>
-        <input v-model="f.next" type="password" autocomplete="new-password" minlength="12" />
+        <input v-model="f.next" type="password" autocomplete="new-password" minlength="8" />
         <small v-if="errors.next" class="bad">{{ errors.next }}</small>
       </label>
       <label class="field">

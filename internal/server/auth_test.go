@@ -40,7 +40,7 @@ func TestPasswordHash(t *testing.T) {
 }
 
 func TestPasswordRulesAndRandom(t *testing.T) {
-	cases := map[string]bool{"short": false, "exactly12chr": true, " padded password ": false, strings.Repeat("a", 300): false}
+	cases := map[string]bool{"short": false, "seven77": false, "exactly8": true, " padded password ": false, strings.Repeat("a", 300): false}
 	for pw, ok := range cases {
 		if (validatePassword(pw) == "") != ok {
 			t.Errorf("validatePassword(%.20q) 应%v", pw, map[bool]string{true: "通过", false: "拒绝"}[ok])

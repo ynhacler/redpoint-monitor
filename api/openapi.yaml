@@ -120,7 +120,7 @@ paths:
               required: [current_password, new_password]
               properties:
                 current_password: { type: string }
-                new_password: { type: string, minLength: 12 }
+                new_password: { type: string, minLength: 8 }
       responses:
         '204': { description: 已修改 }
         '401': { $ref: '#/components/responses/Error' }

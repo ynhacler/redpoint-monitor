@@ -27,9 +27,9 @@ const (
 	saltLen      = 16
 )
 
-// 密码长度：最少 12 位（设计 17.4）；上限防止超长输入消耗 CPU。
+// 密码长度：最少 8 位（设计 17.4，修订第 125 条）；上限防止超长输入消耗 CPU。
 const (
-	minPasswordLen = 12
+	minPasswordLen = 8
 	maxPasswordLen = 256
 )
 
