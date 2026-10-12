@@ -76,6 +76,33 @@ void main() {
     expect(v.series[1]![1].latency, isNull);
   });
 
+  test('LatencyOverview：目标名称、按延迟排名（不可达排最后）、按分组筛选', () {
+    final d = LatencyOverview.fromJson({
+      'servers': [
+        {'id': 1, 'name': 'jp', 'group': 'A'},
+        {'id': 2, 'name': 'hk', 'group': 'B'},
+        {'id': 3, 'name': 'us', 'group': 'A'},
+        {'id': 4, 'name': 'sg', 'group': ''},
+      ],
+      'targets': [
+        {'id': 10, 'isp': 'ct', 'province': '上海', 'address': '1.2.3.4', 'proto': 'tcp', 'port': 80, 'enabled': true, 'builtin': false, 'note': ''},
+        {'id': 11, 'isp': 'intl', 'province': '东京', 'address': 'speed.example.com', 'proto': 'icmp', 'port': 0, 'enabled': true, 'builtin': false, 'note': 'Vultr'},
+      ],
+      'cells': [
+        {'server_id': 1, 'target_id': 10, 'latency_ms': 80.0, 'loss': 0},
+        {'server_id': 2, 'target_id': 10, 'latency_ms': 40.0, 'loss': 2},
+        {'server_id': 3, 'target_id': 10, 'latency_ms': null, 'loss': 100},
+        {'server_id': 4, 'target_id': 10, 'latency_ms': 80.0, 'loss': 10},
+      ],
+    });
+    expect(d.targets[0].name, '上海电信');
+    expect(d.targets[1].name, '东京 Vultr');
+    expect([for (final c in d.ranking(10)) c.serverId], [2, 1, 4, 3]); // 同延迟按丢包，不可达最后
+    expect([for (final c in d.ranking(10, group: 'A')) c.serverId], [1, 3]);
+    expect(d.ranking(11), isEmpty);
+    expect(d.groups, ['A', 'B']);
+  });
+
   test('fmtProbeError 与 fmtProbeWhere：与 Web 一致', () {
     expect(fmtProbeError('timeout'), '超时');
     expect(fmtProbeError('dns'), '域名解析失败');

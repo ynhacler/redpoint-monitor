@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:vpsmon_app/api.dart';
 import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
+import 'package:vpsmon_app/pages/latency_compare_page.dart';
 import 'package:vpsmon_app/pages/server_detail_page.dart';
 import 'package:vpsmon_app/pages/shell.dart';
 import 'package:vpsmon_app/prefs.dart';
@@ -153,5 +154,53 @@ void main() {
     expect(find.text('开启维护'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('测速对比：选目标后按延迟排名，第一名标“最快”，窄屏不溢出', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 812 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final client = MockClient((req) async {
+      expect(req.url.path, '/api/v1/latency-overview');
+      final body = {
+        'servers': [
+          {'id': 1, 'name': 'Tokyo ARM with a very long name for overflow', 'group': 'jp'},
+          {'id': 2, 'name': 'HK-1', 'group': 'hk'},
+        ],
+        'targets': [
+          {'id': 10, 'isp': 'ct', 'province': '上海', 'address': '1.2.3.4', 'proto': 'tcp', 'port': 80, 'enabled': true, 'builtin': false, 'note': ''},
+          {'id': 11, 'isp': 'cm', 'province': '广东', 'address': '5.6.7.8', 'proto': 'icmp', 'port': 0, 'enabled': true, 'builtin': false, 'note': ''},
+        ],
+        'cells': [
+          {'server_id': 1, 'target_id': 10, 'latency_ms': 180.0, 'loss': 0},
+          {'server_id': 2, 'target_id': 10, 'latency_ms': 35.0, 'loss': 0},
+          {'server_id': 1, 'target_id': 11, 'latency_ms': 90.0, 'loss': 0},
+          {'server_id': 2, 'target_id': 11, 'latency_ms': null, 'loss': 100},
+        ],
+      };
+      return http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
+    });
+    final session = Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
+        refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all',
+        scopeValue: '', allowLowRiskOps: true);
+    int? opened;
+    await tester.pumpWidget(MaterialApp(
+      home: LatencyComparePage(api: ApiClient(session, MemorySessionStore(), client: client), onRevoked: () {}, onOpenServer: (id) => opened = id),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    // 默认第一个目标（上海电信）：HK-1 最快，排第一
+    expect(tester.getTopLeft(find.text('HK-1')).dy, lessThan(tester.getTopLeft(find.textContaining('Tokyo ARM')).dy));
+    expect(find.text('最快'), findsOneWidget);
+    expect(find.text('35 ms'), findsOneWidget);
+    // 切到广东移动：HK-1 不可达排最后
+    await tester.tap(find.text('广东移动'));
+    await tester.pump();
+    expect(find.text('不可达'), findsOneWidget);
+    expect(tester.getTopLeft(find.textContaining('Tokyo ARM')).dy, lessThan(tester.getTopLeft(find.text('HK-1')).dy));
+    await tester.tap(find.text('HK-1'));
+    expect(opened, 2);
+    expect(tester.takeException(), isNull);
   });
 }

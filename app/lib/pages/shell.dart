@@ -17,6 +17,7 @@ import '../sorting.dart';
 import '../theme.dart';
 import '../widgets/server_card.dart';
 import 'events_page.dart';
+import 'latency_compare_page.dart';
 import 'me_page.dart';
 import 'server_detail_page.dart';
 
@@ -162,6 +163,14 @@ class _AppShellState extends State<AppShell> {
     _refresh(); // 详情页中可能静音或开启了维护
   }
 
+  // 测速对比（设计 42.3.5）：点节点打开详情
+  void _openCompare() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => LatencyComparePage(api: widget.api, onRevoked: _revoked, onOpenServer: (id) {
+          final s = _items.where((x) => x.id == id).firstOrNull;
+          if (s != null) _open(s);
+        }),
+      ));
+
   Widget _card(ServerView s) => ServerCard(s, onTap: () => _open(s), favorite: _prefs.favorites.contains(s.id),
       onFavorite: () => _toggleFavorite(s), privacy: _prefs.privacy);
 
@@ -191,7 +200,7 @@ class _AppShellState extends State<AppShell> {
             _othersTimer?.cancel();
             widget.onSwitch?.call(i);
           }),
-      _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner,
+      _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner, onCompare: _openCompare,
           onSort: (v) {
             setState(() => _prefs.sortBy = v);
             _savePrefs();
@@ -359,7 +368,7 @@ class _Count extends StatelessWidget {
 
 class _ServersTab extends StatefulWidget {
   const _ServersTab({required this.items, required this.prefs, required this.error, required this.onRefresh, required this.card,
-      required this.offline, required this.onSort});
+      required this.offline, required this.onSort, required this.onCompare});
   final List<ServerView> items;
   final Prefs prefs;
   final String? error;
@@ -367,6 +376,7 @@ class _ServersTab extends StatefulWidget {
   final Widget Function(ServerView) card;
   final Widget Function() offline;
   final ValueChanged<SortBy> onSort;
+  final VoidCallback onCompare;
 
   @override
   State<_ServersTab> createState() => _ServersTabState();
@@ -395,6 +405,7 @@ class _ServersTabState extends State<_ServersTab> {
       appBar: AppBar(
         title: const Text('服务器'),
         actions: [
+          IconButton(icon: const Icon(Icons.speed), tooltip: '测速对比', onPressed: widget.onCompare),
           PopupMenuButton<SortBy>(
             icon: const Icon(Icons.sort),
             tooltip: '排序',
