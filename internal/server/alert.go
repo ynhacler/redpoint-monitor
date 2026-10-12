@@ -22,8 +22,8 @@ const (
 	AlertLoad            = "load"
 	AlertTraffic         = "traffic"
 	AlertTrafficForecast = "traffic_forecast"
-	AlertAgentClock      = "agent_clock" // Agent 异常：时钟偏差（设计 16.1、43.5）
-	AlertProcess         = "process"     // 关注的进程没有在运行（设计 33.5.1）
+	AlertAgentClock      = "agent_clock"   // Agent 异常：时钟偏差（设计 16.1、43.5）
+	AlertProcess         = "process"       // 关注的进程没有在运行（设计 33.5.1）
 	AlertProbeLatency    = "probe_latency" // 三网延迟偏高（设计 42.3.4）
 	AlertProbeLoss       = "probe_loss"    // 测速丢包偏高（设计 42.3.4）
 )

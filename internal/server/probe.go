@@ -23,8 +23,8 @@ import (
 
 const (
 	probeKeep          = 7 * 24 * time.Hour
-	maxCustomTargets   = 100 // 共用的自定义目标
-	maxNodeTargets     = 20  // 每台节点自己的目标
+	maxCustomTargets   = 100                          // 共用的自定义目标
+	maxNodeTargets     = 20                           // 每台节点自己的目标
 	maxProbeResultsRep = protocol.MaxProbeTargets * 3 // 一份上报最多带 3 轮结果（Agent 断网时保留的上限）
 )
 
@@ -388,7 +388,7 @@ type probeTargetInput struct {
 	Port     *int    `json:"port"`
 	Enabled  *bool   `json:"enabled"`
 	Note     *string `json:"note"`
-	ServerID *int64 `json:"server_id"` // 只在添加时有效：这台节点自己的目标
+	ServerID *int64  `json:"server_id"` // 只在添加时有效：这台节点自己的目标
 }
 
 // apply 校验并写入 t。内置目标只能修改协议、端口、启用与备注。
