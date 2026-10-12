@@ -3,10 +3,11 @@ import 'metrics.dart';
 import 'models.dart';
 
 /// 排序方式；默认“异常优先”：异常 > 离线 > 收藏 > 普通在线（设计 1.5.6）
-enum SortBy { smart, name, cpu, memory, disk, traffic, rx, tx, region, provider }
+enum SortBy { smart, custom, name, cpu, memory, disk, traffic, rx, tx, region, provider }
 
 const sortNames = {
   SortBy.smart: '异常优先',
+  SortBy.custom: '自定义顺序',
   SortBy.name: '名称',
   SortBy.cpu: 'CPU 使用率',
   SortBy.memory: '内存使用率',
@@ -27,7 +28,9 @@ bool matchesQuery(ServerView s, String query) {
 }
 
 /// 排序：数值类降序（高的在前），离线 / 无数据的放最后；同值按名称。
-List<ServerView> sortServers(List<ServerView> list, SortBy by, Set<int> favorites) {
+/// custom 按 order（节点 ID 的顺序，用户拖动调整）；不在 order 中的节点（之后新增的）排在后面，按名称。
+List<ServerView> sortServers(List<ServerView> list, SortBy by, Set<int> favorites, {List<int> order = const []}) {
+  final pos = {for (final (i, id) in order.indexed) id: i};
   double? metric(ServerView s) {
     if (by == SortBy.traffic) return trafficPct(s);
     if (!isLive(s)) return null;
@@ -57,6 +60,8 @@ List<ServerView> sortServers(List<ServerView> list, SortBy by, Set<int> favorite
         r = smartRank(a) - smartRank(b);
       case SortBy.name:
         r = 0;
+      case SortBy.custom:
+        r = (pos[a.id] ?? order.length) - (pos[b.id] ?? order.length);
       case SortBy.region:
         r = _blankLast(a.region, b.region);
       case SortBy.provider:

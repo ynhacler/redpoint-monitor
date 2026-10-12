@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vpsmon_app/models.dart';
+import 'package:vpsmon_app/prefs.dart';
 import 'package:vpsmon_app/privacy.dart';
 import 'package:vpsmon_app/sorting.dart';
 
@@ -43,5 +44,16 @@ void main() {
     expect(maskIP('2001:db8::1'), '2001:…');
     expect(maskText('DMIT', true), '***');
     expect(maskText('DMIT', false), 'DMIT');
+  });
+
+  test('自定义顺序：按保存的 ID 顺序；新增的节点排在后面并按名称；偏好可往返', () {
+    final list = [sv(1, 'a'), sv(2, 'b'), sv(3, 'c'), sv(4, 'new-z'), sv(5, 'new-y')];
+    expect(sortServers(list, SortBy.custom, {}, order: [3, 1, 2]).map((s) => s.id), [3, 1, 2, 5, 4]);
+    // 已删除节点的 ID 留在 order 中不影响
+    expect(sortServers(list, SortBy.custom, {}, order: [99, 2]).map((s) => s.id).take(2), [2, 1]);
+    final p = Prefs.fromJson(Prefs(sortBy: SortBy.custom, order: [3, 1, 2]).toJson());
+    expect(p.sortBy, SortBy.custom);
+    expect(p.order, [3, 1, 2]);
+    expect(Prefs.fromJson({}).order, isEmpty); // 旧版偏好文件没有 order
   });
 }
