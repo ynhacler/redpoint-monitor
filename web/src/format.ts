@@ -194,3 +194,22 @@ export function uaSummary(ua: string): string {
     : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
   return [b, o].filter(Boolean).join(' · ') || ua.slice(0, 40)
 }
+
+/**
+ * 节点到期的简短显示（卡片右上角，修订第 138 条）：已过期 / 剩 N 天（100 天内）/ 到期日；
+ * 一次性付款且没有到期日为“永久”；没有填写到期日时返回 null（不显示）。
+ * level：已过期或 7 天内为 bad，30 天内为 warn。
+ */
+export function fmtExpiry(expireDate: string, billingPeriod: string, now = new Date()): { text: string; title: string; level: string } | null {
+  if (!expireDate) {
+    return billingPeriod === 'one_time' ? { text: '永久', title: '一次性付款，没有到期日', level: '' } : null
+  }
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const days = Math.round((new Date(expireDate + 'T00:00:00').getTime() - today) / 86400000)
+  if (Number.isNaN(days)) return null
+  const title = `到期日 ${expireDate}`
+  if (days < 0) return { text: '已过期', title: `${title}，已过期 ${-days} 天`, level: 'bad' }
+  const level = days <= 7 ? 'bad' : days <= 30 ? 'warn' : ''
+  if (days === 0) return { text: '今天到期', title, level }
+  return { text: days < 100 ? `剩${days}天` : expireDate, title, level }
+}
