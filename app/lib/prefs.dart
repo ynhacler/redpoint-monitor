@@ -1,4 +1,4 @@
-// 本机偏好（设计 1.5.5、1.5.6、1.5.12）：收藏、排序方式、隐私模式。只是界面偏好，不含凭证，
+// 本机偏好（设计 1.5.5、1.5.6、1.5.12）：收藏、排序方式（含自定义顺序）、隐私模式。只是界面偏好，不含凭证，
 // 与离线缓存一样保存在 App 支持目录；解除配对时清除（收藏属于某个面板的节点）。
 import 'dart:convert';
 import 'dart:io';
@@ -8,17 +8,23 @@ import 'package:path_provider/path_provider.dart';
 import 'sorting.dart';
 
 class Prefs {
-  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false}) : favorites = favorites ?? {};
+  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order})
+      : favorites = favorites ?? {},
+        order = order ?? [];
   final Set<int> favorites;
+
+  /// 自定义顺序（节点 ID），排序方式为 custom 时使用
+  List<int> order;
   SortBy sortBy;
   bool privacy;
 
-  Map<String, dynamic> toJson() => {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy};
+  Map<String, dynamic> toJson() => {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy, 'order': order};
 
   factory Prefs.fromJson(Map<String, dynamic> j) => Prefs(
         favorites: {for (final x in (j['favorites'] as List<dynamic>? ?? const [])) (x as num).toInt()},
         sortBy: SortBy.values.where((v) => v.name == j['sort_by']).firstOrNull ?? SortBy.smart,
         privacy: (j['privacy'] as bool?) ?? false,
+        order: [for (final x in (j['order'] as List<dynamic>? ?? const [])) (x as num).toInt()],
       );
 }
 

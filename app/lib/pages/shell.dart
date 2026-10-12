@@ -20,6 +20,7 @@ import '../widgets/server_card.dart';
 import 'cloud_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
+import 'reorder_page.dart';
 import 'me_page.dart';
 import 'server_detail_page.dart';
 
@@ -191,6 +192,20 @@ class _AppShellState extends State<AppShell> {
     _refresh(); // 详情页中可能静音或开启了维护
   }
 
+  // 调整顺序（修订第 149 条）：从当前显示的顺序开始拖动，完成后切换为自定义顺序
+  void _reorder() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ReorderPage(
+          items: sortServers(_items, _prefs.sortBy, _prefs.favorites, order: _prefs.order),
+          onSave: (ids) {
+            setState(() {
+              _prefs.order = ids;
+              _prefs.sortBy = SortBy.custom;
+            });
+            _savePrefs();
+          },
+        ),
+      ));
+
   // 测速对比（设计 42.3.5）：点节点打开详情
   void _openCompare() => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => LatencyComparePage(api: widget.api, onRevoked: _revoked, onOpenServer: (id) {
@@ -229,7 +244,10 @@ class _AppShellState extends State<AppShell> {
             widget.onSwitch?.call(i);
           }),
       _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner, onCompare: _openCompare,
+          onReorder: _reorder,
           onSort: (v) {
+            // 第一次选“自定义顺序”时还没有顺序：直接打开调整页
+            if (v == SortBy.custom && _prefs.order.isEmpty) return _reorder();
             setState(() => _prefs.sortBy = v);
             _savePrefs();
           }),
@@ -360,10 +378,14 @@ class _OverviewTab extends StatelessWidget {
     final offlineN = items.where((s) => s.status == 'offline').length;
     final heavy = items.where((s) => (trafficPct(s) ?? 0) >= 80).length;
     final attention = sortServers(items.where((s) => issues(s).isNotEmpty).toList(), SortBy.smart, prefs.favorites);
-    final favs = sortServers(items.where((s) => prefs.favorites.contains(s.id) && issues(s).isEmpty).toList(), SortBy.name, prefs.favorites);
+    // 收藏与其余节点：选了自定义顺序时按自定义顺序，否则按名称
+    final listSort = prefs.sortBy == SortBy.custom ? SortBy.custom : SortBy.name;
+    final favs = sortServers(items.where((s) => prefs.favorites.contains(s.id) && issues(s).isEmpty).toList(), listSort, prefs.favorites,
+        order: prefs.order);
     final expiring = expiringSoon(items);
     final rest = sortServers(
-        items.where((s) => issues(s).isEmpty && !prefs.favorites.contains(s.id) && s.status != 'pending').toList(), SortBy.name, prefs.favorites);
+        items.where((s) => issues(s).isEmpty && !prefs.favorites.contains(s.id) && s.status != 'pending').toList(), listSort, prefs.favorites,
+        order: prefs.order);
     final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
     Widget heading(String t) => Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w600)));
     return Scaffold(
@@ -441,7 +463,7 @@ class _Count extends StatelessWidget {
 
 class _ServersTab extends StatefulWidget {
   const _ServersTab({required this.items, required this.prefs, required this.error, required this.onRefresh, required this.card,
-      required this.offline, required this.onSort, required this.onCompare});
+      required this.offline, required this.onSort, required this.onCompare, required this.onReorder});
   final List<ServerView> items;
   final Prefs prefs;
   final String? error;
@@ -450,6 +472,7 @@ class _ServersTab extends StatefulWidget {
   final Widget Function() offline;
   final ValueChanged<SortBy> onSort;
   final VoidCallback onCompare;
+  final VoidCallback onReorder;
 
   @override
   State<_ServersTab> createState() => _ServersTabState();
@@ -473,18 +496,24 @@ class _ServersTabState extends State<_ServersTab> {
       widget.items.where((s) => (_group.isEmpty || s.group == _group) && matchesQuery(s, _search.text)).toList(),
       widget.prefs.sortBy,
       widget.prefs.favorites,
+      order: widget.prefs.order,
     );
     return Scaffold(
       appBar: AppBar(
         title: const Text('服务器'),
         actions: [
           IconButton(icon: const Icon(Icons.speed), tooltip: '测速对比', onPressed: widget.onCompare),
-          PopupMenuButton<SortBy>(
+          // 排序方式 + “调整顺序…”（拖动排列，保存为自定义顺序）
+          PopupMenuButton<Object>(
             icon: const Icon(Icons.sort),
             tooltip: '排序',
             initialValue: widget.prefs.sortBy,
-            onSelected: widget.onSort,
-            itemBuilder: (_) => [for (final v in SortBy.values) PopupMenuItem(value: v, child: Text(sortNames[v]!))],
+            onSelected: (v) => v is SortBy ? widget.onSort(v) : widget.onReorder(),
+            itemBuilder: (_) => [
+              for (final v in SortBy.values) PopupMenuItem(value: v, child: Text(sortNames[v]!)),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 'reorder', child: Row(children: [Icon(Icons.drag_handle, size: 18), SizedBox(width: 8), Text('调整顺序…')])),
+            ],
           ),
         ],
       ),
@@ -523,8 +552,20 @@ class _ServersTabState extends State<_ServersTab> {
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-            child: Text('${shown.length} 台 · 按${sortNames[widget.prefs.sortBy]}',
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            child: Row(children: [
+              Expanded(
+                child: Text('${shown.length} 台 · 按${sortNames[widget.prefs.sortBy]}',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
+              // 自定义顺序时就近给出入口
+              if (widget.prefs.sortBy == SortBy.custom)
+                TextButton.icon(
+                  onPressed: widget.onReorder,
+                  icon: const Icon(Icons.drag_handle, size: 16),
+                  label: const Text('调整顺序'),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12)),
+                ),
+            ]),
           ),
           ...shown.map(widget.card),
         ]),

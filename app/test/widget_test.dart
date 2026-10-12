@@ -9,6 +9,7 @@ import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
 import 'package:vpsmon_app/pages/cloud_page.dart';
 import 'package:vpsmon_app/pages/latency_compare_page.dart';
+import 'package:vpsmon_app/pages/reorder_page.dart';
 import 'package:vpsmon_app/pages/server_detail_page.dart';
 import 'package:vpsmon_app/pages/shell.dart';
 import 'package:vpsmon_app/prefs.dart';
@@ -281,5 +282,37 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.textContaining('授权范围不是“全部节点”'), findsOneWidget);
+  });
+
+  testWidgets('调整顺序：拖动把手改变顺序，按名称重排，完成时保存', (tester) async {
+    final items = [for (final (i, n) in ['c-node', 'a-node', 'b-node'].indexed) ServerView.fromJson(node(i + 1, n, 'online'))];
+    List<int>? saved;
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReorderPage(items: items, onSave: (ids) => saved = ids))),
+            child: const Text('open'),
+          ),
+        ))));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    // 把最后一个（b-node）拖到最前
+    final handle = find.byIcon(Icons.drag_handle).last;
+    final g = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(const Duration(milliseconds: 100));
+    await g.moveBy(const Offset(0, -300));
+    await tester.pump(const Duration(milliseconds: 100));
+    await g.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(saved, [3, 1, 2]);
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('按名称'));
+    await tester.pump();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(saved, [2, 3, 1]); // a-node、b-node、c-node
   });
 }
