@@ -498,10 +498,22 @@ func (s *Server) handleProbeTargets(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	out := []ProbeTargetRow{}
+	health, err := s.store.probeHealth(time.Now().Add(-probeHealthWindow))
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	// 列表中的每个目标带上最近 24 小时的健康汇总（修订第 134 条）
+	type item struct {
+		ProbeTargetRow
+		Health ProbeTargetHealth `json:"health"`
+	}
+	out := []item{}
 	for _, t := range list {
 		if t.ServerID == 0 || (sid > 0 && t.ServerID == sid) {
-			out = append(out, t)
+			h := health[t.ID]
+			h.State = probeHealthState(h)
+			out = append(out, item{t, h})
 		}
 	}
 	writeList(w, out, "", nil)

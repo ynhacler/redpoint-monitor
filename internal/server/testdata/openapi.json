@@ -7117,6 +7117,56 @@
           "server_id": {
             "type": "integer",
             "description": "0 表示所有节点共用；否则是这台节点自己的目标，只在它的自定义设置中使用（enabled 始终为 false）"
+          },
+          "health": {
+            "type": "object",
+            "description": "只在列表中返回：全部节点最近 24 小时到这个目标的汇总（修订第 134 条）",
+            "required": [
+              "state",
+              "nodes",
+              "rounds",
+              "loss",
+              "latency_ms",
+              "last_at"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "degraded",
+                  "dead",
+                  "nodata"
+                ],
+                "description": "dead：至少 3 轮且平均丢包 ≥ 99%，疑似失效；degraded：丢包 ≥ 20%；nodata：还没有结果"
+              },
+              "nodes": {
+                "type": "integer",
+                "description": "测过它的节点数"
+              },
+              "rounds": {
+                "type": "integer",
+                "description": "结果条数（每个节点每轮一条）"
+              },
+              "loss": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "平均丢包率；没有结果时为 null"
+              },
+              "latency_ms": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "成功轮次的平均延迟；没有成功时为 null"
+              },
+              "last_at": {
+                "type": "integer",
+                "description": "最近一轮的时间；没有时为 0"
+              }
+            }
           }
         }
       },
