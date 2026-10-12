@@ -78,8 +78,14 @@ func (f *fakeAWS) handler(t *testing.T) http.HandlerFunc {
 			}
 			io.WriteString(w, `<DescribeInstancesResponse><reservationSet/></DescribeInstancesResponse>`)
 		case "Lightsail_20161128.GetRegions":
-			io.WriteString(w, `{"regions":[{"name":"ap-northeast-1"}]}`)
+			// ap-southeast-3（雅加达）是账户没有开通的选择加入区域：不在 DescribeRegions 中，调用会被拒绝
+			io.WriteString(w, `{"regions":[{"name":"ap-northeast-1"},{"name":"ap-southeast-3"}]}`)
 		case "Lightsail_20161128.GetInstances":
+			if region == "ap-southeast-3" {
+				w.WriteHeader(400)
+				io.WriteString(w, `{"__type":"com.amazon.coral.service#UnrecognizedClientException","message":"The security token included in the request is invalid."}`)
+				return
+			}
 			io.WriteString(w, `{"instances":[{"name":"ls-1","bundleId":"nano_3_0","publicIpAddress":"198.51.100.7","ipv6Addresses":["2001:db8::7"],
 "state":{"name":"running"},"networking":{"monthlyTransfer":{"gbPerMonthAllocated":1024}}}]}`)
 		case "Lightsail_20161128.GetInstanceMetricData":
@@ -208,5 +214,23 @@ func TestToCents(t *testing.T) {
 	}
 	if _, err := toCents("NaN"); err == nil {
 		t.Error("NaN 应报错")
+	}
+}
+
+// 账户没有开通的选择加入区域（修订第 140 条）：Lightsail 的 GetRegions 会列出它，但在那里调用返回
+// UnrecognizedClientException；只查 DescribeRegions（已开通）中也有的区域，整轮同步不因此失败。
+func TestAWSSkipsUnopenedLightsailRegions(t *testing.T) {
+	f, c := newFakeAWS(t, nil)
+	insts, err := c.Instances(context.Background())
+	if err != nil {
+		t.Fatalf("没开通的区域不应让同步失败：%v", err)
+	}
+	if len(insts) != 3 {
+		t.Fatalf("实例 %+v", insts)
+	}
+	for _, call := range f.calls {
+		if strings.Contains(call, "ap-southeast-3") {
+			t.Errorf("不应查询没开通的区域：%s", call)
+		}
 	}
 }
