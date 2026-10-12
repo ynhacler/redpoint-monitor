@@ -105,8 +105,12 @@ func TestAliyunEndpoints(t *testing.T) {
 		{cn.host("business", ""), "https://business.aliyuncs.com/"},
 		{intl.host("business", ""), "https://business.ap-southeast-1.aliyuncs.com/"},
 		{intl.host("ecs", "ap-northeast-1"), "https://ecs.ap-northeast-1.aliyuncs.com/"},
-		{cn.host("ecs", ""), "https://ecs.aliyuncs.com/"},
+		{cn.host("ecs", ""), "https://ecs.cn-hangzhou.aliyuncs.com/"},
+		{cn.host("swas", ""), "https://swas.cn-hangzhou.aliyuncs.com/"},
 		{cn.host("swas", "cn-hongkong"), "https://swas.cn-hongkong.aliyuncs.com/"},
+		// 国际站：区域列表等不分区域的调用走新加坡接入点
+		{intl.host("ecs", ""), "https://ecs.ap-southeast-1.aliyuncs.com/"},
+		{intl.host("swas", ""), "https://swas.ap-southeast-1.aliyuncs.com/"},
 	} {
 		if c.got != c.want {
 			t.Errorf("接入点 %s，期望 %s", c.got, c.want)
