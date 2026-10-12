@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/upgrades', name: 'upgrades', component: () => import('./pages/UpgradesPage.vue'), meta: { title: 'Agent 升级' } },
     { path: '/app', name: 'app', component: () => import('./pages/AppAccessPage.vue'), meta: { title: 'App 接入' } },
     { path: '/costs', name: 'costs', component: () => import('./pages/CostsPage.vue'), meta: { title: '费用统计' } },
+    { path: '/latency', name: 'latency', component: () => import('./pages/LatencyOverviewPage.vue'), meta: { title: '测速对比' } },
     { path: '/cloud', name: 'cloud', component: () => import('./pages/CloudPage.vue'), meta: { title: '云账户' } },
     { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
     // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效

@@ -1681,6 +1681,18 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /latency-overview:
+    get:
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
+      tags: [servers]
+      summary: 测速对比（设计 42.3.5）：全部节点到各目标最近 1 小时的延迟与丢包
+      description: |
+        与节点详情的“测速”同样的口径：latency_ms 为最近 1 小时成功轮次的中位数（全部失败时为 null），loss 为平均丢包率。
+        只包含已安装的节点；API 密钥只返回其范围内的节点。targets 只包含最近 1 小时有结果的目标。
+      responses:
+        '200': { description: 测速对比, content: { application/json: { schema: { $ref: '#/components/schemas/LatencyOverview' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/probe:
     get:
       tags: [servers]
@@ -2368,6 +2380,32 @@ components:
             loss: { type: ['number', 'null'], description: 平均丢包率；没有结果时为 null }
             latency_ms: { type: ['number', 'null'], description: 成功轮次的平均延迟；没有成功时为 null }
             last_at: { type: integer, description: 最近一轮的时间；没有时为 0 }
+
+    LatencyOverview:
+      type: object
+      required: [servers, targets, cells]
+      properties:
+        servers:
+          type: array
+          items:
+            type: object
+            required: [id, name, group]
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              group: { type: string }
+        targets: { type: array, items: { $ref: '#/components/schemas/ProbeTarget' } }
+        cells:
+          type: array
+          description: 有结果的（节点, 目标）组合
+          items:
+            type: object
+            required: [server_id, target_id, latency_ms, loss]
+            properties:
+              server_id: { type: integer }
+              target_id: { type: integer }
+              latency_ms: { type: ['number', 'null'], description: 最近 1 小时成功轮次的中位数；全部失败时为 null }
+              loss: { type: number, description: 平均丢包率 0～100 }
 
     LatencyView:
       type: object

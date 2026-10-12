@@ -150,7 +150,7 @@ func TestProbeTargetsAPI(t *testing.T) {
 		`{"isp":"ct","province":"家","address":"192.168.1.1"}`, // 【安全】内网
 		`{"isp":"ct","province":"家","address":"127.0.0.1"}`,
 		`{"isp":"ct","province":"家","address":"169.254.169.254"}`, // 云厂商元数据地址
-		`{"isp":"ct","province":"家","address":"nas.lan"}`,          // 局域网名称
+		`{"isp":"ct","province":"家","address":"nas.lan"}`,         // 局域网名称
 		`{"isp":"ct","province":"家","address":"localhost"}`,
 		`{"isp":"ct","province":"家","address":"a.cn:8080"}`, // 端口单独填写
 		`{"isp":"ct","province":"家","address":"fd00::1"}`,   // IPv6 内网
@@ -486,7 +486,7 @@ func TestProbeTargetHealth(t *testing.T) {
 		}
 	}
 	for i := int64(0); i < 3; i++ {
-		ins(1, ids[0], 300*i, 50.0, 0)  // 正常
+		ins(1, ids[0], 300*i, 50.0, 0) // 正常
 		ins(2, ids[0], 300*i, 70.0, 0)
 		ins(1, ids[1], 300*i, nil, 100) // 失效
 	}
@@ -510,5 +510,51 @@ func TestProbeTargetHealth(t *testing.T) {
 	}
 	if g := got[ids[2]]; g.State != "nodata" || g.Loss != nil {
 		t.Errorf("没有结果：%+v", g)
+	}
+}
+
+// 测速对比（修订第 137 条）：只有已安装的节点与有结果的目标；同样的中位数口径；API 密钥只看到范围内的节点由 scopeAllows 保证。
+func TestLatencyOverview(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	s.store.CreateServer("b-node", 0, 1)
+	s.store.CreateServer("a-node", 0, 1)
+	ids := addCNTargets(t, s, 3, 3)
+	now := time.Now().Unix()
+	ins := func(sid, tid, ago int64, lat any, loss float64) {
+		if _, err := s.store.DB.Exec(`INSERT INTO probe_results (server_id, target_id, ts, latency_ms, loss, error) VALUES (?,?,?,?,?, '')`,
+			sid, tid, now-ago, lat, loss); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ins(1, ids[0], 60, 40.0, 0)
+	ins(1, ids[0], 360, 60.0, 20)
+	ins(2, ids[0], 60, 120.0, 0)
+	ins(2, ids[1], 60, nil, 100)
+	ins(1, ids[2], 7200, 30.0, 0) // 超过 1 小时：不出现
+	var v LatencyOverview
+	rec := do(h, "GET", "/api/v1/latency-overview", admin, nil)
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	json.Unmarshal(rec.Body.Bytes(), &v)
+	if len(v.Servers) != 2 || v.Servers[0].Name != "a-node" {
+		t.Errorf("节点按名称排序：%+v", v.Servers)
+	}
+	if len(v.Targets) != 2 || v.Targets[0].ID != ids[0] || v.Targets[1].ID != ids[1] {
+		t.Errorf("只包含最近 1 小时有结果的目标：%+v", v.Targets)
+	}
+	cell := map[[2]int64]LatencyOverviewCell{}
+	for _, c := range v.Cells {
+		cell[[2]int64{c.ServerID, c.TargetID}] = c
+	}
+	if c := cell[[2]int64{1, ids[0]}]; c.Latency == nil || *c.Latency != 50 || c.Loss != 10 {
+		t.Errorf("中位数与平均丢包：%+v", c)
+	}
+	if c := cell[[2]int64{2, ids[1]}]; c.Latency != nil || c.Loss != 100 {
+		t.Errorf("全部失败：%+v", c)
+	}
+	if len(v.Cells) != 3 {
+		t.Errorf("组合数：%d", len(v.Cells))
 	}
 }

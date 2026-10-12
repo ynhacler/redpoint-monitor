@@ -540,6 +540,12 @@ export function getLatency(id: number, range: '24h' | '7d') {
   return request('get', '/servers/{id}/latency', { params: { id }, query: { range } })
 }
 
+/** 测速对比：全部节点到各目标最近 1 小时的延迟与丢包（修订第 137 条） */
+export function getLatencyOverview() {
+  return request('get', '/latency-overview')
+}
+export type LatencyOverview = Res<'/latency-overview', 'get'>
+
 export function getNodeProbe(id: number) {
   return request('get', '/servers/{id}/probe', { params: { id } })
 }

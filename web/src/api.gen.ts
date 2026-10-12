@@ -500,6 +500,24 @@ export interface ProbeTarget {
   }
 }
 
+export interface LatencyOverview {
+  servers: {
+    id: number
+    name: string
+    group: string
+  }[]
+  targets: ProbeTarget[]
+  /** 有结果的（节点, 目标）组合 */
+  cells: ({
+    server_id: number
+    target_id: number
+    /** 最近 1 小时成功轮次的中位数；全部失败时为 null */
+    latency_ms: number | null
+    /** 平均丢包率 0～100 */
+    loss: number
+  })[]
+}
+
 export interface LatencyView {
   /** 节点的三网延迟设置（GET /servers/{id}/probe） */
   mode: 'default' | 'custom' | 'off'
@@ -2176,6 +2194,12 @@ export interface Paths {
         range?: '24h' | '7d'
       }
       response: LatencyView
+    }
+  }
+  '/latency-overview': {
+    /** 测速对比（设计 42.3.5）：全部节点到各目标最近 1 小时的延迟与丢包 */
+    get: {
+      response: LatencyOverview
     }
   }
   '/servers/{id}/probe': {

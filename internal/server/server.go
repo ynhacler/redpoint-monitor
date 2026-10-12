@@ -333,6 +333,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/metrics/history", accessRead, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/health", accessRead, s.handleHealth)
 	handle("GET /api/v1/servers/{id}/latency", accessRead, s.handleLatency)
+	handle("GET /api/v1/latency-overview", accessRead, s.handleLatencyOverview) // 测速对比（修订第 137 条）
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
