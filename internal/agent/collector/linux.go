@@ -398,16 +398,12 @@ func (c *linux) collectNetwork(errs *errorList, now time.Time) []protocol.NetIfa
 
 // findWholeDisks 返回 diskstats 中代表真实整块磁盘的设备：/sys/block 下存在（分区不在其中），且不是回环、内存盘等。
 func findWholeDisks(stats map[string]ioCounters) map[string]bool {
-	out := map[string]bool{}
-	for name := range stats {
-		if skipIODevice(name) {
-			continue
-		}
-		if _, err := os.Stat("/sys/block/" + name); err == nil {
-			out[name] = true
-		}
-	}
-	return out
+	return pickIODisks(stats,
+		func(name string) bool { _, err := os.Stat("/sys/block/" + name); return err == nil },
+		func(name string) bool {
+			es, _ := os.ReadDir("/sys/block/" + name + "/slaves")
+			return len(es) > 0
+		})
 }
 
 // countProcesses 统计 /proc 下的进程目录数（只读目录名，不读取任何进程的内容）。
