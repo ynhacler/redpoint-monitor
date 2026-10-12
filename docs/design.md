@@ -362,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 146 | AWS 添加账户处给出完整四步（建用户、建策略、挂策略、建密钥），推荐策略用 Condition aws:SourceIp 限定只有面板服务器的公网 IP 能使用该密钥 | 44.3 |
 | 145 | 阿里云国际站读不到实例：区域列表等不分区域的调用改走新加坡接入点（国际站账号在 swas.cn-hangzhou 上调用会失败），国内站仍走杭州 | 44.3 |
 | 144 | App 云账户：我的 → 云账户，显示各账户同步状态（含区域跳过警告）、本月费用 / 预估 / 余额与预算、实例列表（地区、状态、到期、流量包、关联节点）；新接口 GET /app/cloud，只对“全部节点”授权的设备返回，不含凭证与公网 IP | 44.8 |
 | 143 | App 美化：首页增加实时概况、即将到期与其余节点的紧凑列表，不再在“全部正常”时空着；节点卡片显示到期标签（同 Web），开机时间与负载移到第二行，名称不再被挤短；搜索框改为圆角浅色 | 1.5.18、41.3 |
@@ -10431,7 +10432,7 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 
 | 服务商 | 凭证与签名 | 费用 | 流量 | 实例与到期 | 最小只读权限 |
 |---|---|---|---|---|---|
-| AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get* |
+| AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get*；推荐加 Condition aws:SourceIp 只允许面板服务器的公网 IP |
 | 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
 | 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上；区域列表等不分区域的调用走新加坡接入点（ecs / swas.ap-southeast-1），国内站走杭州 | 同上（国际站控制台中的同名策略） |
 | 腾讯云国内站 / 国际站 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、DescribeBillSummaryByProduct；国内站 <产品>.tencentcloudapi.com、人民币，国际站 <产品>.intl.tencentcloudapi.com、美元（两种账户类型，修订第 76 条） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
