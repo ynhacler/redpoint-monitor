@@ -6,7 +6,7 @@
 // 整张卡片可点击进入详情（设计 11）。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
-import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
+import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtExpiry, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
 import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
@@ -30,6 +30,8 @@ const offlineFor = computed(() =>
 const os = computed(() => [r.value?.system.os, r.value?.system.os_version].filter(Boolean).join(' '))
 // 开机时间：不足 1 天按小时，1～999 天按天，更长按年（见 fmtUptimeShort）
 const uptime = computed(() => fmtUptimeShort(r.value?.system.uptime))
+// 到期时间或“永久”（修订第 138 条），在线与离线时都显示
+const expiry = computed(() => fmtExpiry(s.value.expire_date, s.value.billing_period))
 const load1 = computed(() => (r.value ? r.value.cpu.load1.toFixed(r.value.cpu.load1 < 10 ? 2 : 1) : DASH))
 const tempLv = computed(() => {
   const t = r.value?.cpu.temp_c ?? 0
@@ -73,11 +75,15 @@ const diskTip = computed(() => {
         <span v-else-if="s.muted" class="tag muted small" title="告警已静音">已静音</span>
       </div>
       <div v-if="live && r" class="meta num">
+        <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
         <span v-if="r.cpu.temp_c" :class="tempLv" title="CPU 温度"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
         <span title="开机时间"><Icon name="power" :size="15" />{{ uptime }}</span>
         <span title="1 分钟负载" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" />{{ load1 }}</span>
       </div>
-      <span v-else class="meta" :class="s.status === 'offline' ? 'bad' : ''">{{ offlineFor }}</span>
+      <div v-else class="meta">
+        <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
+        <span :class="s.status === 'offline' ? 'bad' : ''">{{ offlineFor }}</span>
+      </div>
     </div>
 
     <!-- 离线时不显示旧指标：旧数值看起来像实时数据，会误导（设计 43.6） -->
