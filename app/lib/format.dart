@@ -119,3 +119,18 @@ String fmtProbeError(String code) => switch (code) {
 
 /// 测速目标的地址说明，如 “TCP 80 → 1.2.3.4”、“ICMP → speed.example.cn”。
 String fmtProbeWhere(String proto, int port, String address) => proto == 'icmp' ? 'ICMP → $address' : 'TCP $port → $address';
+
+/// 到期标签（与 Web 的 fmtExpiry 一致，修订第 138 条）：已过期 / 今天到期 / 剩 N 天（100 天内）/ 到期日；
+/// 一次性付款且没有到期日为“永久”；没有到期日的周期付款返回 null。level：bad（7 天内或已过期）、warn（30 天内）、空。
+({String text, String level, int? days})? fmtExpiry(String expireDate, String billingPeriod, {DateTime? now}) {
+  if (expireDate.isEmpty) return billingPeriod == 'one_time' ? (text: '永久', level: '', days: null) : null;
+  final d = DateTime.tryParse(expireDate);
+  if (d == null) return null;
+  final n = now ?? DateTime.now();
+  // 用 UTC 日期相减，避免夏令时那天只有 23 小时
+  final days = DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(n.year, n.month, n.day)).inDays;
+  if (days < 0) return (text: '已过期', level: 'bad', days: days);
+  final level = days <= 7 ? 'bad' : (days <= 30 ? 'warn' : '');
+  if (days == 0) return (text: '今天到期', level: level, days: 0);
+  return (text: days < 100 ? '剩$days天' : expireDate, level: level, days: days);
+}

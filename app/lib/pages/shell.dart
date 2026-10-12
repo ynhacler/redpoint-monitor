@@ -15,6 +15,7 @@ import '../prefs.dart';
 import '../push.dart';
 import '../sorting.dart';
 import '../theme.dart';
+import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
@@ -189,7 +190,7 @@ class _AppShellState extends State<AppShell> {
           onRefresh: () async {
             await Future.wait([_refresh(), _refreshOthers()]);
           },
-          card: _card, offline: _offlineBanner,
+          card: _card, offline: _offlineBanner, open: _open,
           centers: [
             if (widget.centers.length > 1)
               for (final (i, c) in widget.centers.indexed)
@@ -250,7 +251,7 @@ class _AppShellState extends State<AppShell> {
 
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
-      required this.onRefresh, required this.card, required this.offline, this.centers = const [], this.onSwitch});
+      required this.onRefresh, required this.card, required this.offline, required this.open, this.centers = const [], this.onSwitch});
   final List<ServerView> items;
   final Prefs prefs;
   final DateTime? updated;
@@ -259,6 +260,7 @@ class _OverviewTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Widget Function(ServerView) card;
   final Widget Function() offline;
+  final ValueChanged<ServerView> open;
 
   /// 多个监控中心时的聚合视图：（中心，汇总，是否当前，下标）
   final List<(CenterHandle, CenterSummary?, bool, int)> centers;
@@ -306,6 +308,9 @@ class _OverviewTab extends StatelessWidget {
     final heavy = items.where((s) => (trafficPct(s) ?? 0) >= 80).length;
     final attention = sortServers(items.where((s) => issues(s).isNotEmpty).toList(), SortBy.smart, prefs.favorites);
     final favs = sortServers(items.where((s) => prefs.favorites.contains(s.id) && issues(s).isEmpty).toList(), SortBy.name, prefs.favorites);
+    final expiring = expiringSoon(items);
+    final rest = sortServers(
+        items.where((s) => issues(s).isEmpty && !prefs.favorites.contains(s.id) && s.status != 'pending').toList(), SortBy.name, prefs.favorites);
     final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
     Widget heading(String t) => Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w600)));
     return Scaffold(
@@ -324,13 +329,27 @@ class _OverviewTab extends StatelessWidget {
           ]),
           if (error != null) offline(),
           if (items.isEmpty && updated != null) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('授权范围内还没有节点'))),
+          if (items.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: FleetSummaryCard(items: items, allOk: attention.isEmpty)),
           if (attention.isNotEmpty) ...[heading('需要关注'), ...attention.map(card)],
+          if (expiring.isNotEmpty) ...[
+            heading('即将到期'),
+            MiniList(children: [
+              for (final (s, e) in expiring)
+                MiniServerRow(s, onTap: () => open(s), trailing: Text(e.text,
+                    style: TextStyle(fontSize: 12, color: e.level == 'bad' ? colors.bad : colors.warn, fontFeatures: const [FontFeature.tabularFigures()]))),
+            ]),
+          ],
           if (favs.isNotEmpty) ...[heading('收藏'), ...favs.map(card)],
-          if (items.isNotEmpty && attention.isEmpty && favs.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('全部正常。点节点卡片右上角的星标可以把常看的服务器放到首页。', style: muted, textAlign: TextAlign.center),
-            ),
+          // 其余节点：一行一台，点开看详情；首页不再在“全部正常”时空着
+          if (rest.isNotEmpty) ...[
+            heading(favs.isEmpty ? '全部节点' : '其他节点'),
+            MiniList(children: [for (final s in rest) MiniServerRow(s, onTap: () => open(s))]),
+            if (favs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                child: Text('在“服务器”页点节点卡片右上角的星标，可以把常看的服务器以完整卡片放到首页。', style: muted),
+              ),
+          ],
           if (updated != null && error == null)
             Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: Text('$host · 更新于 ${fmtClock(updated!)}', style: muted))),
         ]),
@@ -427,7 +446,11 @@ class _ServersTabState extends State<_ServersTab> {
                   ? null
                   : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_search.clear)),
               isDense: true,
-              border: const OutlineInputBorder(),
+              filled: true,
+              fillColor: appColors(context).surface,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: appColors(context).border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: appColors(context).border)),
             ),
             onChanged: (_) => setState(() {}),
           ),

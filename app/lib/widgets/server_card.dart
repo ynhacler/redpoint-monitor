@@ -1,5 +1,5 @@
 // 节点卡片（设计 13、41.3 ServerCard）：布局与 Web 的节点卡片一致，便于两端对照——
-//   头部：国旗、名称、状态点（维护 / 静音标签）；右侧温度、开机时间、1 分钟负载（离线时为离线时长）
+//   头部：国旗、名称、状态点（维护 / 静音标签），右侧到期标签与收藏；第二行 IP · 供应商 · 分组，右侧温度、开机时间、1 分钟负载（离线时为离线时长）
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
 //   告警：需要关注的原因（标签）
 //   底部：流量（本计费周期）与进度条
@@ -39,6 +39,9 @@ class ServerCard extends StatelessWidget {
       _ => c.border,
     };
     final ip = s.ipv4.isNotEmpty ? s.ipv4 : s.ipv6;
+    // 到期标签（与 Web 一致，修订第 138 条）：7 天内与已过期红、30 天内黄
+    final exp = fmtExpiry(s.expireDate, s.billingPeriod);
+    final expColor = switch (exp?.level) { 'bad' => c.bad, 'warn' => c.warn, _ => null };
     final sub = [if (ip.isNotEmpty) privacy ? maskIP(ip) : ip, if (s.provider.isNotEmpty) maskText(s.provider, privacy), if (s.group.isNotEmpty) s.group];
 
     return Card(
@@ -60,23 +63,7 @@ class ServerCard extends StatelessWidget {
               if (s.maintenance != null) ...[const SizedBox(width: 6), _Pill('维护中', c.textMuted, c.border)]
               else if (s.muted != null) ...[const SizedBox(width: 6), _Pill('已静音', c.textMuted, c.border)],
               const Spacer(),
-              if (live && r != null)
-                DefaultTextStyle.merge(
-                  style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()]),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (r.tempC != null && r.tempC! > 0) ...[
-                      _meta(Icons.thermostat, '${r.tempC!.round()}℃', r.tempC! >= 90 ? c.bad : r.tempC! >= 75 ? c.warn : c.ok),
-                      const SizedBox(width: 8),
-                    ],
-                    _meta(Icons.power_settings_new, fmtUptimeShort(r.uptime), null),
-                    const SizedBox(width: 8),
-                    _meta(Icons.show_chart, r.load1.toStringAsFixed(r.load1 < 10 ? 2 : 1),
-                        r.cores > 0 && r.load1 > r.cores ? c.warn : null),
-                  ]),
-                )
-              else
-                Text(s.status == 'pending' ? '待安装' : (s.lastSeenAt > 0 ? '离线 ${fmtDuration(DateTime.now().millisecondsSinceEpoch / 1000 - s.lastSeenAt)}' : '尚未上报'),
-                    style: TextStyle(fontSize: 12, color: s.status == 'offline' ? c.bad : c.textMuted)),
+              if (exp != null) ...[const SizedBox(width: 6), _Pill(exp.text, expColor ?? c.textMuted, expColor ?? c.border, icon: Icons.event)],
               SizedBox(
                 width: 32,
                 height: 28,
@@ -89,7 +76,30 @@ class ServerCard extends StatelessWidget {
                 ),
               ),
             ]),
-            if (sub.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub.join(' · '), style: muted, overflow: TextOverflow.ellipsis)),
+            // 第二行：左侧 IP · 供应商 · 分组，右侧温度、开机时间、1 分钟负载（离线时为离线时长）；名称因此不再被挤短
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(children: [
+                Expanded(child: Text(sub.join(' · '), style: muted, overflow: TextOverflow.ellipsis)),
+                if (live && r != null)
+                  DefaultTextStyle.merge(
+                    style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()]),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (r.tempC != null && r.tempC! > 0) ...[
+                        _meta(Icons.thermostat, '${r.tempC!.round()}℃', r.tempC! >= 90 ? c.bad : r.tempC! >= 75 ? c.warn : c.ok),
+                        const SizedBox(width: 8),
+                      ],
+                      _meta(Icons.power_settings_new, fmtUptimeShort(r.uptime), null),
+                      const SizedBox(width: 8),
+                      _meta(Icons.show_chart, r.load1.toStringAsFixed(r.load1 < 10 ? 2 : 1),
+                          r.cores > 0 && r.load1 > r.cores ? c.warn : null),
+                    ]),
+                  )
+                else
+                  Text(s.status == 'pending' ? '待安装' : (s.lastSeenAt > 0 ? '离线 ${fmtDuration(DateTime.now().millisecondsSinceEpoch / 1000 - s.lastSeenAt)}' : '尚未上报'),
+                      style: TextStyle(fontSize: 12, color: s.status == 'offline' ? c.bad : c.textMuted)),
+              ]),
+            ),
             const SizedBox(height: 8),
             Divider(height: 1, color: c.border),
 
@@ -212,16 +222,20 @@ class ServerCard extends StatelessWidget {
 
 /// 维护中 / 已静音：圆角小标签（与 Web 的 .tag 一致）
 class _Pill extends StatelessWidget {
-  const _Pill(this.text, this.color, this.border);
+  const _Pill(this.text, this.color, this.border, {this.icon});
   final String text;
   final Color color;
   final Color border;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6),
         decoration: BoxDecoration(border: Border.all(color: border), borderRadius: BorderRadius.circular(99)),
-        child: Text(text, style: TextStyle(fontSize: 11, height: 1.6, color: color)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) Padding(padding: const EdgeInsets.only(right: 3), child: Icon(icon, size: 11, color: color)),
+          Text(text, style: TextStyle(fontSize: 11, height: 1.6, color: color, fontFeatures: const [FontFeature.tabularFigures()])),
+        ]),
       );
 }
 
