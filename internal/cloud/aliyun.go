@@ -15,10 +15,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -160,53 +158,17 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	type job struct {
-		region string
-		fn     func(context.Context, string) ([]Instance, error)
-	}
-	var jobs []job
+	var jobs []regionJob
 	for _, r := range ecsRegions {
-		jobs = append(jobs, job{r, c.ecsInstances})
+		jobs = append(jobs, regionJob{"ecs", "ECS", r, c.ecsInstances})
 	}
 	for _, r := range swasRegions {
-		jobs = append(jobs, job{r, c.swasInstances})
+		jobs = append(jobs, regionJob{"swas", "轻量应用服务器", r, c.swasInstances})
 	}
-	var (
-		mu       sync.Mutex
-		all      []Instance
-		firstErr error
-		wg       sync.WaitGroup
-		sem      = make(chan struct{}, 4)
-	)
-	for _, j := range jobs {
-		wg.Add(1)
-		go func(j job) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			got, err := j.fn(ctx, j.region)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return
-			}
-			all = append(all, got...)
-		}(j)
-	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	sort.Slice(all, func(i, k int) bool {
-		if all[i].Kind != all[k].Kind {
-			return all[i].Kind < all[k].Kind
-		}
-		return all[i].ID < all[k].ID
-	})
-	return all, nil
+	// 单个区域失败只跳过该区域（修订第 141 条）
+	all, err := runRegionJobs(ctx, jobs)
+	sortInstances(all)
+	return partialOrFail(all, err)
 }
 
 func (c *aliyunClient) wanted(region string) bool {

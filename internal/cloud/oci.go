@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -208,43 +207,29 @@ func (c *ociClient) Instances(ctx context.Context) ([]Instance, error) {
 	for _, x := range comps {
 		compIDs = append(compIDs, x.ID)
 	}
-	var (
-		mu       sync.Mutex
-		all      []Instance
-		firstErr error
-		wg       sync.WaitGroup
-		sem      = make(chan struct{}, 4)
-	)
+	// 每个（区域, 区间）一个查询；单个区域失败只跳过该区域（修订第 141 条）
+	var jobs []regionJob
 	for _, sub := range subs {
 		if sub.Status != "" && sub.Status != "READY" || !c.wanted(sub.RegionName) {
 			continue
 		}
 		for _, comp := range compIDs {
-			wg.Add(1)
-			go func(region, comp string) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				got, err := c.instancesIn(ctx, region, comp)
-				mu.Lock()
-				defer mu.Unlock()
-				if err != nil {
-					if firstErr == nil {
-						firstErr = err
-					}
-					return
-				}
-				all = append(all, got...)
-			}(sub.RegionName, comp)
+			jobs = append(jobs, regionJob{"oci", "实例", sub.RegionName,
+				func(ctx context.Context, region string) ([]Instance, error) { return c.instancesIn(ctx, region, comp) }})
 		}
 	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
+	all, err := runRegionJobs(ctx, jobs)
+	var pe *PartialError
+	if err != nil && !errors.As(err, &pe) {
+		return nil, err
 	}
 	sort.Slice(all, func(i, k int) bool { return all[i].ID < all[k].ID })
-	return append(all, Instance{ID: "egress", Name: "出站流量（每月 10 TB 免费）", Region: c.cred.Region,
-		Kind: "oci_egress", State: "-", TrafficLimit: ociFreeEgress}), nil
+	all = append(all, Instance{ID: "egress", Name: "出站流量（每月 10 TB 免费）", Region: c.cred.Region,
+		Kind: "oci_egress", State: "-", TrafficLimit: ociFreeEgress})
+	if pe != nil {
+		return all, pe
+	}
+	return all, nil
 }
 
 func (c *ociClient) instancesIn(ctx context.Context, region, comp string) ([]Instance, error) {

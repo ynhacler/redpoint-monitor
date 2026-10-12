@@ -62,6 +62,14 @@ type Client interface {
 type Options struct {
 	HTTP     *http.Client
 	Endpoint func(service, region string) string // 为 nil 时用官方地址
+	// Logf 记录同步中值得留意的信息（如跳过账户没有开通的区域）；为 nil 时不记录
+	Logf func(format string, args ...any)
+}
+
+func (o Options) logf(format string, args ...any) {
+	if o.Logf != nil {
+		o.Logf(format, args...)
+	}
 }
 
 // NewClient 按服务商与凭证（JSON）创建客户端。

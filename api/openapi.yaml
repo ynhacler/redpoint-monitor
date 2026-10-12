@@ -2766,7 +2766,7 @@ components:
     CloudAccount:
       type: object
       required: [id, provider, name, regions, credential_hint, budget_cents, balance_alert_cents, cost_interval_h, enabled, sync_cost, sync_traffic,
-                 cost_synced_at, instances_synced_at, traffic_synced_at, last_error, error_since, auth_failed, next_try_at,
+                 cost_synced_at, instances_synced_at, traffic_synced_at, last_error, last_warning, error_since, auth_failed, next_try_at,
                  instance_count, current_cost, created_at, updated_at]
       properties:
         id: { type: integer }
@@ -2785,7 +2785,8 @@ components:
         traffic_synced_at: { type: integer }
         last_error: { type: string, description: 最近一次同步失败的原因（云厂商的错误码与说明）；空表示正常 }
         error_since: { type: integer, description: 连续失败的开始时间，Unix 秒；0 表示正常 }
-        auth_failed: { type: boolean, description: 凭证失效或权限不足，已停止自动同步，需更新凭证 }
+        auth_failed: { type: boolean, description: 凭证失效或权限不足（账户级调用失败，或某类接口在所有区域都被拒绝），已停止自动同步，需更新凭证 }
+        last_warning: { type: string, description: '最近一次同步跳过的区域及原因（修订第 141 条），如“区域 ap-east-1 的 Lightsail 不可用（可能未开通该区域），已跳过：…”、“区域 eu-west-3 的 Lightsail 正在为账户初始化，本轮跳过，下一轮再试”；被跳过区域的实例保留上一次的结果。空表示没有' }
         next_try_at: { type: integer, description: 失败后下次自动重试的时间 }
         syncing: { type: boolean, description: 正在同步 }
         instance_count: { type: integer }

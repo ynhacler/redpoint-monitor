@@ -13,6 +13,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -180,7 +182,12 @@ func (s *Server) cloudClient(a CloudAccount) (cloud.Client, error) {
 	if err != nil {
 		return nil, errCredentialUnusable{err}
 	}
-	c, err := cloud.NewClient(a.Provider, cred, a.Regions, s.cloud.opts)
+	opts := s.cloud.opts
+	// 同步中值得留意的信息（如跳过账户没有开通的区域）写入面板日志（修订第 141 条）
+	opts.Logf = func(format string, args ...any) {
+		s.log.Info(fmt.Sprintf(format, args...), "component", "cloud", "account_id", a.ID, "provider", a.Provider)
+	}
+	c, err := cloud.NewClient(a.Provider, cred, a.Regions, opts)
 	clear(cred)
 	if err != nil {
 		return nil, errCredentialUnusable{err}
@@ -195,10 +202,20 @@ func (s *Server) doCloudSync(ctx context.Context, a CloudAccount, k cloudKinds, 
 	}
 	if k.instances {
 		insts, err := c.Instances(ctx)
-		if err != nil {
+		// 区域级失败（修订第 141 条）：其他区域的结果照常保存，被跳过区域的实例保留，说明记为警告，不停止同步
+		var partial *cloud.PartialError
+		if errors.As(err, &partial) {
+			res.Warning = partial.Error()
+			s.log.Warn("cloud sync skipped regions", "component", "cloud", "account_id", a.ID, "provider", a.Provider,
+				"err", res.Warning)
+		} else if err != nil {
 			return err
 		}
-		if err := s.store.ReplaceCloudInstances(a.ID, insts, now); err != nil {
+		var skipped []cloud.RegionError
+		if partial != nil {
+			skipped = partial.Skipped
+		}
+		if err := s.store.ReplaceCloudInstancesExcept(a.ID, insts, skipped, now); err != nil {
 			return err
 		}
 		res.InstancesSynced = true

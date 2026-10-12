@@ -30,6 +30,7 @@ type CloudAccount struct {
 	InstancesSyncedAt int64
 	TrafficSyncedAt   int64
 	LastError         string
+	LastWarning       string // 最近一次同步跳过的区域及原因（修订第 141 条）；空表示没有
 	ErrorSince        int64
 	FailCount         int
 	NextTryAt         int64
@@ -42,14 +43,14 @@ var errNoCloudAccount = errorf(CodeNotFound, "云账户不存在或已删除")
 
 const cloudAccountCols = `id, provider, name, regions, credential_enc, credential_hint, budget_cents, balance_alert_cents, cost_interval_h,
 	enabled, sync_cost, sync_traffic, cost_synced_at, instances_synced_at, traffic_synced_at, last_error, error_since,
-	fail_count, next_try_at, auth_failed, created_at, updated_at`
+	fail_count, next_try_at, auth_failed, created_at, updated_at, last_warning`
 
 func scanCloudAccount(sc interface{ Scan(...any) error }) (CloudAccount, error) {
 	var a CloudAccount
 	var regions string
 	err := sc.Scan(&a.ID, &a.Provider, &a.Name, &regions, &a.CredentialEnc, &a.CredentialHint, &a.BudgetCents,
 		&a.BalanceAlertCents, &a.CostIntervalH, &a.Enabled, &a.SyncCost, &a.SyncTraffic, &a.CostSyncedAt, &a.InstancesSyncedAt,
-		&a.TrafficSyncedAt, &a.LastError, &a.ErrorSince, &a.FailCount, &a.NextTryAt, &a.AuthFailed, &a.CreatedAt, &a.UpdatedAt)
+		&a.TrafficSyncedAt, &a.LastError, &a.ErrorSince, &a.FailCount, &a.NextTryAt, &a.AuthFailed, &a.CreatedAt, &a.UpdatedAt, &a.LastWarning)
 	if regions != "" {
 		a.Regions = strings.Split(regions, ",")
 	}
@@ -125,6 +126,7 @@ func (s *Store) DeleteCloudAccount(id int64) error {
 type cloudSyncResult struct {
 	CostSynced, InstancesSynced, TrafficSynced bool
 	Err                                        string
+	Warning                                    string // 实例同步时跳过的区域（只在 InstancesSynced 时写入）
 	AuthFailed                                 bool
 	NextTryAt                                  int64
 }
@@ -138,7 +140,7 @@ func (s *Store) RecordCloudSync(id int64, r cloudSyncResult, now time.Time) erro
 		set, args = append(set, "cost_synced_at = ?"), append(args, t)
 	}
 	if r.InstancesSynced {
-		set, args = append(set, "instances_synced_at = ?"), append(args, t)
+		set, args = append(set, "instances_synced_at = ?", "last_warning = ?"), append(args, t, r.Warning)
 	}
 	if r.TrafficSynced {
 		set, args = append(set, "traffic_synced_at = ?"), append(args, t)
@@ -223,6 +225,12 @@ type CloudInstance struct {
 
 // ReplaceCloudInstances 用最新列表替换账户的实例：新增、更新，已不存在的删除；保留已有的节点关联与流量数据。
 func (s *Store) ReplaceCloudInstances(accountID int64, insts []cloud.Instance, now time.Time) error {
+	return s.ReplaceCloudInstancesExcept(accountID, insts, nil, now)
+}
+
+// ReplaceCloudInstancesExcept 与 ReplaceCloudInstances 相同，但保留 skipped 中（类型, 区域）原有的实例：
+// 这些区域本轮没有查到（修订第 141 条），不能当成实例已删除。
+func (s *Store) ReplaceCloudInstancesExcept(accountID int64, insts []cloud.Instance, skipped []cloud.RegionError, now time.Time) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
@@ -247,6 +255,10 @@ func (s *Store) ReplaceCloudInstances(accountID int64, insts []cloud.Instance, n
 	q := `DELETE FROM cloud_instances WHERE account_id = ?`
 	if len(keep) > 1 {
 		q += ` AND instance_id NOT IN (?` + strings.Repeat(",?", len(keep)-2) + `)`
+	}
+	for _, r := range skipped {
+		q += ` AND NOT (kind = ? AND region = ?)`
+		keep = append(keep, r.Kind, r.Region)
 	}
 	if _, err := tx.Exec(q, keep...); err != nil {
 		return err
