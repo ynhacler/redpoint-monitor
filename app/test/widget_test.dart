@@ -105,7 +105,10 @@ void main() {
     final tokyo = tester.getTopLeft(find.textContaining('Tokyo ARM'));
     expect(hk.dy, lessThan(tokyo.dy));
     expect(find.text('CPU 96%'), findsOneWidget);
-    expect(find.text('SG-calm'), findsNothing);
+    // 实时概况；正常节点以紧凑行列在“全部节点”中
+    expect(find.text('实时概况'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('SG-calm'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('全部节点'), findsOneWidget);
 
     // 服务器：搜索按 IP 过滤，收藏后出现在首页
     await tester.tap(find.text('服务器'));
@@ -136,7 +139,9 @@ void main() {
     // 首页的收藏卡片：IP 打码
     await tester.tap(find.text('首页'));
     await tester.pump();
+    await tester.scrollUntilVisible(find.textContaining('103.***.***.3'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.textContaining('103.***.***.3'), findsOneWidget);
+    expect(find.text('其他节点'), findsNothing); // 唯一的正常节点已收藏
 
     // 详情：趋势、流量、资产（隐私模式下价格与供应商打码）
     await tester.tap(find.textContaining('Tokyo ARM'));

@@ -116,3 +116,32 @@ int compareServers(ServerView a, ServerView b) {
   final r = rank(a) - rank(b);
   return r != 0 ? r : a.name.compareTo(b.name);
 }
+
+/// 首页“实时概况”（设计 1.5.18）：在线节点的总上下行速率、平均 CPU / 内存，全部节点本周期流量合计。
+class FleetStats {
+  const FleetStats({required this.live, required this.rx, required this.tx, required this.cpu, required this.mem, required this.trafficUsed});
+  final int live;
+  final int rx;
+  final int tx;
+
+  /// 平均值；没有在线节点时为 null
+  final double? cpu;
+  final double? mem;
+  final int trafficUsed;
+}
+
+FleetStats fleetStats(List<ServerView> items) {
+  var live = 0, rx = 0, tx = 0, used = 0;
+  var cpu = 0.0, mem = 0.0;
+  for (final s in items) {
+    used += s.traffic.used;
+    if (!isLive(s)) continue;
+    final r = s.latest!;
+    live++;
+    rx += r.rx;
+    tx += r.tx;
+    cpu += r.cpu;
+    mem += r.mem;
+  }
+  return FleetStats(live: live, rx: rx, tx: tx, cpu: live > 0 ? cpu / live : null, mem: live > 0 ? mem / live : null, trafficUsed: used);
+}

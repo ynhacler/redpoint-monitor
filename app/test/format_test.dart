@@ -103,6 +103,18 @@ void main() {
     expect(d.groups, ['A', 'B']);
   });
 
+  test('fmtExpiry：与 Web 一致', () {
+    final now = DateTime(2026, 10, 12, 20);
+    expect(fmtExpiry('', 'monthly', now: now), isNull);
+    expect(fmtExpiry('', 'one_time', now: now)!.text, '永久');
+    expect(fmtExpiry('2026-10-10', 'monthly', now: now)!, (text: '已过期', level: 'bad', days: -2));
+    expect(fmtExpiry('2026-10-12', 'monthly', now: now)!.text, '今天到期');
+    expect(fmtExpiry('2026-10-19', 'monthly', now: now)!, (text: '剩7天', level: 'bad', days: 7));
+    expect(fmtExpiry('2026-11-01', 'monthly', now: now)!.level, 'warn');
+    expect(fmtExpiry('2027-06-01', 'yearly', now: now)!, (text: '2027-06-01', level: '', days: 232));
+    expect(fmtExpiry('坏日期', 'monthly', now: now), isNull);
+  });
+
   test('fmtProbeError 与 fmtProbeWhere：与 Web 一致', () {
     expect(fmtProbeError('timeout'), '超时');
     expect(fmtProbeError('dns'), '域名解析失败');

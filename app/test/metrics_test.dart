@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vpsmon_app/metrics.dart';
 import 'package:vpsmon_app/models.dart';
+import 'package:vpsmon_app/widgets/fleet.dart';
 
 Map<String, dynamic> server({
   String name = 'a',
@@ -93,5 +94,32 @@ void main() {
       'rx_speed': 5, 'tx_speed': 6});
     expect(p.mem, 25);
     expect(p.disk, 0);
+  });
+
+  test('fleetStats：只统计在线节点的速率与平均值，流量合计全部节点', () {
+    final f = fleetStats([sv(server(used: 100)), sv(server(used: 50)), sv(server(status: 'offline', used: 7))]);
+    expect(f.live, 2);
+    expect(f.rx, 22); // 每台两块网卡 10 + 1
+    expect(f.tx, 44);
+    expect(f.cpu, 50);
+    expect(f.mem, 40);
+    expect(f.trafficUsed, 157);
+    final none = fleetStats([sv(server(status: 'offline'))]);
+    expect(none.cpu, isNull);
+  });
+
+  test('expiringSoon：30 天内与已过期，按剩余天数排序；永久与远期不列出', () {
+    final now = DateTime(2026, 10, 12);
+    ServerView exp(String name, String date, [String period = 'monthly']) =>
+        sv({...server(name: name), 'expire_date': date, 'billing_period': period});
+    final got = expiringSoon([
+      exp('far', '2027-01-01'),
+      exp('soon', '2026-10-20'),
+      exp('gone', '2026-10-01'),
+      exp('forever', '', 'one_time'),
+      exp('month', '2026-11-11'),
+    ], now: now);
+    expect([for (final (s, _) in got) s.name], ['gone', 'soon', 'month']);
+    expect(got.first.$2.text, '已过期');
   });
 }
