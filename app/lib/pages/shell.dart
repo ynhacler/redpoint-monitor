@@ -185,7 +185,7 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _open(ServerView s) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ServerDetailPage(api: widget.api, cache: widget.cache, initial: s, onRevoked: widget.onRevoked,
+      builder: (_) => ServerDetailPage(api: widget.api, cache: widget.cache, initial: s, onRevoked: widget.onRevoked, cloud: _cloud,
           privacy: _prefs.privacy),
     ));
     _refresh(); // 详情页中可能静音或开启了维护

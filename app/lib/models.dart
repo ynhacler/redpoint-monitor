@@ -460,6 +460,10 @@ const cloudProviderNames = {
   'aws': 'AWS', 'aliyun_cn': '阿里云', 'aliyun_intl': '阿里云国际', 'tencent_cn': '腾讯云', 'tencent_intl': '腾讯云国际', 'oci': 'Oracle Cloud',
 };
 
+/// 云实例类型名称（与 Web 云账户页的 kindNames 一致）
+const cloudKindNames = {'ec2': 'EC2', 'lightsail': 'Lightsail', 'ecs': 'ECS', 'swas': '轻量', 'cvm': 'CVM', 'lighthouse': '轻量',
+  'oci': 'OCI', 'oci_egress': '租户'};
+
 class CloudCost {
   CloudCost({required this.period, required this.amountCents, this.forecastCents, this.balanceCents, required this.currency});
   final String period;
