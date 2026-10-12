@@ -40,13 +40,35 @@ type PartialError struct {
 func (e *PartialError) Error() string {
 	parts := make([]string, 0, len(e.Skipped))
 	for _, r := range e.Skipped {
-		parts = append(parts, fmt.Sprintf("区域 %s 的 %s 调用失败（可能未开通该区域），已跳过：%v", r.Region, r.Label, r.Err))
+		parts = append(parts, r.describe())
 	}
 	msg := strings.Join(parts, "；")
 	if len(msg) > 900 {
 		msg = msg[:900] + "…"
 	}
 	return msg
+}
+
+// 区域级错误的几种原因（修订第 141 条），说明分别给出，避免把排查带偏。
+var (
+	// 账户正在开通该区域（AWS Lightsail 首次使用某区域时）：过一会儿自然恢复
+	settingUpCodes = map[string]bool{"RegionSetupInProgressException": true}
+	// 账户没有开通该区域：选择加入区域在未开通时返回“令牌无效”或 OptInRequired
+	notOpenedCodes = map[string]bool{"UnrecognizedClientException": true, "InvalidClientTokenId": true, "AuthFailure": true,
+		"OptInRequired": true}
+)
+
+// describe 按原因说明一个被跳过的区域。
+func (r RegionError) describe() string {
+	var pe *ProviderError
+	errors.As(r.Err, &pe)
+	switch {
+	case pe != nil && settingUpCodes[pe.Code]:
+		return fmt.Sprintf("区域 %s 的 %s 正在为账户初始化，本轮跳过，下一轮再试", r.Region, r.Label)
+	case pe != nil && notOpenedCodes[pe.Code]:
+		return fmt.Sprintf("区域 %s 的 %s 不可用（可能未开通该区域），已跳过：%v", r.Region, r.Label, r.Err)
+	}
+	return fmt.Sprintf("区域 %s 的 %s 调用失败，已跳过：%v", r.Region, r.Label, r.Err)
 }
 
 // deniedCodes 是“凭证有效、但没有这项权限”的错误码（各家）。

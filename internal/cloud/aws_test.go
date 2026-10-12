@@ -287,7 +287,7 @@ func TestAWSRegionFailures(t *testing.T) {
 	if len(insts) != 1 || insts[0].Kind != "lightsail" {
 		t.Errorf("其他区域的实例照常返回：%+v", insts)
 	}
-	if IsAuthError(err) || !strings.Contains(err.Error(), "区域 ap-northeast-1 的 EC2 调用失败（可能未开通该区域），已跳过") {
+	if IsAuthError(err) || !strings.Contains(err.Error(), "区域 ap-northeast-1 的 EC2 调用失败，已跳过") {
 		t.Errorf("区域级错误不是凭证失效，说明指出区域：%v", err)
 	}
 

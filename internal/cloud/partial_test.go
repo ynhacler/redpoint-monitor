@@ -41,4 +41,21 @@ func TestRegionOutcome(t *testing.T) {
 			t.Errorf("retryable(%v) 应为 %v", err, want)
 		}
 	}
+	// 说明按原因区分：正在初始化 / 未开通 / 其他
+	for code, want := range map[string]string{
+		"RegionSetupInProgressException": "区域 eu-west-3 的 Lightsail 正在为账户初始化，本轮跳过，下一轮再试",
+		"UnrecognizedClientException":    "区域 eu-west-3 的 Lightsail 不可用（可能未开通该区域），已跳过：",
+		"InternalError":                  "区域 eu-west-3 的 Lightsail 调用失败，已跳过：",
+	} {
+		got := RegionError{Kind: "lightsail", Label: "Lightsail", Region: "eu-west-3", Err: &ProviderError{Status: 400, Code: code}}.describe()
+		if len(got) < len(want) || got[:len(want)] != want {
+			t.Errorf("%s：%s", code, got)
+		}
+	}
+	// 正在初始化是区域级，不重试（本轮跳过即可）
+	setup := &ProviderError{Status: 400, Code: "RegionSetupInProgressException"}
+	err = regionOutcome([]regionJob{job("lightsail", "eu-west-3"), job("lightsail", "us-east-1")}, []error{setup, nil})
+	if !errors.As(err, &pe) || IsAuthError(err) || retryable(setup) {
+		t.Errorf("正在初始化应为区域级：%v", err)
+	}
 }

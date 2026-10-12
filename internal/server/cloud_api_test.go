@@ -538,7 +538,7 @@ func TestCloudSyncRegionWarning(t *testing.T) {
 	if a.AuthFailed || a.LastError != "" || a.FailCount != 0 {
 		t.Fatalf("区域级失败不应停止同步：%+v", a)
 	}
-	if !strings.Contains(a.LastWarning, "区域 ap-northeast-1 的 Lightsail 调用失败（可能未开通该区域），已跳过") {
+	if !strings.Contains(a.LastWarning, "区域 ap-northeast-1 的 Lightsail 不可用（可能未开通该区域），已跳过") {
 		t.Errorf("警告：%q", a.LastWarning)
 	}
 	var insts struct{ Items []CloudInstance }

@@ -903,7 +903,7 @@ export interface CloudAccount {
   error_since: number
   /** 凭证失效或权限不足（账户级调用失败，或某类接口在所有区域都被拒绝），已停止自动同步，需更新凭证 */
   auth_failed: boolean
-  /** 最近一次同步跳过的区域及原因（修订第 141 条），如“区域 ap-east-1 的 Lightsail 调用失败（可能未开通该区域），已跳过：…”；被跳过区域的实例保留上一次的结果。空表示没有 */
+  /** 最近一次同步跳过的区域及原因（修订第 141 条），如“区域 ap-east-1 的 Lightsail 不可用（可能未开通该区域），已跳过：…”、“区域 eu-west-3 的 Lightsail 正在为账户初始化，本轮跳过，下一轮再试”；被跳过区域的实例保留上一次的结果。空表示没有 */
   last_warning: string
   /** 失败后下次自动重试的时间 */
   next_try_at: number
