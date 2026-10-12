@@ -28,9 +28,13 @@ bool matchesQuery(ServerView s, String query) {
 }
 
 /// 排序：数值类降序（高的在前），离线 / 无数据的放最后；同值按名称。
-/// custom 按 order（节点 ID 的顺序，用户拖动调整）；不在 order 中的节点（之后新增的）排在后面，按名称。
+/// custom 按 order（本机拖动调整的节点 ID 顺序）；本机没有自己的顺序时按面板保存的顺序（sort_order，修订第 150 条）。
+/// 不在顺序中的节点（之后新增的）排在后面，按名称。
 List<ServerView> sortServers(List<ServerView> list, SortBy by, Set<int> favorites, {List<int> order = const []}) {
-  final pos = {for (final (i, id) in order.indexed) id: i};
+  final pos = order.isNotEmpty
+      ? {for (final (i, id) in order.indexed) id: i}
+      : {for (final s in list) if (s.sortOrder > 0) s.id: s.sortOrder};
+  final unranked = order.isNotEmpty ? order.length : 1 << 30;
   double? metric(ServerView s) {
     if (by == SortBy.traffic) return trafficPct(s);
     if (!isLive(s)) return null;
@@ -61,7 +65,7 @@ List<ServerView> sortServers(List<ServerView> list, SortBy by, Set<int> favorite
       case SortBy.name:
         r = 0;
       case SortBy.custom:
-        r = (pos[a.id] ?? order.length) - (pos[b.id] ?? order.length);
+        r = (pos[a.id] ?? unranked).compareTo(pos[b.id] ?? unranked);
       case SortBy.region:
         r = _blankLast(a.region, b.region);
       case SortBy.provider:

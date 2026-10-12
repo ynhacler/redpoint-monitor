@@ -465,6 +465,55 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleServerOrder：PUT /api/v1/servers/order，admin（修订第 150 条）。保存节点的自定义顺序，成功 204。
+// ids 不能重复，必须都是已有节点；不在 ids 中的节点排在后面。
+func (s *Server) handleServerOrder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	rows, err := s.store.ListServers()
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	exists := make(map[int64]bool, len(rows))
+	for _, row := range rows {
+		exists[row.ID] = true
+	}
+	fail := func(msg string) {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "ids", Message: msg}}})
+	}
+	if len(body.IDs) > 2000 {
+		fail("最多 2000 个节点")
+		return
+	}
+	seen := make(map[int64]bool, len(body.IDs))
+	for _, id := range body.IDs {
+		switch {
+		case seen[id]:
+			fail("节点重复")
+			return
+		case !exists[id]:
+			fail("节点不存在或已删除")
+			return
+		}
+		seen[id] = true
+	}
+	if err := s.store.SetServerOrder(body.IDs); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.reorder", TargetType: "server", Success: true,
+		Details: map[string]any{"count": len(body.IDs)}})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleRevokeAgentToken：POST /api/v1/servers/{id}/revoke-agent-token，admin（设计 17.2、23.2）。
 // 立即吊销该节点的全部 Agent Token：Token 泄露时切断其上报能力。节点回到“待安装”，历史数据与流量统计保留；
 // 恢复上报需新的注册码：主机上执行 sudo vpsmon-agent rotate-token --enroll …（或卸载后重新安装）。成功 204。

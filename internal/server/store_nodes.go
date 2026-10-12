@@ -370,7 +370,7 @@ func splitIP(ip string) (string, string) {
 const serverColumns = `id, name, traffic_limit_bytes, traffic_reset_day, traffic_count_mode, last_seen_at,
 	enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, hostname, ipv4, ipv6,
 	machine_id_hash, enrolled_at, group_name, note, provider, plan, region, price_cents, currency,
-	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone, watch_procs, probe_conf`
+	billing_period, expire_date, created_at, country, traffic_unit, traffic_factor, bandwidth_mbps, report_interval_s, traffic_timezone, watch_procs, probe_conf, sort_order`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -381,13 +381,32 @@ func scanServer(row scanner) (*ServerRow, error) {
 		&r.EnrollState, &r.ExpectedHostname, &r.ExpectedIPv4, &r.ExpectedIPv6, &r.VerifyMode, &r.Hostname,
 		&r.IPv4, &r.IPv6, &r.MachineIDHash, &r.EnrolledAt, &r.Group, &r.Note, &r.Provider, &r.Plan, &r.Region,
 		&r.PriceCents, &r.Currency, &r.BillingPeriod, &r.ExpireDate, &r.CreatedAt, &r.Country, &r.TrafficUnit, &r.TrafficFactor,
-		&r.BandwidthMbps, &r.ReportIntervalS, &r.TrafficTimezone, &procs, &probe)
+		&r.BandwidthMbps, &r.ReportIntervalS, &r.TrafficTimezone, &procs, &probe, &r.SortOrder)
 	r.Probe = parseNodeProbe(probe)
 	r.WatchProcs = protocol.ParseWatchProcs(procs)
 	if r.WatchProcs == nil {
 		r.WatchProcs = []string{}
 	}
 	return &r, err
+}
+
+// SetServerOrder 保存自定义顺序（修订第 150 条）：ids 依次写入 1、2、3…，其他节点置 0。在一个事务中完成。
+// 调用方已校验 ids 不重复且都存在。
+func (s *Store) SetServerOrder(ids []int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE servers SET sort_order = 0`); err != nil {
+		return err
+	}
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE servers SET sort_order = ? WHERE id = ?`, i+1, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetServer 按 ID 读取节点；不存在时返回 errNoServer。

@@ -56,4 +56,12 @@ void main() {
     expect(p.order, [3, 1, 2]);
     expect(Prefs.fromJson({}).order, isEmpty); // 旧版偏好文件没有 order
   });
+
+  test('自定义顺序：本机没有自己的顺序时按面板的 sort_order；0 排在后面', () {
+    ServerView so(int id, String name, int order) => ServerView.fromJson({...sv(id, name).raw, 'sort_order': order});
+    final list = [so(1, 'a', 0), so(2, 'b', 2), so(3, 'c', 1), so(4, 'd', 0)];
+    expect(sortServers(list, SortBy.custom, {}).map((s) => s.id), [3, 2, 1, 4]);
+    // 本机有自己的顺序时优先
+    expect(sortServers(list, SortBy.custom, {}, order: [4, 1]).map((s) => s.id).take(2), [4, 1]);
+  });
 }

@@ -836,6 +836,8 @@ var migrations = []string{
 	// 迁移 39：云账户的区域级警告（设计 44.4，修订第 141 条）：最近一次同步跳过了哪些区域及原因；
 	// 与 last_error（整轮失败）分开，不触发退避，也不停止自动同步
 	`ALTER TABLE cloud_accounts ADD COLUMN last_warning TEXT NOT NULL DEFAULT '';`,
+	// 迁移 40：节点的自定义顺序（设计 1.5.6，修订第 150 条）；0 表示未排
+	`ALTER TABLE servers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
@@ -951,7 +953,9 @@ type ServerRow struct {
 	Currency      string    `json:"currency"`
 	BillingPeriod string    `json:"billing_period"`
 	ExpireDate    string    `json:"expire_date"` // YYYY-MM-DD，空表示未填
-	CreatedAt     int64     `json:"created_at"`
+	// SortOrder 是自定义顺序（从 1 开始，0 表示未排），由 PUT /servers/order 写入（修订第 150 条）
+	SortOrder int   `json:"sort_order"`
+	CreatedAt int64 `json:"created_at"`
 }
 
 // ListServers 返回全部节点，按名称排序。

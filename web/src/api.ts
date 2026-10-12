@@ -213,6 +213,11 @@ export function updateServer(id: number, input: CreateServerInput) {
   return request('put', '/servers/{id}', { params: { id }, body: input })
 }
 
+/** 保存节点的自定义顺序（修订第 150 条）：ids 为完整顺序，不在其中的节点排在后面。 */
+export function putServerOrder(ids: number[]) {
+  return request('put', '/servers/order', { body: { ids } })
+}
+
 /** 删除节点及其全部历史数据，不可恢复。 */
 export function deleteServer(id: number) {
   return request('delete', '/servers/{id}', { params: { id } })

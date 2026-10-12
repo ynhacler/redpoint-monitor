@@ -1523,6 +1523,29 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/order:
+    put:
+      tags: [servers]
+      summary: 保存节点的自定义顺序（设计 1.5.6，修订第 150 条）
+      description: |
+        ids 为节点 ID 的完整顺序，依次写入 sort_order = 1、2、3…；不在 ids 中的节点 sort_order 置 0（排在后面，按名称）。
+        Web 的“自定义”排序与 App 的“自定义顺序”（本机没有自己的顺序时）都按它排列。记入操作日志。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, maxItems: 2000, items: { type: integer }, description: 不能重复，必须都是已有节点 }
+      responses:
+        '204': { description: 已保存 }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /servers/{id}:
     parameters: [{ $ref: '#/components/parameters/ServerID' }]
     get:
@@ -2230,7 +2253,7 @@ components:
 
     ServerView:
       type: object
-      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, watch_procs, price_cents, currency, billing_period, expire_date, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
+      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, watch_procs, price_cents, currency, billing_period, expire_date, sort_order, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -2259,6 +2282,7 @@ components:
         currency: { type: string }
         billing_period: { type: string }
         expire_date: { type: string }
+        sort_order: { type: integer, description: '自定义顺序（修订第 150 条）：从 1 开始，0 表示未排（排在已排的后面，按名称）' }
         traffic_limit_bytes: { type: integer }
         traffic_reset_day: { type: integer }
         traffic_count_mode: { type: string, enum: [sum, rx, tx, max] }
