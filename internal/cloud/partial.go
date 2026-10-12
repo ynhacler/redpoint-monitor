@@ -58,6 +58,26 @@ var (
 		"OptInRequired": true}
 )
 
+// Temporary 表示该区域的失败可能很快自行恢复：正在初始化、服务端错误、限流、网络错误（修订第 151 条）。
+// 面板据此提前重新检查实例，而不是等到下一个 6 小时；未开通、无权限等不会自行恢复的不算。
+func (r RegionError) Temporary() bool {
+	var pe *ProviderError
+	if errors.As(r.Err, &pe) && settingUpCodes[pe.Code] {
+		return true
+	}
+	return retryable(r.Err)
+}
+
+// Temporary 表示被跳过的区域中至少有一个可能很快恢复。
+func (e *PartialError) Temporary() bool {
+	for _, r := range e.Skipped {
+		if r.Temporary() {
+			return true
+		}
+	}
+	return false
+}
+
 // describe 按原因说明一个被跳过的区域。
 func (r RegionError) describe() string {
 	var pe *ProviderError

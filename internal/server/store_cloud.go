@@ -26,31 +26,32 @@ type CloudAccount struct {
 	SyncCost          bool
 	SyncTraffic       bool
 	// 同步状态
-	CostSyncedAt      int64
-	InstancesSyncedAt int64
-	TrafficSyncedAt   int64
-	LastError         string
-	LastWarning       string // 最近一次同步跳过的区域及原因（修订第 141 条）；空表示没有
-	ErrorSince        int64
-	FailCount         int
-	NextTryAt         int64
-	AuthFailed        bool
-	CreatedAt         int64
-	UpdatedAt         int64
+	CostSyncedAt       int64
+	InstancesSyncedAt  int64
+	TrafficSyncedAt    int64
+	LastError          string
+	LastWarning        string // 最近一次同步跳过的区域及原因（修订第 141 条）；空表示没有
+	InstancesRecheckAt int64  // 提前重新检查实例的时间（修订第 151 条）；0 表示按常规周期
+	ErrorSince         int64
+	FailCount          int
+	NextTryAt          int64
+	AuthFailed         bool
+	CreatedAt          int64
+	UpdatedAt          int64
 }
 
 var errNoCloudAccount = errorf(CodeNotFound, "云账户不存在或已删除")
 
 const cloudAccountCols = `id, provider, name, regions, credential_enc, credential_hint, budget_cents, balance_alert_cents, cost_interval_h,
 	enabled, sync_cost, sync_traffic, cost_synced_at, instances_synced_at, traffic_synced_at, last_error, error_since,
-	fail_count, next_try_at, auth_failed, created_at, updated_at, last_warning`
+	fail_count, next_try_at, auth_failed, created_at, updated_at, last_warning, instances_recheck_at`
 
 func scanCloudAccount(sc interface{ Scan(...any) error }) (CloudAccount, error) {
 	var a CloudAccount
 	var regions string
 	err := sc.Scan(&a.ID, &a.Provider, &a.Name, &regions, &a.CredentialEnc, &a.CredentialHint, &a.BudgetCents,
 		&a.BalanceAlertCents, &a.CostIntervalH, &a.Enabled, &a.SyncCost, &a.SyncTraffic, &a.CostSyncedAt, &a.InstancesSyncedAt,
-		&a.TrafficSyncedAt, &a.LastError, &a.ErrorSince, &a.FailCount, &a.NextTryAt, &a.AuthFailed, &a.CreatedAt, &a.UpdatedAt, &a.LastWarning)
+		&a.TrafficSyncedAt, &a.LastError, &a.ErrorSince, &a.FailCount, &a.NextTryAt, &a.AuthFailed, &a.CreatedAt, &a.UpdatedAt, &a.LastWarning, &a.InstancesRecheckAt)
 	if regions != "" {
 		a.Regions = strings.Split(regions, ",")
 	}
@@ -127,6 +128,7 @@ type cloudSyncResult struct {
 	CostSynced, InstancesSynced, TrafficSynced bool
 	Err                                        string
 	Warning                                    string // 实例同步时跳过的区域（只在 InstancesSynced 时写入）
+	RecheckAt                                  int64  // 提前重新检查实例的时间；0 表示按常规周期（只在 InstancesSynced 时写入）
 	AuthFailed                                 bool
 	NextTryAt                                  int64
 }
@@ -140,7 +142,7 @@ func (s *Store) RecordCloudSync(id int64, r cloudSyncResult, now time.Time) erro
 		set, args = append(set, "cost_synced_at = ?"), append(args, t)
 	}
 	if r.InstancesSynced {
-		set, args = append(set, "instances_synced_at = ?", "last_warning = ?"), append(args, t, r.Warning)
+		set, args = append(set, "instances_synced_at = ?", "last_warning = ?", "instances_recheck_at = ?"), append(args, t, r.Warning, r.RecheckAt)
 	}
 	if r.TrafficSynced {
 		set, args = append(set, "traffic_synced_at = ?"), append(args, t)

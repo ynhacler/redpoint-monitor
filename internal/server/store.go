@@ -838,6 +838,8 @@ var migrations = []string{
 	`ALTER TABLE cloud_accounts ADD COLUMN last_warning TEXT NOT NULL DEFAULT '';`,
 	// 迁移 40：节点的自定义顺序（设计 1.5.6，修订第 150 条）；0 表示未排
 	`ALTER TABLE servers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;`,
+	// 迁移 41：云账户提前重新检查实例的时间（修订第 151 条）：区域因初始化中、服务端错误等暂时失败时为 30 分钟后，0 表示按常规周期
+	`ALTER TABLE cloud_accounts ADD COLUMN instances_recheck_at INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {

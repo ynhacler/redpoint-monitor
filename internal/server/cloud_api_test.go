@@ -24,11 +24,18 @@ const (
 // fakeAWSServer 是最小的 AWS 模拟：Cost Explorer、EC2（一个区域、一台实例）、Lightsail（一台带流量包的实例）。
 // deny 为真时所有请求返回凭证无效。
 // lsDown（可选）为真时只有 Lightsail 的 GetInstances 失败（模拟区域级问题，修订第 141 条）。
+// lsDown[0]：Lightsail 返回“令牌无效”（未开通的区域）；lsDown[1]：返回“正在初始化”。
 func fakeAWSServer(t *testing.T, deny *atomic.Bool, lsDown ...*atomic.Bool) cloud.Options {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(lsDown) > 0 && lsDown[0].Load() && r.Header.Get("X-Amz-Target") == "Lightsail_20161128.GetInstances" {
 			w.WriteHeader(400)
 			io.WriteString(w, `{"__type":"UnrecognizedClientException","message":"The security token included in the request is invalid."}`)
+			return
+		}
+		// lsDown[1]：Lightsail 区域正在为账户初始化（暂时失败，修订第 151 条）
+		if len(lsDown) > 1 && lsDown[1].Load() && r.Header.Get("X-Amz-Target") == "Lightsail_20161128.GetInstances" {
+			w.WriteHeader(400)
+			io.WriteString(w, `{"__type":"RegionSetupInProgressException","message":"Region setup in progress."}`)
 			return
 		}
 		if deny.Load() {
@@ -605,5 +612,54 @@ func TestAppCloud(t *testing.T) {
 	// 只接受设备凭证
 	if rec := do(h, "GET", "/api/v1/app/cloud", admin, nil); rec.Code != 401 {
 		t.Errorf("Web 会话应被拒绝：%d", rec.Code)
+	}
+}
+
+// 区域暂时失败时约 30 分钟后提前重新检查实例；恢复后回到常规 6 小时；未开通的区域不提前（修订第 151 条）。
+func TestCloudRegionRecheck(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var deny, lsDown, lsBusy atomic.Bool
+	s.cloud.opts = fakeAWSServer(t, &deny, &lsDown, &lsBusy)
+	_, v, _ := createCloudAccount(t, h, admin, awsAccountBody)
+	now := time.Now()
+	sync := func(at time.Time) CloudAccount {
+		a, _ := s.store.GetCloudAccount(v.ID)
+		s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true}, at)
+		a, _ = s.store.GetCloudAccount(v.ID)
+		return a
+	}
+
+	lsBusy.Store(true)
+	a := sync(now)
+	if want := now.Add(cloudRecheckAfter).Unix(); a.InstancesRecheckAt != want || a.LastWarning == "" || a.AuthFailed {
+		t.Fatalf("初始化中：recheck=%d（应为 %d） warning=%q", a.InstancesRecheckAt, want, a.LastWarning)
+	}
+	if dueKinds(a, now.Add(29*time.Minute)).instances {
+		t.Error("30 分钟内不应重新检查")
+	}
+	if !dueKinds(a, now.Add(cloudRecheckAfter)).instances {
+		t.Error("到了提前检查的时间应同步实例")
+	}
+	var list struct{ Items []cloudAccountView }
+	json.Unmarshal(do(h, "GET", "/api/v1/cloud-accounts", admin, nil).Body.Bytes(), &list)
+	if list.Items[0].InstancesRecheck != a.InstancesRecheckAt {
+		t.Errorf("接口应返回提前检查的时间：%+v", list.Items[0])
+	}
+
+	// 恢复：警告与提前检查都清除，回到常规周期
+	lsBusy.Store(false)
+	a = sync(now.Add(cloudRecheckAfter))
+	if a.InstancesRecheckAt != 0 || a.LastWarning != "" {
+		t.Fatalf("恢复后：recheck=%d warning=%q", a.InstancesRecheckAt, a.LastWarning)
+	}
+	if dueKinds(a, now.Add(2*cloudRecheckAfter)).instances {
+		t.Error("恢复后应按常规 6 小时")
+	}
+
+	// 未开通的区域：有警告但不提前
+	lsDown.Store(true)
+	if a = sync(now.Add(7 * time.Hour)); a.LastWarning == "" || a.InstancesRecheckAt != 0 {
+		t.Errorf("未开通：recheck=%d warning=%q", a.InstancesRecheckAt, a.LastWarning)
 	}
 }

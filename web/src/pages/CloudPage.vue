@@ -111,7 +111,9 @@ function status(a: CloudAccount): { tone: string; text: string } {
   if (a.last_error) return { tone: 'warn', text: `同步失败：${a.last_error}（${fmtTime(a.next_try_at)} 重试）` }
   const last = Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
   // 区域级问题（修订第 141 条）：其他区域照常同步，被跳过区域的实例保留上一次的结果
-  if (a.last_warning) return { tone: 'warn', text: `已同步 ${fmtTime(last)}，部分区域已跳过：${a.last_warning}` }
+  // 有区域暂时失败时约 30 分钟后自动重新检查（修订第 151 条）
+  const recheck = a.instances_recheck_at ? `（${fmtTime(a.instances_recheck_at)} 自动重新检查）` : ''
+  if (a.last_warning) return { tone: 'warn', text: `已同步 ${fmtTime(last)}，部分区域已跳过：${a.last_warning}${recheck}` }
   return last ? { tone: 'muted', text: `已同步 ${fmtTime(last)}` } : { tone: 'muted', text: '等待首次同步' }
 }
 

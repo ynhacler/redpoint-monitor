@@ -28,6 +28,8 @@ const (
 	cloudTrafficEvery   = time.Hour
 	cloudBackoffMax     = 6 * time.Hour
 	cloudSyncTimeout    = 5 * time.Minute
+	// cloudRecheckAfter：区域暂时失败（初始化中、服务端错误、限流、网络）后提前重新检查实例的时间（修订第 151 条）
+	cloudRecheckAfter = 30 * time.Minute
 )
 
 // cloudState 是云同步的运行状态。
@@ -98,8 +100,9 @@ func dueKinds(a CloudAccount, now time.Time) cloudKinds {
 		interval = 12 * time.Hour
 	}
 	return cloudKinds{
-		cost:      a.SyncCost && t-a.CostSyncedAt >= int64(interval/time.Second),
-		instances: t-a.InstancesSyncedAt >= int64(cloudInstancesEvery/time.Second),
+		cost: a.SyncCost && t-a.CostSyncedAt >= int64(interval/time.Second),
+		// 常规每 6 小时；有区域暂时失败时到了提前检查的时间也同步（修订第 151 条）
+		instances: t-a.InstancesSyncedAt >= int64(cloudInstancesEvery/time.Second) || (a.InstancesRecheckAt > 0 && t >= a.InstancesRecheckAt),
 		traffic:   a.SyncTraffic && t-a.TrafficSyncedAt >= int64(cloudTrafficEvery/time.Second),
 	}
 }
@@ -206,6 +209,9 @@ func (s *Server) doCloudSync(ctx context.Context, a CloudAccount, k cloudKinds, 
 		var partial *cloud.PartialError
 		if errors.As(err, &partial) {
 			res.Warning = partial.Error()
+			if partial.Temporary() {
+				res.RecheckAt = now.Add(cloudRecheckAfter).Unix()
+			}
 			s.log.Warn("cloud sync skipped regions", "component", "cloud", "account_id", a.ID, "provider", a.Provider,
 				"err", res.Warning)
 		} else if err != nil {
