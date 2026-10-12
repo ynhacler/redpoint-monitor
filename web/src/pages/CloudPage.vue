@@ -265,8 +265,9 @@ const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: 
 // 阿里云：在 RAM 中创建用户，只授予这三个系统只读策略
 const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess'
 
-// 腾讯云：自定义策略，只列出用到的只读接口（也可改用预设策略 QcloudFinanceBillReadOnlyAccess、
-// QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess，余额另需 DescribeAccountBalance 授权）
+// 腾讯云：自定义策略，只列出用到的只读接口（修订第 147 条）。也可改用预设策略 QcloudCVMReadOnlyAccess、
+// QcloudLighthouseReadOnlyAccess，但费用与余额仍需下面两条 billing 接口，所以推荐直接用这条自定义策略。
+// 【安全】condition 限定只有面板服务器的公网 IP 能使用这对密钥：密钥泄露后在别处无法调用
 const tencentPolicy = JSON.stringify({
   version: '2.0',
   statement: [{
@@ -275,8 +276,17 @@ const tencentPolicy = JSON.stringify({
       'cvm:DescribeInstances', 'lighthouse:DescribeRegions', 'lighthouse:DescribeInstances',
       'lighthouse:DescribeInstancesTrafficPackages'],
     resource: ['*'],
+    condition: { ip_equal: { 'qcs:ip': ['面板服务器公网IP/32'] } },
   }],
 }, null, 2)
+// 每条权限的用途（添加账户时列出，用户知道为什么需要它们）
+const tencentActions: [string, string][] = [
+  ['billing:DescribeBillSummaryByProduct', '本月账单'],
+  ['billing:DescribeAccountBalance', '账户余额'],
+  ['cvm:DescribeRegions、cvm:DescribeInstances', '云服务器 CVM 实例与到期'],
+  ['lighthouse:DescribeRegions、lighthouse:DescribeInstances', '轻量应用服务器实例与到期'],
+  ['lighthouse:DescribeInstancesTrafficPackages', '轻量流量包额度与用量'],
+]
 // Oracle Cloud：把 API 用户放进一个组，在根区间为该组添加这四条只读策略
 const ociPolicy = ['read usage-reports', 'inspect compartments', 'read instance-family', 'read virtual-network-family']
   .map((x) => `Allow group <组名> to ${x} in tenancy`).join('\n')
@@ -349,7 +359,7 @@ function expireTone(i: CloudInstance): string {
         </select>
       </label>
       <!-- AWS 完整流程（修订第 146 条）：建用户 → 建策略（限定面板 IP）→ 挂策略 → 建密钥 -->
-      <div v-if="form.provider === 'aws'" class="muted small aws-steps">
+      <div v-if="form.provider === 'aws'" class="muted small key-steps">
         <p>完整流程：</p>
         <ol>
           <li><b>建用户</b>：IAM → Users → Create user，用户名如 <code>vpsmon-readonly</code>，<b>不要</b>勾选“提供用户对 AWS 管理控制台的访问”。</li>
@@ -374,11 +384,29 @@ function expireTone(i: CloudInstance): string {
         出站流量按租户统计，对照每月 10 TB 免费额度。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
       </p>
-      <p v-else class="muted small">
-        在{{ form.provider === 'tencent_cn' ? '腾讯云（cloud.tencent.com）' : '腾讯云国际站（tencentcloud.com）' }}访问管理 CAM 中创建子用户，
-        关联下面的自定义只读策略，再为它创建 API 密钥。国内站与国际站是两套账号，请按账号所在站点选择。
-        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
-      </p>
+      <!-- 腾讯云完整流程（修订第 147 条）：建策略（限定面板 IP）→ 建子用户（只开编程访问）→ 关联策略 → 保存密钥 -->
+      <div v-else class="muted small key-steps">
+        <p>
+          在{{ form.provider === 'tencent_cn' ? '腾讯云（cloud.tencent.com）' : '腾讯云国际站（tencentcloud.com）' }}访问管理 CAM 中操作。
+          国内站与国际站是两套账号，请按账号所在站点选择。完整流程：
+        </p>
+        <ol>
+          <li><b>建策略</b>：CAM → 策略 → 新建自定义策略 → 按策略语法创建 → 空白模板，粘贴下面的策略，把 <code>面板服务器公网IP</code>
+            换成面板服务器的真实公网 IP，命名 <code>vpsmon-readonly</code>。
+            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看策略' }}</button></li>
+          <li><b>建子用户</b>：CAM → 用户 → 新建用户 → 自定义创建 → 可访问资源并接收消息，访问方式<b>只勾“编程访问”</b>，不勾“腾讯云控制台访问”。</li>
+          <li><b>关联策略</b>：设置用户权限时搜索 <code>vpsmon-readonly</code> 并勾选（不要关联 AdministratorAccess 等管理权限）。</li>
+          <li><b>保存密钥</b>：创建完成页面显示 SecretId 与 SecretKey，立刻保存（SecretKey 只显示一次）。</li>
+        </ol>
+        <p>策略需要开通的权限（都是只读）：</p>
+        <ul>
+          <li v-for="[a, use] in tencentActions" :key="a"><code>{{ a }}</code>：{{ use }}</li>
+        </ul>
+        <p>
+          也可以改用预设策略 QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess，但费用与余额仍需上面两条 billing 权限，
+          推荐直接用这条自定义策略。IP 限制让密钥泄露后在别处无法使用；面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。
+        </p>
+      </div>
       <CommandBlock v-if="showPolicy" :command="policyFor(form.provider)" plain class="policy" />
       <!-- 密钥从哪里获取（用户最常问的问题）：一行步骤 + 控制台链接 -->
       <p class="key-help small">
@@ -587,10 +615,11 @@ function expireTone(i: CloudInstance): string {
 .editor { margin-bottom: var(--space-4); }
 .editor h2 { margin-bottom: var(--space-2); }
 .policy { margin-bottom: var(--space-3); }
-.aws-steps { margin-bottom: var(--space-3); max-width: 80ch; }
-.aws-steps p { margin: 0 0 var(--space-1); }
-.aws-steps ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
-.aws-steps code { font-family: var(--font-mono); font-size: var(--font-xs); background: var(--surface-2); padding: 0 var(--space-1); border-radius: var(--radius-sm); }
+.key-steps { margin-bottom: var(--space-3); max-width: 80ch; }
+.key-steps p { margin: 0 0 var(--space-1); }
+.key-steps ul { margin: 0 0 var(--space-2); padding-left: var(--space-5); }
+.key-steps ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+.key-steps code { font-family: var(--font-mono); font-size: var(--font-xs); background: var(--surface-2); padding: 0 var(--space-1); border-radius: var(--radius-sm); }
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
 .fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .fields .wide { grid-column: 1 / -1; }
