@@ -179,6 +179,12 @@ void main() {
     await tester.scrollUntilVisible(find.text('资产'), 200, scrollable: detail);
     expect(find.text('103.***.***.1'), findsOneWidget);
     expect(find.text('DMIT'), findsNothing);
+    // 云实例：关联到这台节点的 Lightsail（隐私模式下账户名打码）
+    await tester.scrollUntilVisible(find.text('云实例'), 200, scrollable: detail);
+    expect(find.textContaining('tokyo-ls-with-a-very-long-instance-name · Lightsail · ap-northeast-1'), findsOneWidget);
+    expect(find.textContaining('AWS · '), findsOneWidget);
+    expect(find.text('AWS · AWS 主账号'), findsNothing);
+    expect(find.text('账户已产生 \$3.21'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('静音告警'), 200, scrollable: detail);
     expect(find.text('开启维护'), findsOneWidget);
 
