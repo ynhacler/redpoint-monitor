@@ -48,15 +48,24 @@ func (c *aliyunClient) host(service, region string) string {
 		return "https://business.aliyuncs.com/"
 	case "ecs":
 		if region == "" {
-			return "https://ecs.aliyuncs.com/"
+			region = c.homeRegion()
 		}
 		return "https://ecs." + region + ".aliyuncs.com/"
 	default: // swas
 		if region == "" {
-			region = "cn-hangzhou"
+			region = c.homeRegion()
 		}
 		return "https://swas." + region + ".aliyuncs.com/"
 	}
+}
+
+// homeRegion 是查询区域列表等不分区域的调用所用的接入点：国内站用杭州，国际站用新加坡。
+// 国际站账号在国内站的接入点（如 swas.cn-hangzhou）上调用会失败，之前因此读不到国际站的实例。
+func (c *aliyunClient) homeRegion() string {
+	if c.intl {
+		return "ap-southeast-1"
+	}
+	return "cn-hangzhou"
 }
 
 var aliyunVersions = map[string]string{"business": "2017-12-14", "ecs": "2014-05-26", "swas": "2020-06-01"}
