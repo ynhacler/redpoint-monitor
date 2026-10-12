@@ -90,6 +90,26 @@ void main() {
     expect(refreshes, 1);
   });
 
+  test('测速对比：GET /latency-overview，旧版面板 404 时抛出 ApiException', () async {
+    var old = false;
+    final client = MockClient((req) async {
+      expect(req.url.path, '/api/v1/latency-overview');
+      expect(req.headers['Authorization'], 'Bearer dev_access1');
+      if (old) return err(404, 'not_found');
+      return ok({
+        'servers': [{'id': 1, 'name': 'tokyo', 'group': ''}],
+        'targets': [{'id': 5, 'isp': 'cm', 'province': '广东', 'address': '1.2.3.4', 'proto': 'tcp', 'port': 80, 'enabled': true, 'builtin': false, 'note': ''}],
+        'cells': [{'server_id': 1, 'target_id': 5, 'latency_ms': 66.5, 'loss': 0}],
+      });
+    });
+    final api = ApiClient(Session.fromTokens(server, tokens(1), DateTime.now()), MemorySessionStore(), client: client);
+    final d = await api.latencyOverview();
+    expect(d.targets.single.name, '广东移动');
+    expect(d.ranking(5).single.latency, 66.5);
+    old = true;
+    await expectLater(api.latencyOverview(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 404)));
+  });
+
   test('设备被吊销：清除本地凭证并抛出 DeviceRevoked（设计 12.7）', () async {
     final store = MemorySessionStore();
     final client = MockClient((_) async => err(401, 'token_revoked'));

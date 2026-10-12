@@ -371,3 +371,86 @@ class LatencyView {
         },
       );
 }
+
+/// 测速对比中的一个目标（ProbeTarget 的子集）。
+class OverviewTarget {
+  OverviewTarget({required this.id, required this.isp, required this.province, required this.address, required this.proto,
+      required this.port, required this.note});
+  final int id;
+  final String isp;
+  final String province;
+  final String address;
+  final String proto;
+  final int port;
+  final String note;
+
+  /// 显示名：国内为“上海电信”，境外为“东京 Vultr”（与 Web 测速对比一致）
+  String get name => isp == 'intl' ? (note.isEmpty ? province : '$province $note') : '$province${const {'ct': '电信', 'cu': '联通', 'cm': '移动'}[isp] ?? ''}';
+
+  factory OverviewTarget.fromJson(Map<String, dynamic> j) => OverviewTarget(
+        id: j['id'] as int,
+        isp: j['isp'] as String,
+        province: j['province'] as String,
+        address: j['address'] as String,
+        proto: j['proto'] as String,
+        port: (j['port'] as int?) ?? 0,
+        note: (j['note'] as String?) ?? '',
+      );
+}
+
+/// 测速对比的一格：最近 1 小时延迟中位数（全部失败时为 null）与平均丢包率。
+class OverviewCell {
+  OverviewCell(this.serverId, this.latency, this.loss);
+  final int serverId;
+  final double? latency;
+  final double loss;
+}
+
+/// 测速对比（GET /latency-overview，设计 42.3.5）：全部节点到各目标最近 1 小时的延迟与丢包。
+class LatencyOverview {
+  LatencyOverview({required this.servers, required this.targets, required this.cells});
+
+  /// 节点 ID → （名称，分组）
+  final Map<int, (String, String)> servers;
+  final List<OverviewTarget> targets;
+
+  /// 目标 ID → 有结果的节点
+  final Map<int, List<OverviewCell>> cells;
+
+  factory LatencyOverview.fromJson(Map<String, dynamic> j) {
+    final cells = <int, List<OverviewCell>>{};
+    for (final c in (j['cells'] as List<dynamic>).cast<Map<String, dynamic>>()) {
+      cells.putIfAbsent(c['target_id'] as int, () => []).add(
+          OverviewCell(c['server_id'] as int, (c['latency_ms'] as num?)?.toDouble(), (c['loss'] as num).toDouble()));
+    }
+    return LatencyOverview(
+      servers: {
+        for (final s in (j['servers'] as List<dynamic>).cast<Map<String, dynamic>>())
+          s['id'] as int: (s['name'] as String, (s['group'] as String?) ?? ''),
+      },
+      targets: [for (final t in (j['targets'] as List<dynamic>)) OverviewTarget.fromJson(t as Map<String, dynamic>)],
+      cells: cells,
+    );
+  }
+
+  /// 有结果的分组（排序后）
+  List<String> get groups =>
+      {for (final l in cells.values) for (final c in l) servers[c.serverId]?.$2 ?? ''}.where((g) => g.isNotEmpty).toList()..sort();
+
+  /// 某个目标下的节点排名：延迟从低到高，同延迟按丢包；全部失败的排在最后；group 非空时只看该分组。
+  List<OverviewCell> ranking(int targetId, {String group = ''}) {
+    final l = [
+      for (final c in cells[targetId] ?? const <OverviewCell>[])
+        if (servers.containsKey(c.serverId) && (group.isEmpty || servers[c.serverId]!.$2 == group)) c,
+    ];
+    l.sort((a, b) {
+      if (a.latency == null || b.latency == null) {
+        if (a.latency != b.latency) return a.latency == null ? 1 : -1;
+        return a.loss.compareTo(b.loss);
+      }
+      final d = a.latency!.compareTo(b.latency!);
+      return d != 0 ? d : a.loss.compareTo(b.loss);
+    });
+    return l;
+  }
+}
