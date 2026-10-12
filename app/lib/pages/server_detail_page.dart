@@ -413,6 +413,21 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           ],
         ),
       ],
+      // 选中行的目标明细（与 Web 悬停提示相同）：地址、失败原因、已不再测
+      if (picked.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        for (final (name, t) in picked)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text.rich(TextSpan(style: small, children: [
+              TextSpan(text: '$name  '),
+              TextSpan(text: fmtProbeWhere(t.proto, t.port, t.address), style: const TextStyle(fontFamily: 'monospace')),
+              if (t.latency == null && t.lastError.isNotEmpty)
+                TextSpan(text: '  最近一轮：${fmtProbeError(t.lastError)}', style: TextStyle(color: StatusColors.of(context).bad)),
+              if (!t.enabled) const TextSpan(text: '  已不再测，显示的是之前的数据'),
+            ])),
+          ),
+      ],
       const SizedBox(height: 10),
       Wrap(spacing: 6, children: [
         for (final r in const ['24h', '7d'])

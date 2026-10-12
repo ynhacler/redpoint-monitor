@@ -104,3 +104,18 @@ String fmtLatency(num? ms) {
   if (ms < 10 && ms != ms.roundToDouble()) return '${(ms * 10).round() / 10} ms';
   return '${ms.round()} ms';
 }
+
+/// 测速全部失败时的原因（与 Web 节点详情的说明一致，修订第 132 条起含 dns / blocked）。
+String fmtProbeError(String code) => switch (code) {
+      'timeout' => '超时',
+      'refused' => '连接被拒绝',
+      'unreachable' => '网络不可达',
+      'icmp_unavailable' => '本机不允许 ICMP',
+      'dns' => '域名解析失败',
+      'blocked' => '域名只解析到内网地址，已拒绝',
+      '' => '',
+      _ => '失败',
+    };
+
+/// 测速目标的地址说明，如 “TCP 80 → 1.2.3.4”、“ICMP → speed.example.cn”。
+String fmtProbeWhere(String proto, int port, String address) => proto == 'icmp' ? 'ICMP → $address' : 'TCP $port → $address';
