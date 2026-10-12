@@ -952,6 +952,35 @@
         }
       }
     },
+    "/app/cloud": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "云账户与实例的只读摘要（设计 44.8）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "App 的“云账户”页：账户的同步状态、本月费用与实例列表。只返回展示需要的字段，不含任何凭证信息（包括凭证提示）、\n公网 IP 与云厂商实例 ID。云账户覆盖整个面板，只有授权范围为“全部节点”的设备能看到；其他范围的设备得到 limited 为 true、\n列表为空。App 只读：添加、修改、同步都在 Web 中进行。\n",
+        "responses": {
+          "200": {
+            "description": "摘要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCloud"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/app/push": {
       "put": {
         "tags": [
@@ -9096,6 +9125,187 @@
           },
           "allow_low_risk_ops": {
             "type": "boolean"
+          }
+        }
+      },
+      "AppCloud": {
+        "type": "object",
+        "required": [
+          "limited",
+          "accounts",
+          "instances"
+        ],
+        "properties": {
+          "limited": {
+            "type": "boolean",
+            "description": "设备的授权范围不是“全部节点”，不返回云账户"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "provider",
+                "name",
+                "enabled",
+                "syncing",
+                "auth_failed",
+                "last_error",
+                "last_warning",
+                "next_try_at",
+                "synced_at",
+                "instance_count",
+                "budget_cents",
+                "current_cost"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string",
+                  "description": "aws / aliyun_cn / aliyun_intl / tencent_cn / tencent_intl / oci"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "syncing": {
+                  "type": "boolean"
+                },
+                "auth_failed": {
+                  "type": "boolean",
+                  "description": "凭证失效或权限不足，已停止自动同步"
+                },
+                "last_error": {
+                  "type": "string"
+                },
+                "last_warning": {
+                  "type": "string",
+                  "description": "最近一次同步跳过的区域及原因（修订第 141 条）"
+                },
+                "next_try_at": {
+                  "type": "integer",
+                  "description": "同步失败后的下次重试时间"
+                },
+                "synced_at": {
+                  "type": "integer",
+                  "description": "费用、实例、流量中最近一次成功同步的时间；0 为尚未同步"
+                },
+                "instance_count": {
+                  "type": "integer"
+                },
+                "budget_cents": {
+                  "type": "integer",
+                  "description": "每月预算（分）；0 为未设置"
+                },
+                "current_cost": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "period",
+                        "amount_cents",
+                        "forecast_cents",
+                        "balance_cents",
+                        "currency"
+                      ],
+                      "properties": {
+                        "period": {
+                          "type": "string",
+                          "description": "YYYY-MM"
+                        },
+                        "amount_cents": {
+                          "type": "integer"
+                        },
+                        "forecast_cents": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "balance_cents": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "currency": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "account_id",
+                "name",
+                "region",
+                "kind",
+                "state",
+                "plan",
+                "expire_at",
+                "traffic_used_bytes",
+                "traffic_limit_bytes",
+                "server_id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "account_id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "ec2 / lightsail / ecs / swas / cvm / lighthouse / oci 等"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "expire_at": {
+                  "type": "integer",
+                  "description": "到期时间；0 为按量或没有到期"
+                },
+                "traffic_used_bytes": {
+                  "type": "integer"
+                },
+                "traffic_limit_bytes": {
+                  "type": "integer",
+                  "description": "0 为没有流量包"
+                },
+                "server_id": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "关联的节点"
+                }
+              }
+            }
           }
         }
       },

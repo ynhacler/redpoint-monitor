@@ -559,3 +559,51 @@ func TestCloudSyncRegionWarning(t *testing.T) {
 		t.Errorf("恢复后应清除警告：%q", a.LastWarning)
 	}
 }
+
+// App 云账户摘要（修订第 144 条）：只有“全部节点”授权的设备能看到；不含凭证提示、公网 IP 与实例 ID；Web 会话不能访问。
+func TestAppCloud(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var deny atomic.Bool
+	s.cloud.opts = fakeAWSServer(t, &deny)
+	_, v, _ := createCloudAccount(t, h, admin, awsAccountBody)
+	a, _ := s.store.GetCloudAccount(v.ID)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{cost: true, instances: true}, time.Now())
+
+	keyAll, _, _ := createAppKey(t, h, admin, `{"name":"all"}`)
+	_, all := pair(t, h, keyAll)
+	rec := do(h, "GET", "/api/v1/app/cloud", all.AccessToken, nil)
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	var got appCloudView
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.Limited || len(got.Accounts) != 1 || len(got.Instances) != 2 {
+		t.Fatalf("摘要：%s", body)
+	}
+	acc := got.Accounts[0]
+	if acc.Provider != "aws" || acc.InstanceCount != 2 || acc.SyncedAt == 0 || acc.CurrentCost == nil || acc.CurrentCost.AmountCents != 321 {
+		t.Errorf("账户：%+v", acc)
+	}
+	// 【安全】最小字段：没有凭证提示、公网 IP、云厂商实例 ID
+	for _, bad := range []string{"credential", "hint", "203.0.113.9", "198.51.100.9", "i-1", "public_ip", "instance_id"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("【安全】不应返回 %q：%s", bad, body)
+		}
+	}
+
+	// 分组授权的设备：limited，列表为空
+	keyGroup, _, _ := createAppKey(t, h, admin, `{"name":"g","scope_type":"group","group":"jp"}`)
+	_, g := pair(t, h, keyGroup)
+	rec = do(h, "GET", "/api/v1/app/cloud", g.AccessToken, nil)
+	var lim appCloudView
+	json.Unmarshal(rec.Body.Bytes(), &lim)
+	if rec.Code != 200 || !lim.Limited || len(lim.Accounts) != 0 || len(lim.Instances) != 0 {
+		t.Errorf("分组授权：%d %s", rec.Code, rec.Body)
+	}
+	// 只接受设备凭证
+	if rec := do(h, "GET", "/api/v1/app/cloud", admin, nil); rec.Code != 401 {
+		t.Errorf("Web 会话应被拒绝：%d", rec.Code)
+	}
+}

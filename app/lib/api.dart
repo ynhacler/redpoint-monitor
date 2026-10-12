@@ -184,6 +184,9 @@ class ApiClient {
   Future<LatencyOverview> latencyOverview() async =>
       LatencyOverview.fromJson(await getJson('/latency-overview') as Map<String, dynamic>);
 
+  /// 云账户只读摘要（设计 44.8）：授权范围不是“全部节点”时 limited 为 true。旧版面板没有该接口时抛出 ApiException（404）。
+  Future<CloudSummary> cloud() async => CloudSummary.fromJson(await getJson('/app/cloud') as Map<String, dynamic>);
+
   /// 历史曲线：range 为 1h / 6h / 24h / 7d / 30d（设计 19.7）。返回原始 JSON 列表，便于离线缓存。
   Future<List<dynamic>> historyRaw(int id, String range) async {
     final body = await getJson('/servers/$id/metrics/history', query: {'range': range}) as Map<String, dynamic>;
