@@ -1070,6 +1070,56 @@ export interface AppScope {
   allow_low_risk_ops: boolean
 }
 
+export interface AppCloud {
+  /** 设备的授权范围不是“全部节点”，不返回云账户 */
+  limited: boolean
+  accounts: ({
+    id: number
+    /** aws / aliyun_cn / aliyun_intl / tencent_cn / tencent_intl / oci */
+    provider: string
+    name: string
+    enabled: boolean
+    syncing: boolean
+    /** 凭证失效或权限不足，已停止自动同步 */
+    auth_failed: boolean
+    last_error: string
+    /** 最近一次同步跳过的区域及原因（修订第 141 条） */
+    last_warning: string
+    /** 同步失败后的下次重试时间 */
+    next_try_at: number
+    /** 费用、实例、流量中最近一次成功同步的时间；0 为尚未同步 */
+    synced_at: number
+    instance_count: number
+    /** 每月预算（分）；0 为未设置 */
+    budget_cents: number
+    current_cost: null | {
+      /** YYYY-MM */
+      period: string
+      amount_cents: number
+      forecast_cents: number | null
+      balance_cents: number | null
+      currency: string
+    }
+  })[]
+  instances: ({
+    id: number
+    account_id: number
+    name: string
+    region: string
+    /** ec2 / lightsail / ecs / swas / cvm / lighthouse / oci 等 */
+    kind: string
+    state: string
+    plan: string
+    /** 到期时间；0 为按量或没有到期 */
+    expire_at: number
+    traffic_used_bytes: number
+    /** 0 为没有流量包 */
+    traffic_limit_bytes: number
+    /** 关联的节点 */
+    server_id: number | null
+  })[]
+}
+
 export interface AppMe {
   device_id: number
   name: string
@@ -1360,6 +1410,12 @@ export interface Paths {
     /** 当前设备与授权范围 */
     get: {
       response: AppMe
+    }
+  }
+  '/app/cloud': {
+    /** 云账户与实例的只读摘要（设计 44.8） */
+    get: {
+      response: AppCloud
     }
   }
   '/app/push': {

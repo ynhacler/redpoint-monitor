@@ -17,6 +17,7 @@ import '../sorting.dart';
 import '../theme.dart';
 import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
+import 'cloud_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
 import 'me_page.dart';
@@ -58,6 +59,10 @@ class _AppShellState extends State<AppShell> {
   final Map<String, CenterSummary> _others = {};
   Timer? _othersTimer;
 
+  // 云账户摘要（设计 44.8）：首页一行，每 5 分钟刷新；旧版面板或读取失败时不显示
+  CloudSummary? _cloud;
+  Timer? _cloudTimer;
+
   // 桌面小组件快照（设计 1.5.4）
   final _widget = WidgetPublisher();
 
@@ -75,6 +80,7 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     _timer?.cancel();
     _othersTimer?.cancel();
+    _cloudTimer?.cancel();
     super.dispose();
   }
 
@@ -108,6 +114,8 @@ class _AppShellState extends State<AppShell> {
     await _refresh();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
     _syncPush();
+    _loadCloud();
+    _cloudTimer = Timer.periodic(const Duration(minutes: 5), (_) => _loadCloud());
     if (widget.centers.length > 1) {
       _refreshOthers();
       _othersTimer = Timer.periodic(const Duration(minutes: 1), (_) => _refreshOthers());
@@ -132,6 +140,25 @@ class _AppShellState extends State<AppShell> {
       if (mounted) setState(() => _error = '$e'); // 保留上次的数据
     }
   }
+
+  Future<void> _loadCloud() async {
+    try {
+      final c = await widget.api.cloud();
+      if (mounted) setState(() => _cloud = c);
+    } on DeviceRevoked {
+      _revoked();
+    } catch (_) {
+      // 旧版面板（404）或网络失败：首页不显示云账户行，保留上次的结果
+    }
+  }
+
+  void _openCloud() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CloudPage(api: widget.api, onRevoked: _revoked, initial: _cloud,
+            serverNames: {for (final s in _items) s.id: s.name}, onOpenServer: (id) {
+          final s = _items.where((x) => x.id == id).firstOrNull;
+          if (s != null) _open(s);
+        }),
+      ));
 
   Future<void> _syncPush() async {
     try {
@@ -190,7 +217,7 @@ class _AppShellState extends State<AppShell> {
           onRefresh: () async {
             await Future.wait([_refresh(), _refreshOthers()]);
           },
-          card: _card, offline: _offlineBanner, open: _open,
+          card: _card, offline: _offlineBanner, open: _open, cloud: _cloud, onCloud: _openCloud,
           centers: [
             if (widget.centers.length > 1)
               for (final (i, c) in widget.centers.indexed)
@@ -215,7 +242,7 @@ class _AppShellState extends State<AppShell> {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);
       }),
-      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
+      MePage(api: widget.api, push: _push, onCloud: _openCloud, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
         _timer?.cancel();
         widget.onSwitch?.call(i);
       }, onAdd: widget.onAdd, onPrivacy: (v) {
@@ -251,7 +278,8 @@ class _AppShellState extends State<AppShell> {
 
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
-      required this.onRefresh, required this.card, required this.offline, required this.open, this.centers = const [], this.onSwitch});
+      required this.onRefresh, required this.card, required this.offline, required this.open, this.centers = const [], this.onSwitch,
+      this.cloud, this.onCloud});
   final List<ServerView> items;
   final Prefs prefs;
   final DateTime? updated;
@@ -261,10 +289,35 @@ class _OverviewTab extends StatelessWidget {
   final Widget Function(ServerView) card;
   final Widget Function() offline;
   final ValueChanged<ServerView> open;
+  final CloudSummary? cloud;
+  final VoidCallback? onCloud;
 
   /// 多个监控中心时的聚合视图：（中心，汇总，是否当前，下标）
   final List<(CenterHandle, CenterSummary?, bool, int)> centers;
   final ValueChanged<int>? onSwitch;
+
+  /// 云账户一行：账户数、实例数、本月已产生（按币种合计），有问题的账户数
+  Widget _cloudRow(BuildContext context, CloudSummary c) {
+    final colors = StatusColors.of(context);
+    final byCur = <String, int>{};
+    for (final a in c.accounts) {
+      if (a.cost != null) byCur[a.cost!.currency] = (byCur[a.cost!.currency] ?? 0) + a.cost!.amountCents;
+    }
+    final costs = [for (final e in byCur.entries) fmtMoney(e.value, e.key)].join(' + ');
+    final n = c.accounts.fold<int>(0, (a, x) => a + x.instanceCount);
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.cloud_outlined),
+        title: const Text('云账户'),
+        subtitle: Text('${c.accounts.length} 个账户 · $n 台实例${costs.isEmpty ? '' : ' · 本月 $costs'}'),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (c.attention > 0) Text('需要关注 ${c.attention}', style: TextStyle(fontSize: 12, color: colors.warn)),
+          const Icon(Icons.chevron_right),
+        ]),
+        onTap: onCloud,
+      ),
+    );
+  }
 
   Widget _aggregate(BuildContext context) {
     final colors = StatusColors.of(context);
@@ -330,6 +383,7 @@ class _OverviewTab extends StatelessWidget {
           if (error != null) offline(),
           if (items.isEmpty && updated != null) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('授权范围内还没有节点'))),
           if (items.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: FleetSummaryCard(items: items, allOk: attention.isEmpty)),
+          if (cloud != null && cloud!.accounts.isNotEmpty && onCloud != null) _cloudRow(context, cloud!),
           if (attention.isNotEmpty) ...[heading('需要关注'), ...attention.map(card)],
           if (expiring.isNotEmpty) ...[
             heading('即将到期'),

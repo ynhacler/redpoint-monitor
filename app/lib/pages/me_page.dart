@@ -1,4 +1,4 @@
-// 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、推送状态、隐私模式（1.5.12）、解除配对。
+// 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、云账户（44.8）、推送状态、隐私模式（1.5.12）、解除配对。
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -7,13 +7,16 @@ import '../version.dart';
 
 class MePage extends StatelessWidget {
   const MePage({super.key, required this.api, required this.push, required this.privacy, required this.onPrivacy, required this.onUnpair,
-      this.centers = const [], this.onSwitch, this.onAdd});
+      this.centers = const [], this.onSwitch, this.onAdd, this.onCloud});
   final ApiClient api;
 
   /// 全部监控中心的地址（当前中心为 api.session.server）
   final List<Uri> centers;
   final ValueChanged<int>? onSwitch;
   final VoidCallback? onAdd;
+
+  /// 云账户（设计 44.8）：只读
+  final VoidCallback? onCloud;
   final PushState? push;
   final bool privacy;
   final ValueChanged<bool> onPrivacy;
@@ -64,6 +67,14 @@ class MePage extends StatelessWidget {
           title: Text('可查看：$scope'),
           subtitle: Text(s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'),
         ),
+        if (onCloud != null)
+          ListTile(
+            leading: const Icon(Icons.cloud_outlined),
+            title: const Text('云账户'),
+            subtitle: const Text('费用、余额与云实例（只读）'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onCloud,
+          ),
         ListTile(
           leading: const Icon(Icons.notifications_outlined),
           title: const Text('告警推送'),
