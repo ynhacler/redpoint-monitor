@@ -23,8 +23,14 @@ const (
 
 // fakeAWSServer 是最小的 AWS 模拟：Cost Explorer、EC2（一个区域、一台实例）、Lightsail（一台带流量包的实例）。
 // deny 为真时所有请求返回凭证无效。
-func fakeAWSServer(t *testing.T, deny *atomic.Bool) cloud.Options {
+// lsDown（可选）为真时只有 Lightsail 的 GetInstances 失败（模拟区域级问题，修订第 141 条）。
+func fakeAWSServer(t *testing.T, deny *atomic.Bool, lsDown ...*atomic.Bool) cloud.Options {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(lsDown) > 0 && lsDown[0].Load() && r.Header.Get("X-Amz-Target") == "Lightsail_20161128.GetInstances" {
+			w.WriteHeader(400)
+			io.WriteString(w, `{"__type":"UnrecognizedClientException","message":"The security token included in the request is invalid."}`)
+			return
+		}
 		if deny.Load() {
 			w.WriteHeader(403)
 			io.WriteString(w, `{"__type":"UnrecognizedClientException","message":"The security token included in the request is invalid."}`)
@@ -511,5 +517,45 @@ func TestCloudOCIAccount(t *testing.T) {
 	rec := do(h, "PUT", "/api/v1/cloud-instances/"+itoa64(insts[0].ID)+"/server", admin, []byte(`{"server_id":`+itoa(node.ServerID)+`}`))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("出站流量项不应能关联节点：%d %s", rec.Code, rec.Body)
+	}
+}
+
+// 区域级失败（修订第 141 条）：其他区域照常保存，被跳过区域的实例保留，记为警告，不判为凭证失效、不停止同步。
+func TestCloudSyncRegionWarning(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var deny, lsDown atomic.Bool
+	s.cloud.opts = fakeAWSServer(t, &deny, &lsDown)
+	_, v, _ := createCloudAccount(t, h, admin, awsAccountBody)
+	a, _ := s.store.GetCloudAccount(v.ID)
+	now := time.Now()
+	s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true}, now)
+
+	lsDown.Store(true)
+	a, _ = s.store.GetCloudAccount(v.ID)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true}, now.Add(7*time.Hour))
+	a, _ = s.store.GetCloudAccount(v.ID)
+	if a.AuthFailed || a.LastError != "" || a.FailCount != 0 {
+		t.Fatalf("区域级失败不应停止同步：%+v", a)
+	}
+	if !strings.Contains(a.LastWarning, "区域 ap-northeast-1 的 Lightsail 调用失败（可能未开通该区域），已跳过") {
+		t.Errorf("警告：%q", a.LastWarning)
+	}
+	var insts struct{ Items []CloudInstance }
+	json.Unmarshal(do(h, "GET", "/api/v1/cloud-instances?account_id="+itoa64(v.ID), admin, nil).Body.Bytes(), &insts)
+	if len(insts.Items) != 2 {
+		t.Errorf("被跳过区域的 Lightsail 实例应保留：%+v", insts.Items)
+	}
+	var list struct{ Items []cloudAccountView }
+	json.Unmarshal(do(h, "GET", "/api/v1/cloud-accounts", admin, nil).Body.Bytes(), &list)
+	if list.Items[0].LastWarning == "" {
+		t.Error("接口应返回警告")
+	}
+
+	// 恢复后警告清除
+	lsDown.Store(false)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true}, now.Add(14*time.Hour))
+	if a, _ = s.store.GetCloudAccount(v.ID); a.LastWarning != "" {
+		t.Errorf("恢复后应清除警告：%q", a.LastWarning)
 	}
 }

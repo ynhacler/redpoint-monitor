@@ -17,9 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -195,53 +193,17 @@ func (c *tencentClient) Instances(ctx context.Context) ([]Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	type job struct {
-		region string
-		fn     func(context.Context, string) ([]Instance, error)
-	}
-	var jobs []job
+	var jobs []regionJob
 	for _, r := range cvmRegions {
-		jobs = append(jobs, job{r, c.cvmInstances})
+		jobs = append(jobs, regionJob{"cvm", "CVM", r, c.cvmInstances})
 	}
 	for _, r := range lhRegions {
-		jobs = append(jobs, job{r, c.lighthouseInstances})
+		jobs = append(jobs, regionJob{"lighthouse", "轻量应用服务器", r, c.lighthouseInstances})
 	}
-	var (
-		mu       sync.Mutex
-		all      []Instance
-		firstErr error
-		wg       sync.WaitGroup
-		sem      = make(chan struct{}, 4)
-	)
-	for _, j := range jobs {
-		wg.Add(1)
-		go func(j job) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			got, err := j.fn(ctx, j.region)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return
-			}
-			all = append(all, got...)
-		}(j)
-	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	sort.Slice(all, func(i, k int) bool {
-		if all[i].Kind != all[k].Kind {
-			return all[i].Kind < all[k].Kind
-		}
-		return all[i].ID < all[k].ID
-	})
-	return all, nil
+	// 单个区域失败只跳过该区域（修订第 141 条）
+	all, err := runRegionJobs(ctx, jobs)
+	sortInstances(all)
+	return partialOrFail(all, err)
 }
 
 func (c *tencentClient) cvmInstances(ctx context.Context, region string) ([]Instance, error) {

@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,8 @@ type fakeAWS struct {
 	bodies   map[string]map[string]any
 	forecast int // 0 正常；1 DataUnavailableException
 	deny     bool
+	// fail 按“服务 区域 操作”依次返回的错误：500 为服务端错误，403 为 UnauthorizedOperation；用完后正常响应
+	fail map[string][]int
 }
 
 func (f *fakeAWS) handler(t *testing.T) http.HandlerFunc {
@@ -44,7 +47,22 @@ func (f *fakeAWS) handler(t *testing.T) http.HandlerFunc {
 			f.bodies[op] = body
 		}
 		deny, forecast := f.deny, f.forecast
+		key := service + " " + region + " " + op
+		var failWith int
+		if q := f.fail[key]; len(q) > 0 {
+			failWith, f.fail[key] = q[0], q[1:]
+		}
 		f.mu.Unlock()
+		switch failWith {
+		case 500:
+			w.WriteHeader(500)
+			io.WriteString(w, `<Response><Errors><Error><Code>InternalError</Code><Message>An internal error has occurred</Message></Error></Errors></Response>`)
+			return
+		case 403:
+			w.WriteHeader(403)
+			io.WriteString(w, `<Response><Errors><Error><Code>UnauthorizedOperation</Code><Message>You are not authorized to perform this operation.</Message></Error></Errors></Response>`)
+			return
+		}
 		if deny {
 			w.WriteHeader(400)
 			io.WriteString(w, `{"__type":"com.amazon.coral.service#UnrecognizedClientException","message":"The security token included in the request is invalid."}`)
@@ -232,5 +250,65 @@ func TestAWSSkipsUnopenedLightsailRegions(t *testing.T) {
 		if strings.Contains(call, "ap-southeast-3") {
 			t.Errorf("不应查询没开通的区域：%s", call)
 		}
+	}
+}
+
+// 区域级失败的隔离（修订第 141 条）。
+func TestAWSRegionFailures(t *testing.T) {
+	old := retryDelay
+	retryDelay = 0
+	t.Cleanup(func() { retryDelay = old })
+	count := func(f *fakeAWS, key string) int {
+		n := 0
+		for _, c := range f.calls {
+			if c == key {
+				n++
+			}
+		}
+		return n
+	}
+
+	// 偶发服务端错误：重试一次后成功，整轮正常
+	f, c := newFakeAWS(t, nil)
+	f.fail = map[string][]int{"ec2 ap-northeast-1 DescribeInstances": {500}}
+	insts, err := c.Instances(context.Background())
+	if err != nil || len(insts) != 3 || count(f, "ec2 ap-northeast-1 DescribeInstances") != 3 { // 失败 1 次 + 重试后两页
+		t.Fatalf("偶发错误应重试后成功：%v %d %v", err, len(insts), f.calls)
+	}
+
+	// 一个区域持续失败：跳过它，其他区域照常返回，错误为区域级（不判为凭证失效）
+	f, c = newFakeAWS(t, nil)
+	f.fail = map[string][]int{"ec2 ap-northeast-1 DescribeInstances": {500, 500}}
+	insts, err = c.Instances(context.Background())
+	var pe *PartialError
+	if !errors.As(err, &pe) || len(pe.Skipped) != 1 || pe.Skipped[0].Region != "ap-northeast-1" || pe.Skipped[0].Kind != "ec2" {
+		t.Fatalf("应返回部分结果与区域级错误：%v", err)
+	}
+	if len(insts) != 1 || insts[0].Kind != "lightsail" {
+		t.Errorf("其他区域的实例照常返回：%+v", insts)
+	}
+	if IsAuthError(err) || !strings.Contains(err.Error(), "区域 ap-northeast-1 的 EC2 调用失败（可能未开通该区域），已跳过") {
+		t.Errorf("区域级错误不是凭证失效，说明指出区域：%v", err)
+	}
+
+	// 区域内返回凭证类错误码，也只跳过该区域
+	f, c = newFakeAWS(t, nil)
+	f.fail = map[string][]int{"ec2 ap-northeast-1 DescribeInstances": {403}}
+	if _, err := c.Instances(context.Background()); !errors.As(err, &pe) || IsAuthError(err) {
+		t.Errorf("只有一个区域被拒绝时是区域级：%v", err)
+	}
+
+	// 所有区域都被拒绝：IAM 缺少 ec2:DescribeInstances，是权限问题（账户级）
+	f, c = newFakeAWS(t, nil)
+	f.fail = map[string][]int{"ec2 us-east-1 DescribeInstances": {403}, "ec2 ap-northeast-1 DescribeInstances": {403}}
+	if _, err := c.Instances(context.Background()); !IsAuthError(err) || errors.As(err, &pe) {
+		t.Errorf("所有区域都被拒绝应判为权限问题：%v", err)
+	}
+
+	// 主区域列出区域失败：账户级
+	f, c = newFakeAWS(t, nil)
+	f.fail = map[string][]int{"ec2 us-east-1 DescribeRegions": {403}}
+	if _, err := c.Instances(context.Background()); !IsAuthError(err) || errors.As(err, &pe) {
+		t.Errorf("主区域失败应判为凭证问题：%v", err)
 	}
 }

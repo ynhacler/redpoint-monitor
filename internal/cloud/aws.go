@@ -16,9 +16,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -191,6 +189,8 @@ func (c *awsClient) Costs(ctx context.Context, now time.Time) (*Costs, error) {
 // ---- 实例（EC2 + Lightsail） ----
 
 // Instances 列出全部区域的 EC2 与 Lightsail 实例。区域并发查询（最多 4 个同时进行）。
+// 在 us-east-1 列出区域的两个调用是账户级的：失败即返回错误（凭证或权限问题）。
+// 各区域的查询是区域级的：失败重试一次后跳过该区域，返回其他区域的结果与 *PartialError（修订第 141 条）。
 func (c *awsClient) Instances(ctx context.Context) ([]Instance, error) {
 	ec2Regions, err := c.ec2Regions(ctx)
 	if err != nil {
@@ -201,65 +201,31 @@ func (c *awsClient) Instances(ctx context.Context) ([]Instance, error) {
 		return nil, err
 	}
 	// Lightsail 的 GetRegions 列出全部区域，包括账户没有开通的选择加入区域（如香港、雅加达）；
-	// 在没开通的区域调用会返回 UnrecognizedClientException（看起来像凭证无效），整轮同步因此失败。
+	// 在没开通的区域调用会返回 UnrecognizedClientException（看起来像凭证无效）。
 	// EC2 的 DescribeRegions 默认只列出已开通的区域，Lightsail 只查两者都有的区域（修订第 140 条）
 	enabled := map[string]bool{}
 	for _, r := range ec2Regions {
 		enabled[r] = true
 	}
-	var lsRegions []string
+	var jobs []regionJob
+	for _, r := range ec2Regions {
+		jobs = append(jobs, regionJob{"ec2", "EC2", r, c.ec2Instances})
+	}
+	var notOpened []string
 	for _, r := range lsAll {
 		if enabled[r] {
-			lsRegions = append(lsRegions, r)
+			jobs = append(jobs, regionJob{"lightsail", "Lightsail", r, c.lightsailInstances})
+		} else {
+			notOpened = append(notOpened, r)
 		}
 	}
-	type job struct {
-		region string
-		fn     func(context.Context, string) ([]Instance, error)
+	if len(notOpened) > 0 {
+		c.o.logf("AWS Lightsail 区域 %s 未在账户中开通，已跳过（在 AWS 控制台 Account → AWS Regions 中开通后会自动同步）",
+			strings.Join(notOpened, "、"))
 	}
-	var jobs []job
-	for _, r := range ec2Regions {
-		jobs = append(jobs, job{r, c.ec2Instances})
-	}
-	for _, r := range lsRegions {
-		jobs = append(jobs, job{r, c.lightsailInstances})
-	}
-	var (
-		mu       sync.Mutex
-		all      []Instance
-		firstErr error
-		wg       sync.WaitGroup
-		sem      = make(chan struct{}, 4)
-	)
-	for _, j := range jobs {
-		wg.Add(1)
-		go func(j job) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			got, err := j.fn(ctx, j.region)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return
-			}
-			all = append(all, got...)
-		}(j)
-	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	sort.Slice(all, func(i, k int) bool {
-		if all[i].Kind != all[k].Kind {
-			return all[i].Kind < all[k].Kind
-		}
-		return all[i].ID < all[k].ID
-	})
-	return all, nil
+	all, err := runRegionJobs(ctx, jobs)
+	sortInstances(all)
+	return partialOrFail(all, err)
 }
 
 func (c *awsClient) wanted(region string) bool {

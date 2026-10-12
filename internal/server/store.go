@@ -832,6 +832,10 @@ var migrations = []string{
 	// 节点自定义列表中的这些 ID 在下发时自动忽略
 	`DELETE FROM probe_results WHERE target_id IN (SELECT id FROM probe_targets WHERE builtin = 1);
 	DELETE FROM probe_targets WHERE builtin = 1;`,
+
+	// 迁移 39：云账户的区域级警告（设计 44.4，修订第 141 条）：最近一次同步跳过了哪些区域及原因；
+	// 与 last_error（整轮失败）分开，不触发退避，也不停止自动同步
+	`ALTER TABLE cloud_accounts ADD COLUMN last_warning TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
