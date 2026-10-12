@@ -196,9 +196,22 @@ func (c *awsClient) Instances(ctx context.Context) ([]Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	lsRegions, err := c.lightsailRegions(ctx)
+	lsAll, err := c.lightsailRegions(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// Lightsail 的 GetRegions 列出全部区域，包括账户没有开通的选择加入区域（如香港、雅加达）；
+	// 在没开通的区域调用会返回 UnrecognizedClientException（看起来像凭证无效），整轮同步因此失败。
+	// EC2 的 DescribeRegions 默认只列出已开通的区域，Lightsail 只查两者都有的区域（修订第 140 条）
+	enabled := map[string]bool{}
+	for _, r := range ec2Regions {
+		enabled[r] = true
+	}
+	var lsRegions []string
+	for _, r := range lsAll {
+		if enabled[r] {
+			lsRegions = append(lsRegions, r)
+		}
 	}
 	type job struct {
 		region string
