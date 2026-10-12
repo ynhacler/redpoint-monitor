@@ -71,7 +71,7 @@ const providers: Record<Provider, ProviderInfo> = {
   aws: { label: 'AWS', currency: 'USD', idLabel: 'Access Key ID', idPlaceholder: 'AKIA…', secretLabel: 'Secret Access Key',
     idField: 'access_key_id', secretField: 'secret_access_key', regionExample: 'ap-northeast-1, us-west-2', paidCostApi: true, hasBalance: false,
     trafficName: 'Lightsail', billingTZ: '按 UTC 自然月',
-    keySteps: 'IAM 控制台 → 用户 → 创建用户（附加下面的只读策略）→ 安全凭证 → 创建访问密钥（用途选“第三方服务”）',
+    keySteps: 'IAM → Users → 点该用户 → Security credentials → Create access key（用例选“在 AWS 外部运行的应用程序”）',
     keyURL: 'https://console.aws.amazon.com/iam/home#/users' },
   aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
     idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false, hasBalance: true,
@@ -247,7 +247,8 @@ async function save() {
   }
 }
 
-// 最小只读权限（设计 44.3）：在 IAM 中创建只读用户，附加这条策略
+// 最小只读权限（设计 44.3）：在 IAM 中创建只读用户，附加这条策略。
+// 【安全】Condition 限定只有面板服务器的公网 IP 能使用这对密钥（修订第 146 条）：密钥泄露后在别处无法调用
 const awsPolicy = JSON.stringify({
   Version: '2012-10-17',
   Statement: [{
@@ -255,6 +256,7 @@ const awsPolicy = JSON.stringify({
     Action: ['ce:GetCostAndUsage', 'ce:GetCostForecast', 'ec2:DescribeInstances', 'ec2:DescribeRegions',
       'lightsail:GetRegions', 'lightsail:GetInstances', 'lightsail:GetInstanceMetricData'],
     Resource: '*',
+    Condition: { IpAddress: { 'aws:SourceIp': ['面板服务器公网IP/32'] } },
   }],
 }, null, 2)
 
@@ -346,10 +348,22 @@ function expireTone(i: CloudInstance): string {
           <option v-for="(p, key) in providers" :key="key" :value="key">{{ p.label }}</option>
         </select>
       </label>
-      <p v-if="form.provider === 'aws'" class="muted small">
-        在 IAM 中创建一个专用用户，只附加下面的只读策略，再为它创建访问密钥。
-        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
-      </p>
+      <!-- AWS 完整流程（修订第 146 条）：建用户 → 建策略（限定面板 IP）→ 挂策略 → 建密钥 -->
+      <div v-if="form.provider === 'aws'" class="muted small aws-steps">
+        <p>完整流程：</p>
+        <ol>
+          <li><b>建用户</b>：IAM → Users → Create user，用户名如 <code>vpsmon-readonly</code>，<b>不要</b>勾选“提供用户对 AWS 管理控制台的访问”。</li>
+          <li><b>建策略</b>：IAM → Policies → Create policy → JSON 标签页，粘贴下面的策略，把 <code>面板服务器公网IP</code> 换成面板服务器的真实公网 IP，
+            命名 <code>vpsmon-readonly</code>。
+            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看策略' }}</button></li>
+          <li><b>挂策略</b>：回到 Users → 点 <code>vpsmon-readonly</code> → Add permissions → Attach policies directly → 搜 <code>vpsmon-readonly</code> → 勾选。</li>
+          <li><b>建密钥</b>：该用户 → Security credentials → Create access key → 用例选“在 AWS 外部运行的应用程序” → 建完立刻保存 Access Key ID 与 Secret Access Key（Secret 只显示一次）。</li>
+        </ol>
+        <p>
+          策略中的 IP 限制让这对密钥只能从面板服务器使用，泄露后在别处无法调用。面板若通过 IPv6 访问 AWS，把 IPv6 地址（/128）也加进 aws:SourceIp；
+          面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。
+        </p>
+      </div>
       <p v-else-if="form.provider.startsWith('aliyun')" class="muted small">
         在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
         只授予三个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
@@ -573,6 +587,10 @@ function expireTone(i: CloudInstance): string {
 .editor { margin-bottom: var(--space-4); }
 .editor h2 { margin-bottom: var(--space-2); }
 .policy { margin-bottom: var(--space-3); }
+.aws-steps { margin-bottom: var(--space-3); max-width: 80ch; }
+.aws-steps p { margin: 0 0 var(--space-1); }
+.aws-steps ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+.aws-steps code { font-family: var(--font-mono); font-size: var(--font-xs); background: var(--surface-2); padding: 0 var(--space-1); border-radius: var(--radius-sm); }
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
 .fields label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .fields .wide { grid-column: 1 / -1; }
