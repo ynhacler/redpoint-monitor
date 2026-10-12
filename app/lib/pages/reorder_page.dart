@@ -43,7 +43,7 @@ class _ReorderPageState extends State<ReorderPage> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-          child: Text('按住右侧把手拖动排列；排序方式会切换为“自定义顺序”，只保存在本机。', style: TextStyle(fontSize: 12, color: c.textMuted)),
+          child: Text('按住右侧把手拖动排列；排序方式会切换为“自定义顺序”，只保存在本机（不改 Web 中的顺序）。', style: TextStyle(fontSize: 12, color: c.textMuted)),
         ),
         Expanded(
           child: ReorderableListView.builder(

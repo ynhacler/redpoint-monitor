@@ -246,8 +246,8 @@ class _AppShellState extends State<AppShell> {
       _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner, onCompare: _openCompare,
           onReorder: _reorder,
           onSort: (v) {
-            // 第一次选“自定义顺序”时还没有顺序：直接打开调整页
-            if (v == SortBy.custom && _prefs.order.isEmpty) return _reorder();
+            // 第一次选“自定义顺序”且本机与面板都还没有顺序：直接打开调整页
+            if (v == SortBy.custom && _prefs.order.isEmpty && !_items.any((s) => s.sortOrder > 0)) return _reorder();
             setState(() => _prefs.sortBy = v);
             _savePrefs();
           }),

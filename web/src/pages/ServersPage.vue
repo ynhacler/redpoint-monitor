@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 节点（设计 9、10）：首页。顶部为统计，点击即按状态筛选（总览与列表合并，修订记录第 30 条）；
 // 下方搜索、按分组筛选、排序（默认异常优先，设计 1.5.6）；待安装节点单独一组（设计 27.7）。
-// 状态筛选写在地址中（?f=offline），刷新与分享后保持。
-import { computed, ref } from 'vue'
+// 状态筛选写在地址中（?f=offline），刷新与分享后保持。排序方式记在本机浏览器（localStorage）。
+// “自定义”排序按面板保存的顺序（修订第 150 条）：点“调整顺序”进入排列模式，拖动或用上下按钮排列后保存到面板，
+// 所有浏览器与（本机没有自己顺序的）App 共用。
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ServerView } from '../api'
+import { errorText, putServerOrder, type ServerView } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Flag from '../components/Flag.vue'
 import { countryName } from '../countries'
@@ -12,7 +14,7 @@ import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
-import { installed, pending, state, statusRank } from '../store'
+import { installed, pending, refresh, state, statusRank } from '../store'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,11 +39,85 @@ function setFilter(v: StatusFilter) {
 
 const query = ref('')
 const group = ref('')
-const sortBy = ref<'abnormal' | 'cpu' | 'mem' | 'disk' | 'traffic' | 'name'>('abnormal')
 const sorts = [
   { v: 'abnormal', t: '异常优先' }, { v: 'cpu', t: 'CPU' }, { v: 'mem', t: '内存' },
-  { v: 'disk', t: '磁盘' }, { v: 'traffic', t: '流量' }, { v: 'name', t: '名称' },
+  { v: 'disk', t: '磁盘' }, { v: 'traffic', t: '流量' }, { v: 'name', t: '名称' }, { v: 'custom', t: '自定义' },
 ] as const
+type SortKey = (typeof sorts)[number]['v']
+const sortKey = 'vpsmon.sortBy'
+function loadSort(): SortKey {
+  try {
+    const v = localStorage.getItem(sortKey)
+    return sorts.some((x) => x.v === v) ? (v as SortKey) : 'abnormal'
+  } catch {
+    return 'abnormal'
+  }
+}
+const sortBy = ref<SortKey>(loadSort())
+watch(sortBy, (v) => {
+  try {
+    localStorage.setItem(sortKey, v)
+  } catch {
+    // 无痕模式等：只是不记住
+  }
+})
+
+// 自定义顺序：sort_order 从 1 开始，0 表示未排（排在后面，按名称）
+const byCustom = (a: ServerView, b: ServerView) => (a.sort_order || Infinity) - (b.sort_order || Infinity)
+
+// ---- 排列模式 ----
+const arranging = ref<ServerView[] | null>(null)
+const saving = ref(false)
+const arrangeError = ref('')
+const dragFrom = ref<number | null>(null)
+const listEl = ref<HTMLElement | null>(null)
+function startArrange() {
+  arranging.value = [...installed.value].sort((a, b) => byCustom(a, b) || a.name.localeCompare(b.name))
+  arrangeError.value = ''
+}
+function move(from: number, to: number) {
+  const l = arranging.value!
+  if (to < 0 || to >= l.length || from === to) return
+  l.splice(to, 0, ...l.splice(from, 1))
+}
+// 拖动用 Pointer Events（鼠标、触屏、触控笔都适用；HTML5 拖放在手机上不可用）：按住把手移动，
+// 经过其他行的中线时即时换位，松开结束
+function onGripDown(e: PointerEvent, i: number) {
+  dragFrom.value = i
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+}
+function onGripMove(e: PointerEvent) {
+  if (dragFrom.value === null || !listEl.value) return
+  const rows = Array.from(listEl.value.children) as HTMLElement[]
+  const to = rows.findIndex((row) => {
+    const r = row.getBoundingClientRect()
+    return e.clientY >= r.top && e.clientY < r.bottom
+  })
+  if (to === -1 || to === dragFrom.value) return
+  const r = rows[to].getBoundingClientRect()
+  // 越过目标行的中线才换位，避免在两行之间来回跳
+  const past = to > dragFrom.value ? e.clientY > r.top + r.height / 2 : e.clientY < r.bottom - r.height / 2
+  if (!past) return
+  move(dragFrom.value, to)
+  dragFrom.value = to
+}
+function onGripUp() {
+  dragFrom.value = null
+}
+async function saveArrange() {
+  saving.value = true
+  arrangeError.value = ''
+  try {
+    await putServerOrder(arranging.value!.map((s) => s.id))
+    await refresh()
+    arranging.value = null
+    sortBy.value = 'custom'
+  } catch (e) {
+    arrangeError.value = errorText(e, '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
 
 const groups = computed(() => [...new Set(installed.value.map((s) => s.group).filter(Boolean))].sort())
 
@@ -69,6 +145,7 @@ const sorted = computed(() => {
     disk: desc((s) => diskSummary(s)?.usage),
     traffic: desc(trafficPct),
     name: byName,
+    custom: byCustom,
   }
   return list.sort((a, b) => cmp[sortBy.value](a, b) || byName(a, b))
 })
@@ -111,7 +188,37 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <div class="segmented" role="group" aria-label="排序">
         <button v-for="o in sorts" :key="o.v" type="button" :class="{ active: sortBy === o.v }" @click="sortBy = o.v">{{ o.t }}</button>
       </div>
+      <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging" type="button" class="btn secondary" @click="startArrange">
+        <Icon name="grip" />调整顺序
+      </button>
     </div>
+
+    <!-- 排列模式：按住把手拖动或用上下按钮；保存到面板，所有浏览器共用 -->
+    <section v-if="arranging" class="panel arrange" aria-label="调整顺序">
+      <div class="arrange-head">
+        <strong>调整顺序</strong>
+        <span class="muted small">按住左侧把手拖动，或用右侧按钮排列；保存后所有浏览器与 App（本机没有自己的顺序时）按此顺序显示。</span>
+      </div>
+      <ol ref="listEl" class="arrange-list">
+        <li v-for="(s, i) in arranging" :key="s.id" :class="{ dragging: dragFrom === i }">
+          <span class="grip muted" role="presentation" @pointerdown.prevent="onGripDown($event, i)" @pointermove="onGripMove"
+            @pointerup="onGripUp" @pointercancel="onGripUp"><Icon name="grip" /></span>
+          <span class="idx muted num">{{ i + 1 }}</span>
+          <span class="nm"><Flag :code="s.country" /> {{ s.name }}</span>
+          <span v-if="s.group" class="muted small grp">{{ s.group }}</span>
+          <span class="mv">
+            <button type="button" class="btn text icon" :disabled="i === 0" :aria-label="`${s.name} 上移`" @click="move(i, i - 1)"><Icon name="arrow-up" /></button>
+            <button type="button" class="btn text icon" :disabled="i === arranging.length - 1" :aria-label="`${s.name} 下移`" @click="move(i, i + 1)"><Icon name="arrow-down" /></button>
+          </span>
+        </li>
+      </ol>
+      <p v-if="arrangeError" class="small err">{{ arrangeError }}</p>
+      <div class="arrange-actions">
+        <button type="button" class="btn" :disabled="saving" @click="saveArrange">{{ saving ? '保存中…' : '保存顺序' }}</button>
+        <button type="button" class="btn secondary" :disabled="saving" @click="arranging = null">取消</button>
+        <button type="button" class="btn text" :disabled="saving" @click="arranging!.sort((a, b) => a.name.localeCompare(b.name))">按名称排列</button>
+      </div>
+    </section>
 
     <p v-if="!state.loaded" class="muted">加载中…</p>
     <EmptyState v-else-if="!state.servers.length" text="还没有节点。新建一个节点，按页面上的命令在主机上安装 Agent。">
@@ -180,4 +287,20 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 .pending-card .row { justify-content: space-between; }
 .pending-card .actions { justify-content: flex-start; margin-top: var(--space-3); }
 .name { font-size: var(--font-lg); }
+.arrange { margin-bottom: var(--space-4); }
+.arrange-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); }
+.arrange-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.arrange-list li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface); }
+.arrange-list li.dragging { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.arrange-list .grip { cursor: grab; touch-action: none; padding: var(--space-1); margin: calc(-1 * var(--space-1)); display: flex; }
+.arrange-list li.dragging .grip { cursor: grabbing; }
+.arrange-list .idx { width: 2ch; text-align: right; }
+.arrange-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arrange-list .grp { white-space: nowrap; }
+.arrange-list .mv { display: flex; gap: 2px; }
+.arrange-list .icon { padding: var(--space-1); }
+.arrange-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.err { color: var(--bad); }
+@media (max-width: 600px) { .arrange-list .grp { display: none; } }
 </style>

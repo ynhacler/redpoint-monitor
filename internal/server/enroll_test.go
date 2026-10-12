@@ -517,6 +517,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/servers":                            accessAdmin,
 		"POST /api/v1/servers/batch":                      accessAdmin,
 		"GET /api/v1/servers/{id}":                        accessRead,
+		"PUT /api/v1/servers/order":                       accessAdmin,
 		"PUT /api/v1/servers/{id}":                        accessAdmin,
 		"DELETE /api/v1/servers/{id}":                     accessAdmin,
 		"POST /api/v1/servers/{id}/revoke-agent-token":    accessAdmin,

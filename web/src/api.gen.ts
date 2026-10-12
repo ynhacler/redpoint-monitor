@@ -352,6 +352,8 @@ export interface ServerView {
   currency: string
   billing_period: string
   expire_date: string
+  /** 自定义顺序（修订第 150 条）：从 1 开始，0 表示未排（排在已排的后面，按名称） */
+  sort_order: number
   traffic_limit_bytes: number
   traffic_reset_day: number
   traffic_count_mode: 'sum' | 'rx' | 'tx' | 'max'
@@ -2147,6 +2149,16 @@ export interface Paths {
           ansible: string | null
         }
       }
+    }
+  }
+  '/servers/order': {
+    /** 保存节点的自定义顺序（设计 1.5.6，修订第 150 条） */
+    put: {
+      body: {
+        /** 不能重复，必须都是已有节点 */
+        ids: number[]
+      }
+      response: void
     }
   }
   '/servers/{id}': {

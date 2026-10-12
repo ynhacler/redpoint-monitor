@@ -163,7 +163,7 @@ class ServerView {
   ServerView({required this.raw, required this.id, required this.name, required this.status, required this.group, required this.country,
       required this.lastSeenAt, required this.traffic, required this.alerts, this.latest, this.maintenance, this.muted, this.expireDate = '',
       this.ipv4 = '', this.ipv6 = '', this.provider = '', this.plan = '', this.region = '', this.note = '', this.priceCents = 0,
-      this.currency = '', this.billingPeriod = ''});
+      this.currency = '', this.billingPeriod = '', this.sortOrder = 0});
   final Map<String, dynamic> raw;
   final int id;
   final String name;
@@ -193,6 +193,9 @@ class ServerView {
   final String currency;
   final String billingPeriod;
 
+  /// 面板保存的自定义顺序（从 1 开始，0 表示未排；旧版面板没有该字段，修订第 150 条）
+  final int sortOrder;
+
   factory ServerView.fromJson(Map<String, dynamic> j) {
     final latest = j['latest'] as Map<String, dynamic>?;
     final m = j['maintenance'] as Map<String, dynamic>?;
@@ -220,6 +223,7 @@ class ServerView {
       priceCents: _int(j['price_cents']) ?? 0,
       currency: (j['currency'] as String?) ?? '',
       billingPeriod: (j['billing_period'] as String?) ?? '',
+      sortOrder: _int(j['sort_order']) ?? 0,
     );
   }
 }

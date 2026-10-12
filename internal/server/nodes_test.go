@@ -107,3 +107,49 @@ func TestServerCountry(t *testing.T) {
 		t.Errorf("修改国家：%d %s", rec.Code, rec.Body)
 	}
 }
+
+// 自定义顺序（修订第 150 条）：按 ids 写入 1、2、3…，不在其中的置 0；重复或不存在的 ID 422；只有管理员能改。
+func TestServerOrder(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var ids []int64
+	for _, n := range []string{"a", "b", "c"} {
+		_, v, _ := createNode(t, h, admin, `{"name":"`+n+`"}`)
+		ids = append(ids, v.ServerID)
+	}
+	order := func() map[string]int {
+		var list struct{ Items []serverView }
+		json.Unmarshal(do(h, "GET", "/api/v1/servers", admin, nil).Body.Bytes(), &list)
+		m := map[string]int{}
+		for _, it := range list.Items {
+			m[it.Name] = it.SortOrder
+		}
+		return m
+	}
+	if got := order(); got["a"] != 0 || got["b"] != 0 {
+		t.Fatalf("默认未排：%v", got)
+	}
+	body := func(xs ...int64) []byte { b, _ := json.Marshal(map[string]any{"ids": xs}); return b }
+	if rec := do(h, "PUT", "/api/v1/servers/order", admin, body(ids[2], ids[0], ids[1])); rec.Code != 204 {
+		t.Fatalf("保存：%d %s", rec.Code, rec.Body)
+	}
+	if got := order(); got["c"] != 1 || got["a"] != 2 || got["b"] != 3 {
+		t.Fatalf("顺序：%v", got)
+	}
+	// 只排一部分：其余置 0
+	do(h, "PUT", "/api/v1/servers/order", admin, body(ids[1]))
+	if got := order(); got["b"] != 1 || got["a"] != 0 || got["c"] != 0 {
+		t.Fatalf("部分排序：%v", got)
+	}
+	for _, bad := range [][]byte{body(ids[0], ids[0]), body(ids[0], 99999)} {
+		if rec := do(h, "PUT", "/api/v1/servers/order", admin, bad); rec.Code != 422 {
+			t.Errorf("应拒绝 %s：%d", bad, rec.Code)
+		}
+	}
+	if got := order(); got["b"] != 1 {
+		t.Errorf("被拒绝的请求不应改变顺序：%v", got)
+	}
+	if rec := do(h, "PUT", "/api/v1/servers/order", "", body(ids[0])); rec.Code != 401 {
+		t.Errorf("未登录：%d", rec.Code)
+	}
+}
