@@ -225,3 +225,20 @@ func TestCounterBits(t *testing.T) {
 		}
 	}
 }
+
+// LVM / 软 RAID：dm-0、md0 叠在 sda、sdb 之上，只统计下层的整块磁盘，合计不翻倍（修订第 139 条）。
+func TestPickIODisks(t *testing.T) {
+	stats := map[string]ioCounters{"sda": {}, "sda1": {}, "sdb": {}, "dm-0": {}, "md0": {}, "loop0": {}, "vda": {}}
+	block := map[string]bool{"sda": true, "sdb": true, "dm-0": true, "md0": true, "loop0": true, "vda": true}
+	stacked := map[string]bool{"dm-0": true, "md0": true}
+	got := pickIODisks(stats, func(n string) bool { return block[n] }, func(n string) bool { return stacked[n] })
+	want := map[string]bool{"sda": true, "sdb": true, "vda": true}
+	if len(got) != len(want) {
+		t.Fatalf("got %v，应为 %v", got, want)
+	}
+	for k := range want {
+		if !got[k] {
+			t.Errorf("缺少 %s：%v", k, got)
+		}
+	}
+}

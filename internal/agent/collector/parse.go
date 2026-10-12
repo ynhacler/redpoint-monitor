@@ -474,6 +474,20 @@ func parseDiskstats(s string) map[string]ioCounters {
 	return out
 }
 
+// pickIODisks 选出统计 IO 的设备（纯函数，便于测试）：/sys/block 下的整块磁盘（分区不在其中），
+// 排除回环、内存盘等（skipIODevice），以及叠在其他磁盘之上的设备（有 slaves 的 LVM dm-*、软 RAID md* 等）——
+// 它们的读写最终落到下层磁盘，再算一次会让合计翻倍（修订第 139 条）。
+func pickIODisks(stats map[string]ioCounters, isBlock, stacked func(name string) bool) map[string]bool {
+	out := map[string]bool{}
+	for name := range stats {
+		if skipIODevice(name) || !isBlock(name) || stacked(name) {
+			continue
+		}
+		out[name] = true
+	}
+	return out
+}
+
 // skipIODevice 排除不代表真实磁盘的设备：回环、内存盘、压缩内存交换、光驱、软驱、网络块设备。
 func skipIODevice(name string) bool {
 	for _, p := range []string{"loop", "ram", "zram", "sr", "fd", "nbd"} {
