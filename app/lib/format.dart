@@ -134,3 +134,10 @@ String fmtProbeWhere(String proto, int port, String address) => proto == 'icmp' 
   if (days == 0) return (text: '今天到期', level: level, days: 0);
   return (text: days < 100 ? '剩$days天' : expireDate, level: level, days: days);
 }
+
+/// 金额（分）：USD 显示 $、CNY 显示 ¥，其他币种写代码，如 “$3.21”“¥120.00”“EUR 9.90”。
+String fmtMoney(int? cents, String currency) {
+  if (cents == null) return dash;
+  final v = (cents / 100).toStringAsFixed(2);
+  return switch (currency) { 'USD' => '\$$v', 'CNY' => '¥$v', '' => v, _ => '$currency $v' };
+}

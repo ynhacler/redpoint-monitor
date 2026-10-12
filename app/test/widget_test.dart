@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:vpsmon_app/api.dart';
 import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
+import 'package:vpsmon_app/pages/cloud_page.dart';
 import 'package:vpsmon_app/pages/latency_compare_page.dart';
 import 'package:vpsmon_app/pages/server_detail_page.dart';
 import 'package:vpsmon_app/pages/shell.dart';
@@ -43,6 +44,25 @@ Map<String, dynamic> node(int id, String name, String status, {String group = 'j
       'alerts': alerts,
     };
 
+const cloudJson = {
+  'limited': false,
+  'accounts': [
+    {'id': 1, 'provider': 'aws', 'name': 'AWS 主账号', 'enabled': true, 'syncing': false, 'auth_failed': false, 'last_error': '',
+      'last_warning': '区域 ap-east-1 的 Lightsail 正在为账户初始化，本轮跳过，下一轮再试', 'next_try_at': 0, 'synced_at': 1759650000,
+      'instance_count': 2, 'budget_cents': 1000,
+      'current_cost': {'period': '2026-10', 'amount_cents': 321, 'forecast_cents': 1279, 'balance_cents': null, 'currency': 'USD'}},
+    {'id': 2, 'provider': 'aliyun_cn', 'name': '阿里云', 'enabled': true, 'syncing': false, 'auth_failed': true,
+      'last_error': 'InvalidAccessKeyId.NotFound（HTTP 404）', 'last_warning': '', 'next_try_at': 0, 'synced_at': 0,
+      'instance_count': 0, 'budget_cents': 0, 'current_cost': null},
+  ],
+  'instances': [
+    {'id': 10, 'account_id': 1, 'name': 'tokyo-ls-with-a-very-long-instance-name', 'region': 'ap-northeast-1', 'kind': 'lightsail',
+      'state': 'running', 'plan': 'micro_3_0', 'expire_at': 0, 'traffic_used_bytes': 12000000000, 'traffic_limit_bytes': 2048000000000, 'server_id': 1},
+    {'id': 11, 'account_id': 1, 'name': 'ec2', 'region': 'us-west-2', 'kind': 'ec2', 'state': 'stopped', 'plan': 't3.micro',
+      'expire_at': 0, 'traffic_used_bytes': 0, 'traffic_limit_bytes': 0, 'server_id': null},
+  ],
+};
+
 void main() {
   testWidgets('首页、服务器（搜索 / 排序）、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 812 * 3);
@@ -72,6 +92,8 @@ void main() {
           {'id': 8, 'server_id': 1, 'server_name': 'Tokyo', 'type': 'cpu', 'severity': 'warning', 'state': 'resolved',
             'message': 'CPU 96%', 'fired_at': 1759640000, 'resolved_at': 1759640600},
         ]};
+      } else if (p == '/api/v1/app/cloud') {
+        body = cloudJson;
       } else if (p.endsWith('/health')) {
         body = {'level': 'warn', 'status': '需要关注：CPU 96%', 'items': [
           {'key': 'cpu', 'title': 'CPU', 'text': '过去 24 小时平均 12%，峰值 68%', 'level': 'ok'},
@@ -105,8 +127,10 @@ void main() {
     final tokyo = tester.getTopLeft(find.textContaining('Tokyo ARM'));
     expect(hk.dy, lessThan(tokyo.dy));
     expect(find.text('CPU 96%'), findsOneWidget);
-    // 实时概况；正常节点以紧凑行列在“全部节点”中
+    // 实时概况；云账户一行；正常节点以紧凑行列在“全部节点”中
     expect(find.text('实时概况'), findsOneWidget);
+    expect(find.textContaining('2 个账户 · 2 台实例 · 本月 \$3.21'), findsOneWidget);
+    expect(find.text('需要关注 2'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('SG-calm'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('全部节点'), findsOneWidget);
 
@@ -207,5 +231,49 @@ void main() {
     await tester.tap(find.text('HK-1'));
     expect(opened, 2);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('云账户：状态、费用与预算、展开实例、关联节点；窄屏不溢出', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 812 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final client = MockClient((req) async {
+      expect(req.url.path, '/api/v1/app/cloud');
+      return http.Response.bytes(utf8.encode(jsonEncode(cloudJson)), 200, headers: {'content-type': 'application/json'});
+    });
+    final session = Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
+        refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all',
+        scopeValue: '', allowLowRiskOps: true);
+    int? opened;
+    await tester.pumpWidget(MaterialApp(
+      home: CloudPage(api: ApiClient(session, MemorySessionStore(), client: client), onRevoked: () {}, serverNames: const {1: 'Tokyo ARM'},
+          onOpenServer: (id) => opened = id),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('AWS 主账号'), findsOneWidget);
+    expect(find.textContaining('部分区域已跳过'), findsOneWidget);
+    expect(find.text('\$3.21'), findsOneWidget);
+    expect(find.text('\$12.79'), findsOneWidget);
+    expect(find.text('128%'), findsOneWidget); // 预估超预算
+    expect(find.textContaining('凭证失效或权限不足'), findsOneWidget);
+    await tester.tap(find.text('实例（2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tokyo ARM'), findsOneWidget);
+    expect(find.textContaining('流量 12 GB / 2'), findsOneWidget);
+    await tester.tap(find.text('Tokyo ARM'));
+    expect(opened, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('云账户：非“全部节点”授权的设备显示说明', (tester) async {
+    final client = MockClient((_) async => http.Response('{"limited":true,"accounts":[],"instances":[]}', 200));
+    final session = Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
+        refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'group',
+        scopeValue: 'jp', allowLowRiskOps: false);
+    await tester.pumpWidget(MaterialApp(home: CloudPage(api: ApiClient(session, MemorySessionStore(), client: client), onRevoked: () {})));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('授权范围不是“全部节点”'), findsOneWidget);
   });
 }

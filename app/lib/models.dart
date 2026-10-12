@@ -454,3 +454,122 @@ class LatencyOverview {
     return l;
   }
 }
+
+/// 云厂商名称（与 Web 云账户页一致）
+const cloudProviderNames = {
+  'aws': 'AWS', 'aliyun_cn': '阿里云', 'aliyun_intl': '阿里云国际', 'tencent_cn': '腾讯云', 'tencent_intl': '腾讯云国际', 'oci': 'Oracle Cloud',
+};
+
+class CloudCost {
+  CloudCost({required this.period, required this.amountCents, this.forecastCents, this.balanceCents, required this.currency});
+  final String period;
+  final int amountCents;
+  final int? forecastCents;
+  final int? balanceCents;
+  final String currency;
+}
+
+/// 云账户（GET /app/cloud，设计 44.8）：只读摘要，不含凭证。
+class CloudAccountBrief {
+  CloudAccountBrief({required this.id, required this.provider, required this.name, required this.enabled, required this.syncing,
+      required this.authFailed, required this.lastError, required this.lastWarning, required this.nextTryAt, required this.syncedAt,
+      required this.instanceCount, required this.budgetCents, this.cost});
+  final int id;
+  final String provider;
+  final String name;
+  final bool enabled;
+  final bool syncing;
+  final bool authFailed;
+  final String lastError;
+  final String lastWarning;
+  final int nextTryAt;
+  final int syncedAt;
+  final int instanceCount;
+  final int budgetCents;
+  final CloudCost? cost;
+
+  String get providerName => cloudProviderNames[provider] ?? provider;
+
+  /// 预算用量：优先按本月预估，没有预估时按已产生（与 Web 一致）；没有预算或费用时为 null
+  double? get budgetPct {
+    if (budgetCents <= 0 || cost == null) return null;
+    return (cost!.forecastCents ?? cost!.amountCents) / budgetCents * 100;
+  }
+
+  /// 状态级别：bad（凭证失效）、warn（同步失败、部分区域跳过、超预算）、ok
+  String get level {
+    if (!enabled || syncing) return 'ok';
+    if (authFailed) return 'bad';
+    if (lastError.isNotEmpty || lastWarning.isNotEmpty || (budgetPct ?? 0) >= 100) return 'warn';
+    return 'ok';
+  }
+
+  factory CloudAccountBrief.fromJson(Map<String, dynamic> j) {
+    final c = j['current_cost'] as Map<String, dynamic>?;
+    return CloudAccountBrief(
+      id: j['id'] as int,
+      provider: j['provider'] as String,
+      name: j['name'] as String,
+      enabled: j['enabled'] as bool,
+      syncing: (j['syncing'] as bool?) ?? false,
+      authFailed: (j['auth_failed'] as bool?) ?? false,
+      lastError: (j['last_error'] as String?) ?? '',
+      lastWarning: (j['last_warning'] as String?) ?? '',
+      nextTryAt: (j['next_try_at'] as int?) ?? 0,
+      syncedAt: (j['synced_at'] as int?) ?? 0,
+      instanceCount: (j['instance_count'] as int?) ?? 0,
+      budgetCents: (j['budget_cents'] as int?) ?? 0,
+      cost: c == null
+          ? null
+          : CloudCost(period: c['period'] as String, amountCents: c['amount_cents'] as int, forecastCents: c['forecast_cents'] as int?,
+              balanceCents: c['balance_cents'] as int?, currency: (c['currency'] as String?) ?? ''),
+    );
+  }
+}
+
+class CloudInstanceBrief {
+  CloudInstanceBrief({required this.id, required this.accountId, required this.name, required this.region, required this.kind,
+      required this.state, required this.plan, required this.expireAt, required this.trafficUsed, required this.trafficLimit, this.serverId});
+  final int id;
+  final int accountId;
+  final String name;
+  final String region;
+  final String kind;
+  final String state;
+  final String plan;
+  final int expireAt;
+  final int trafficUsed;
+  final int trafficLimit;
+  final int? serverId;
+
+  factory CloudInstanceBrief.fromJson(Map<String, dynamic> j) => CloudInstanceBrief(
+        id: j['id'] as int,
+        accountId: j['account_id'] as int,
+        name: (j['name'] as String?) ?? '',
+        region: (j['region'] as String?) ?? '',
+        kind: (j['kind'] as String?) ?? '',
+        state: (j['state'] as String?) ?? '',
+        plan: (j['plan'] as String?) ?? '',
+        expireAt: (j['expire_at'] as int?) ?? 0,
+        trafficUsed: (j['traffic_used_bytes'] as int?) ?? 0,
+        trafficLimit: (j['traffic_limit_bytes'] as int?) ?? 0,
+        serverId: j['server_id'] as int?,
+      );
+}
+
+/// GET /app/cloud：limited 为 true 表示本机授权范围不是“全部节点”，看不到云账户。
+class CloudSummary {
+  CloudSummary({required this.limited, required this.accounts, required this.instances});
+  final bool limited;
+  final List<CloudAccountBrief> accounts;
+  final List<CloudInstanceBrief> instances;
+
+  factory CloudSummary.fromJson(Map<String, dynamic> j) => CloudSummary(
+        limited: (j['limited'] as bool?) ?? false,
+        accounts: [for (final a in (j['accounts'] as List<dynamic>)) CloudAccountBrief.fromJson(a as Map<String, dynamic>)],
+        instances: [for (final i in (j['instances'] as List<dynamic>)) CloudInstanceBrief.fromJson(i as Map<String, dynamic>)],
+      );
+
+  /// 需要关注的账户数（凭证失效、同步失败、区域跳过、超预算）
+  int get attention => accounts.where((a) => a.level != 'ok').length;
+}
