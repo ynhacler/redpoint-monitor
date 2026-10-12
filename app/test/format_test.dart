@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vpsmon_app/format.dart';
 import 'package:vpsmon_app/models.dart';
+import 'package:vpsmon_app/widgets/line_chart.dart';
 
 // 与 web/src/format.ts 同一口径（设计 41.4.1）
 void main() {
@@ -101,6 +102,16 @@ void main() {
     expect([for (final c in d.ranking(10, group: 'A')) c.serverId], [1, 3]);
     expect(d.ranking(11), isEmpty);
     expect(d.groups, ['A', 'B']);
+  });
+
+  test('chartMax：留余量后取整，百分比不超过 100、不低于 10', () {
+    expect(chartMax(4, cap: 100, floor: 10), 10);
+    expect(chartMax(37, cap: 100, floor: 10), 50);
+    expect(chartMax(95, cap: 100, floor: 10), 100);
+    expect(chartMax(109), 200); // 延迟：109 × 1.15 → 200
+    expect(chartMax(80), 100);
+    expect(chartMax(1500000), 2000000);
+    expect(chartMax(0), 1);
   });
 
   test('fmtExpiry：与 Web 一致', () {

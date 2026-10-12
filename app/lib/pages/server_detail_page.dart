@@ -11,12 +11,16 @@ import '../metrics.dart';
 import '../models.dart';
 import '../privacy.dart';
 import '../theme.dart';
+import '../tokens.dart';
 import '../widgets/line_chart.dart';
 
 class ServerDetailPage extends StatefulWidget {
   const ServerDetailPage({super.key, required this.api, required this.cache, required this.initial, required this.onRevoked,
-      this.privacy = false});
+      this.privacy = false, this.cloud});
   final ApiClient api;
+
+  /// 云账户摘要（首页已读取，设计 44.8）：关联到这台节点的云实例显示在“云实例”中
+  final CloudSummary? cloud;
   final CacheStore cache;
   final ServerView initial;
   final VoidCallback onRevoked;
@@ -255,10 +259,25 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),
+                // 下行 / 上行：实时速率 + 开机以来累计
                 child: Row(children: [
-                  Expanded(child: Text('↓ ${fmtBytes(s.latest!.rx, perSec: true)}', style: const TextStyle(fontSize: 16))),
-                  Expanded(child: Text('↑ ${fmtBytes(s.latest!.tx, perSec: true)}', style: const TextStyle(fontSize: 16))),
-                  if (s.latest!.uptime != null) Text('运行 ${fmtDuration(s.latest!.uptime)}', style: muted),
+                  for (final (label, icon, v, total) in [
+                    ('下行', Icons.arrow_downward, s.latest!.rx, s.latest!.rxTotal),
+                    ('上行', Icons.arrow_upward, s.latest!.tx, s.latest!.txTotal),
+                  ])
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [Icon(icon, size: 13, color: scheme.onSurfaceVariant), const SizedBox(width: 2), Text(label, style: muted)]),
+                        Text(fmtBytes(v, perSec: true),
+                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
+                        if (total > 0) Text('开机以来 ${fmtBytes(total)}', style: muted.copyWith(fontSize: 11)),
+                      ]),
+                    ),
+                  if (s.latest!.uptime != null)
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text('运行', style: muted),
+                      Text(fmtDuration(s.latest!.uptime), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    ]),
                 ]),
               ),
             ),
@@ -269,6 +288,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             _section(context, '测速延迟', _latencyView(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
+          if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
           if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '操作', _ops(context)),
         ]),
       ),
@@ -355,7 +375,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     }
 
     TableRow row(String key, List<Widget> cells) => TableRow(
-          decoration: BoxDecoration(color: key == sel ? Theme.of(context).colorScheme.surfaceContainerHighest : null),
+          decoration: BoxDecoration(color: key == sel ? appColors(context).accent.withValues(alpha: 0.08) : null),
           children: [
             for (final c in cells)
               TableRowInkWell(
@@ -491,7 +511,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           ),
       ]),
       const SizedBox(height: 12),
-      LineChart(times: times, series: series, formatY: fmt, fixedMax: max),
+      // 百分比按数据取整（10%～100%），低负载时也能看清起伏
+      LineChart(times: times, series: series, formatY: fmt, capMax: max, minMax: max == null ? null : 10),
       if (_historyStale && _historyAt != null)
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -540,9 +561,65 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (s.plan.isNotEmpty) ('套餐', s.plan),
       if (s.region.isNotEmpty) ('地区', s.region),
       if (price.isNotEmpty) ('续费', maskText(price, p)),
-      if (s.expireDate.isNotEmpty) ('到期', s.expireDate),
+      if (fmtExpiry(s.expireDate, s.billingPeriod) case final e?)
+        ('到期', s.expireDate.isEmpty ? e.text : (e.text == s.expireDate ? s.expireDate : '${s.expireDate}（${e.text}）')),
       if (s.note.isNotEmpty) ('备注', s.note),
     ];
+  }
+
+  // 关联到这台节点的云实例（设计 44.5）
+  List<(CloudInstanceBrief, CloudAccountBrief?)> _cloudInstances() {
+    final c = widget.cloud;
+    if (c == null) return const [];
+    return [
+      for (final i in c.instances)
+        if (i.serverId == _s.id) (i, c.accounts.where((a) => a.id == i.accountId).firstOrNull),
+    ];
+  }
+
+  /// 云实例：账户、地区与类型、规格、状态、到期、流量包与账户本月费用；隐私模式下账户名打码
+  Widget _cloudView(BuildContext context) {
+    final c = appColors(context);
+    final muted = TextStyle(fontSize: 13, color: c.textMuted);
+    final rows = _cloudInstances();
+    Widget row(String k, Widget v) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 56, child: Text(k, style: muted)), Expanded(child: v)]),
+        );
+    const t = TextStyle(fontSize: 13);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (final (idx, (i, a)) in rows.indexed) ...[
+        if (idx > 0) const Divider(height: 20),
+        row('账户', Text(a == null ? dash : '${a.providerName} · ${maskText(a.name, widget.privacy)}', style: t)),
+        row('实例', Text([if (i.name.isNotEmpty) i.name, cloudKindNames[i.kind] ?? i.kind, if (i.region.isNotEmpty) i.region].join(' · '), style: t)),
+        if (i.plan.isNotEmpty) row('规格', Text(i.plan, style: t)),
+        if (i.state.isNotEmpty && i.state != '-') row('状态', Text(i.state, style: t)),
+        if (i.expireAt > 0) row('到期', _expiryText(i.expireAt, c)),
+        if (i.trafficLimit > 0)
+          row('流量包', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${fmtBytes(i.trafficUsed)} / ${fmtBytes(i.trafficLimit)}', style: t),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: (i.trafficUsed / i.trafficLimit).clamp(0.0, 1.0),
+                minHeight: 4,
+                backgroundColor: c.track,
+                color: i.trafficUsed >= i.trafficLimit * 0.95 ? c.bad : (i.trafficUsed >= i.trafficLimit * 0.8 ? c.warn : c.ok),
+              ),
+            ),
+          ])),
+        if (a?.cost != null) row('本月', Text('账户已产生 ${fmtMoney(a!.cost!.amountCents, a.cost!.currency)}', style: t)),
+      ],
+    ]);
+  }
+
+  Widget _expiryText(int unix, AppColors c) {
+    final d = DateTime.fromMillisecondsSinceEpoch(unix * 1000);
+    final date = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final e = fmtExpiry(date, '');
+    final color = switch (e?.level) { 'bad' => c.bad, 'warn' => c.warn, _ => null };
+    return Text(e == null || e.text == date ? date : '$date（${e.text}）', style: TextStyle(fontSize: 13, color: color));
   }
 
   // 与 web/src/format.ts 的 periodNames 一致
@@ -621,7 +698,13 @@ class _Gauge extends StatelessWidget {
             const SizedBox(height: 2),
             Text(fmtPct(value),
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: level == Level.ok ? null : c.level(level))),
-            const SizedBox(height: 2),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                  value: ((value ?? 0) / 100).clamp(0.0, 1.0), minHeight: 4, backgroundColor: appColors(context).track, color: c.level(level)),
+            ),
+            const SizedBox(height: 6),
             Text(sub, style: TextStyle(fontSize: 11, color: muted), maxLines: 2),
           ]),
         ),

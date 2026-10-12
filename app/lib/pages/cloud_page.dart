@@ -221,7 +221,7 @@ class _InstanceRow extends StatelessWidget {
       }
     }
     final linked = i.serverId == null ? null : serverNames[i.serverId];
-    final sub = [if (i.region.isNotEmpty) i.region, if (i.kind.isNotEmpty) i.kind, if (i.plan.isNotEmpty) i.plan];
+    final sub = [if (i.region.isNotEmpty) i.region, if (i.kind.isNotEmpty) cloudKindNames[i.kind] ?? i.kind, if (i.plan.isNotEmpty) i.plan];
     return InkWell(
       onTap: linked == null || onOpenServer == null ? null : () => onOpenServer!(i.serverId!),
       child: Padding(
