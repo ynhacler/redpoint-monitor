@@ -59,3 +59,30 @@ func TestRegionOutcome(t *testing.T) {
 		t.Errorf("正在初始化应为区域级：%v", err)
 	}
 }
+
+// Temporary（修订第 151 条）：初始化中、服务端错误、限流、网络错误会很快恢复；未开通、无权限不会。
+func TestRegionErrorTemporary(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{&ProviderError{Status: 400, Code: "RegionSetupInProgressException"}, true},
+		{&ProviderError{Status: 503, Code: "ServiceUnavailable"}, true},
+		{&ProviderError{Status: 400, Code: "Throttling"}, true},
+		{errors.New("dial tcp: i/o timeout"), true},
+		{&ProviderError{Status: 400, Code: "UnrecognizedClientException"}, false},
+		{&ProviderError{Status: 403, Code: "UnauthorizedOperation"}, false},
+	} {
+		if got := (RegionError{Region: "r", Err: c.err}).Temporary(); got != c.want {
+			t.Errorf("%v：Temporary = %v，应为 %v", c.err, got, c.want)
+		}
+	}
+	p := &PartialError{Skipped: []RegionError{{Err: &ProviderError{Status: 400, Code: "OptInRequired"}}}}
+	if p.Temporary() {
+		t.Error("只有未开通的区域不应提前重新检查")
+	}
+	p.Skipped = append(p.Skipped, RegionError{Err: &ProviderError{Status: 500, Code: "InternalError"}})
+	if !p.Temporary() {
+		t.Error("有暂时失败的区域时应提前重新检查")
+	}
+}

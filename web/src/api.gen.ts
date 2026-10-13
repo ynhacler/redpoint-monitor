@@ -907,6 +907,8 @@ export interface CloudAccount {
   auth_failed: boolean
   /** 最近一次同步跳过的区域及原因（修订第 141 条），如“区域 ap-east-1 的 Lightsail 不可用（可能未开通该区域），已跳过：…”、“区域 eu-west-3 的 Lightsail 正在为账户初始化，本轮跳过，下一轮再试”；被跳过区域的实例保留上一次的结果。空表示没有 */
   last_warning: string
+  /** 有区域暂时失败（初始化中、服务端错误、限流、网络）时提前重新检查实例的时间，约 30 分钟后（修订第 151 条）；0 表示按常规每 6 小时 */
+  instances_recheck_at: number
   /** 失败后下次自动重试的时间 */
   next_try_at: number
   /** 正在同步 */

@@ -45,7 +45,8 @@ type cloudAccountView struct {
 	InstancesSyncedAt int64      `json:"instances_synced_at"`
 	TrafficSyncedAt   int64      `json:"traffic_synced_at"`
 	LastError         string     `json:"last_error"`
-	LastWarning       string     `json:"last_warning"` // 最近一次同步跳过的区域及原因（修订第 141 条）
+	LastWarning       string     `json:"last_warning"`         // 最近一次同步跳过的区域及原因（修订第 141 条）
+	InstancesRecheck  int64      `json:"instances_recheck_at"` // 提前重新检查实例的时间（修订第 151 条）；0 为常规周期
 	ErrorSince        int64      `json:"error_since"`
 	AuthFailed        bool       `json:"auth_failed"`
 	NextTryAt         int64      `json:"next_try_at"`
@@ -60,7 +61,7 @@ func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, 
 	v := cloudAccountView{ID: a.ID, Provider: a.Provider, Name: a.Name, Regions: a.Regions, CredentialHint: a.CredentialHint,
 		BudgetCents: a.BudgetCents, BalanceAlertCents: a.BalanceAlertCents, CostIntervalH: a.CostIntervalH, Enabled: a.Enabled, SyncCost: a.SyncCost,
 		SyncTraffic: a.SyncTraffic, CostSyncedAt: a.CostSyncedAt, InstancesSyncedAt: a.InstancesSyncedAt,
-		TrafficSyncedAt: a.TrafficSyncedAt, LastError: a.LastError, LastWarning: a.LastWarning, ErrorSince: a.ErrorSince, AuthFailed: a.AuthFailed,
+		TrafficSyncedAt: a.TrafficSyncedAt, LastError: a.LastError, LastWarning: a.LastWarning, InstancesRecheck: a.InstancesRecheckAt, ErrorSince: a.ErrorSince, AuthFailed: a.AuthFailed,
 		NextTryAt: a.NextTryAt, InstanceCount: count, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if v.Regions == nil {
 		v.Regions = []string{}
