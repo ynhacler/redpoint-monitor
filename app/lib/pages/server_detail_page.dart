@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../app_lock.dart';
 import '../cache.dart';
 import '../format.dart';
 import '../metrics.dart';
@@ -160,6 +161,10 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   // ---- 静音与维护（设计 8.4.1、16.6） ----
 
   Future<void> _do(Future<void> Function() f, String done) async {
+    // 静音、维护属于敏感操作：开启了“敏感操作前验证”时先验证（设计 1.5.11）
+    final lock = AppLockScope.of(context);
+    if (lock != null && !await lock.guard(done)) return;
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       await f();

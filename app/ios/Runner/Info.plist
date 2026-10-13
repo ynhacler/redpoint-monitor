@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>用于解锁 VPS Monitor 与确认敏感操作</string>
 	<key>NSCameraUsageDescription</key>
 	<string>扫描 Web 管理端的配对二维码</string>
 	<key>UIApplicationSceneManifest</key>
