@@ -8,6 +8,7 @@ import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import HealthCard from '../components/HealthCard.vue'
 import LatencyCard from '../components/LatencyCard.vue'
+import ReachCard from '../components/ReachCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
@@ -247,6 +248,8 @@ const charts = computed(() => [
 
       <!-- 测速（设计 42.3.2） -->
       <LatencyCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
+      <!-- 国内可达性（设计 42.2，修订第 155 条）：国内探针到这台节点的结论与延迟 -->
+      <ReachCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 告警记录（设计 16） -->
       <section v-if="s.status !== 'pending'" class="section">

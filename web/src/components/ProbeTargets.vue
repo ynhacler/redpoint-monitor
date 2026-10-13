@@ -5,6 +5,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import ProbeTargetHint from './ProbeTargetHint.vue'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
+import ReachProbes from './ReachProbes.vue'
 import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
   type ProbeSettings, type ProbeTarget, type ProbeTargetInput,
@@ -189,6 +190,8 @@ async function remove(t: ProbeTarget) {
       </ProbeTargetPicker>
       <p class="small muted foot">单台节点可在节点的“编辑 → 测速”中自己选择目标与频率，或关闭。</p>
     </section>
+    <!-- 国内探针与被墙检测（设计 42.2，修订第 155 条） -->
+    <ReachProbes class="block" />
   </div>
 </template>
 

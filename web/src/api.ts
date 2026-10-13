@@ -551,6 +551,24 @@ export function getLatencyOverview() {
 }
 export type LatencyOverview = Res<'/latency-overview', 'get'>
 
+// 国内探针与被墙检测（设计 42.2，修订第 154 条）
+export type ReachProbe = G.ReachProbe
+export type ServerReach = Res<'/servers/{id}/reach', 'get'>
+
+export function getReachProbes() {
+  return request('get', '/reach-probes')
+}
+export type ReachProbes = Res<'/reach-probes', 'get'>
+
+/** 整体替换国内探针，随探针的下一份上报下发 */
+export function putReachProbes(probes: ReachProbe[]) {
+  return request('put', '/reach-probes', { body: { probes } })
+}
+
+export function getServerReach(id: number) {
+  return request('get', '/servers/{id}/reach', { params: { id } })
+}
+
 export function getNodeProbe(id: number) {
   return request('get', '/servers/{id}/probe', { params: { id } })
 }
