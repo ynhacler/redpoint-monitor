@@ -51,6 +51,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   int _ticks = 0;
   // 测速（设计 42.3.2）：与 Web 相同的表格与曲线；旧版面板没有接口时不显示
   LatencyView? _latency;
+  // 国内可达性（设计 42.2，修订第 156 条）：没有设置国内探针或旧版面板时不显示
+  ReachView? _reach;
   String _latencyRange = '24h';
   String _latencySel = ''; // “p:地区” 或 “i:目标 ID”
 
@@ -61,11 +63,13 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     _loadHistory();
     _loadHealth();
     _loadLatency();
+    _loadReach();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) {
       _refresh();
       if (++_ticks % 6 == 0) {
         _loadHealth(); // 摘要变化慢：每分钟刷新一次
         _loadLatency(); // 测速每几分钟才测一轮
+        _loadReach();
       }
     });
   }
@@ -116,6 +120,18 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       _revoked();
     } catch (_) {
       // 网络失败：保留上次的摘要
+    }
+  }
+
+  Future<void> _loadReach() async {
+    if (_s.status == 'pending') return;
+    try {
+      final v = await widget.api.reach(_s.id);
+      if (mounted) setState(() => _reach = v);
+    } on DeviceRevoked {
+      _revoked();
+    } catch (_) {
+      // 网络失败或旧版面板：保留上次的数据
     }
   }
 
@@ -211,7 +227,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       appBar: AppBar(title: Text('${flagEmoji(s.country).isNotEmpty ? '${flagEmoji(s.country)} ' : ''}${s.name}')),
       body: RefreshIndicator(
         onRefresh: () async {
-          await Future.wait([_refresh(), _loadHistory(), _loadHealth(), _loadLatency()]);
+          await Future.wait([_refresh(), _loadHistory(), _loadHealth(), _loadLatency(), _loadReach()]);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 32), children: [
           Row(children: [
@@ -291,6 +307,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           _section(context, '流量', _traffic(context)),
           if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
             _section(context, '测速延迟', _latencyView(context)),
+          if (_reach != null && _reach!.configured && _reach!.probes.isNotEmpty) _section(context, '国内可达性', _reachView(context)),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
@@ -625,6 +642,67 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     final e = fmtExpiry(date, '');
     final color = switch (e?.level) { 'bad' => c.bad, 'warn' => c.warn, _ => null };
     return Text(e == null || e.text == date ? date : '$date（${e.text}）', style: TextStyle(fontSize: 13, color: color));
+  }
+
+  static const _ispNames = {'ct': '电信', 'cu': '联通', 'cm': '移动'};
+  static const _reachStatus = {'ok': '可达', 'unstable': '不稳定', 'port': '端口疑似被封', 'blocked': '疑似被墙'};
+
+  /// 国内可达性（设计 42.2、42.3.1）：结论、各探针的状态与最近一轮、24 小时国内方向延迟曲线。结论都是“疑似”。
+  Widget _reachView(BuildContext context) {
+    final v = _reach!;
+    final colors = StatusColors.of(context);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final small = TextStyle(fontSize: 12, color: muted);
+    Color? tone(String st) => switch (st) {
+          'blocked' || 'partial' || 'port' => colors.bad,
+          'unstable' => colors.warn,
+          'ok' => colors.ok,
+          _ => null,
+        };
+    // 曲线：每个探针一条，按第一个探针的时间对齐
+    final first = v.probes.isEmpty ? const <LatencyPoint>[] : (v.series[v.probes.first.probeId] ?? const <LatencyPoint>[]);
+    final times = [for (final p in first) p.ts];
+    final series = [
+      for (final (i, p) in v.probes.indexed)
+        ChartSeries(_ispNames[p.isp] ?? p.name, [
+          for (final ts in times) (v.series[p.probeId] ?? const <LatencyPoint>[]).where((x) => x.ts == ts).firstOrNull?.latency ?? double.nan,
+        ], seriesColor(context, i)),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(v.text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: tone(v.status))),
+      const SizedBox(height: 8),
+      for (final p in v.probes)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text(_ispNames[p.isp] ?? '探针', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Flexible(child: Text(p.name, style: small, overflow: TextOverflow.ellipsis)),
+              const Spacer(),
+              Text('${_reachStatus[p.status] ?? p.status}${p.status == 'port' ? ' ${p.badPorts.join('、')}' : ''}',
+                  style: TextStyle(fontSize: 13, color: tone(p.status))),
+            ]),
+            Wrap(spacing: 10, runSpacing: 2, children: [
+              for (final c in p.checks)
+                Text.rich(TextSpan(style: small, children: [
+                  TextSpan(text: '${c.name} '),
+                  TextSpan(
+                    text: c.latency != null ? fmtLatency(c.latency) : (c.error == 'icmp_unavailable' ? dash : '失败'),
+                    style: TextStyle(color: c.loss >= 100 && c.error != 'icmp_unavailable' ? colors.bad : null),
+                  ),
+                ])),
+              if (p.status != 'ok') Text('自 ${fmtTime(p.since)}', style: small),
+            ]),
+          ]),
+        ),
+      if (times.length > 1) ...[
+        const SizedBox(height: 8),
+        LineChart(times: times, series: series, formatY: (x) => fmtLatency(x)),
+      ],
+      const SizedBox(height: 6),
+      Text('结论为“疑似”：连续 3 轮异常才判定，可能是封锁、运营商故障或路由问题。国内探针在 Web“设置 → 测速”中设置。', style: small),
+    ]);
   }
 
   // 与 web/src/format.ts 的 periodNames 一致
