@@ -79,27 +79,30 @@ onUnmounted(stopPolling)
 .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
 .inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); height: 52px; display: flex; align-items: center; gap: var(--space-6); }
 .brand { white-space: nowrap; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }
-nav { display: flex; gap: var(--space-1); }
+/* 导航可收缩并横向滚动，任何宽度都不把右侧工具区挤出屏幕（修订第 152 条） */
+nav { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; }
 nav a { white-space: nowrap; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
 nav a:hover { color: var(--text); text-decoration: none; }
 nav a.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
 .with-badge { display: inline-flex; align-items: center; gap: 4px; }
 .badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-full); background: var(--bad); color: var(--on-accent);
   font-size: 10px; line-height: 16px; text-align: center; font-weight: var(--weight-strong); }
-.tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
+.tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
 .tools button { padding: var(--space-1); }
 .user { color: var(--text-muted); display: flex; align-items: center; gap: var(--space-1); }
 .user:hover { color: var(--text); text-decoration: none; }
 .banner-wrap { padding-bottom: 0; }
 .banner-wrap .banner { margin: 0; }
+/* 中等宽度（平板、窄窗口）：收紧间距，用户名只显示图标 */
+@media (max-width: 900px) {
+  .inner { gap: var(--space-3); }
+  .username { display: none; }
+  nav a { padding: var(--space-1) var(--space-2); }
+}
 @media (max-width: 600px) {
   .inner { gap: var(--space-2); }
   .brand { font-size: var(--font-md); }
   .tools { gap: var(--space-1); }
-  .username { display: none; } /* 窄屏只显示图标，仍可进入账号页修改密码 */
-  nav a { padding: var(--space-1) var(--space-2); }
-  /* 导航项较多时可横向滚动，不与右侧工具区重叠 */
-  nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 }
 /* 很窄的屏幕（≤ 420px）不显示品牌名：“仪表板”同样回到首页，留出空间给导航 */
 @media (max-width: 420px) {
