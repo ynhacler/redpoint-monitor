@@ -39,6 +39,7 @@ type alertEngine struct {
 	meta      map[alertKey]AlertRule   // 活动告警对应的规则（级别、类型），供列表展示
 	traffic   map[int64]*trafficView   // 各节点最近一次计算的本周期流量
 	probe     map[int64]probeAlertView // 各节点最近 30 分钟的三网延迟汇总（设计 42.3.4），随流量每分钟刷新
+	reach     map[int64]reachVerdict   // 各节点的国内可达性结论（设计 42.2，修订第 154 条），随流量每分钟刷新
 	silences  []Silence                // 生效中的静音与维护（每轮评估与每次修改后刷新）
 	trafficAt time.Time
 	startedAt time.Time
@@ -195,6 +196,23 @@ func (s *Server) evaluateAlerts(now time.Time) error {
 		} else {
 			s.log.Error("alert probe summary failed", "component", "alert", "err", err)
 		}
+		// 国内可达性：节点在线时才评估（离线时规则与资源规则一样暂停，不判定为被墙）
+		if all, err := s.reachAll(now, 0); err == nil {
+			probes, _ := s.reachProbes()
+			names := map[int64]string{}
+			for _, row := range rows {
+				names[row.ID] = row.Name
+			}
+			m := map[int64]reachVerdict{}
+			for sid, tracks := range all {
+				m[sid] = verdictFor(tracks, probes, names, false)
+			}
+			e.mu.Lock()
+			e.reach = m
+			e.mu.Unlock()
+		} else {
+			s.log.Error("alert reach summary failed", "component", "alert", "err", err)
+		}
 	}
 	seen := map[alertKey]bool{}
 	seenServers := map[int64]bool{}
@@ -290,6 +308,9 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 	in.Traffic = s.alerts.traffic[row.ID]
 	if p, ok := s.alerts.probe[row.ID]; ok && in.Report != nil {
 		in.Probe = &p // 离线时与资源规则一样暂停评估（设计 16.3 NODATA）
+	}
+	if v, ok := s.alerts.reach[row.ID]; ok && in.Report != nil {
+		in.Reach = &v
 	}
 	s.alerts.mu.Unlock()
 	return in

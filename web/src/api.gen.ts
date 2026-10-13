@@ -397,7 +397,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -500,6 +500,67 @@ export interface ProbeTarget {
     /** 最近一轮的时间；没有时为 0 */
     last_at: number
   }
+}
+
+export interface ReachProbe {
+  /** 作为探针的节点（应位于国内） */
+  server_id: number
+  /** 探针所在运营商；留空表示未标明 */
+  isp: 'ct' | 'cu' | 'cm' | ''
+  /** TCP 端口，如 [22, 443] */
+  ports: number[]
+  /** 是否 Ping */
+  icmp: boolean
+}
+
+export interface ReachProbes {
+  next_cursor: string
+  /** 每台探针每轮最多的探测项（Agent 上限，含三网延迟目标） */
+  max_checks: number
+  items: (ReachProbe & {
+    name: string
+    /** 探针 Agent 的探测状态 */
+    status: 'on' | 'off' | 'unsupported'
+    /** 下发的探测项数 */
+    count: number
+  })[]
+}
+
+export interface ReachCheck {
+  family: 4 | 6
+  /** 0 为 Ping */
+  port: number
+  latency_ms: number | null
+  loss: number
+  /** 全部失败时的原因，如 timeout、refused；icmp_unavailable 表示探针没有 Ping 权限（不参与判定） */
+  error: string
+}
+
+export interface ServerReach {
+  /** 是否设置了国内探针 */
+  configured: boolean
+  /** 结论；还没有探测结果时为空 */
+  status: '' | 'ok' | 'unstable' | 'port' | 'partial' | 'blocked' | 'offline'
+  /** 如“国内可达”“国内不可达（疑似被墙）”“移动不可达”“端口 443 国内不可达”“国内线路不稳定” */
+  text: string
+  probes: ({
+    probe_id: number
+    name: string
+    isp: string
+    status: 'ok' | 'unstable' | 'port' | 'blocked'
+    /** 进入当前状态的时间 */
+    since: number
+    bad_ports: number[]
+    /** 最近一轮的时间 */
+    last_at: number
+    checks: ReachCheck[] | null
+  })[]
+  /** 探针 ID → 最近 24 小时每轮的延迟（IPv4 上第一个成功项，优先 Ping）与平均丢包 */
+  series: Record<string, ({
+    ts: number
+    latency_ms: number | null
+    loss: number
+  })[]>
 }
 
 export interface LatencyOverview {
@@ -2266,6 +2327,28 @@ export interface Paths {
         range?: '24h' | '7d'
       }
       response: LatencyView
+    }
+  }
+  '/reach-probes': {
+    /** 国内探针（设计 42.2，修订第 154 条） */
+    get: {
+      response: ReachProbes
+    }
+    /** 设置国内探针（整体替换），随探针的下一份上报下发 */
+    put: {
+      body: {
+        probes: ReachProbe[]
+      }
+      response: ReachProbes
+    }
+  }
+  '/servers/{id}/reach': {
+    /** 节点的国内可达性（设计 42.2、42.3.1） */
+    get: {
+      params: {
+        id: number
+      }
+      response: ServerReach
     }
   }
   '/latency-overview': {

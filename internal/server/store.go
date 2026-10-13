@@ -840,6 +840,24 @@ var migrations = []string{
 	`ALTER TABLE servers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;`,
 	// 迁移 41：云账户提前重新检查实例的时间（修订第 151 条）：区域因初始化中、服务端错误等暂时失败时为 30 分钟后，0 表示按常规周期
 	`ALTER TABLE cloud_accounts ADD COLUMN instances_recheck_at INTEGER NOT NULL DEFAULT 0;`,
+	// 迁移 42：国内探针与被墙检测（设计 42.2，修订第 154 条）。probe_id 为探针节点，server_id 为被测节点，port 0 为 ICMP；
+	// “疑似被墙”规则默认启用：没有设置国内探针时没有数据、不会评估。值为结论的级别（3 全部探针不可达，2 单运营商或端口不可达，
+	// 1 不稳定），≥ 2 触发、< 1 恢复；防抖已在判定中（连续 3 轮异常 / 2 轮正常），这里不再要求持续时间
+	`CREATE TABLE reach_results (
+		probe_id   INTEGER NOT NULL,
+		server_id  INTEGER NOT NULL,
+		family     INTEGER NOT NULL,
+		port       INTEGER NOT NULL,
+		ts         INTEGER NOT NULL,
+		latency_ms REAL,
+		loss       REAL NOT NULL,
+		error      TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX reach_results_server ON reach_results (server_id, ts);
+	CREATE INDEX reach_results_probe ON reach_results (probe_id, ts);
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('reach', 'reach', '>=', 2, 1, 0, 0, 'critical', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

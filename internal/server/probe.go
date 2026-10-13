@@ -129,7 +129,14 @@ func (s *Store) PruneProbeResults(now time.Time) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	n, _ := res.RowsAffected()
+	// 国内探针的结果同样保存 7 天（修订第 154 条）
+	res, err = s.DB.Exec(`DELETE FROM reach_results WHERE ts < ?`, now.Add(-probeKeep).Unix())
+	if err != nil {
+		return n, err
+	}
+	m, _ := res.RowsAffected()
+	return n + m, nil
 }
 
 // insertProbeResults 在批量写入的事务中保存一份上报带回的探测结果。
@@ -153,6 +160,12 @@ func insertProbeResults(tx *sql.Tx, serverID int64, list []protocol.ProbeResult,
 		code := r.Error
 		if len(code) > 32 {
 			code = code[:32]
+		}
+		if r.TargetID >= reachBase { // 国内探针的探测项（修订第 154 条）
+			if err := insertReachResult(tx, serverID, r, ts, lat, code); err != nil {
+				return err
+			}
+			continue
 		}
 		if _, err := tx.Exec(`INSERT INTO probe_results (server_id, target_id, ts, latency_ms, loss, error) VALUES (?,?,?,?,?,?)`,
 			serverID, r.TargetID, ts, lat, r.Loss, code); err != nil {
@@ -316,8 +329,16 @@ func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, in
 	}
 	targets, interval := effectiveProbe(all, global.IntervalS, np, sid)
 	timing = effectiveTiming(global, np)
-	var wire []protocol.ProbeTarget
+	// 国内探针（修订第 154 条）：探测其他节点的项排在前面，剩余名额给三网延迟目标；合计不超过 Agent 上限
+	wire, err := s.reachTargets(sid, time.Now())
+	if err != nil {
+		return "", "", 0, timing, err
+	}
+	wire = slices.Clone(wire)
 	for _, t := range targets {
+		if len(wire) >= protocol.MaxProbeTargets {
+			break
+		}
 		if pt, ok := t.wire(); ok {
 			wire = append(wire, pt)
 		}

@@ -4897,6 +4897,126 @@
         }
       }
     },
+    "/reach-probes": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "国内探针（设计 42.2，修订第 154 条）",
+        "description": "被设为国内探针的节点、各自的运营商、TCP 端口与是否 Ping，以及下发的探测项数（每台探针的 Agent 每轮最多 max_checks 项，含三网延迟目标）。",
+        "responses": {
+          "200": {
+            "description": "探针",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachProbes"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "设置国内探针（整体替换），随探针的下一份上报下发",
+        "description": "探针每轮探测其他全部已安装节点注册时记录的公网 IPv4 / IPv6：Ping（可选，需要 Agent 有 CAP_NET_RAW）与最多 3 个 TCP 端口。\n至少选 Ping 或一个端口；最多 10 台探针。记入操作日志。\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "probes"
+                ],
+                "properties": {
+                  "probes": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "$ref": "#/components/schemas/ReachProbe"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachProbes"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/servers/{id}/reach": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          },
+          {
+            "deviceToken": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ],
+        "summary": "节点的国内可达性（设计 42.2、42.3.1）",
+        "description": "各国内探针最近的判定（连续 3 轮异常才判定、连续 2 轮正常恢复；探针对所有节点都失败的轮次不计）、最近一轮的各探测项，\n以及最近 24 小时国内方向的延迟曲线。没有设置国内探针时 configured 为 false。结论均为“疑似”。\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ServerID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "可达性",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerReach"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/latency-overview": {
       "get": {
         "security": [
@@ -6928,7 +7048,8 @@
               "agent_clock",
               "process",
               "probe_latency",
-              "probe_loss"
+              "probe_loss",
+              "reach"
             ]
           },
           "operator": {
@@ -7283,6 +7404,255 @@
               "last_at": {
                 "type": "integer",
                 "description": "最近一轮的时间；没有时为 0"
+              }
+            }
+          }
+        }
+      },
+      "ReachProbe": {
+        "type": "object",
+        "required": [
+          "server_id",
+          "isp",
+          "ports",
+          "icmp"
+        ],
+        "properties": {
+          "server_id": {
+            "type": "integer",
+            "description": "作为探针的节点（应位于国内）"
+          },
+          "isp": {
+            "type": "string",
+            "enum": [
+              "ct",
+              "cu",
+              "cm",
+              ""
+            ],
+            "description": "探针所在运营商；留空表示未标明"
+          },
+          "ports": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "description": "TCP 端口，如 [22, 443]"
+          },
+          "icmp": {
+            "type": "boolean",
+            "description": "是否 Ping"
+          }
+        }
+      },
+      "ReachProbes": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "max_checks"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": "string"
+          },
+          "max_checks": {
+            "type": "integer",
+            "description": "每台探针每轮最多的探测项（Agent 上限，含三网延迟目标）"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ReachProbe"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "status",
+                    "count"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "on",
+                        "off",
+                        "unsupported"
+                      ],
+                      "description": "探针 Agent 的探测状态"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "description": "下发的探测项数"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ReachCheck": {
+        "type": "object",
+        "required": [
+          "family",
+          "port",
+          "latency_ms",
+          "loss",
+          "error"
+        ],
+        "properties": {
+          "family": {
+            "type": "integer",
+            "enum": [
+              4,
+              6
+            ]
+          },
+          "port": {
+            "type": "integer",
+            "description": "0 为 Ping"
+          },
+          "latency_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "loss": {
+            "type": "number"
+          },
+          "error": {
+            "type": "string",
+            "description": "全部失败时的原因，如 timeout、refused；icmp_unavailable 表示探针没有 Ping 权限（不参与判定）"
+          }
+        }
+      },
+      "ServerReach": {
+        "type": "object",
+        "required": [
+          "configured",
+          "status",
+          "text",
+          "probes",
+          "series"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "是否设置了国内探针"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "",
+              "ok",
+              "unstable",
+              "port",
+              "partial",
+              "blocked",
+              "offline"
+            ],
+            "description": "结论；还没有探测结果时为空"
+          },
+          "text": {
+            "type": "string",
+            "description": "如“国内可达”“国内不可达（疑似被墙）”“移动不可达”“端口 443 国内不可达”“国内线路不稳定”"
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "probe_id",
+                "name",
+                "isp",
+                "status",
+                "since",
+                "bad_ports",
+                "last_at",
+                "checks"
+              ],
+              "properties": {
+                "probe_id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isp": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "unstable",
+                    "port",
+                    "blocked"
+                  ]
+                },
+                "since": {
+                  "type": "integer",
+                  "description": "进入当前状态的时间"
+                },
+                "bad_ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "last_at": {
+                  "type": "integer",
+                  "description": "最近一轮的时间"
+                },
+                "checks": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/ReachCheck"
+                  }
+                }
+              }
+            }
+          },
+          "series": {
+            "type": "object",
+            "description": "探针 ID → 最近 24 小时每轮的延迟（IPv4 上第一个成功项，优先 Ping）与平均丢包",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "ts",
+                  "latency_ms",
+                  "loss"
+                ],
+                "properties": {
+                  "ts": {
+                    "type": "integer"
+                  },
+                  "latency_ms": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "loss": {
+                    "type": "number"
+                  }
+                }
               }
             }
           }
