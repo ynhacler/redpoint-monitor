@@ -85,6 +85,7 @@ func (s *Store) CreateAPIKey(k *APIKey, now time.Time) (string, error) {
 	return tok, nil
 }
 
+// ListAPIKeys 返回全部 API 密钥（有效的在前，新的在前），不含哈希。
 func (s *Store) ListAPIKeys() ([]APIKey, error) {
 	rows, err := s.DB.Query(`SELECT ` + apiKeyCols + ` FROM api_keys ORDER BY revoked_at <> 0, id DESC`)
 	if err != nil {
@@ -129,6 +130,7 @@ func (s *Store) LookupAPIKey(tok string, now time.Time) (*APIKey, error) {
 	return &k, nil
 }
 
+// TouchAPIKey 记录 API 密钥最近一次使用的时间。
 func (s *Store) TouchAPIKey(id int64, now time.Time) error {
 	_, err := s.DB.Exec(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, now.Unix(), id)
 	return err

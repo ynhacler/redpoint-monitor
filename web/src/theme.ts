@@ -14,6 +14,7 @@ function load(): ThemeMode {
   }
 }
 
+/** 主题：跟随系统 / 浅色 / 深色，记在本机浏览器 */
 export const themeMode = ref<ThemeMode>(load())
 
 /** 应用主题：system 时移除 data-theme，交给 prefers-color-scheme；并通知图表重绘 */

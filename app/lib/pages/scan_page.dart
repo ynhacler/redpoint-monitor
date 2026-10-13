@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+/// 扫描 Web 中显示的配对二维码
 class ScanPage extends StatefulWidget {
   const ScanPage({super.key});
 

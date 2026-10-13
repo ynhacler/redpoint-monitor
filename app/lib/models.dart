@@ -6,6 +6,7 @@
 int? _int(Object? v) => (v as num?)?.toInt();
 double? _dbl(Object? v) => (v as num?)?.toDouble();
 
+/// 一个挂载点的磁盘用量
 class DiskInfo {
   DiskInfo({required this.mount, required this.device, required this.total, required this.used, required this.usage, this.available});
   final String mount;
@@ -25,6 +26,7 @@ class DiskInfo {
       );
 }
 
+/// 节点最新一份上报中的指标（设计 4）
 class Latest {
   Latest({required this.cpu, required this.mem, required this.memUsed, required this.memTotal, required this.disks,
       required this.rx, required this.tx, required this.load1, required this.cores, this.uptime, this.rxTotal = 0, this.txTotal = 0,
@@ -94,6 +96,7 @@ class DiskIO {
   }
 }
 
+/// 流量预测：日均与周期结束时的预计总量
 class Forecast {
   Forecast({required this.daily, required this.total, required this.over});
   final int daily;
@@ -101,6 +104,7 @@ class Forecast {
   final bool over;
 }
 
+/// 本计费周期的流量（设计 5）
 class TrafficView {
   TrafficView({required this.cycleStart, required this.cycleEnd, required this.used, required this.limit, required this.unit, this.forecast});
   final String cycleStart;
@@ -127,6 +131,7 @@ class TrafficView {
   }
 }
 
+/// 节点上的一条活动告警
 class AlertBrief {
   AlertBrief({required this.type, required this.severity, required this.message, required this.value, required this.firedAt, required this.silenced});
   final String type;
@@ -146,6 +151,7 @@ class AlertBrief {
       );
 }
 
+/// 生效中的静音或维护（设计 8.4.1）
 class Silence {
   Silence({required this.id, required this.kind, this.endsAt, required this.createdBy});
   final int id;
@@ -159,6 +165,7 @@ class Silence {
       Silence(id: _int(j['id'])!, kind: j['kind'] as String, endsAt: _int(j['ends_at']), createdBy: (j['created_by'] as String?) ?? '');
 }
 
+/// 节点列表中的一项（GET /servers）
 class ServerView {
   ServerView({required this.raw, required this.id, required this.name, required this.status, required this.group, required this.country,
       required this.lastSeenAt, required this.traffic, required this.alerts, this.latest, this.maintenance, this.muted, this.expireDate = '',
@@ -349,6 +356,7 @@ class LatencyPoint {
   final double loss;
 }
 
+/// 节点的测速：各目标汇总与曲线（GET /servers/{id}/latency，设计 42.3.2）
 class LatencyView {
   LatencyView({required this.status, required this.mode, required this.intervalS, required this.targets, required this.series});
 
@@ -468,6 +476,7 @@ const cloudProviderNames = {
 const cloudKindNames = {'ec2': 'EC2', 'lightsail': 'Lightsail', 'ecs': 'ECS', 'swas': '轻量', 'cvm': 'CVM', 'lighthouse': '轻量',
   'oci': 'OCI', 'oci_egress': '租户'};
 
+/// 云账户本月的费用、预估与余额（分）
 class CloudCost {
   CloudCost({required this.period, required this.amountCents, this.forecastCents, this.balanceCents, required this.currency});
   final String period;
@@ -535,6 +544,7 @@ class CloudAccountBrief {
   }
 }
 
+/// 云实例的只读摘要（设计 44.8）
 class CloudInstanceBrief {
   CloudInstanceBrief({required this.id, required this.accountId, required this.name, required this.region, required this.kind,
       required this.state, required this.plan, required this.expireAt, required this.trafficUsed, required this.trafficLimit, this.serverId});

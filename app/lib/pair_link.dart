@@ -12,6 +12,7 @@ final _akFormat = RegExp(r'^MNT(-[0-9A-Z]{4}){7}$');
 /// 本地开发地址：iOS 模拟器 127.0.0.1，Android 模拟器 10.0.2.2。
 const _devHosts = {'127.0.0.1', 'localhost', '10.0.2.2'};
 
+/// 配对链接或二维码中的面板地址与 AK
 class PairTarget {
   const PairTarget(this.server, this.accessKey);
 

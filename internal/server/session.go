@@ -27,6 +27,7 @@ const (
 	reauthValid   = 10 * time.Minute   // 敏感操作重新输入密码后的免验证时长（设计 17.4）
 	touchEvery    = time.Minute        // 最近活动时间的写入间隔：避免每个请求都写库
 	csrfHeader    = "X-CSRF-Token"
+	// PrefixSession 是 Web 会话令牌的前缀（设计 17.1、24.7）
 	PrefixSession = "ses_"
 )
 

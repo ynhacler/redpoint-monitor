@@ -9,6 +9,7 @@ import '../pair_link.dart';
 import '../session.dart';
 import 'scan_page.dart';
 
+/// 配对页：输入面板地址与 AK，或扫码（设计 12.3）
 class PairPage extends StatefulWidget {
   const PairPage({super.key, required this.onPaired, this.notice});
 

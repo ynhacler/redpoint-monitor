@@ -8,6 +8,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../tokens.dart';
 
+/// 云账户页（只读）
 class CloudPage extends StatefulWidget {
   const CloudPage({super.key, required this.api, required this.onRevoked, this.serverNames = const {}, this.onOpenServer, this.initial});
   final ApiClient api;

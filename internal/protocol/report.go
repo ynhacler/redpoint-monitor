@@ -156,6 +156,7 @@ type Conns struct {
 	TimeWait int `json:"time_wait"`
 }
 
+// System 是主机的基本信息：主机名、系统、内核、开机时间等（设计 4.3）。
 type System struct {
 	Hostname  string `json:"hostname"`
 	OS        string `json:"os"`
@@ -173,6 +174,7 @@ type System struct {
 	RemoteUpgrade *bool `json:"remote_upgrade,omitempty"`
 }
 
+// CPU 是 CPU 使用率、核数、负载、温度与各类时间占比（设计 4.4）。
 type CPU struct {
 	Usage  float64 `json:"usage"` // percent 0-100
 	Cores  int     `json:"cores"`
@@ -198,6 +200,7 @@ type CPUBreakdown struct {
 	Idle    float64 `json:"idle"`
 }
 
+// Memory 是内存总量、已用、可用与缓存（设计 4.5）。
 type Memory struct {
 	Total     uint64  `json:"total"`
 	Used      uint64  `json:"used"`
@@ -209,6 +212,7 @@ type Memory struct {
 	Cached  uint64 `json:"cached,omitempty"`
 }
 
+// Swap 是交换分区总量与已用。
 type Swap struct {
 	Total uint64 `json:"total"`
 	Used  uint64 `json:"used"`

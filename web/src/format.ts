@@ -83,6 +83,7 @@ export function fmtLatency(ms: number | null | undefined): string {
   return `${Math.round(ms)} ms`
 }
 
+/** 时间：今天只显示时分，本年显示月日时分，更早显示年月日（设计 41.4.1） */
 export function fmtTime(unix: number | null | undefined, now = new Date()): string {
   if (!unix) return DASH
   const d = new Date(unix * 1000)
@@ -110,6 +111,7 @@ export function fmtDate(unix: number | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** 时长：如“4 分钟”“2 小时”“3 天” */
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH
   if (seconds < 60) return `${Math.floor(seconds)} 秒`

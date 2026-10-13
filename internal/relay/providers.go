@@ -48,7 +48,7 @@ func signJWT(header, claims map[string]any, sign func(digest []byte) ([]byte, er
 
 // ---- APNs ----
 
-// APNsConfig：Apple 开发者账号中创建的 APNs 认证密钥（.p8）。
+// APNsConfig 是 Apple 开发者账号中创建的 APNs 认证密钥（.p8）。
 type APNsConfig struct {
 	KeyID    string
 	TeamID   string
@@ -163,7 +163,7 @@ func (c *apnsClient) send(ctx context.Context, p push.Request, now time.Time) er
 
 // ---- FCM（HTTP v1） ----
 
-// FCMConfig：Firebase 项目的服务账号（只需 Firebase Cloud Messaging 权限）。
+// FCMConfig 是 Firebase 项目的服务账号（只需 Firebase Cloud Messaging 权限）。
 type FCMConfig struct {
 	ProjectID   string
 	ClientEmail string

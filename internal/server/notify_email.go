@@ -25,6 +25,7 @@ import (
 	"time"
 )
 
+// ChannelEmail 是邮件通知渠道的类型。
 const ChannelEmail = "email"
 
 // emailSecurity：tls（隐式 TLS，465）/ starttls（587）/ none（只允许回环地址）

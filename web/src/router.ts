@@ -3,6 +3,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { checkAuth, setSignedOutHandler, startPolling, state } from './store'
 
+/** 页面路由 */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [

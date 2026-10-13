@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+// 阿里云国内站与国际站的账户类型
 const (
 	ProviderAliyunCN   = "aliyun_cn"
 	ProviderAliyunIntl = "aliyun_intl"

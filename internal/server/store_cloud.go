@@ -58,6 +58,7 @@ func scanCloudAccount(sc interface{ Scan(...any) error }) (CloudAccount, error) 
 	return a, err
 }
 
+// ListCloudAccounts 返回全部云账户（含加密的凭证，不对外返回）。
 func (s *Store) ListCloudAccounts() ([]CloudAccount, error) {
 	rows, err := s.DB.Query(`SELECT ` + cloudAccountCols + ` FROM cloud_accounts ORDER BY name`)
 	if err != nil {
@@ -75,6 +76,7 @@ func (s *Store) ListCloudAccounts() ([]CloudAccount, error) {
 	return out, rows.Err()
 }
 
+// GetCloudAccount 按 ID 读取云账户。
 func (s *Store) GetCloudAccount(id int64) (CloudAccount, error) {
 	a, err := scanCloudAccount(s.DB.QueryRow(`SELECT `+cloudAccountCols+` FROM cloud_accounts WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -112,6 +114,7 @@ func (s *Store) SaveCloudAccount(a *CloudAccount, now time.Time) error {
 	return err
 }
 
+// DeleteCloudAccount 删除云账户；不存在时返回 errNoCloudAccount。
 func (s *Store) DeleteCloudAccount(id int64) error {
 	res, err := s.DB.Exec(`DELETE FROM cloud_accounts WHERE id = ?`, id)
 	if err != nil {
@@ -169,6 +172,7 @@ type CloudCost struct {
 	UpdatedAt     int64  `json:"updated_at"`
 }
 
+// SaveCloudCost 保存（覆盖）一个账户某月的费用。
 func (s *Store) SaveCloudCost(accountID int64, c cloud.Costs, now time.Time) error {
 	_, err := s.DB.Exec(`INSERT INTO cloud_costs (account_id, period, amount_cents, forecast_cents, balance_cents, currency, updated_at)
 		VALUES (?,?,?,?,?,?,?) ON CONFLICT (account_id, period) DO UPDATE SET amount_cents = excluded.amount_cents,

@@ -48,6 +48,7 @@ type Relay struct {
 	requests, sent, failed atomic.Int64
 }
 
+// New 按配置创建推送中继；未设置的限流取默认值（每分钟 30 次）。
 func New(cfg Config) *Relay {
 	if cfg.PerMinute <= 0 {
 		cfg.PerMinute = 30

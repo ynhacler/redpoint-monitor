@@ -1,0 +1,4 @@
+# revive 的 exported 规则（设计 39.7，修订第 157 条）：导出的标识符必须有注释；中文注释以标识符开头即可。
+# 关闭“名称重复包名”的提示（如 server.ServerRow），只检查注释。
+[rule.exported]
+  arguments = ["disableStutteringCheck"]

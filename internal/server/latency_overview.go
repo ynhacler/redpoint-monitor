@@ -17,12 +17,14 @@ type LatencyOverview struct {
 	Cells   []LatencyOverviewCell   `json:"cells"`   // 有结果的（节点, 目标）组合
 }
 
+// LatencyOverviewServer 是测速对比中的一台节点。
 type LatencyOverviewServer struct {
 	ID    int64  `json:"id"`
 	Name  string `json:"name"`
 	Group string `json:"group"`
 }
 
+// LatencyOverviewCell 是测速对比的一格：节点到一个目标最近 1 小时的延迟与丢包。
 type LatencyOverviewCell struct {
 	ServerID int64    `json:"server_id"`
 	TargetID int64    `json:"target_id"`

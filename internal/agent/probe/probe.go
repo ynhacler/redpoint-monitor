@@ -28,6 +28,7 @@ import (
 	"vpsmon/internal/protocol"
 )
 
+// 每轮探测的节奏与并发（设计 42.6）：Agent 端写死，面板不能放宽。
 const (
 	FirstDelay  = 20 * time.Second // 启动或目标变化后第一轮的延迟
 	Samples     = 5                // 每个目标每轮的样本数

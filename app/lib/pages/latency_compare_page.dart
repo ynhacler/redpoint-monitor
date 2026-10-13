@@ -9,6 +9,7 @@ import '../format.dart';
 import '../models.dart';
 import '../theme.dart';
 
+/// 测速对比页：选一个目标，按延迟排列各节点
 class LatencyComparePage extends StatefulWidget {
   const LatencyComparePage({super.key, required this.api, required this.onRevoked, this.onOpenServer});
   final ApiClient api;

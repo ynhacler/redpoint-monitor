@@ -19,6 +19,7 @@ type Store struct {
 	Dir string // 数据目录：云账户凭证的密钥 secret.key 也在这里（设计 44.2）
 }
 
+// OpenStore 打开（不存在时创建）数据目录中的 SQLite 数据库，并执行未应用的迁移。
 func OpenStore(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, err
@@ -1003,6 +1004,7 @@ func (s *Store) TrafficSince(serverID int64, since time.Time) (rx, tx uint64, er
 	return
 }
 
+// LoadCounters 读取各节点各网卡上一次的累计计数（面板重启后继续计算流量增量）。
 func (s *Store) LoadCounters() (map[int64]map[string]*Counter, error) {
 	rows, err := s.DB.Query(`SELECT server_id, iface, boot_id, ifindex, rx, tx FROM traffic_counters`)
 	if err != nil {

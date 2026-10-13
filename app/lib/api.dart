@@ -66,6 +66,7 @@ Future<Session> pairDevice(Uri server, String accessKey, {required String name, 
   }
 }
 
+/// 面板接口客户端：带设备凭证请求，快到期或 401 token_expired 时刷新后重试一次（设计 12.5）
 class ApiClient {
   ApiClient(this._session, this._store, {http.Client? client, DateTime Function()? now})
       : _http = client ?? http.Client(),

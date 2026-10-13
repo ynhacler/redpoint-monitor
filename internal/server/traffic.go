@@ -46,6 +46,7 @@ const (
 	ModeMax = "max" // MAX(RX, TX) over the whole cycle
 )
 
+// CountedBytes 按计费模式计算计入流量的字节数：入 + 出、只算入、只算出或取较大者（设计 1.2.4）。
 func CountedBytes(mode string, rx, tx uint64) uint64 {
 	switch mode {
 	case ModeRx:

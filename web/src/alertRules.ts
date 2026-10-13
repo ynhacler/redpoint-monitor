@@ -22,6 +22,7 @@ export const ruleNames: Record<string, string> = {
   reach: '国内不可达（疑似被墙）',
 }
 
+/** 告警级别的中文名称 */
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
 
 /** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，测速为毫秒，其余为百分比 */

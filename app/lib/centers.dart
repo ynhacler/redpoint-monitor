@@ -15,6 +15,7 @@ import 'session.dart';
 /// 中心的稳定标识：面板主机 + 设备编号（同一面板重新配对得到新设备，视为新的中心项）
 String centerKey(Session s) => '${s.server.host}_${s.server.port}_${s.deviceId}'.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
 
+/// 已配对的监控中心与当前选中的一个（设计 1.5.2）
 class Centers {
   Centers({List<Session>? sessions, this.active = 0}) : sessions = sessions ?? [];
   final List<Session> sessions;
@@ -52,11 +53,13 @@ class Centers {
       );
 }
 
+/// 监控中心列表的存储
 abstract class CentersStore {
   Future<Centers> load();
   Future<void> save(Centers c);
 }
 
+/// 把监控中心（含设备凭证）保存在 flutter_secure_storage 中
 class SecureCentersStore implements CentersStore {
   const SecureCentersStore();
   static const _storage = FlutterSecureStorage();
@@ -86,6 +89,7 @@ class SecureCentersStore implements CentersStore {
   Future<void> save(Centers c) => _storage.write(key: _key, value: jsonEncode(c.toJson()));
 }
 
+/// 内存中的监控中心列表（测试用）
 class MemoryCentersStore implements CentersStore {
   Centers value = Centers();
   @override

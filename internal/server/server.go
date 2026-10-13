@@ -44,6 +44,7 @@ type Options struct {
 	ReleaseMirror bool
 }
 
+// Server 是面板：HTTP 路由、上报处理、批量写入、告警、云同步等后台任务都挂在它上面。
 type Server struct {
 	probes  probeState // 三网延迟：下发的目标列表与各节点的探测状态（设计 42.3.2）
 	reach   reachState // 国内探针：设置与各探针的探测项（设计 42.2，修订第 154 条）

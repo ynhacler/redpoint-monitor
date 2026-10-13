@@ -1,6 +1,7 @@
 // 节点范围的文字说明（API Key 与 App AK 共用，设计 45.2、17.3）。
 import { state } from './store'
 
+/** 授权范围的中文说明，如“全部节点”“分组 jp” */
 export function scopeText(type: string, value: string): string {
   if (type === 'group') return `分组：${value}`
   if (type === 'servers') {

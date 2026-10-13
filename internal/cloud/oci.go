@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	// ProviderOCI 是 Oracle Cloud 的账户类型
 	ProviderOCI = "oci"
 	// ociFreeEgress 是 OCI 每月免费的出站流量（10 TB，按 10¹² 字节计）
 	ociFreeEgress = 10_000_000_000_000

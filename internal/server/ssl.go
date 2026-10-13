@@ -62,6 +62,7 @@ func scanSSL(sc interface{ Scan(...any) error }) (SSLMonitor, error) {
 	return m, err
 }
 
+// ListSSLMonitors 返回全部证书监控，快到期的在前。
 func (s *Store) ListSSLMonitors() ([]SSLMonitor, error) {
 	rows, err := s.DB.Query(`SELECT ` + sslCols + ` FROM ssl_monitors ORDER BY not_after = 0, not_after, host`)
 	if err != nil {
@@ -81,6 +82,7 @@ func (s *Store) ListSSLMonitors() ([]SSLMonitor, error) {
 
 var errNoSSL = errorf(CodeNotFound, "证书监控不存在或已删除")
 
+// GetSSLMonitor 按 ID 读取证书监控。
 func (s *Store) GetSSLMonitor(id int64) (SSLMonitor, error) {
 	m, err := scanSSL(s.DB.QueryRow(`SELECT `+sslCols+` FROM ssl_monitors WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -89,6 +91,7 @@ func (s *Store) GetSSLMonitor(id int64) (SSLMonitor, error) {
 	return m, err
 }
 
+// CreateSSLMonitor 新增证书监控，写回 ID。
 func (s *Store) CreateSSLMonitor(m *SSLMonitor, now time.Time) error {
 	res, err := s.DB.Exec(`INSERT INTO ssl_monitors (host, port, note, created_at) VALUES (?,?,?,?)`, m.Host, m.Port, m.Note, now.Unix())
 	if err != nil {
@@ -102,6 +105,7 @@ func (s *Store) CreateSSLMonitor(m *SSLMonitor, now time.Time) error {
 	return nil
 }
 
+// DeleteSSLMonitor 删除证书监控。
 func (s *Store) DeleteSSLMonitor(id int64) error {
 	res, err := s.DB.Exec(`DELETE FROM ssl_monitors WHERE id = ?`, id)
 	if err != nil {
@@ -113,6 +117,7 @@ func (s *Store) DeleteSSLMonitor(id int64) error {
 	return nil
 }
 
+// SaveSSLResult 保存一次证书检查的结果。
 func (s *Store) SaveSSLResult(m SSLMonitor) error {
 	_, err := s.DB.Exec(`UPDATE ssl_monitors SET not_before = ?, not_after = ?, issuer = ?, subject = ?, sans = ?, valid = ?,
 		last_error = ?, checked_at = ? WHERE id = ?`, m.NotBefore, m.NotAfter, m.Issuer, m.Subject, strings.Join(m.SANs, ","), m.Valid,

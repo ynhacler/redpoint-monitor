@@ -157,6 +157,7 @@ func scanRollout(sc interface{ Scan(...any) error }) (*UpgradeRollout, error) {
 	return &r, nil
 }
 
+// GetRollout 按 ID 读取灰度升级。
 func (s *Store) GetRollout(id int64) (*UpgradeRollout, error) {
 	r, err := scanRollout(s.DB.QueryRow(`SELECT `+rolloutColumns+` FROM upgrade_rollouts WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -165,6 +166,7 @@ func (s *Store) GetRollout(id int64) (*UpgradeRollout, error) {
 	return r, err
 }
 
+// ListRollouts 返回最近的灰度升级，新的在前。
 func (s *Store) ListRollouts(limit int) ([]*UpgradeRollout, error) {
 	rows, err := s.DB.Query(`SELECT `+rolloutColumns+` FROM upgrade_rollouts ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {

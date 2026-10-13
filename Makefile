@@ -15,7 +15,7 @@ VM      ?= vpsmon-dev
 # Arch of the OrbStack VM: arm64 on Apple silicon, amd64 on Intel Macs
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-design api-types web build build-linux build-relay ios-push-check \
+.PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-comments check-design api-types web build build-linux build-relay ios-push-check \
         vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
@@ -59,9 +59,15 @@ dev-web: ## Run Vite dev server on :5173 (proxies /api to the panel on $(LISTEN)
 test: ## Run Go tests
 	go test ./...
 
-lint: web/node_modules/.package-lock.json ## go vet + Web type-check
+lint: web/node_modules/.package-lock.json ## go vet + Web type-check + exported-comment checks
 	go vet ./...
+	$(MAKE) check-comments
 	cd web && npx vue-tsc --noEmit
+
+REVIVE_VERSION := v1.7.0
+check-comments: ## Exported identifiers must have comments: revive (Go), scripts/check_comments.py (TS, Dart) (design 39.7)
+	GOFLAGS=-mod=mod go run github.com/mgechev/revive@$(REVIVE_VERSION) -config revive.toml -set_exit_status ./...
+	python3 scripts/check_comments.py
 
 check-design: ## Check design doc numbering and section references (design 40.9.3)
 	python3 scripts/check_design_refs.py

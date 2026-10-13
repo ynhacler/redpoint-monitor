@@ -14,15 +14,20 @@ export const gaugeThresholds = {
   disk: { warn: thresholds.disk, bad: thresholds.diskBad },
 } as const
 
+/** 按告警默认阈值给出配色级别（设计 16.1） */
 export function gaugeLevel(v: number | undefined, kind: keyof typeof gaugeThresholds): 'ok' | 'warn' | 'bad' {
   const t = gaugeThresholds[kind]
   if (v == null) return 'ok'
   return v >= t.bad ? 'bad' : v >= t.warn ? 'warn' : 'ok'
 }
 
+/** CPU 使用率；没有实时数据时为 undefined */
 export const cpu = (s: ServerView) => s.latest?.cpu.usage
+/** 内存使用率 */
 export const mem = (s: ServerView) => s.latest?.memory.usage
+/** 全部网卡的下载速率合计（字节 / 秒） */
 export const rx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.rx_speed, 0)
+/** 全部网卡的上传速率合计（字节 / 秒） */
 export const tx = (s: ServerView) => s.latest?.network.reduce((a, n) => a + n.tx_speed, 0)
 
 /** 使用率最高的挂载点：异常优先，快满的数据盘不能被根分区掩盖（设计 1.5.6） */
