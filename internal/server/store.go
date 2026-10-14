@@ -859,6 +859,17 @@ var migrations = []string{
 	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('reach', 'reach', '>=', 2, 1, 0, 0, 'critical', 0, 1, unixepoch(), unixepoch());`,
+	// 迁移 43：Web 登录两步验证（设计 17.4，修订第 160 条）。totp_secret 为 Base32 密钥（空表示未开启），
+	// totp_last_step 为最近用过的时间片（防重放）；恢复码只存 SHA-256
+	`ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT '';
+	ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+	CREATE TABLE totp_recovery (
+		user_id    INTEGER NOT NULL,
+		code_hash  TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		used_at    INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX totp_recovery_user ON totp_recovery (user_id);`,
 }
 
 func (s *Store) migrate() error {

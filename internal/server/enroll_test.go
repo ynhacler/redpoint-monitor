@@ -426,11 +426,15 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /healthz":                                    accessPublic,
 		"GET /releases/{version}/{file}":                  accessPublic,
 		"POST /api/v1/auth/login":                         accessPublic,
+		"POST /api/v1/auth/login/totp":                    accessPublic,
 		"GET /api/v1/auth/captcha":                        accessPublic,
 		"GET /api/v1/auth/me":                             accessAdmin,
 		"POST /api/v1/auth/logout":                        accessAdmin,
 		"POST /api/v1/auth/password":                      accessAdmin,
 		"POST /api/v1/auth/reauth":                        accessAdmin,
+		"POST /api/v1/auth/totp/setup":                    accessAdmin,
+		"POST /api/v1/auth/totp/enable":                   accessAdmin,
+		"POST /api/v1/auth/totp/disable":                  accessAdmin,
 		"GET /api/v1/auth/sessions":                       accessAdmin,
 		"DELETE /api/v1/auth/sessions/{id}":               accessAdmin,
 		"GET /ws":                                         accessRead,
@@ -573,8 +577,8 @@ func TestPermissionMatrix(t *testing.T) {
 				tok = pairTestDevice(t, s, name == "app", "all", "").access
 			}
 			rec := do(h, method, path, tok, []byte(`{}`))
-			if rt.pattern == "POST /api/v1/auth/login" {
-				// 登录接口本身就是校验凭证：空请求体返回 401（用户名或密码错误）是业务结果，
+			if rt.pattern == "POST /api/v1/auth/login" || rt.pattern == "POST /api/v1/auth/login/totp" {
+				// 登录接口（含两步验证的第二步）本身就是校验凭证：空请求体返回 401 是业务结果，
 				// 这里只要求它在期望表中声明为 public，不按状态码判断放行与否
 				continue
 			}

@@ -72,6 +72,7 @@ type Server struct {
 	noise         *alertNoise     // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
 	quiet         *quietState     // 免打扰时段（设计 16.5）
 	heartbeat     *heartbeatState // 面板心跳（设计 1.10.3）
+	totp          *totpFlows      // 进行中的两步验证登录与设置（修订第 160 条）
 	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 	ws            *wsHub          // WebSocket 事件推送（设计 20）
 	cloud         *cloudState     // 云厂商账户同步（设计 44）
@@ -135,7 +136,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
-	s.notify, s.noise = newNotifier(s), newAlertNoise()
+	s.notify, s.noise, s.totp = newNotifier(s), newAlertNoise(), newTOTPFlows()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
@@ -239,10 +240,14 @@ func (s *Server) routes() http.Handler {
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
+	handle("POST /api/v1/auth/login/totp", accessPublic, s.handleLoginTOTP)
 	handle("GET /api/v1/auth/me", accessAdmin, s.handleMe)
 	handle("POST /api/v1/auth/logout", accessAdmin, s.handleLogout)
 	handle("POST /api/v1/auth/password", accessAdmin, s.handleChangePassword)
 	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
+	handle("POST /api/v1/auth/totp/setup", accessAdmin, s.handleTOTPSetup)
+	handle("POST /api/v1/auth/totp/enable", accessAdmin, s.handleTOTPEnable)
+	handle("POST /api/v1/auth/totp/disable", accessAdmin, s.handleTOTPDisable)
 	handle("GET /api/v1/auth/sessions", accessAdmin, s.handleSessions)
 	handle("DELETE /api/v1/auth/sessions/{id}", accessAdmin, s.handleRevokeSession)
 	// 云厂商账户（设计 44.8）：添加、更换凭证、删除需重新验证密码（在处理函数中校验）

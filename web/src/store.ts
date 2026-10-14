@@ -2,7 +2,7 @@
 // 页面还少，用 Vue 的 reactive 即可；TODO(B): 状态变复杂后考虑 Pinia（设计 3.3，需先确认依赖）。
 import { computed, reactive, watch } from 'vue'
 import {
-  errorText, getMe, listServers, login as apiLogin, logoutSession, onUnauthorized,
+  errorText, getMe, listServers, login as apiLogin, loginTotp as apiLoginTotp, logoutSession, onUnauthorized,
   type CaptchaAnswer, type EnrollCodeView, type Me, type ServerView,
 } from './api'
 import { connected, subscribe } from './ws'
@@ -112,10 +112,23 @@ export async function checkAuth() {
   }
 }
 
-/** 登录成功后开始轮询（需修改初始密码时先不轮询，接口会返回 403） */
-export async function login(username: string, password: string, remember: boolean, captcha?: CaptchaAnswer) {
-  state.me = await apiLogin(username, password, remember, captcha)
-  if (!state.me.must_change_password) startPolling()
+function signedIn(me: Me) {
+  state.me = me
+  if (!me.must_change_password) startPolling()
+}
+
+/** 登录成功后开始轮询（需修改初始密码时先不轮询，接口会返回 403）。
+ * 账号开启了两步验证时返回 challenge（尚未登录），由 loginTotp 完成第二步（修订第 160 条）；否则返回 null。 */
+export async function login(username: string, password: string, remember: boolean, captcha?: CaptchaAnswer): Promise<string | null> {
+  const res = await apiLogin(username, password, remember, captcha)
+  if ('challenge' in res) return res.challenge
+  signedIn(res)
+  return null
+}
+
+/** 两步验证的第二步 */
+export async function loginTotp(challenge: string, code: string) {
+  signedIn(await apiLoginTotp(challenge, code))
 }
 
 /** 修改密码成功后：清除“需修改密码”标记并开始轮询 */
