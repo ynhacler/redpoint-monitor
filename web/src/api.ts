@@ -555,6 +555,7 @@ export type LatencyOverview = Res<'/latency-overview', 'get'>
 export type ReachProbe = G.ReachProbe
 export type ServerReach = Res<'/servers/{id}/reach', 'get'>
 
+/** 国内探针设置（管理员） */
 export function getReachProbes() {
   return request('get', '/reach-probes')
 }
@@ -565,6 +566,7 @@ export function putReachProbes(probes: ReachProbe[]) {
   return request('put', '/reach-probes', { body: { probes } })
 }
 
+/** 节点的国内可达性：各探针最近结果与判定 */
 export function getServerReach(id: number) {
   return request('get', '/servers/{id}/reach', { params: { id } })
 }
