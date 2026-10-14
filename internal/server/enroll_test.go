@@ -61,6 +61,30 @@ func adminToken(t *testing.T, s *Server) string {
 	return tok
 }
 
+// viewerToken 返回查看者 name 的新会话令牌（已改过密码、已重新验证）；账号不存在时先新建。
+func viewerToken(t *testing.T, s *Server, name string) string {
+	t.Helper()
+	var id int64
+	if u, err := s.store.UserByName(name); err == nil {
+		id = u.ID
+	} else {
+		h, _ := HashPassword("viewer password 1")
+		v, err := s.store.CreateViewer(name, h, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		id = v.ID
+	}
+	s.store.DB.Exec(`UPDATE users SET must_change_password = 0 WHERE id = ?`, id)
+	tok, err := s.store.CreateSession(id, "127.0.0.1", "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	se, _ := s.store.LookupSession(tok, time.Now())
+	s.store.SetReauth(se.ID, time.Now().Add(reauthValid))
+	return tok
+}
+
 func TestCreateServerValidation(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
@@ -406,15 +430,17 @@ func TestPermissionMatrix(t *testing.T) {
 	}
 	creds := map[string]string{"无凭证": "", "伪造": "agt_forgedforgedforged", "伪造 API Key": "api_forgedforgedforged",
 		"伪造设备": "dev_forgedforgedforged", "Refresh Token": "rt_forgedforgedforged",
-		"admin": admin, "agent": agentTok, "apikey": apiKey, "app": "", "app 无低风险操作": ""}
-	everyone := []string{"无凭证", "伪造", "伪造 API Key", "伪造设备", "Refresh Token", "admin", "agent", "apikey", "app", "app 无低风险操作"}
+		"admin": admin, "viewer": "", "agent": agentTok, "apikey": apiKey, "app": "", "app 无低风险操作": ""}
+	everyone := []string{"无凭证", "伪造", "伪造 API Key", "伪造设备", "Refresh Token", "admin", "viewer", "agent", "apikey", "app", "app 无低风险操作"}
 	allowed := map[access][]string{
 		accessPublic: everyone,
 		accessEnroll: everyone, // 凭请求体中的注册码认证
 		accessPair:   everyone, // 凭请求体中的 AK / Refresh Token 认证
 		accessAdmin:  {"admin"},
-		// 【安全】API Key 与 App 设备只能访问读取类接口（设计 45.2、8.4.1）
-		accessRead:  {"admin", "apikey", "app", "app 无低风险操作"},
+		// 【安全】查看者只能读取与管理自己的账号（修订第 161 条）
+		accessSelf: {"admin", "viewer"},
+		// 【安全】API Key、App 设备与查看者只能访问读取类接口（设计 45.2、8.4.1）
+		accessRead:  {"admin", "viewer", "apikey", "app", "app 无低风险操作"},
 		accessAgent: {"agent"},
 		accessApp:   {"app", "app 无低风险操作"},
 		// 【安全】静音与维护：只有 AK 允许低风险操作的设备（设计 17.2）
@@ -428,15 +454,19 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/auth/login":                         accessPublic,
 		"POST /api/v1/auth/login/totp":                    accessPublic,
 		"GET /api/v1/auth/captcha":                        accessPublic,
-		"GET /api/v1/auth/me":                             accessAdmin,
-		"POST /api/v1/auth/logout":                        accessAdmin,
-		"POST /api/v1/auth/password":                      accessAdmin,
-		"POST /api/v1/auth/reauth":                        accessAdmin,
-		"POST /api/v1/auth/totp/setup":                    accessAdmin,
-		"POST /api/v1/auth/totp/enable":                   accessAdmin,
-		"POST /api/v1/auth/totp/disable":                  accessAdmin,
-		"GET /api/v1/auth/sessions":                       accessAdmin,
-		"DELETE /api/v1/auth/sessions/{id}":               accessAdmin,
+		"GET /api/v1/auth/me":                             accessSelf,
+		"POST /api/v1/auth/logout":                        accessSelf,
+		"POST /api/v1/auth/password":                      accessSelf,
+		"POST /api/v1/auth/reauth":                        accessSelf,
+		"POST /api/v1/auth/totp/setup":                    accessSelf,
+		"POST /api/v1/auth/totp/enable":                   accessSelf,
+		"POST /api/v1/auth/totp/disable":                  accessSelf,
+		"GET /api/v1/auth/sessions":                       accessSelf,
+		"DELETE /api/v1/auth/sessions/{id}":               accessSelf,
+		"GET /api/v1/users":                               accessAdmin,
+		"POST /api/v1/users":                              accessAdmin,
+		"DELETE /api/v1/users/{id}":                       accessAdmin,
+		"POST /api/v1/users/{id}/password":                accessAdmin,
 		"GET /ws":                                         accessRead,
 		"GET /api/v1/api-keys":                            accessAdmin,
 		"POST /api/v1/api-keys":                           accessAdmin,
@@ -567,6 +597,9 @@ func TestPermissionMatrix(t *testing.T) {
 		for name, tok := range creds {
 			if name == "admin" {
 				tok = adminToken(t, s) // 每次用新会话：矩阵中的 /auth/logout 会注销当前会话
+			}
+			if name == "viewer" {
+				tok = viewerToken(t, s, "matrix-viewer")
 			}
 			if name == "apikey" {
 				// 每次用新 Key：矩阵中的 DELETE /api-keys/{id} 会吊销编号为 1 的 Key

@@ -277,8 +277,8 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u User, re
 		return
 	}
 	setSessionCookie(w, r, tok, remember)
-	info(r).principal, info(r).principalID = "admin", u.ID
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.login", Success: true, Details: details})
+	info(r).principal, info(r).principalID = u.Role, u.ID
+	s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.login", Success: true, Details: details})
 	v, err := s.meFor(u, tok)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
@@ -339,7 +339,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		s.loginLimit.fail(ip)
-		s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.login", Success: false,
+		s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.login", Success: false,
 			Details: map[string]any{"reason": "bad_" + method}})
 		s.writeError(w, r, errorf(CodeUnauthorized, "验证码不正确"))
 		return
@@ -423,7 +423,7 @@ func (s *Server) handleTOTPEnable(w http.ResponseWriter, r *http.Request) {
 	s.totp.mu.Lock()
 	delete(s.totp.pending, se.ID)
 	s.totp.mu.Unlock()
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: se.User.Username, Action: "auth.totp_enable", Success: true})
+	s.audit(r, AuditEntry{ActorType: se.User.actor(), ActorID: se.User.Username, Action: "auth.totp_enable", Success: true})
 	writeJSON(w, map[string][]string{"recovery_codes": codes})
 }
 
@@ -438,6 +438,6 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: se.User.Username, Action: "auth.totp_disable", Success: true})
+	s.audit(r, AuditEntry{ActorType: se.User.actor(), ActorID: se.User.Username, Action: "auth.totp_disable", Success: true})
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -7,8 +7,8 @@ import { getPanelVersion } from './api'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
 import { activeAlertCount } from './metrics'
-import { activeGroup, itemActive, navGroups } from './nav'
-import { logout, state, stopPolling } from './store'
+import { activeGroup, groupsFor, itemActive } from './nav'
+import { isViewer, logout, state, stopPolling } from './store'
 import { applyTheme, cycleTheme, themeMode } from './theme'
 
 const route = useRoute()
@@ -17,7 +17,8 @@ const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } 
 // 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
 const alertCount = computed(() => activeAlertCount(state.servers))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
-const group = computed(() => activeGroup(route))
+const groups = computed(() => groupsFor(isViewer.value))
+const group = computed(() => activeGroup(route, groups.value))
 
 // 面板版本显示在页脚（登录后读取一次）；git describe 的形式如 v0.4.1、v0.4.1-3-gabc123
 const panelVersion = ref('')
@@ -41,7 +42,7 @@ onUnmounted(stopPolling)
       <RouterLink to="/" class="brand">VPS Monitor</RouterLink>
       <nav v-if="signedIn">
         <!-- 仪表板即首页（统计 + 节点列表）；节点详情、编辑、安装命令也属于“仪表板” -->
-        <RouterLink v-for="g in navGroups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key, 'with-badge': g.key === 'alerts' }">
+        <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key, 'with-badge': g.key === 'alerts' }">
           {{ g.name }}<span v-if="g.key === 'alerts' && alertCount" class="badge num">{{ alertCount }}</span>
         </RouterLink>
       </nav>

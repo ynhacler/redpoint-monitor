@@ -81,6 +81,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
    interchangeable (design 17.1). Agent tokens can only report for their own server; an enroll code can
    only claim its own node. Prefixes: `ses_` (Web session), `agt_`, `api_` (read-only API key, design 45.2), `ENR-`, future `dev_`/`rt_`/`MNT-`.
    Web admin = username + Argon2id password → HttpOnly session cookie + `X-CSRF-Token` on writes (design 17.4).
+   Web viewers (read-only accounts) use the same session cookie but only reach `accessRead` / `accessSelf` routes; the role
+   check lives in the session middleware, never in handlers.
 4. **Store hashes, show once.** Tokens, AKs and enroll codes are shown once; only SHA-256 hashes are
    stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).
 5. **App is read-only** (+ mute / maintenance mode). No App credential may change config or trigger upgrades.

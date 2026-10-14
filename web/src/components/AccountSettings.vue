@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 账号：修改密码（设计 17.4）、两步验证（修订第 160 条）、登录中的设备（设计 24.8）与 API 密钥。在“系统 → 账号”中显示（修订第 158 条）；
+// 账号：修改密码（设计 17.4）、两步验证（修订第 160 条）、登录中的设备（设计 24.8）、API 密钥与查看者账号（修订第 161 条）。
+// 查看者只看到前三项。在“系统 → 账号”中显示（修订第 158 条）；
 // 使用初始 / 重置密码登录时，账号页（/account）只显示修改密码，修改后才能使用其他页面。
 // 修改成功后，该账号在其他浏览器上的会话全部失效。
 import { reactive, ref } from 'vue'
@@ -8,7 +9,8 @@ import { ApiError, changePassword, errorText } from '../api'
 import ApiKeysPanel from '../components/ApiKeysPanel.vue'
 import SessionsPanel from '../components/SessionsPanel.vue'
 import TwoFactorPanel from '../components/TwoFactorPanel.vue'
-import { passwordChanged, state } from '../store'
+import UsersPanel from '../components/UsersPanel.vue'
+import { isViewer, passwordChanged, state } from '../store'
 
 const router = useRouter()
 const f = reactive({ current: '', next: '', confirm: '' })
@@ -49,7 +51,7 @@ async function submit() {
     <form class="panel account" novalidate @submit.prevent="submit">
       <h1>修改密码</h1>
       <p v-if="forced" class="banner warn">当前使用的是初始密码，请先设置自己的密码。</p>
-      <p class="small muted">账号：{{ state.me?.username }}。新密码至少 8 位；修改后其他设备上的登录会退出。</p>
+      <p class="small muted">账号：{{ state.me?.username }}<template v-if="isViewer">（查看者，只读）</template>。新密码至少 8 位；修改后其他设备上的登录会退出。</p>
       <label class="field">
         <span class="small muted">当前密码</span>
         <input v-model="f.current" type="password" autocomplete="current-password" />
@@ -70,8 +72,9 @@ async function submit() {
     </form>
     <TwoFactorPanel v-if="!forced" />
     <SessionsPanel v-if="!forced" />
-    <ApiKeysPanel v-if="!forced" />
-    <p v-if="!forced" class="account-links small muted">
+    <ApiKeysPanel v-if="!forced && !isViewer" />
+    <UsersPanel v-if="!forced && !isViewer" />
+    <p v-if="!forced && !isViewer" class="account-links small muted">
       发现异常登录？查看<RouterLink to="/logs?tab=login">登录日志</RouterLink>，修改密码后其他设备会被退出。
     </p>
   </div>

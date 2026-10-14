@@ -21,6 +21,8 @@ export interface ErrorBody {
 
 export interface Me {
   username: string
+  /** viewer 为只读的查看者（修订第 161 条） */
+  role: 'admin' | 'viewer'
   /** 使用初始 / 重置密码登录，需先修改密码 */
   must_change_password: boolean
   /** 修改类请求放在 X-CSRF-Token 头中 */
@@ -29,6 +31,24 @@ export interface Me {
   totp_enabled: boolean
   /** 未使用的恢复码数量；未开启时为 0 */
   recovery_codes_left: number
+}
+
+export interface UserView {
+  id: number
+  username: string
+  role: 'admin' | 'viewer'
+  /** 尚未修改初始 / 重置的密码 */
+  must_change_password: boolean
+  totp_enabled: boolean
+  created_at: number
+  /** 0 表示从未登录 */
+  last_login_at: number
+}
+
+export interface UserCreated {
+  user: UserView
+  /** 初始密码，只显示这一次 */
+  password: string
 }
 
 export interface TotpChallenge {
@@ -1364,6 +1384,44 @@ export interface Paths {
       response: void
     }
   }
+  '/users': {
+    /** Web 账号列表（管理员与查看者，修订第 161 条） */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: UserView[]
+      }
+    }
+    /** 新建查看者账号（需重新验证密码；记入操作日志）。返回随机初始密码，只显示这一次，首次登录须修改 */
+    post: {
+      body: {
+        /** 3～32 位字母、数字、点、下划线或连字符；不区分大小写 */
+        username: string
+      }
+      response: UserCreated
+    }
+  }
+  '/users/{id}': {
+    /** 删除查看者账号（需重新验证密码；其登录立即失效；记入操作日志）。不能删除管理员 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/users/{id}/password': {
+    /** 重置查看者的密码（需重新验证密码；其登录全部退出；记入操作日志）。返回新的随机密码，只显示这一次 */
+    post: {
+      params: {
+        id: number
+      }
+      response: {
+        password: string
+      }
+    }
+  }
   '/auth/me': {
     /** 当前账号与 CSRF Token（页面刷新后恢复登录状态） */
     get: {
@@ -2114,7 +2172,7 @@ export interface Paths {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
         /** 主体类型 */
-        actor?: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
+        actor?: 'admin' | 'viewer' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
         /** 操作：精确匹配；以 “.” 结尾时按前缀匹配（如 server.） */
         action?: string
         /** 起始时间（含），Unix 秒 */
@@ -2131,7 +2189,7 @@ export interface Paths {
         items: ({
           id: number
           ts: number
-          actor_type: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
+          actor_type: 'admin' | 'viewer' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
           /** 管理员用户名（登录失败时为填写的用户名）或节点 ID */
           actor_id: string
           action: string
@@ -2154,7 +2212,7 @@ export interface Paths {
       query?: {
         category?: 'login' | 'operation'
         result?: 'success' | 'failure'
-        actor?: 'admin' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
+        actor?: 'admin' | 'viewer' | 'agent' | 'apikey' | 'app' | 'cli' | 'system'
         action?: string
         from?: number
         to?: number

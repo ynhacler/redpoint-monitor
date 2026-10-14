@@ -21,6 +21,9 @@ export const state = reactive({
   updatedAt: null as Date | null,
 })
 
+/** 当前账号是只读的查看者（修订第 161 条）：界面隐藏修改类操作；服务端同样拒绝 */
+export const isViewer = computed(() => state.me?.role === 'viewer')
+
 let timer: number | undefined
 /** 会话失效时的回调（由 router 设置为跳转登录页），避免 store 依赖 router 造成循环引用 */
 let onSignedOut: () => void = () => {}

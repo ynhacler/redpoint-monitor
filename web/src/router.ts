@@ -2,7 +2,7 @@
 // 未登录访问任何页面都先到 /login，登录后回到原页面；使用初始密码时只能停留在 /account（设计 17.4）。
 // 页面按 nav.ts 的 5 个分组组织（修订第 158 条）；原“设置”页拆到“监测”与“系统”，旧地址照常可用。
 import { createRouter, createWebHistory } from 'vue-router'
-import { checkAuth, setSignedOutHandler, startPolling, state } from './store'
+import { checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
 
 // 原“设置”页各标签的新地址（修订第 158 条）；修订第 126 条前这些标签在告警页，/alerts?tab=… 同样转过去
 const settingsMoved: Record<string, string> = { probes: '/probes', ssl: '/ssl', services: '/services', account: '/account' }
@@ -12,8 +12,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { title: '登录', public: true } },
-    { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { title: '账号' } },
-    { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { title: '告警' } },
+    { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { viewer: true, title: '账号' } },
+    { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '告警' } },
     { path: '/probes', name: 'probes', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'probes' }, meta: { title: '测速设置' } },
     { path: '/ssl', name: 'ssl', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'ssl' }, meta: { title: '证书' } },
     { path: '/services', name: 'services', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'services' }, meta: { title: '服务' } },
@@ -22,15 +22,15 @@ export const router = createRouter({
     { path: '/upgrades', name: 'upgrades', component: () => import('./pages/UpgradesPage.vue'), meta: { title: 'Agent 升级' } },
     { path: '/app', name: 'app', component: () => import('./pages/AppAccessPage.vue'), meta: { title: 'App 接入' } },
     { path: '/costs', name: 'costs', component: () => import('./pages/CostsPage.vue'), meta: { title: '费用统计' } },
-    { path: '/latency', name: 'latency', component: () => import('./pages/LatencyOverviewPage.vue'), meta: { title: '测速对比' } },
+    { path: '/latency', name: 'latency', component: () => import('./pages/LatencyOverviewPage.vue'), meta: { viewer: true, title: '测速对比' } },
     { path: '/cloud', name: 'cloud', component: () => import('./pages/CloudPage.vue'), meta: { title: '云账户' } },
     { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
     // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效
-    { path: '/', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { title: '仪表板' } },
+    { path: '/', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { viewer: true, title: '仪表板' } },
     { path: '/servers', redirect: (to) => ({ path: '/', query: to.query }) },
     { path: '/servers/batch', name: 'server-batch', component: () => import('./pages/BatchCreatePage.vue'), meta: { title: '批量新建' } },
     { path: '/servers/new', name: 'server-new', component: () => import('./pages/ServerEditPage.vue'), meta: { title: '新建节点' } },
-    { path: '/servers/:id(\\d+)', name: 'server', component: () => import('./pages/ServerDetailPage.vue'), props: true, meta: { title: '节点详情' } },
+    { path: '/servers/:id(\\d+)', name: 'server', component: () => import('./pages/ServerDetailPage.vue'), props: true, meta: { viewer: true, title: '节点详情' } },
     { path: '/servers/:id(\\d+)/edit', name: 'server-edit', component: () => import('./pages/ServerEditPage.vue'), props: true, meta: { title: '编辑节点' } },
     { path: '/servers/:id(\\d+)/install', name: 'server-install', component: () => import('./pages/InstallPage.vue'), props: true, meta: { title: '安装命令' } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -69,6 +69,11 @@ router.beforeEach(async (to) => {
   if (!state.me) return { name: 'login', query: { redirect: to.fullPath } }
   // 使用初始密码时只能停留在账号页：这里必须直接放行，不能再转到设置页，否则两条规则互相跳转、页面卡死
   if (state.me.must_change_password) return to.name === 'account' ? true : { name: 'account' }
+  // 查看者（只读，修订第 161 条）只能打开标了 viewer 的页面；告警页只有“告警”标签
+  if (isViewer.value) {
+    if (!to.meta.viewer) return '/'
+    if (to.name === 'alerts' && to.query.tab) return { name: 'alerts' }
+  }
   if (to.name === 'alerts' && ['probes', 'ssl', 'services'].includes(to.query.tab as string)) return { path: settingsMoved[to.query.tab as string], query: {} }
   return true
 })

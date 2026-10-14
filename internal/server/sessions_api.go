@@ -83,7 +83,7 @@ func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	if id == ri.session.ID {
 		clearSessionCookie(w, r)
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: ri.session.User.Username, Action: "auth.session_revoke",
+	s.audit(r, AuditEntry{ActorType: ri.session.User.actor(), ActorID: ri.session.User.Username, Action: "auth.session_revoke",
 		TargetType: "session", TargetID: id, Success: true, Details: map[string]any{"current": id == ri.session.ID}})
 	w.WriteHeader(http.StatusNoContent)
 }

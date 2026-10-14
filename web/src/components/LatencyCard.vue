@@ -5,6 +5,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
+import { isViewer } from '../store'
 import Chart, { type Series } from './Chart.vue'
 
 const props = defineProps<{ serverId: number }>()
@@ -108,7 +109,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
           <button v-for="r in (['24h', '7d'] as const)" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
         </div>
         <!-- 这台节点的设置在“编辑”页中（修订第 123 条） -->
-        <RouterLink :to="`/servers/${serverId}/edit#probe`" class="btn secondary small">设置</RouterLink>
+        <RouterLink v-if="!isViewer" :to="`/servers/${serverId}/edit#probe`" class="btn secondary small">设置</RouterLink>
       </div>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
