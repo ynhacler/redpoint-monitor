@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// 一个监控中心的设备凭证与授权范围（设计 12.5）
 class Session {
   Session({
     required this.server,
@@ -85,6 +86,7 @@ abstract class SessionStore {
   Future<void> clear();
 }
 
+/// 把设备凭证保存在 flutter_secure_storage 中
 class SecureSessionStore implements SessionStore {
   const SecureSessionStore();
 
@@ -116,6 +118,7 @@ class SecureSessionStore implements SessionStore {
   Future<void> clear() => _storage.delete(key: _key);
 }
 
+/// 内存中的设备凭证（测试用）
 class MemorySessionStore implements SessionStore {
   Session? value;
 

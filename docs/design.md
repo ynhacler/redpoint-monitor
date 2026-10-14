@@ -362,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 157 | 注释检查进入 CI：Go 用 revive exported 规则，TS 与 Dart 用标准库脚本检查导出标识符的注释（不引入 ESLint）；补齐现有约 170 处缺少的注释 | 39.7 |
 | 156 | 国内探针与被墙检测（App）：节点详情显示国内可达性结论、各探针状态与国内方向延迟曲线 | 42.2、42.3.1 |
 | 155 | 国内探针与被墙检测（Web）：“设置 → 测速”中设置国内探针，节点详情“国内可达性”卡片显示结论、各探针状态、最近一轮与国内方向延迟曲线 | 42.2、42.3.1 |
 | 154 | 国内探针与被墙检测（服务端）：节点可设为国内探针，借三网延迟通道探测其他节点（Ping 与 TCP 端口），连续 3 轮异常判定疑似被墙 / 端口被封 / 不稳定，探针故障的轮次不计；新接口与默认启用的“国内不可达”告警 | 42.2、42.3.1 |
@@ -9259,6 +9260,12 @@ Go：     revive 的 exported 规则（导出标识符必须有注释）
 Dart：   analysis_options.yaml 启用 public_member_api_docs
 TS/Vue： eslint-plugin-jsdoc（导出函数必须有 JSDoc）
 ```
+
+实现（修订第 157 条）：`make check-comments`（`make lint` 与 CI 都会运行）。Go 用 revive 的 exported 规则（`go run` 固定版本，
+不改 go.mod；关闭“名称重复包名”提示，见 revive.toml）。TS 与 Dart 改用标准库脚本 scripts/check_comments.py，不引入 ESLint 与插件：
+TS（web/src/**/*.ts，不含生成的 api.gen.ts）导出的 function / class / const / let / enum 前必须有注释；
+Dart（app/lib，不含生成的 tokens.dart）公开的顶层类型与函数前必须有注释。Dart 不启用 public_member_api_docs：
+它要求每个公开字段都有注释（如数据模型的 id、name），四百多处大多只是重复字段名，噪音大于价值。
 
 人工检查（每次提交前，AI 生成的代码尤其要看）：
 

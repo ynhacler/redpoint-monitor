@@ -6,6 +6,7 @@ import '../app_lock.dart';
 import '../push.dart';
 import '../version.dart';
 
+/// “我的”页：监控中心、授权范围、云账户、推送、生物识别锁、隐私模式与解除配对
 class MePage extends StatelessWidget {
   const MePage({super.key, required this.api, required this.push, required this.privacy, required this.onPrivacy, required this.onUnpair,
       this.centers = const [], this.onSwitch, this.onAdd, this.onCloud});

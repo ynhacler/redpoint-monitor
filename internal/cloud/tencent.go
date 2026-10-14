@@ -21,6 +21,7 @@ import (
 	"time"
 )
 
+// 腾讯云国内站与国际站的账户类型
 const (
 	ProviderTencentCN   = "tencent_cn"
 	ProviderTencentIntl = "tencent_intl"

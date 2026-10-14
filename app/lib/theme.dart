@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'metrics.dart';
 import 'tokens.dart';
 
+/// 当前明暗模式下的设计令牌颜色（设计 41.2）
 AppColors appColors(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? AppColors.dark : AppColors.light;
 
 /// Material 3 主题：主色、表面、背景与错误色来自令牌，其余由主色派生。
@@ -30,6 +31,7 @@ ThemeData appTheme(Brightness b) {
   );
 }
 
+/// 状态颜色：正常、警告、严重、离线等（设计 22）
 class StatusColors {
   const StatusColors(this.c);
   final AppColors c;

@@ -24,6 +24,7 @@ import 'reorder_page.dart';
 import 'me_page.dart';
 import 'server_detail_page.dart';
 
+/// App 主框架：底部导航与节点数据的统一刷新（设计 1.5.18）
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.api, required this.cache, required this.prefs, required this.onUnpair,
       required this.onRevoked, this.pushSource = const NoPushTokenSource(), this.centers = const [], this.onSwitch, this.onAdd,

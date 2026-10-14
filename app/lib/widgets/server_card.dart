@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../tokens.dart';
 import 'ring.dart';
 
+/// 节点卡片（设计 13、41.3）
 class ServerCard extends StatelessWidget {
   const ServerCard(this.s, {super.key, required this.onTap, required this.favorite, required this.onFavorite, this.privacy = false});
   final ServerView s;

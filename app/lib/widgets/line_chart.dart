@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+/// 折线图的一条系列
 class ChartSeries {
   const ChartSeries(this.label, this.values, this.color);
   final String label;
@@ -12,6 +13,7 @@ class ChartSeries {
   final Color color;
 }
 
+/// 折线图：一到两条系列，纵轴按数据取整
 class LineChart extends StatelessWidget {
   const LineChart({super.key, required this.times, required this.series, required this.formatY, this.fixedMax, this.capMax, this.minMax,
       this.height = 160});

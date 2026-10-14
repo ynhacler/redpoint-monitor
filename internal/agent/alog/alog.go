@@ -21,6 +21,7 @@ import (
 // Level 是日志级别，数值即 syslog 优先级。
 type Level int
 
+// 日志级别：错误、警告、信息（syslog 的 3、4、6）
 const (
 	Error Level = 3
 	Warn  Level = 4
@@ -67,8 +68,13 @@ func Logf(l Level, format string, args ...any) {
 	fmt.Fprintf(out, "%s %s%s\n", now().Format("2006/01/02 15:04:05"), tag, msg)
 }
 
-func Infof(format string, args ...any)  { Logf(Info, format, args...) }
-func Warnf(format string, args ...any)  { Logf(Warn, format, args...) }
+// Infof 记录一条 INFO 日志。
+func Infof(format string, args ...any) { Logf(Info, format, args...) }
+
+// Warnf 记录一条 WARN 日志。
+func Warnf(format string, args ...any) { Logf(Warn, format, args...) }
+
+// Errorf 记录一条 ERROR 日志。
 func Errorf(format string, args ...any) { Logf(Error, format, args...) }
 
 // Printf 兼容 log.Printf 的旧写法：消息开头部分带 “ERROR” / “WARN” 时用对应级别，否则为 INFO。

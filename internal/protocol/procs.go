@@ -8,6 +8,7 @@ import "strings"
 // HeaderWatchProcs 是下发进程名的响应头，值为逗号分隔的名称；没有该响应头表示不关注任何进程。
 const HeaderWatchProcs = "X-Watch-Procs"
 
+// 关注进程的数量与名称长度上限（设计 33.5.1）
 const (
 	MaxWatchProcs  = 20 // 每个节点最多关注的进程数
 	MaxProcNameLen = 64

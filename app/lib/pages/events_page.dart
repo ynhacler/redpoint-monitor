@@ -9,6 +9,7 @@ import '../format.dart';
 import '../models.dart';
 import '../theme.dart';
 
+/// 事件中心：告警的触发与恢复（设计 1.5.17）
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key, required this.api, required this.onRevoked, required this.onOpenServer, this.centers = const [],
       this.onSwitch, this.onCentersChanged});

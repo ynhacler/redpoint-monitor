@@ -435,6 +435,7 @@ func UninstallUser(ctx context.Context, o Options, us UserSystem) error {
 // RealUserSystem 是真实主机上的 UserSystem。
 type RealUserSystem struct{}
 
+// SystemdUser 返回当前用户的 systemd 用户实例是否可用，以及是否开启了 linger（退出登录后服务继续运行）。
 func (RealUserSystem) SystemdUser() (bool, bool) {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return false, false
@@ -446,6 +447,7 @@ func (RealUserSystem) SystemdUser() (bool, bool) {
 	return true, err == nil && strings.TrimSpace(string(out)) == "yes"
 }
 
+// Crontab 返回当前用户的 crontab 内容；没有 crontab 命令时 ok 为 false。
 func (RealUserSystem) Crontab() (string, bool) {
 	if _, err := exec.LookPath("crontab"); err != nil {
 		return "", false
@@ -461,6 +463,7 @@ func (RealUserSystem) Crontab() (string, bool) {
 	return string(out), true
 }
 
+// SetCrontab 用 content 替换当前用户的 crontab。
 func (RealUserSystem) SetCrontab(content string) error {
 	cmd := exec.Command("crontab", "-")
 	cmd.Stdin = strings.NewReader(content)
@@ -470,11 +473,13 @@ func (RealUserSystem) SetCrontab(content string) error {
 	return nil
 }
 
+// Run 执行一个本机命令（只用于安装流程中的 systemctl 等固定命令），返回合并的输出。
 func (RealUserSystem) Run(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err
 }
 
+// StartDetached 在后台启动 bin（脱离当前终端），输出写入 logPath。
 func (RealUserSystem) StartDetached(bin string, args []string, logPath string) error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 		return err

@@ -84,6 +84,7 @@ func (s *Store) ListProbeTargets() ([]ProbeTargetRow, error) {
 	return out, rows.Err()
 }
 
+// GetProbeTarget 按 ID 读取测试目标。
 func (s *Store) GetProbeTarget(id int64) (ProbeTargetRow, error) {
 	t, err := scanProbeTarget(s.DB.QueryRow(`SELECT `+probeTargetColumns+` FROM probe_targets WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {

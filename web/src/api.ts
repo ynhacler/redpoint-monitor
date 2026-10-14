@@ -233,6 +233,7 @@ export function regenerateEnrollCode(id: number, ttl: G.EnrollTTL = '24h') {
   return request('post', '/servers/{id}/enroll-code', { params: { id }, body: { enroll_ttl: ttl } })
 }
 
+/** 撤销节点尚未使用的注册码 */
 export function revokeEnrollCode(id: number) {
   return request('delete', '/servers/{id}/enroll-code', { params: { id } })
 }
@@ -247,6 +248,7 @@ export function getHealth(id: number) {
   return request('get', '/servers/{id}/health', { params: { id } })
 }
 
+/** 节点的历史曲线（1h / 6h / 24h / 7d / 30d，设计 19.7） */
 export function getHistory(id: number, range: HistoryRange) {
   return request('get', '/servers/{id}/metrics/history', { params: { id }, query: { range } })
 }
@@ -285,14 +287,17 @@ export function listReleases() {
   return request('get', '/agent-releases')
 }
 
+/** Agent 升级任务；传 serverId 时只看该节点 */
 export function listUpgradeTasks(serverId?: number) {
   return request('get', '/upgrade-tasks', { query: { server_id: serverId } })
 }
 
+/** 为选中的节点创建升级到 version 的任务 */
 export function createUpgradeTasks(serverIds: number[], version: string) {
   return request('post', '/upgrade-tasks', { body: { server_ids: serverIds, version } })
 }
 
+/** 取消尚未开始的升级任务 */
 export function cancelUpgradeTask(id: number) {
   return request('post', '/upgrade-tasks/{id}/cancel', { params: { id } })
 }
@@ -302,10 +307,12 @@ export function listRollouts() {
   return request('get', '/upgrade-rollouts')
 }
 
+/** 创建灰度升级 */
 export function createRollout(body: Body<'/upgrade-rollouts', 'post'>) {
   return request('post', '/upgrade-rollouts', { body })
 }
 
+/** 暂停、继续或取消灰度升级 */
 export function rolloutAction(id: number, action: 'pause' | 'resume' | 'cancel') {
   return request('post', '/upgrade-rollouts/{id}/{action}', { params: { id, action } })
 }
@@ -322,10 +329,12 @@ export function listAlerts(q: Query<'/alerts', 'get'>) {
   return request('get', '/alerts', { query: q })
 }
 
+/** 全部告警规则（全局、分组、节点三层） */
 export async function listAlertRules() {
   return (await request('get', '/alert-rules')).items
 }
 
+/** 修改告警规则 */
 export function updateAlertRule(id: number, v: AlertRuleInput) {
   return request('put', '/alert-rules/{id}', { params: { id }, body: v })
 }
@@ -335,6 +344,7 @@ export function createAlertRule(v: Body<'/alert-rules', 'post'>) {
   return request('post', '/alert-rules', { body: v })
 }
 
+/** 删除分组或节点的告警规则（全局规则只能停用） */
 export function deleteAlertRule(id: number) {
   return request('delete', '/alert-rules/{id}', { params: { id } })
 }
@@ -344,6 +354,7 @@ export function previewAlertRule(v: AlertRuleInput & { id?: number; rule_key?: s
   return request('post', '/alert-rules/preview', { body: v })
 }
 
+/** 生效中的静音与维护 */
 export async function listSilences() {
   return (await request('get', '/silences')).items
 }
@@ -353,34 +364,43 @@ export function createSilence(v: Body<'/silences', 'post'>) {
   return request('post', '/silences', { body: v })
 }
 
+/** 立即结束静音或维护 */
 export function endSilence(id: number) {
   return request('delete', '/silences/{id}', { params: { id } })
 }
 
 // ---- 告警通知（设计 16.5、18.15） ----
 
+/** 全部通知渠道 */
 export function listChannels() {
   return request('get', '/notification-channels')
 }
+/** 添加通知渠道 */
 export function createChannel(v: G.NotifyChannelInput) {
   return request('post', '/notification-channels', { body: v })
 }
+/** 修改通知渠道 */
 export function updateChannel(id: number, v: G.NotifyChannelInput) {
   return request('put', '/notification-channels/{id}', { params: { id }, body: v })
 }
+/** 删除通知渠道 */
 export function deleteChannel(id: number) {
   return request('delete', '/notification-channels/{id}', { params: { id } })
 }
+/** 向通知渠道发送一条测试消息 */
 export function testChannel(id: number) {
   return request('post', '/notification-channels/{id}/test', { params: { id } })
 }
+/** 最近的通知发送记录 */
 export function listDeliveries(limit = 30) {
   return request('get', '/notification-deliveries', { query: { limit } })
 }
 
+/** 免打扰时段 */
 export function getQuietHours() {
   return request('get', '/settings/quiet-hours')
 }
+/** 保存免打扰时段 */
 export function saveQuietHours(v: G.QuietHours) {
   return request('put', '/settings/quiet-hours', { body: v })
 }
@@ -409,6 +429,7 @@ export function revokeSession(id: number) {
 
 // ---- 云厂商账户（设计 44） ----
 
+/** 全部云账户（不含凭证，只有末 4 位） */
 export async function listCloudAccounts() {
   return (await request('get', '/cloud-accounts')).items
 }
@@ -433,10 +454,12 @@ export function syncCloudAccount(id: number) {
   return request('post', '/cloud-accounts/{id}/sync', { params: { id } })
 }
 
+/** 云账户的按月费用 */
 export async function listCloudCosts(id: number) {
   return (await request('get', '/cloud-accounts/{id}/costs', { params: { id } })).items
 }
 
+/** 云实例；可按账户或关联的节点筛选 */
 export async function listCloudInstances(q: { account_id?: number; server_id?: number } = {}) {
   return (await request('get', '/cloud-instances', { query: q })).items
 }
@@ -447,6 +470,7 @@ export function setCloudAutoCalibrate(id: number, enabled: boolean) {
   return request('put', '/cloud-instances/{id}/auto-calibrate', { params: { id }, body: { enabled } })
 }
 
+/** 把云实例关联到节点（serverId 为 null 时取消关联） */
 export function linkCloudInstance(id: number, serverId: number | null) {
   return request('put', '/cloud-instances/{id}/server', { params: { id }, body: { server_id: serverId } })
 }
@@ -458,6 +482,7 @@ export function applyCloudExpire(id: number) {
 
 // ---- 只读 API Key（设计 45.2） ----
 
+/** 全部只读 API 密钥（不含密钥本身） */
 export async function listAPIKeys() {
   return (await request('get', '/api-keys')).items
 }
@@ -467,12 +492,14 @@ export function createAPIKey(v: G.APIKeyInput) {
   return request('post', '/api-keys', { body: v })
 }
 
+/** 吊销 API 密钥 */
 export function revokeAPIKey(id: number) {
   return request('delete', '/api-keys/{id}', { params: { id } })
 }
 
 // ---- App 接入（设计 8.4、19.2、19.4） ----
 
+/** 全部 App 接入码（AK） */
 export async function listAppKeys() {
   return (await request('get', '/app-access-keys')).items
 }
@@ -487,28 +514,34 @@ export function revokeAppKey(id: number, revokeDevices: boolean) {
   return request('post', '/app-access-keys/{id}/revoke', { params: { id }, body: { revoke_devices: revokeDevices } })
 }
 
+/** 已配对的 App 设备 */
 export async function listAppDevices() {
   return (await request('get', '/app-devices')).items
 }
 
+/** 吊销 App 设备，设备立即失去访问权限 */
 export function revokeAppDevice(id: number) {
   return request('post', '/app-devices/{id}/revoke', { params: { id } })
 }
 
 // ---- SSL 证书到期监控（设计 33.3） ----
 
+/** 全部证书监控 */
 export async function listSSLMonitors() {
   return (await request('get', '/ssl-monitors')).items
 }
 
+/** 添加证书监控 */
 export function createSSLMonitor(host: string, note: string) {
   return request('post', '/ssl-monitors', { body: { host, note } })
 }
 
+/** 立即检查一次证书 */
 export function checkSSLMonitor(id: number) {
   return request('post', '/ssl-monitors/{id}/check', { params: { id } })
 }
 
+/** 删除证书监控 */
 export function deleteSSLMonitor(id: number) {
   return request('delete', '/ssl-monitors/{id}', { params: { id } })
 }
@@ -518,22 +551,27 @@ export async function listServiceMonitors() {
   return (await request('get', '/service-monitors')).items
 }
 
+/** 添加服务监控 */
 export function createServiceMonitor(body: G.ServiceMonitorInput) {
   return request('post', '/service-monitors', { body })
 }
 
+/** 修改服务监控 */
 export function updateServiceMonitor(id: number, body: G.ServiceMonitorInput) {
   return request('put', '/service-monitors/{id}', { params: { id }, body })
 }
 
+/** 删除服务监控 */
 export function deleteServiceMonitor(id: number) {
   return request('delete', '/service-monitors/{id}', { params: { id } })
 }
 
+/** 立即检查一次服务 */
 export function checkServiceMonitor(id: number) {
   return request('post', '/service-monitors/{id}/check', { params: { id } })
 }
 
+/** 服务监控的检查记录（24 小时或 7 天） */
 export async function serviceChecks(id: number, range: '24h' | '7d') {
   return (await request('get', '/service-monitors/{id}/checks', { params: { id }, query: { range } })).items
 }
@@ -541,6 +579,7 @@ export async function serviceChecks(id: number, range: '24h' | '7d') {
 // 测速（设计 42.3.2）
 export type LatencyTarget = G.LatencyView['targets'][number]
 
+/** 节点的测速：各目标最近 1 小时汇总与曲线（设计 42.3.2） */
 export function getLatency(id: number, range: '24h' | '7d') {
   return request('get', '/servers/{id}/latency', { params: { id }, query: { range } })
 }
@@ -571,18 +610,22 @@ export function getServerReach(id: number) {
   return request('get', '/servers/{id}/reach', { params: { id } })
 }
 
+/** 节点自己的测速设置（跟随全局 / 自定义 / 关闭） */
 export function getNodeProbe(id: number) {
   return request('get', '/servers/{id}/probe', { params: { id } })
 }
 
+/** 保存节点自己的测速设置，随下一份上报下发 */
 export function putNodeProbe(id: number, body: G.NodeProbe) {
   return request('put', '/servers/{id}/probe', { params: { id }, body })
 }
 
+/** 测速的全局设置：频率、超时与样本间隔 */
 export function getProbeSettings() {
   return request('get', '/settings/probe')
 }
 
+/** 保存测速的全局设置 */
 export function putProbeSettings(body: G.ProbeSettings) {
   return request('put', '/settings/probe', { body })
 }
@@ -592,14 +635,17 @@ export async function listProbeTargets(serverId?: number) {
   return (await request('get', '/probe-targets', { query: serverId ? { server_id: serverId } : {} })).items
 }
 
+/** 添加测速目标 */
 export function createProbeTarget(body: G.ProbeTargetInput) {
   return request('post', '/probe-targets', { body })
 }
 
+/** 修改测速目标（省略的字段不变） */
 export function updateProbeTarget(id: number, body: G.ProbeTargetInput) {
   return request('put', '/probe-targets/{id}', { params: { id }, body })
 }
 
+/** 删除测速目标及其结果 */
 export function deleteProbeTarget(id: number) {
   return request('delete', '/probe-targets/{id}', { params: { id } })
 }
@@ -630,6 +676,7 @@ export async function getMe() {
   return me
 }
 
+/** 退出登录：吊销当前会话 */
 export function logoutSession() {
   return request('post', '/auth/logout')
 }

@@ -215,6 +215,7 @@ func (h *httpSource) Binary(ctx context.Context, version, file, dst string, size
 // DirSource 从暂存目录读取（特权 updater 使用，不联网，设计 29.13）。目录中的内容视为不可信，照常完整复验。
 type DirSource struct{ Dir string }
 
+// Manifest 读取目录中的 manifest.json 与签名 manifest.json.minisig。
 func (d DirSource) Manifest(context.Context) ([]byte, []byte, error) {
 	data, err := readLimited(filepath.Join(d.Dir, "manifest.json"), maxManifest)
 	if err != nil {
@@ -227,6 +228,7 @@ func (d DirSource) Manifest(context.Context) ([]byte, []byte, error) {
 	return data, sig, nil
 }
 
+// Binary 把目录中的构建文件复制到 dst（只接受不含路径的文件名，大小必须一致）。
 func (d DirSource) Binary(_ context.Context, _, file, dst string, size int64) error {
 	if file != filepath.Base(file) || strings.HasPrefix(file, ".") {
 		return fmt.Errorf("文件名无效：%q", file)

@@ -6,6 +6,7 @@ import '../format.dart';
 import '../models.dart';
 import '../theme.dart';
 
+/// 调整节点顺序：拖动排列后保存为本机的自定义顺序
 class ReorderPage extends StatefulWidget {
   const ReorderPage({super.key, required this.items, required this.onSave});
 

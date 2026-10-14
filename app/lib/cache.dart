@@ -17,6 +17,7 @@ class Cached<T> {
   final DateTime at;
 }
 
+/// 离线缓存的存储：节点列表与历史曲线（设计 1.5.10）；测试中用内存实现
 abstract class CacheStore {
   Future<Cached<List<ServerView>>?> servers();
   Future<void> saveServers(List<ServerView> list, DateTime at);

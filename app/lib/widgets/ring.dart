@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../format.dart';
 
+/// 环形使用率（CPU / 内存 / 磁盘）
 class Ring extends StatelessWidget {
   const Ring({super.key, required this.pct, required this.color, this.size = 52, this.label = ''});
 

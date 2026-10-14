@@ -10,7 +10,7 @@ Development order is **A (API + Agent) → B (Web) → C (App)** (design 35.1); 
 ```bash
 make dev          # server + fake agent + Vite → http://localhost:5173 (login admin / .dev/admin.password)
 make test         # Go tests — run after every Go change
-make lint         # go vet + vue-tsc
+make lint         # go vet + exported-comment checks (revive, scripts/check_comments.py) + vue-tsc
 make check-design # design numbering / references (run scripts/check_design_refs.py --write after editing design.md)
 make build-linux  # agent for 6 linux arches + server amd64/arm64 into dist/
 make vm-agent     # real Linux collector in an OrbStack VM

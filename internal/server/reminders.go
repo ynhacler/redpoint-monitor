@@ -20,6 +20,7 @@ import (
 	"vpsmon/internal/cloud"
 )
 
+// NotifyReminder 是到期提醒的通知类型。
 const NotifyReminder = "reminder"
 
 // expireMilestones 是到期提醒的里程碑（剩余天数），从大到小。

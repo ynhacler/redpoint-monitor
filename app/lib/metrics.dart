@@ -1,6 +1,7 @@
 // 从节点数据派生的指标与健康判断：与 web/src/metrics.ts 同一规则，同一节点在 Web 与 App 上结论一致。
 import 'models.dart';
 
+/// 健康级别：正常、警告、严重
 enum Level { ok, warn, bad }
 
 /// 配色阈值，与告警默认值一致（设计 16.1）
@@ -10,12 +11,14 @@ const _gauge = {
   'disk': (warn: 85.0, bad: 95.0),
 };
 
+/// 按告警默认阈值给出配色级别（与 Web 一致，设计 16.1）
 Level gaugeLevel(double? v, String kind) {
   final t = _gauge[kind]!;
   if (v == null) return Level.ok;
   return v >= t.bad ? Level.bad : (v >= t.warn ? Level.warn : Level.ok);
 }
 
+/// 磁盘合计：总量、已用、使用率、挂载点数与最满的一个
 class DiskSummary {
   DiskSummary(this.total, this.used, this.usage, this.count, this.fullest, this.level);
   final int total;
@@ -78,6 +81,7 @@ String _alertLabel(AlertBrief a) {
   };
 }
 
+/// 需要关注的一个原因：说明与级别
 class Issue {
   const Issue(this.level, this.text);
   final Level level;
@@ -131,6 +135,7 @@ class FleetStats {
   final int trafficUsed;
 }
 
+/// 计算首页的实时概况（设计 1.5.18）
 FleetStats fleetStats(List<ServerView> items) {
   var live = 0, rx = 0, tx = 0, used = 0;
   var cpu = 0.0, mem = 0.0;

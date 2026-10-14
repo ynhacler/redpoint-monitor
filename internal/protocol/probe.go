@@ -18,6 +18,7 @@ import (
 	"strings"
 )
 
+// 三网延迟下发用的请求 / 响应头与上限（设计 42.3.2、42.6）
 const (
 	HeaderProbeVersion  = "X-Probe-Version"
 	HeaderProbeTargets  = "X-Probe-Targets"
@@ -27,7 +28,7 @@ const (
 
 	MaxProbeTargets = 64 // Agent 端硬性上限（设计 42.6）
 
-	// 每轮间隔：面板可在此范围内设置；Agent 端硬性限制，范围外的值按默认处理（设计 42.6）
+	// MinProbeInterval 等是每轮间隔的范围与默认值：面板可在此范围内设置；Agent 端硬性限制，范围外的值按默认处理（设计 42.6）
 	MinProbeInterval     = 60
 	MaxProbeInterval     = 3600
 	DefaultProbeInterval = 300

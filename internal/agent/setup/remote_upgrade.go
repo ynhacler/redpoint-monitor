@@ -24,7 +24,7 @@ func RemoteUpgradeInstalled(p Paths) bool {
 	return false
 }
 
-// RemoteUpgradeEnabled：安装了触发器且没有 no-remote-upgrade 时 Agent 才查询升级任务（设计 29.13）。
+// RemoteUpgradeEnabled 判断是否启用远程升级：安装了触发器且没有 no-remote-upgrade 时 Agent 才查询升级任务（设计 29.13）。
 func RemoteUpgradeEnabled(p Paths) bool {
 	if !RemoteUpgradeInstalled(p) {
 		return false

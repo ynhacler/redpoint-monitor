@@ -23,6 +23,7 @@ import (
 	"unicode/utf8"
 )
 
+// 聊天类通知渠道的类型（设计 18.11）
 const (
 	ChannelDiscord  = "discord"
 	ChannelBark     = "bark"

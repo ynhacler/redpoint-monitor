@@ -258,6 +258,7 @@ func scanChannel(sc interface{ Scan(...any) error }) (NotifyChannel, error) {
 	return c, err
 }
 
+// ListChannels 返回全部通知渠道。
 func (s *Store) ListChannels() ([]NotifyChannel, error) {
 	rows, err := s.DB.Query(`SELECT ` + channelColumns + ` FROM notification_channels ORDER BY id`)
 	if err != nil {
@@ -277,6 +278,7 @@ func (s *Store) ListChannels() ([]NotifyChannel, error) {
 
 var errNoChannel = errorf(CodeNotFound, "通知渠道不存在或已删除")
 
+// GetChannel 按 ID 读取通知渠道；不存在时返回 errNoChannel。
 func (s *Store) GetChannel(id int64) (NotifyChannel, error) {
 	c, err := scanChannel(s.DB.QueryRow(`SELECT `+channelColumns+` FROM notification_channels WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -285,6 +287,7 @@ func (s *Store) GetChannel(id int64) (NotifyChannel, error) {
 	return c, err
 }
 
+// SaveChannel 新增（ID 为 0）或修改通知渠道。
 func (s *Store) SaveChannel(c *NotifyChannel, now time.Time) error {
 	cfg, _ := json.Marshal(c.Config)
 	c.UpdatedAt = now.Unix()
@@ -304,6 +307,7 @@ func (s *Store) SaveChannel(c *NotifyChannel, now time.Time) error {
 	return err
 }
 
+// DeleteChannel 删除通知渠道。
 func (s *Store) DeleteChannel(id int64) error {
 	res, err := s.DB.Exec(`DELETE FROM notification_channels WHERE id = ?`, id)
 	if err != nil {

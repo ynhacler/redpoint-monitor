@@ -7,6 +7,7 @@ import {
 } from './api'
 import { connected, subscribe } from './ws'
 
+/** 全局状态：当前用户、节点列表、加载与错误状态 */
 export const state = reactive({
   /** 当前登录账号；null 表示未登录（设计 19.1） */
   me: null as Me | null,
@@ -23,6 +24,7 @@ export const state = reactive({
 let timer: number | undefined
 /** 会话失效时的回调（由 router 设置为跳转登录页），避免 store 依赖 router 造成循环引用 */
 let onSignedOut: () => void = () => {}
+/** 设置会话失效（任意请求 401）时的处理：由路由跳回登录页 */
 export function setSignedOutHandler(f: () => void) {
   onSignedOut = f
 }
@@ -89,6 +91,7 @@ watch(connected, (on) => {
   if (on && timer) refresh()
 })
 
+/** 停止定时刷新与实时连接（退出登录、会话失效时） */
 export function stopPolling() {
   if (timer) window.clearTimeout(timer)
   timer = undefined
@@ -145,6 +148,7 @@ export const statusRank = { offline: 0, unknown: 1, online: 2, pending: 3 } as c
 
 /** 已安装节点（不含待安装） */
 export const installed = computed(() => state.servers.filter((s) => s.status !== 'pending'))
+/** 待安装的节点 */
 export const pending = computed(() => state.servers.filter((s) => s.status === 'pending'))
 
 /** 按 ID 查找节点 */

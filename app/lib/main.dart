@@ -36,6 +36,7 @@ typedef CenterFiles = (CacheStore, PrefsStore) Function(String key);
 (CacheStore, PrefsStore) defaultCenterFiles(String key) =>
     (FileCacheStore(name: 'cache_v1_$key'), FilePrefsStore(name: 'prefs_v1_$key'));
 
+/// App 根组件：主题、生物识别锁与启动页
 class VpsMonApp extends StatelessWidget {
   const VpsMonApp({super.key, required this.store, this.files = defaultCenterFiles, this.pushSource = const NoPushTokenSource(),
       this.lock});
@@ -59,6 +60,7 @@ class VpsMonApp extends StatelessWidget {
   }
 }
 
+/// 启动页：有监控中心时进入首页，没有时进入配对页
 class Root extends StatefulWidget {
   const Root({super.key, required this.store, required this.files, this.pushSource = const NoPushTokenSource()});
   final CentersStore store;

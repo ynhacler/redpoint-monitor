@@ -10,6 +10,7 @@ import (
 //go:embed all:dist
 var dist embed.FS
 
+// Dist 返回嵌入的 Web 构建产物（web/dist）。
 func Dist() fs.FS {
 	sub, _ := fs.Sub(dist, "dist")
 	return sub

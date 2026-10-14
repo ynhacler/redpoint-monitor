@@ -417,6 +417,7 @@ func scanService(sc interface{ Scan(...any) error }) (ServiceMonitor, error) {
 	return m, err
 }
 
+// ListServiceMonitors 返回全部服务监控。
 func (s *Store) ListServiceMonitors() ([]ServiceMonitor, error) {
 	rows, err := s.DB.Query(`SELECT ` + serviceColumns + ` FROM service_monitors ORDER BY id`)
 	if err != nil {
@@ -434,6 +435,7 @@ func (s *Store) ListServiceMonitors() ([]ServiceMonitor, error) {
 	return out, rows.Err()
 }
 
+// GetServiceMonitor 按 ID 读取服务监控。
 func (s *Store) GetServiceMonitor(id int64) (ServiceMonitor, error) {
 	m, err := scanService(s.DB.QueryRow(`SELECT `+serviceColumns+` FROM service_monitors WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -481,6 +483,7 @@ func (s *Store) saveServiceResult(m ServiceMonitor, r serviceResult, now time.Ti
 	return tx.Commit()
 }
 
+// DeleteServiceMonitor 删除服务监控及其检查记录。
 func (s *Store) DeleteServiceMonitor(id int64) error {
 	res, err := s.DB.Exec(`DELETE FROM service_monitors WHERE id = ?`, id)
 	if err != nil {

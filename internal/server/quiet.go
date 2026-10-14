@@ -115,6 +115,7 @@ func (s *Store) GetSetting(key string, v any) (bool, error) {
 	return true, json.Unmarshal([]byte(raw), v)
 }
 
+// PutSetting 把 v 以 JSON 保存为设置项 key。
 func (s *Store) PutSetting(key string, v any, now time.Time) error {
 	b, err := json.Marshal(v)
 	if err != nil {

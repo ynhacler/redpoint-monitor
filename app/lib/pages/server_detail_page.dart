@@ -15,6 +15,7 @@ import '../theme.dart';
 import '../tokens.dart';
 import '../widgets/line_chart.dart';
 
+/// 节点详情：实时指标、健康摘要、趋势、流量、测速、国内可达性、资产、云实例与操作
 class ServerDetailPage extends StatefulWidget {
   const ServerDetailPage({super.key, required this.api, required this.cache, required this.initial, required this.onRevoked,
       this.privacy = false, this.cloud});

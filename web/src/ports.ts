@@ -16,6 +16,7 @@ export function exposure(p: ListenPort): Exposure {
   return 'local'
 }
 
+/** 监听地址的暴露范围名称 */
 export const exposureNames: Record<Exposure, string> = { public: '公网', private: '内网', local: '本机' }
 
 const services: Record<string, string> = {
@@ -29,6 +30,7 @@ const services: Record<string, string> = {
   'udp/11211': 'Memcached', 'tcp/27017': 'MongoDB', 'udp/51820': 'WireGuard',
 }
 
+/** 常见端口对应的服务名，如 tcp/22 为 SSH；未知时为空 */
 export const serviceName = (p: ListenPort) => services[`${p.proto}/${p.port}`] ?? ''
 
 // 数据库、缓存、远程管理等不应直接对公网开放的端口

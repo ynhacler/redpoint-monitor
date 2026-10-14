@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'sorting.dart';
 
+/// 本机界面偏好：收藏、排序方式与自定义顺序、隐私模式
 class Prefs {
   Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order})
       : favorites = favorites ?? {},
@@ -28,12 +29,14 @@ class Prefs {
       );
 }
 
+/// 偏好的存储
 abstract class PrefsStore {
   Future<Prefs> load();
   Future<void> save(Prefs p);
   Future<void> clear();
 }
 
+/// 把偏好保存为 App 支持目录中的 JSON 文件（每个监控中心一个）
 class FilePrefsStore implements PrefsStore {
   FilePrefsStore({Future<Directory> Function()? dir, this.name = 'prefs_v1'}) : _dir = dir ?? getApplicationSupportDirectory;
   final Future<Directory> Function() _dir;
@@ -67,6 +70,7 @@ class FilePrefsStore implements PrefsStore {
   }
 }
 
+/// 内存中的偏好（测试用）
 class MemoryPrefsStore implements PrefsStore {
   Prefs value = Prefs();
   @override
