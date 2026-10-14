@@ -95,6 +95,17 @@ void main() {
         ]};
       } else if (p == '/api/v1/app/cloud') {
         body = cloudJson;
+      } else if (p.endsWith('/reach')) {
+        body = {'configured': true, 'status': 'partial', 'text': '移动不可达', 'probes': [
+          {'probe_id': 7, 'name': 'gz-cm', 'isp': 'cm', 'status': 'blocked', 'since': 1759650000, 'bad_ports': [22, 443], 'last_at': 1759650600,
+            'checks': [{'family': 4, 'port': 0, 'latency_ms': null, 'loss': 100, 'error': 'timeout'},
+              {'family': 4, 'port': 443, 'latency_ms': null, 'loss': 100, 'error': 'timeout'}]},
+          {'probe_id': 8, 'name': 'sh-ct', 'isp': 'ct', 'status': 'ok', 'since': 1759640000, 'bad_ports': [], 'last_at': 1759650600,
+            'checks': [{'family': 4, 'port': 443, 'latency_ms': 45.0, 'loss': 0, 'error': ''}]},
+        ], 'series': {
+          '7': [for (var i = 0; i < 5; i++) {'ts': 1759650000 + i * 300, 'latency_ms': i < 3 ? 80.0 : null, 'loss': i < 3 ? 0 : 100}],
+          '8': [for (var i = 0; i < 5; i++) {'ts': 1759650000 + i * 300, 'latency_ms': 45.0, 'loss': 0}],
+        }};
       } else if (p.endsWith('/health')) {
         body = {'level': 'warn', 'status': '需要关注：CPU 96%', 'items': [
           {'key': 'cpu', 'title': 'CPU', 'text': '过去 24 小时平均 12%，峰值 68%', 'level': 'ok'},
@@ -180,6 +191,12 @@ void main() {
     await tester.scrollUntilVisible(find.text('资产'), 200, scrollable: detail);
     expect(find.text('103.***.***.1'), findsOneWidget);
     expect(find.text('DMIT'), findsNothing);
+    // 国内可达性：结论、各探针状态与最近一轮
+    await tester.scrollUntilVisible(find.text('国内可达性'), 200, scrollable: detail);
+    expect(find.text('移动不可达'), findsOneWidget);
+    expect(find.text('疑似被墙'), findsOneWidget);
+    expect(find.text('可达'), findsOneWidget);
+    expect(find.textContaining('TCP 443'), findsWidgets);
     // 云实例：关联到这台节点的 Lightsail（隐私模式下账户名打码）
     await tester.scrollUntilVisible(find.text('云实例'), 200, scrollable: detail);
     expect(find.textContaining('tokyo-ls-with-a-very-long-instance-name · Lightsail · ap-northeast-1'), findsOneWidget);

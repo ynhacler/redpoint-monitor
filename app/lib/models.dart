@@ -581,3 +581,80 @@ class CloudSummary {
   /// 需要关注的账户数（凭证失效、同步失败、区域跳过、超预算）
   int get attention => accounts.where((a) => a.level != 'ok').length;
 }
+
+/// 国内探针的一个探测项（设计 42.2，修订第 156 条）
+class ReachCheck {
+  ReachCheck({required this.family, required this.port, this.latency, required this.loss, required this.error});
+  final int family;
+
+  /// 0 为 Ping
+  final int port;
+  final double? latency;
+  final double loss;
+  final String error;
+
+  String get name => '${port == 0 ? 'Ping' : 'TCP $port'}${family == 6 ? ' · IPv6' : ''}';
+
+  factory ReachCheck.fromJson(Map<String, dynamic> j) => ReachCheck(
+        family: j['family'] as int,
+        port: j['port'] as int,
+        latency: (j['latency_ms'] as num?)?.toDouble(),
+        loss: (j['loss'] as num).toDouble(),
+        error: (j['error'] as String?) ?? '',
+      );
+}
+
+/// 一台国内探针对节点的判定
+class ReachProbeResult {
+  ReachProbeResult({required this.probeId, required this.name, required this.isp, required this.status, required this.since,
+      required this.badPorts, required this.lastAt, required this.checks});
+  final int probeId;
+  final String name;
+  final String isp;
+
+  /// ok / unstable / port / blocked
+  final String status;
+  final int since;
+  final List<int> badPorts;
+  final int lastAt;
+  final List<ReachCheck> checks;
+
+  factory ReachProbeResult.fromJson(Map<String, dynamic> j) => ReachProbeResult(
+        probeId: j['probe_id'] as int,
+        name: (j['name'] as String?) ?? '',
+        isp: (j['isp'] as String?) ?? '',
+        status: j['status'] as String,
+        since: (j['since'] as int?) ?? 0,
+        badPorts: [for (final p in (j['bad_ports'] as List<dynamic>? ?? const [])) p as int],
+        lastAt: (j['last_at'] as int?) ?? 0,
+        checks: [for (final c in (j['checks'] as List<dynamic>? ?? const [])) ReachCheck.fromJson(c as Map<String, dynamic>)],
+      );
+}
+
+/// 节点的国内可达性（GET /servers/{id}/reach，设计 42.2、42.3.1）
+class ReachView {
+  ReachView({required this.configured, required this.status, required this.text, required this.probes, required this.series});
+  final bool configured;
+
+  /// ok / unstable / port / partial / blocked / offline；还没有结果时为空
+  final String status;
+  final String text;
+  final List<ReachProbeResult> probes;
+
+  /// 探针 ID → 24 小时延迟曲线
+  final Map<int, List<LatencyPoint>> series;
+
+  factory ReachView.fromJson(Map<String, dynamic> j) => ReachView(
+        configured: (j['configured'] as bool?) ?? false,
+        status: (j['status'] as String?) ?? '',
+        text: (j['text'] as String?) ?? '',
+        probes: [for (final p in (j['probes'] as List<dynamic>? ?? const [])) ReachProbeResult.fromJson(p as Map<String, dynamic>)],
+        series: {
+          for (final e in ((j['series'] as Map<String, dynamic>?) ?? const {}).entries)
+            int.parse(e.key): [
+              for (final p in (e.value as List<dynamic>).cast<Map<String, dynamic>>())
+                LatencyPoint(p['ts'] as int, (p['latency_ms'] as num?)?.toDouble(), (p['loss'] as num).toDouble()),
+            ],
+        },
+      );
+}

@@ -180,6 +180,9 @@ class ApiClient {
   Future<LatencyView> latency(int id, String range) async =>
       LatencyView.fromJson(await getJson('/servers/$id/latency', query: {'range': range}) as Map<String, dynamic>);
 
+  /// 国内可达性（设计 42.2）：国内探针到节点的结论、各探针状态与 24 小时国内方向延迟。旧版面板没有该接口时抛出 ApiException（404）。
+  Future<ReachView> reach(int id) async => ReachView.fromJson(await getJson('/servers/$id/reach') as Map<String, dynamic>);
+
   /// 测速对比（设计 42.3.5）：全部节点到各目标最近 1 小时的延迟与丢包；面板按设备的授权范围过滤。旧版面板没有该接口时抛出 ApiException（404）。
   Future<LatencyOverview> latencyOverview() async =>
       LatencyOverview.fromJson(await getJson('/latency-overview') as Map<String, dynamic>);
