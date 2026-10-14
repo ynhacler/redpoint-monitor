@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'app_lock.dart';
 import 'cache.dart';
 import 'centers.dart';
 import 'fcm.dart';
@@ -25,7 +26,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const store = SecureCentersStore();
   final push = await initPush(store); // Android：FCM（设计 30）；iOS 的 APNs Token 待接入
-  runApp(VpsMonApp(store: store, pushSource: push));
+  runApp(VpsMonApp(store: store, pushSource: push,
+      lock: AppLockController(store: const FileLockStore(), verifier: LocalVerifier())));
 }
 
 /// 每个中心的离线缓存与偏好文件；测试中替换为内存实现
@@ -35,8 +37,12 @@ typedef CenterFiles = (CacheStore, PrefsStore) Function(String key);
     (FileCacheStore(name: 'cache_v1_$key'), FilePrefsStore(name: 'prefs_v1_$key'));
 
 class VpsMonApp extends StatelessWidget {
-  const VpsMonApp({super.key, required this.store, this.files = defaultCenterFiles, this.pushSource = const NoPushTokenSource()});
+  const VpsMonApp({super.key, required this.store, this.files = defaultCenterFiles, this.pushSource = const NoPushTokenSource(),
+      this.lock});
   final CentersStore store;
+
+  /// 生物识别锁（设计 1.5.11）；为空时不启用（测试）
+  final AppLockController? lock;
   final CenterFiles files;
   final PushTokenSource pushSource;
 
@@ -46,6 +52,8 @@ class VpsMonApp extends StatelessWidget {
       title: 'VPS Monitor',
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
+      // 锁屏盖在导航之上：任何页面都被盖住，解锁后回到原页面
+      builder: (context, child) => lock == null ? child! : AppLockGate(controller: lock!, child: child!),
       home: Root(store: store, files: files, pushSource: pushSource),
     );
   }

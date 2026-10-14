@@ -1,7 +1,8 @@
-// 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、云账户（44.8）、推送状态、隐私模式（1.5.12）、解除配对。
+// 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、云账户（44.8）、推送状态、生物识别锁（1.5.11）、隐私模式（1.5.12）、解除配对。
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../app_lock.dart';
 import '../push.dart';
 import '../version.dart';
 
@@ -34,7 +35,38 @@ class MePage extends StatelessWidget {
         ],
       ),
     );
-    if (ok == true) await onUnpair();
+    if (ok != true || !context.mounted) return;
+    // 敏感操作前验证（设计 1.5.11）
+    final lock = AppLockScope.of(context);
+    if (lock != null && !await lock.guard('解除配对')) return;
+    await onUnpair();
+  }
+
+  // 生物识别锁（设计 1.5.11）：打开时先验证一次，失败时提示原因、不打开
+  List<Widget> _lockTiles(BuildContext context, AppLockController lock) {
+    Future<void> change({bool? onOpen, bool? sensitive}) async {
+      final err = await lock.set(onOpen: onOpen, sensitive: sensitive);
+      if (err != null && err.isNotEmpty && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      }
+    }
+
+    return [
+      SwitchListTile(
+        secondary: const Icon(Icons.fingerprint),
+        title: const Text('打开 App 时验证'),
+        subtitle: const Text('Face ID / 指纹 / 设备密码；离开超过 1 分钟后回来也要验证'),
+        value: lock.settings.onOpen,
+        onChanged: (v) => change(onOpen: v),
+      ),
+      SwitchListTile(
+        secondary: const Icon(Icons.verified_user_outlined),
+        title: const Text('敏感操作前验证'),
+        subtitle: const Text('静音告警、开启维护与解除配对前先验证'),
+        value: lock.settings.sensitive,
+        onChanged: (v) => change(sensitive: v),
+      ),
+    ];
   }
 
   Widget _centerTile(BuildContext context, Uri u, int i) {
@@ -80,6 +112,7 @@ class MePage extends StatelessWidget {
           title: const Text('告警推送'),
           subtitle: Text(push == null ? '检查中…' : pushStateText[push]!),
         ),
+        if (AppLockScope.of(context) case final lock?) ..._lockTiles(context, lock),
         SwitchListTile(
           secondary: const Icon(Icons.privacy_tip_outlined),
           title: const Text('隐私模式'),

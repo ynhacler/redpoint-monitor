@@ -2,6 +2,8 @@
     <!-- 只读访问面板；推送通知需要 Android 13+ 的通知权限（设计 12、30） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 生物识别锁（设计 1.5.11） -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- 【安全】
          - 只允许 HTTPS（network_security_config），调试构建另外放行模拟器里的本机面板
