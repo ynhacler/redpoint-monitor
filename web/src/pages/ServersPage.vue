@@ -157,9 +157,6 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <div class="page-head">
       <h1>节点</h1>
       <span v-if="state.updatedAt" class="muted small updated">更新于 {{ state.updatedAt.toLocaleTimeString() }}</span>
-      <RouterLink v-if="installed.length" to="/upgrades" class="btn secondary">Agent 升级</RouterLink>
-      <RouterLink to="/latency" class="btn secondary">测速对比</RouterLink>
-      <RouterLink to="/costs" class="btn secondary">费用统计</RouterLink>
       <RouterLink to="/servers/batch" class="btn secondary">批量新建</RouterLink>
       <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
     </div>

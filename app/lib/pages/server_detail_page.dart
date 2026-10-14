@@ -702,7 +702,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
         LineChart(times: times, series: series, formatY: (x) => fmtLatency(x)),
       ],
       const SizedBox(height: 6),
-      Text('结论为“疑似”：连续 3 轮异常才判定，可能是封锁、运营商故障或路由问题。国内探针在 Web“设置 → 测速”中设置。', style: small),
+      Text('结论为“疑似”：连续 3 轮异常才判定，可能是封锁、运营商故障或路由问题。国内探针在 Web“监测 → 测速设置”中设置。', style: small),
     ]);
   }
 

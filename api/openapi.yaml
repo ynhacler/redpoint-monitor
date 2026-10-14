@@ -1786,7 +1786,7 @@ paths:
       tags: [servers]
       summary: 修改节点自己的三网延迟设置，随这台节点的下一份上报下发
       description: |
-        default：跟随全局（“设置 → 测速”中启用的目标与频率）；custom：这台节点自己勾选目标（不受全局启用影响，最多 64 个），
+        default：跟随全局（“监测 → 测速设置”中启用的目标与频率）；custom：这台节点自己勾选目标（不受全局启用影响，最多 64 个），
         频率可单独设置（0 表示跟随全局）；off：这台节点不测。节点本机的 no-probe 文件优先于这里的设置（设计 42.6）。
       parameters: [{ $ref: '#/components/parameters/ServerID' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NodeProbe' } } } }

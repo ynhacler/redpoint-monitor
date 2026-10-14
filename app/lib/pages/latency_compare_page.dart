@@ -75,7 +75,7 @@ class _LatencyComparePageState extends State<LatencyComparePage> {
     } else if (d.targets.isEmpty || d.cells.isEmpty) {
       children.add(Padding(
         padding: const EdgeInsets.all(24),
-        child: Text('最近 1 小时还没有测速结果。在 Web 的“设置 → 测速”中添加并启用目标。', style: small, textAlign: TextAlign.center),
+        child: Text('最近 1 小时还没有测速结果。在 Web 的“监测 → 测速设置”中添加并启用目标。', style: small, textAlign: TextAlign.center),
       ));
     } else {
       final groups = d.groups;
@@ -109,7 +109,7 @@ class _LatencyComparePageState extends State<LatencyComparePage> {
     }
     children.add(Padding(
       padding: const EdgeInsets.all(12),
-      child: Text('各节点最近 1 小时的延迟中位数与平均丢包；目标在 Web 的“设置 → 测速”中管理。', style: small, textAlign: TextAlign.center),
+      child: Text('各节点最近 1 小时的延迟中位数与平均丢包；目标在 Web 的“监测 → 测速设置”中管理。', style: small, textAlign: TextAlign.center),
     ));
     return Scaffold(
       appBar: AppBar(title: const Text('测速对比')),

@@ -4,7 +4,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { errorText, getLatencyOverview, type LatencyOverview, type ProbeTarget } from '../api'
 import EmptyState from '../components/EmptyState.vue'
-import Icon from '../components/Icon.vue'
 import { DASH, fmtLatency, fmtPct } from '../format'
 
 type Cell = LatencyOverview['cells'][number]
@@ -72,9 +71,6 @@ function level(c?: Cell): string {
 
 <template>
   <main class="page">
-    <div class="nav-row">
-      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />仪表板</RouterLink>
-    </div>
     <div class="page-head">
       <h1>测速对比</h1>
       <select v-if="groups.length > 1" v-model="group" class="group" aria-label="分组">
@@ -83,11 +79,11 @@ function level(c?: Cell): string {
       </select>
     </div>
     <p class="muted small intro">
-      各节点到每个测试目标最近 1 小时的延迟中位数与丢包率；每列延迟最低的节点加粗。目标在“设置 → 测速”中管理，点击节点名查看曲线。
+      各节点到每个测试目标最近 1 小时的延迟中位数与丢包率；每列延迟最低的节点加粗。目标在“监测 → 测速设置”中管理，点击节点名查看曲线。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <EmptyState v-else-if="data && (!servers.length || !data.targets.length)"
-      text="最近 1 小时还没有测速结果。在“设置 → 测速”中添加并启用目标，Agent 约 20 秒后测第一轮。" />
+      text="最近 1 小时还没有测速结果。在“监测 → 测速设置”中添加并启用目标，Agent 约 20 秒后测第一轮。" />
     <div v-else-if="data" class="panel table-wrap">
       <table>
         <thead>
@@ -114,8 +110,6 @@ function level(c?: Cell): string {
 </template>
 
 <style scoped>
-.nav-row { margin-bottom: var(--space-3); }
-.back { display: inline-flex; align-items: center; gap: var(--space-1); }
 .group { width: auto; margin-left: auto; }
 .intro { margin: 0 0 var(--space-4); max-width: 80ch; }
 .table-wrap { overflow-x: auto; padding: 0; }

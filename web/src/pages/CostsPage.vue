@@ -4,7 +4,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { errorText, listCloudAccounts, type CloudAccount } from '../api'
 import { breakdown, monthlyCents, totalsByCurrency, upcomingRenewals, type CostNode } from '../costs'
-import Icon from '../components/Icon.vue'
 import { fmtMoney, periodNames } from '../format'
 import { state } from '../store'
 
@@ -38,9 +37,6 @@ function dueText(days: number) {
 
 <template>
   <main class="page">
-    <div class="nav-row">
-      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />仪表板</RouterLink>
-    </div>
     <div class="page-head">
       <h1>费用统计</h1>
     </div>
