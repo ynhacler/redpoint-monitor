@@ -30,6 +30,7 @@ abstract class LockStore {
   Future<void> save(LockSettings s);
 }
 
+/// 存在应用支持目录的 lock_v1.json（不是凭证，不进 secure storage）
 class FileLockStore implements LockStore {
   const FileLockStore();
 
@@ -52,6 +53,7 @@ class FileLockStore implements LockStore {
   }
 }
 
+/// 内存存储（测试用）
 class MemoryLockStore implements LockStore {
   LockSettings value = LockSettings();
   @override
@@ -66,6 +68,7 @@ abstract class Verifier {
   Future<String?> verify(String reason);
 }
 
+/// 用 local_auth 调起 Face ID / 指纹 / 设备密码
 class LocalVerifier implements Verifier {
   LocalVerifier();
   final _auth = LocalAuthentication();
