@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
 // “静音”列出生效中的静音与维护，并可静音分组、规则或全部（设计 16.6）；“通知”管理通知渠道（设计 16.5）。
-// 服务、证书与测速的设置在“设置”页（修订第 126 条）。
+// 服务、证书与测速的设置在“监测”分组（修订第 126、158 条）。
 // 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -17,6 +17,7 @@ import { installed } from '../store'
 
 const route = useRoute()
 const router = useRouter()
+const tabTitles: Record<string, string> = { alerts: '告警', rules: '告警规则', silences: '静音', notify: '通知渠道' }
 const tab = computed(() => (['rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
@@ -132,13 +133,8 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>告警</h1>
-      <div class="segmented" role="tablist">
-        <button type="button" role="tab" :class="{ active: tab === 'alerts' }" @click="setQuery({ tab: undefined })">告警</button>
-        <button type="button" role="tab" :class="{ active: tab === 'rules' }" @click="setQuery({ tab: 'rules' })">规则</button>
-        <button type="button" role="tab" :class="{ active: tab === 'silences' }" @click="setQuery({ tab: 'silences' })">静音</button>
-        <button type="button" role="tab" :class="{ active: tab === 'notify' }" @click="setQuery({ tab: 'notify' })">通知</button>
-      </div>
+      <!-- 告警 / 规则 / 静音 / 通知在顶栏下方的二级导航中切换（修订第 158 条） -->
+      <h1>{{ tabTitles[tab] }}</h1>
     </div>
 
     <!-- 告警：全部节点 -->
@@ -306,7 +302,6 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 </template>
 
 <style scoped>
-.page-head .segmented { margin-left: auto; }
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .list, .rules { list-style: none; margin: 0; padding: 0; }
 .list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-4); }

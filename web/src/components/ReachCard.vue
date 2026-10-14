@@ -53,7 +53,7 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
     <div class="head">
       <h3>国内可达性</h3>
       <span v-if="view?.text" class="verdict" :class="tone(view.status)">{{ view.text }}</span>
-      <RouterLink to="/settings?tab=probes#reach" class="btn secondary small set">国内探针</RouterLink>
+      <RouterLink to="/probes#reach" class="btn secondary small set">国内探针</RouterLink>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">

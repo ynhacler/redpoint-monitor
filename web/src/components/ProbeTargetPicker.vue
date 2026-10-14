@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 测速目标的勾选表（设计 42.3.2）：内置目标按地区 × 运营商排列（迁移 38 后已没有内置目标），自己添加的目标逐个列出。
-// 全局设置（“设置 → 测速”）与节点自己的设置共用；勾选的含义由调用方决定（全局启用 / 这台节点要测）。
+// 全局设置（“监测 → 测速设置”）与节点自己的设置共用；勾选的含义由调用方决定（全局启用 / 这台节点要测）。
 import { computed } from 'vue'
 import type { ProbeTarget } from '../api'
 import { fmtLatency, fmtPct } from '../format'
