@@ -26,6 +26,7 @@ const (
 	AlertProcess         = "process"       // 关注的进程没有在运行（设计 33.5.1）
 	AlertProbeLatency    = "probe_latency" // 三网延迟偏高（设计 42.3.4）
 	AlertProbeLoss       = "probe_loss"    // 测速丢包偏高（设计 42.3.4）
+	AlertReach           = "reach"         // 国内不可达（疑似被墙，设计 42.2，修订第 154 条）
 )
 
 // 告警级别（设计 16.1）。
@@ -93,6 +94,7 @@ type alertInput struct {
 	Traffic    *trafficView     // 本周期流量；未计算时为 nil
 	ClockSkew  *float64         // Agent 时钟偏差（秒，正数为偏快）；离线或无法测量时为 nil
 	Probe      *probeAlertView  // 最近 30 分钟的三网延迟汇总；没有探测结果时为 nil
+	Reach      *reachVerdict    // 国内可达性结论；没有国内探针数据时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -157,6 +159,10 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if p := in.Probe; p != nil {
 			return p.Loss, p.LossDetail, true
 		}
+	case AlertReach:
+		if v := in.Reach; v != nil && v.Status != "" && v.Status != "offline" {
+			return v.Level, v.Text, true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -197,6 +203,8 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return fmt.Sprintf("测速丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), detail)
 	case AlertAgentClock:
 		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
+	case AlertReach:
+		return detail + "（国内探针连续多轮探测失败，原因可能是封锁、运营商故障或路由问题）"
 	}
 	return r.Type
 }

@@ -46,6 +46,7 @@ type Options struct {
 
 type Server struct {
 	probes  probeState // 三网延迟：下发的目标列表与各节点的探测状态（设计 42.3.2）
+	reach   reachState // 国内探针：设置与各探针的探测项（设计 42.2，修订第 154 条）
 	store   *Store
 	web     fs.FS
 	log     *slog.Logger
@@ -336,6 +337,9 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/health", accessRead, s.handleHealth)
 	handle("GET /api/v1/servers/{id}/latency", accessRead, s.handleLatency)
 	handle("GET /api/v1/latency-overview", accessRead, s.handleLatencyOverview) // 测速对比（修订第 137 条）
+	handle("GET /api/v1/reach-probes", accessAdmin, s.handleReachProbes)        // 国内探针（修订第 154 条）
+	handle("PUT /api/v1/reach-probes", accessAdmin, s.handlePutReachProbes)
+	handle("GET /api/v1/servers/{id}/reach", accessRead, s.handleServerReach)
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)

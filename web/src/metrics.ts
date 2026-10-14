@@ -92,6 +92,7 @@ function alertLabel(a: AlertBrief): string {
     case 'agent_clock': return `时钟偏差 ${Math.round(a.value)} 秒`
     case 'probe_latency': return `测速延迟 ${Math.round(a.value)} ms`
     case 'probe_loss': return `测速丢包 ${pct}`
+    case 'reach': return a.value >= 3 ? '疑似被墙' : '国内部分不可达'
     default: return a.message
   }
 }

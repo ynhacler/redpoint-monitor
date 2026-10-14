@@ -140,6 +140,8 @@ func thresholdRange(typ string) (lo, hi float64, unit string) {
 		return 1, 20, "个"
 	case AlertProbeLatency:
 		return 20, 2000, "ms"
+	case AlertReach:
+		return 1, 3, "级" // 1 不稳定、2 单运营商或端口不可达、3 全部探针不可达（修订第 154 条）
 	}
 	return 1, 100, "%"
 }

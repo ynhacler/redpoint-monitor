@@ -73,6 +73,7 @@ String _alertLabel(AlertBrief a) {
     'agent_clock' => '时钟偏差 ${a.value.round()} 秒',
     'probe_latency' => '测速延迟 ${a.value.round()} ms',
     'probe_loss' => '测速丢包 $pct',
+    'reach' => a.value >= 3 ? '疑似被墙' : '国内部分不可达',
     _ => a.message,
   };
 }

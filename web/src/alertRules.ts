@@ -19,6 +19,7 @@ export const ruleNames: Record<string, string> = {
   process: '进程未运行',
   probe_latency: '测速延迟',
   probe_loss: '测速丢包',
+  reach: '国内不可达（疑似被墙）',
 }
 
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
@@ -29,6 +30,7 @@ export function thresholdUnit(type: string): string {
   if (type === 'load') return '倍核数'
   if (type === 'process') return '个'
   if (type === 'probe_latency') return 'ms'
+  if (type === 'reach') return '级' // 1 不稳定、2 单运营商或端口不可达、3 全部探针不可达（修订第 154 条）
   return '%'
 }
 
@@ -42,6 +44,7 @@ export function thresholdRange(type: string): { min: number; max: number; step: 
     case 'agent_clock': return { min: 10, max: 86400, step: 10 }
     case 'process': return { min: 1, max: 20, step: 1 }
     case 'probe_latency': return { min: 20, max: 2000, step: 10 }
+    case 'reach': return { min: 1, max: 3, step: 1 }
   }
   return { min: 1, max: 100, step: 1 }
 }
