@@ -7,6 +7,7 @@ import {
 } from '../api'
 import { severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
+import HeartbeatSettings from './HeartbeatSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
 
 
@@ -158,6 +159,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
     <p v-if="error" class="banner">{{ error }}</p>
 
     <QuietHoursSettings />
+    <HeartbeatSettings />
 
     <div class="actions">
       <!-- 渠道类型较多：用下拉选择，窄屏也不溢出 -->

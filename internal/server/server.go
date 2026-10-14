@@ -68,18 +68,19 @@ type Server struct {
 	releaseMirror bool         // 同步后自动镜像
 	mirrorHTTP    *http.Client // 下载构建用，超时更长
 	mirrorCache   mirrorCache
-	notify        *notifier      // 告警通知（设计 16.5）
-	noise         *alertNoise    // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
-	quiet         *quietState    // 免打扰时段（设计 16.5）
-	routeTable    []routeSpec    // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
-	ws            *wsHub         // WebSocket 事件推送（设计 20）
-	cloud         *cloudState    // 云厂商账户同步（设计 44）
-	apiKeys       apiKeyLimiter  // 只读 API Key 的限流（设计 45.2）
-	appLimit      apiKeyLimiter  // App 设备的限流（每台每分钟 120 次，设计 23.6）
-	pairLimit     *enrollLimiter // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
-	push          *pushState     // App 原生推送（设计 30）
-	sslRoots      *x509.CertPool // SSL 证书监控的根证书；nil 表示系统根证书（测试中替换，设计 33.3）
-	services      serviceRunner  // 服务监控：正在检查的监控（设计 33.2）
+	notify        *notifier       // 告警通知（设计 16.5）
+	noise         *alertNoise     // 告警降噪：抖动、批量离线合并、面板自检（设计 16.4）
+	quiet         *quietState     // 免打扰时段（设计 16.5）
+	heartbeat     *heartbeatState // 面板心跳（设计 1.10.3）
+	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
+	ws            *wsHub          // WebSocket 事件推送（设计 20）
+	cloud         *cloudState     // 云厂商账户同步（设计 44）
+	apiKeys       apiKeyLimiter   // 只读 API Key 的限流（设计 45.2）
+	appLimit      apiKeyLimiter   // App 设备的限流（每台每分钟 120 次，设计 23.6）
+	pairLimit     *enrollLimiter  // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
+	push          *pushState      // App 原生推送（设计 30）
+	sslRoots      *x509.CertPool  // SSL 证书监控的根证书；nil 表示系统根证书（测试中替换，设计 33.3）
+	services      serviceRunner   // 服务监控：正在检查的监控（设计 33.2）
 
 	// mu 保护下面三个字段。持有时间很短（只做内存读写），持有期间不访问数据库，
 	// flush 先在锁内取走 pending 再在锁外写库，因此不会因为慢查询阻塞上报。
@@ -138,6 +139,9 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
+	if s.heartbeat, err = newHeartbeatState(store); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -166,6 +170,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "ws-status", s.statusLoop)
 	go s.runTask(ctx, "reminders", s.reminderLoop)
 	go s.runTask(ctx, "services", s.serviceLoop)
+	go s.runTask(ctx, "heartbeat", s.heartbeatLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -300,6 +305,9 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
 	handle("GET /api/v1/settings/quiet-hours", accessAdmin, s.handleGetQuietHours)
 	handle("PUT /api/v1/settings/quiet-hours", accessAdmin, s.handlePutQuietHours)
+	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)
+	handle("PUT /api/v1/settings/heartbeat", accessAdmin, s.handlePutHeartbeat)
+	handle("POST /api/v1/settings/heartbeat/test", accessAdmin, s.handleTestHeartbeat)
 	handle("GET /api/v1/notification-channels", accessAdmin, s.handleChannels)
 	handle("POST /api/v1/notification-channels", accessAdmin, s.handleCreateChannel)
 	handle("PUT /api/v1/notification-channels/{id}", accessAdmin, s.handleUpdateChannel)

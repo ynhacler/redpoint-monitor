@@ -151,6 +151,30 @@ export type QuietHoursView = QuietHours & {
   held: number
 }
 
+export interface HeartbeatInput {
+  enabled: boolean
+  /** 外部服务给的地址（如 Healthchecks.io、Uptime Kuma 推送监控）；留空保留原地址 */
+  url?: string
+  /** 发送间隔（秒），默认 300 */
+  interval: number
+}
+
+export interface HeartbeatView {
+  enabled: boolean
+  /** 脱敏：只保留协议与主机（地址中常含令牌） */
+  url: string
+  url_set: boolean
+  interval: number
+  /** 最近一次发送时间（Unix 秒）；0 表示面板启动后还没有发送 */
+  last_at: number
+  /** 最近一次是否收到 2xx */
+  last_ok: boolean
+  /** 最近一次的 HTTP 状态码；网络错误为 0 */
+  last_status: number
+  /** 失败原因（中文）；成功时为空 */
+  last_error: string
+}
+
 /** 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符 */
 export interface NotifyChannel {
   id: number
@@ -1771,6 +1795,23 @@ export interface Paths {
     put: {
       body: QuietHours
       response: QuietHoursView
+    }
+  }
+  '/settings/heartbeat': {
+    /** 面板心跳（设计 1.10.3）：定时请求外部监控服务的地址，面板自己停止时由那边告警 */
+    get: {
+      response: HeartbeatView
+    }
+    /** 修改面板心跳（记入操作日志 setting.update） */
+    put: {
+      body: HeartbeatInput
+      response: HeartbeatView
+    }
+  }
+  '/settings/heartbeat/test': {
+    /** 立即发送一次心跳并返回结果（未保存地址时 422） */
+    post: {
+      response: HeartbeatView
     }
   }
   '/notification-channels': {

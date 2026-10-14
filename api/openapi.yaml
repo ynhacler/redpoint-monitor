@@ -892,6 +892,35 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /settings/heartbeat:
+    get:
+      tags: [alerts]
+      summary: 面板心跳（设计 1.10.3）：定时请求外部监控服务的地址，面板自己停止时由那边告警
+      responses:
+        '200': { description: 当前设置与最近一次结果, content: { application/json: { schema: { $ref: '#/components/schemas/HeartbeatView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [alerts]
+      summary: 修改面板心跳（记入操作日志 setting.update）
+      description: url 留空表示保留已保存的地址；地址只支持 HTTPS（本机回环地址除外），不跟随重定向。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/HeartbeatInput' } } }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/HeartbeatView' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /settings/heartbeat/test:
+    post:
+      tags: [alerts]
+      summary: 立即发送一次心跳并返回结果（未保存地址时 422）
+      responses:
+        '200': { description: 已发送（结果见 last_ok / last_status / last_error）, content: { application/json: { schema: { $ref: '#/components/schemas/HeartbeatView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /notification-channels:
     get:
       tags: [alerts]
@@ -2146,6 +2175,27 @@ components:
             active: { type: boolean, description: 当前是否处于免打扰 }
             effective_timezone: { type: string }
             held: { type: integer, description: 已暂存、等待汇总的通知数 }
+
+    HeartbeatInput:
+      type: object
+      required: [enabled, interval]
+      properties:
+        enabled: { type: boolean }
+        url: { type: string, description: '外部服务给的地址（如 Healthchecks.io、Uptime Kuma 推送监控）；留空保留原地址' }
+        interval: { type: integer, minimum: 60, maximum: 3600, description: 发送间隔（秒），默认 300 }
+
+    HeartbeatView:
+      type: object
+      required: [enabled, url, url_set, interval, last_at, last_ok, last_status, last_error]
+      properties:
+        enabled: { type: boolean }
+        url: { type: string, description: 脱敏：只保留协议与主机（地址中常含令牌） }
+        url_set: { type: boolean }
+        interval: { type: integer }
+        last_at: { type: integer, description: 最近一次发送时间（Unix 秒）；0 表示面板启动后还没有发送 }
+        last_ok: { type: boolean, description: 最近一次是否收到 2xx }
+        last_status: { type: integer, description: 最近一次的 HTTP 状态码；网络错误为 0 }
+        last_error: { type: string, description: 失败原因（中文）；成功时为空 }
 
     NotifyChannel:
       type: object

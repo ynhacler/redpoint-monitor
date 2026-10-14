@@ -405,6 +405,21 @@ export function saveQuietHours(v: G.QuietHours) {
   return request('put', '/settings/quiet-hours', { body: v })
 }
 
+/** 面板心跳（设计 1.10.3，修订第 159 条） */
+export type HeartbeatView = G.HeartbeatView
+/** 面板心跳的设置与最近一次结果 */
+export function getHeartbeat() {
+  return request('get', '/settings/heartbeat')
+}
+/** 保存面板心跳；url 留空保留原地址 */
+export function saveHeartbeat(v: G.HeartbeatInput) {
+  return request('put', '/settings/heartbeat', { body: v })
+}
+/** 立即发送一次心跳 */
+export function testHeartbeat() {
+  return request('post', '/settings/heartbeat/test')
+}
+
 // ---- 日志（设计 24.8） ----
 
 /** 审计日志，按时间倒序；next_cursor 为空表示没有更多 */
