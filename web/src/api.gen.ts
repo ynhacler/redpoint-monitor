@@ -25,6 +25,23 @@ export interface Me {
   must_change_password: boolean
   /** 修改类请求放在 X-CSRF-Token 头中 */
   csrf_token: string
+  /** 是否已开启两步验证（修订第 160 条） */
+  totp_enabled: boolean
+  /** 未使用的恢复码数量；未开启时为 0 */
+  recovery_codes_left: number
+}
+
+export interface TotpChallenge {
+  totp_required: true
+  /** 提交验证码时带上；5 分钟内有效 */
+  challenge: string
+}
+
+export interface TotpSetup {
+  /** Base32 密钥，供无法扫码时手动输入 */
+  secret: string
+  /** otpauth://totp/…，生成二维码给认证器 App 扫描 */
+  otpauth_uri: string
 }
 
 /** 注册码有效期（设计 27.2） */
@@ -1311,7 +1328,40 @@ export interface Paths {
         /** 拖动用时，毫秒 */
         captcha_ms?: number
       }
+      response: Me | TotpChallenge
+    }
+  }
+  '/auth/login/totp': {
+    /** 两步验证的第二步：提交验证码或恢复码，成功后写入会话 Cookie（修订第 160 条） */
+    post: {
+      body: {
+        challenge: string
+        code: string
+      }
       response: Me
+    }
+  }
+  '/auth/totp/setup': {
+    /** 开始开启两步验证：生成新密钥（需重新验证密码；10 分钟内用 /auth/totp/enable 确认） */
+    post: {
+      response: TotpSetup
+    }
+  }
+  '/auth/totp/enable': {
+    /** 用认证器显示的验证码确认并开启两步验证，返回 10 个恢复码（只显示这一次；记入操作日志） */
+    post: {
+      body: {
+        code: string
+      }
+      response: {
+        recovery_codes: string[]
+      }
+    }
+  }
+  '/auth/totp/disable': {
+    /** 关闭两步验证（需重新验证密码；记入操作日志）。忘记设备且没有恢复码时在面板主机执行 vpsmon-server admin disable-totp */
+    post: {
+      response: void
     }
   }
   '/auth/me': {

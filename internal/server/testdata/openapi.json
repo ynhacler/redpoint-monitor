@@ -163,7 +163,64 @@
         },
         "responses": {
           "200": {
-            "description": "已登录；响应头 Set-Cookie 写入 vpsmon_session（HttpOnly、SameSite=Strict，HTTPS 下 Secure）",
+            "description": "已登录；响应头 Set-Cookie 写入 vpsmon_session（HttpOnly、SameSite=Strict，HTTPS 下 Secure）。\n账号开启两步验证时密码正确也不登录：返回 TotpChallenge，再用 POST /auth/login/totp 提交验证码（修订第 160 条）。\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Me"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TotpChallenge"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/auth/login/totp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "两步验证的第二步：提交验证码或恢复码，成功后写入会话 Cookie（修订第 160 条）",
+        "description": "challenge 来自 POST /auth/login，5 分钟内有效、只能用一次，最多尝试 5 次；失败与登录共用同一 IP 的失败计数。\ncode 为认证器 App 的 6 位数字（前后各容许 30 秒），或一次性的恢复码（xxxx-xxxx，用过即失效）。\n401 的错误码：unauthorized 为验证码不正确（可重试）；token_expired 为 challenge 已过期或次数用完，需重新输入密码。\n",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challenge",
+                  "code"
+                ],
+                "properties": {
+                  "challenge": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已登录（同 POST /auth/login）",
             "content": {
               "application/json": {
                 "schema": {
@@ -176,7 +233,113 @@
             "$ref": "#/components/responses/Error"
           },
           "429": {
-            "$ref": "#/components/responses/RateLimited"
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/totp/setup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "开始开启两步验证：生成新密钥（需重新验证密码；10 分钟内用 /auth/totp/enable 确认）",
+        "responses": {
+          "200": {
+            "description": "新密钥",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetup"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/totp/enable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "用认证器显示的验证码确认并开启两步验证，返回 10 个恢复码（只显示这一次；记入操作日志）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已开启",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "recovery_codes"
+                  ],
+                  "properties": {
+                    "recovery_codes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/totp/disable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "关闭两步验证（需重新验证密码；记入操作日志）。忘记设备且没有恢复码时在面板主机执行 vpsmon-server admin disable-totp",
+        "responses": {
+          "204": {
+            "description": "已关闭"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -5754,7 +5917,9 @@
         "required": [
           "username",
           "must_change_password",
-          "csrf_token"
+          "csrf_token",
+          "totp_enabled",
+          "recovery_codes_left"
         ],
         "properties": {
           "username": {
@@ -5767,6 +5932,50 @@
           "csrf_token": {
             "type": "string",
             "description": "修改类请求放在 X-CSRF-Token 头中"
+          },
+          "totp_enabled": {
+            "type": "boolean",
+            "description": "是否已开启两步验证（修订第 160 条）"
+          },
+          "recovery_codes_left": {
+            "type": "integer",
+            "description": "未使用的恢复码数量；未开启时为 0"
+          }
+        }
+      },
+      "TotpChallenge": {
+        "type": "object",
+        "required": [
+          "totp_required",
+          "challenge"
+        ],
+        "properties": {
+          "totp_required": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "challenge": {
+            "type": "string",
+            "description": "提交验证码时带上；5 分钟内有效"
+          }
+        }
+      },
+      "TotpSetup": {
+        "type": "object",
+        "required": [
+          "secret",
+          "otpauth_uri"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "Base32 密钥，供无法扫码时手动输入"
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "description": "otpauth://totp/…，生成二维码给认证器 App 扫描"
           }
         }
       },

@@ -105,6 +105,17 @@ func (s *Store) UserByName(name string) (*User, error) {
 	return &u, err
 }
 
+// userByID 按 ID 读取启用中的账号（两步验证的第二步）。
+func (s *Store) userByID(id int64) (*User, error) {
+	var u User
+	err := s.DB.QueryRow(`SELECT id, username, password_hash, must_change_password FROM users WHERE id = ? AND status = 'active'`,
+		id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.MustChangePassword)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errNoUser
+	}
+	return &u, err
+}
+
 // CreateSession 新建会话，返回会话令牌明文（只写进 Cookie，不保存）。
 func (s *Store) CreateSession(userID int64, ip, ua string, now time.Time) (string, error) {
 	tok := NewToken(PrefixSession)
@@ -259,6 +270,8 @@ type meView struct {
 	Username           string `json:"username"`
 	MustChangePassword bool   `json:"must_change_password"`
 	CSRFToken          string `json:"csrf_token"`
+	TOTPEnabled        bool   `json:"totp_enabled"`        // 是否已开启两步验证（修订第 160 条）
+	RecoveryCodesLeft  int    `json:"recovery_codes_left"` // 未使用的恢复码数量
 }
 
 func meOf(u User, tok string) meView {
@@ -340,22 +353,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			_ = s.store.UpdatePasswordHash(u.ID, h)
 		}
 	}
-	tok, err := s.store.CreateSession(u.ID, ip, r.UserAgent(), time.Now())
+	// 开启了两步验证：密码正确也先不登录，发一次性的 challenge，由 /auth/login/totp 提交验证码（修订第 160 条）
+	secret, _, err := s.store.totpState(u.ID)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	setSessionCookie(w, r, tok, body.Remember)
-	info(r).principal, info(r).principalID = "admin", u.ID
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.login", Success: true,
-		Details: map[string]any{"remember": body.Remember}})
-	writeJSON(w, meOf(*u, tok))
+	if secret != "" {
+		writeJSON(w, map[string]any{"totp_required": true, "challenge": s.totp.newChallenge(u.ID, body.Remember, ip, time.Now())})
+		return
+	}
+	s.startSession(w, r, *u, body.Remember, map[string]any{"remember": body.Remember})
 }
 
 // handleMe：GET /api/v1/auth/me，admin。返回当前账号与 CSRF 值；页面刷新后用它恢复登录状态。
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	ri := info(r)
-	writeJSON(w, meOf(ri.session.User, ri.sessionToken))
+	v, err := s.meFor(ri.session.User, ri.sessionToken)
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	writeJSON(w, v)
 }
 
 // handleLogout：POST /api/v1/auth/logout，admin。删除当前会话，成功 204。

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 账号：修改密码（设计 17.4）、登录中的设备（设计 24.8）与 API 密钥。在“系统 → 账号”中显示（修订第 158 条）；
+// 账号：修改密码（设计 17.4）、两步验证（修订第 160 条）、登录中的设备（设计 24.8）与 API 密钥。在“系统 → 账号”中显示（修订第 158 条）；
 // 使用初始 / 重置密码登录时，账号页（/account）只显示修改密码，修改后才能使用其他页面。
 // 修改成功后，该账号在其他浏览器上的会话全部失效。
 import { reactive, ref } from 'vue'
@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 import { ApiError, changePassword, errorText } from '../api'
 import ApiKeysPanel from '../components/ApiKeysPanel.vue'
 import SessionsPanel from '../components/SessionsPanel.vue'
+import TwoFactorPanel from '../components/TwoFactorPanel.vue'
 import { passwordChanged, state } from '../store'
 
 const router = useRouter()
@@ -67,6 +68,7 @@ async function submit() {
       <p v-if="message" class="small" role="status">{{ message }}</p>
       <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
     </form>
+    <TwoFactorPanel v-if="!forced" />
     <SessionsPanel v-if="!forced" />
     <ApiKeysPanel v-if="!forced" />
     <p v-if="!forced" class="account-links small muted">

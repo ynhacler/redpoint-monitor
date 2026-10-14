@@ -2,6 +2,7 @@
 //
 //	vpsmon-server init        --data DIR               创建数据库与管理员账号，输出初始密码
 //	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
+//	vpsmon-server admin disable-totp   --data DIR      关闭两步验证（丢失认证器且没有恢复码时，修订第 160 条）
 //	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
 //	vpsmon-server run         --data DIR --listen ADDR|PORT [--log-format json|text] [--log-level info]（参数也可用环境变量 VPSMON_*）
 //	vpsmon-server backup      --data DIR [--out FILE] [--keep N]   在线备份（设计 25）
@@ -44,6 +45,7 @@ func usage() {
 usage:
   vpsmon-server init       --data DIR [--username admin]
   vpsmon-server admin reset-password --data DIR [--username admin]
+  vpsmon-server admin disable-totp   --data DIR [--username admin]   turn off two-step login (lost authenticator and recovery codes)
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080 | PORT] [--log-format json|text] [--log-level info]
                            (every run flag can also be set via VPSMON_<FLAG>, e.g. VPSMON_LISTEN=9090)
@@ -85,11 +87,19 @@ func main() {
 		setPassword(st, *username, "initialised "+*data)
 
 	case "admin":
-		if len(args) == 0 || args[0] != "reset-password" {
+		if len(args) == 0 || (args[0] != "reset-password" && args[0] != "disable-totp") {
 			usage()
 		}
 		username := fsx.String("username", "admin", "admin username")
 		_ = fsx.Parse(args[1:])
+		if args[0] == "disable-totp" {
+			// 面板运行中也可执行：下次登录只需密码；不影响已登录的会话
+			if err := open(*data).DisableTOTP(*username, time.Now()); err != nil {
+				log.Fatal("disable two-step login failed: ", err)
+			}
+			fmt.Printf("two-step login turned off for %s; sign in with the password and turn it on again under 系统 → 账号\n", *username)
+			return
+		}
 		setPassword(open(*data), *username, "password reset; all sessions of this account were signed out")
 
 	case "release":

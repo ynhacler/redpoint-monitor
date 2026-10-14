@@ -179,8 +179,8 @@ export async function request<P extends keyof Paths, M extends Method & keyof Pa
     e.details ?? [], Number(res.headers.get('Retry-After')) || 0,
   ] as const
   if (res.status === 401) {
-    // 登录接口与读取登录状态的 401 是正常结果（密码错误 / 尚未登录），由调用方处理
-    if (path !== '/auth/login' && path !== '/auth/me') unauthorizedHandler?.()
+    // 登录接口（含两步验证的第二步）与读取登录状态的 401 是正常结果（密码或验证码错误 / 尚未登录），由调用方处理
+    if (path !== '/auth/login' && path !== '/auth/login/totp' && path !== '/auth/me') unauthorizedHandler?.()
     throw new UnauthorizedError(...args)
   }
   throw new ApiError(...args)
@@ -672,16 +672,38 @@ export function getCaptcha() {
   return request('get', '/auth/captcha')
 }
 
-/** 登录。失败时抛出 ApiError（401 用户名或密码错误、400 验证码未通过、429 失败过多）。 */
+/** 登录。失败时抛出 ApiError（401 用户名或密码错误、400 验证码未通过、429 失败过多）。
+ * 账号开启了两步验证时返回 challenge，再用 loginTotp 提交验证码（修订第 160 条）。 */
 export async function login(username: string, password: string, remember: boolean, captcha?: CaptchaAnswer) {
-  const me = await request('post', '/auth/login', {
+  const res = await request('post', '/auth/login', {
     body: {
       username, password, remember,
       captcha_id: captcha?.id ?? '', captcha_x: captcha?.x ?? 0, captcha_ms: captcha?.ms ?? 0,
     },
   })
+  if ('challenge' in res) return res
+  setCsrf(res.csrf_token)
+  return res
+}
+
+/** 两步验证的第二步：认证器的 6 位验证码或恢复码。401 为验证码不正确或登录已过期。 */
+export async function loginTotp(challenge: string, code: string) {
+  const me = await request('post', '/auth/login/totp', { body: { challenge, code } })
   setCsrf(me.csrf_token)
   return me
+}
+
+/** 开始开启两步验证：生成新密钥（需先重新验证密码） */
+export function totpSetup() {
+  return request('post', '/auth/totp/setup')
+}
+/** 用认证器的验证码确认开启，返回恢复码（只显示这一次） */
+export function totpEnable(code: string) {
+  return request('post', '/auth/totp/enable', { body: { code } })
+}
+/** 关闭两步验证（需先重新验证密码） */
+export function totpDisable() {
+  return request('post', '/auth/totp/disable')
 }
 
 /** 读取当前登录状态；未登录时抛出 UnauthorizedError。 */

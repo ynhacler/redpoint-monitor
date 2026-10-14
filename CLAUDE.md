@@ -132,6 +132,7 @@ These are the product's core promise. If a request conflicts with one, stop and 
 Working: agent (Linux real + fake) → server ingest → SQLite → `/api/v1/servers` → Web list and Flutter list.
 Traffic deltas with boot_id reset detection and billing cycles. Web login with sessions (A2); the old `adm_` dev
 token is gone. Forgot password: `vpsmon-server admin reset-password --data DIR` on the panel host.
+Optional TOTP two-step login (design 17.4); lost authenticator and recovery codes: `vpsmon-server admin disable-totp --data DIR`.
 Node creation + enroll codes + `/agent/enroll` are in; `vpsmon-agent install` and the Web pages are next.
 Until signed releases exist (A7), the install command is the manual form `sudo vpsmon-agent install
 --server … --enroll …` and the binary must already be on the host (design 27.3.1).
