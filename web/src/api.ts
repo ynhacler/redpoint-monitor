@@ -329,6 +329,13 @@ export function listAlerts(q: Query<'/alerts', 'get'>) {
   return request('get', '/alerts', { query: q })
 }
 
+/** 系统事件（修订第 163 条） */
+export type SystemEvent = G.SystemEvent
+/** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */
+export function listSystemEvents(cursor?: string, limit = 50) {
+  return request('get', '/system-events', { query: { cursor, limit } })
+}
+
 /** 全部告警规则（全局、分组、节点三层） */
 export async function listAlertRules() {
   return (await request('get', '/alert-rules')).items

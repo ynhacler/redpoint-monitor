@@ -72,7 +72,7 @@ router.beforeEach(async (to) => {
   // 查看者（只读，修订第 161 条）只能打开标了 viewer 的页面；告警页只有“告警”标签
   if (isViewer.value) {
     if (!to.meta.viewer) return '/'
-    if (to.name === 'alerts' && to.query.tab) return { name: 'alerts' }
+    if (to.name === 'alerts' && to.query.tab && to.query.tab !== 'system') return { name: 'alerts' }
   }
   if (to.name === 'alerts' && ['probes', 'ssl', 'services'].includes(to.query.tab as string)) return { path: settingsMoved[to.query.tab as string], query: {} }
   return true

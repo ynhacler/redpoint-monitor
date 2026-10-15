@@ -25,6 +25,7 @@ export const navGroups: NavGroup[] = [
   {
     key: 'alerts', name: '告警', items: [
       { name: '告警', to: '/alerts', viewer: true },
+      { name: '系统事件', to: '/alerts?tab=system', viewer: true },
       { name: '规则', to: '/alerts?tab=rules' },
       { name: '静音', to: '/alerts?tab=silences' },
       { name: '通知', to: '/alerts?tab=notify' },
