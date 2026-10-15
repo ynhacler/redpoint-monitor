@@ -14,7 +14,7 @@ import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
-import { installed, pending, refresh, state, statusRank } from '../store'
+import { installed, isViewer, pending, refresh, state, statusRank } from '../store'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,8 +157,10 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <div class="page-head">
       <h1>节点</h1>
       <span v-if="state.updatedAt" class="muted small updated">更新于 {{ state.updatedAt.toLocaleTimeString() }}</span>
-      <RouterLink to="/servers/batch" class="btn secondary">批量新建</RouterLink>
-      <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
+      <template v-if="!isViewer">
+        <RouterLink to="/servers/batch" class="btn secondary">批量新建</RouterLink>
+        <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
+      </template>
     </div>
 
     <!-- 统计即筛选：数字为该状态的节点数，点击只看这些节点 -->
@@ -185,7 +187,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <div class="segmented" role="group" aria-label="排序">
         <button v-for="o in sorts" :key="o.v" type="button" :class="{ active: sortBy === o.v }" @click="sortBy = o.v">{{ o.t }}</button>
       </div>
-      <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging" type="button" class="btn secondary" @click="startArrange">
+      <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
         <Icon name="grip" />调整顺序
       </button>
     </div>
@@ -240,7 +242,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
               <StatusDot status="pending" />
             </div>
             <div class="muted small">{{ [s.region, s.provider, s.group].filter(Boolean).join(' · ') || '尚未在主机上安装 Agent' }}</div>
-            <div class="row actions">
+            <div v-if="!isViewer" class="row actions">
               <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />安装命令</RouterLink>
               <RouterLink :to="`/servers/${s.id}/edit`" class="btn text"><Icon name="edit" />编辑</RouterLink>
             </div>

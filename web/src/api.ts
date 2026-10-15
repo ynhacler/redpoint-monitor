@@ -693,6 +693,25 @@ export async function loginTotp(challenge: string, code: string) {
   return me
 }
 
+/** Web 账号（管理员与查看者，修订第 161 条） */
+export type UserView = G.UserView
+/** 账号列表，管理员在前 */
+export async function listUsers() {
+  return (await request('get', '/users')).items
+}
+/** 新建查看者（需先重新验证密码）；返回随机初始密码，只显示这一次 */
+export function createViewer(username: string) {
+  return request('post', '/users', { body: { username } })
+}
+/** 删除查看者（需先重新验证密码） */
+export function deleteViewer(id: number) {
+  return request('delete', '/users/{id}', { params: { id } })
+}
+/** 重置查看者密码（需先重新验证密码）；返回新的随机密码 */
+export function resetViewerPassword(id: number) {
+  return request('post', '/users/{id}/password', { params: { id } })
+}
+
 /** 开始开启两步验证：生成新密钥（需先重新验证密码） */
 export function totpSetup() {
   return request('post', '/auth/totp/setup')

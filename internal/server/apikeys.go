@@ -175,7 +175,7 @@ func (l *apiKeyLimiter) allow(id int64, now time.Time) (ok bool, wait time.Durat
 
 // read 是 accessRead 路由的认证：Web 管理员会话（与 admin 相同）、只读 API Key（设计 45.2）或 App 设备（设计 12.5）。
 func (s *Server) read(h http.HandlerFunc) http.Handler {
-	admin := s.admin(h)
+	admin := s.webSession(h, true) // 读取类接口：管理员与查看者都可以（修订第 161 条）
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := bearer(r)
 		if strings.HasPrefix(tok, PrefixDevice) {

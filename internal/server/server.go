@@ -184,7 +184,8 @@ const (
 	accessPublic access = "public" // 无需凭证：健康检查、静态页面
 	accessEnroll access = "enroll" // 凭请求体中的注册码认证，由处理函数校验并单独限流（设计 27.6）
 	accessAdmin  access = "admin"  // Web 管理员
-	accessRead   access = "read"   // Web 管理员或只读 API Key（设计 45.2）：只用于读取类接口
+	accessSelf   access = "self"   // 任何 Web 账号（管理员或查看者）：只用于自己的账号设置（修订第 161 条）
+	accessRead   access = "read"   // Web 账号（含查看者）、只读 API Key 或 App 设备（设计 45.2）：只用于读取类接口
 	accessAgent  access = "agent"  // Agent Token，只能操作 Token 绑定的节点
 	accessPair   access = "pair"   // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
 	accessApp    access = "app"    // 只接受 App 设备 Access Token（设计 12.5）
@@ -222,6 +223,8 @@ func (s *Server) routes() http.Handler {
 			wrapped = s.ops(h)
 		case accessAdmin:
 			wrapped = s.admin(h)
+		case accessSelf:
+			wrapped = s.self(h)
 		case accessRead:
 			wrapped = s.read(h)
 		case accessAgent:
@@ -241,15 +244,20 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
 	handle("POST /api/v1/auth/login/totp", accessPublic, s.handleLoginTOTP)
-	handle("GET /api/v1/auth/me", accessAdmin, s.handleMe)
-	handle("POST /api/v1/auth/logout", accessAdmin, s.handleLogout)
-	handle("POST /api/v1/auth/password", accessAdmin, s.handleChangePassword)
-	handle("POST /api/v1/auth/reauth", accessAdmin, s.handleReauth)
-	handle("POST /api/v1/auth/totp/setup", accessAdmin, s.handleTOTPSetup)
-	handle("POST /api/v1/auth/totp/enable", accessAdmin, s.handleTOTPEnable)
-	handle("POST /api/v1/auth/totp/disable", accessAdmin, s.handleTOTPDisable)
-	handle("GET /api/v1/auth/sessions", accessAdmin, s.handleSessions)
-	handle("DELETE /api/v1/auth/sessions/{id}", accessAdmin, s.handleRevokeSession)
+	handle("GET /api/v1/auth/me", accessSelf, s.handleMe)
+	handle("POST /api/v1/auth/logout", accessSelf, s.handleLogout)
+	handle("POST /api/v1/auth/password", accessSelf, s.handleChangePassword)
+	handle("POST /api/v1/auth/reauth", accessSelf, s.handleReauth)
+	handle("POST /api/v1/auth/totp/setup", accessSelf, s.handleTOTPSetup)
+	handle("POST /api/v1/auth/totp/enable", accessSelf, s.handleTOTPEnable)
+	handle("POST /api/v1/auth/totp/disable", accessSelf, s.handleTOTPDisable)
+	handle("GET /api/v1/auth/sessions", accessSelf, s.handleSessions)
+	handle("DELETE /api/v1/auth/sessions/{id}", accessSelf, s.handleRevokeSession)
+	// 查看者账号（修订第 161 条）：新建、重置密码、删除需重新验证密码（在处理函数中校验）
+	handle("GET /api/v1/users", accessAdmin, s.handleUsers)
+	handle("POST /api/v1/users", accessAdmin, s.handleCreateUser)
+	handle("DELETE /api/v1/users/{id}", accessAdmin, s.handleDeleteUser)
+	handle("POST /api/v1/users/{id}/password", accessAdmin, s.handleResetUserPassword)
 	// 云厂商账户（设计 44.8）：添加、更换凭证、删除需重新验证密码（在处理函数中校验）
 	handle("GET /api/v1/cloud-accounts", accessAdmin, s.handleCloudAccounts)
 	handle("POST /api/v1/cloud-accounts", accessAdmin, s.handleCreateCloudAccount)

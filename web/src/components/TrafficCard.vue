@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { calibrateTraffic, errorText, getTrafficDaily, type ServerView, type TrafficDay } from '../api'
 import { countModeNames, DASH, fmtPct, fmtTraffic } from '../format'
 import { daysToReset, trafficPct } from '../metrics'
-import { refresh } from '../store'
+import { isViewer, refresh } from '../store'
 import Chart, { type Series } from './Chart.vue'
 import UsageBar from './UsageBar.vue'
 
@@ -101,7 +101,7 @@ async function saveCalibrate() {
       <span v-if="calibratedOn" class="muted" :title="`统计值 ${fmt(t.measured)}，校准偏差 ${t.adjustment >= 0 ? '+' : '−'}${fmt(Math.abs(t.adjustment))}`">
         已于 {{ calibratedOn }} 校准
       </span>
-      <button v-if="!calibrating" type="button" class="text" @click="openCalibrate">校准已用流量</button>
+      <button v-if="!calibrating && !isViewer" type="button" class="text" @click="openCalibrate">校准已用流量</button>
     </div>
 
     <p v-if="suggestion" class="hint small">

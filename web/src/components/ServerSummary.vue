@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import type { ServerView } from '../api'
 import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, fmtTraffic, fmtUptime, periodNames } from '../format'
+import { isViewer } from '../store'
 import AgentUpgrade from './AgentUpgrade.vue'
 import Flag from './Flag.vue'
 import Icon, { type IconName } from './Icon.vue'
@@ -135,7 +136,9 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
     <dl class="facts">
       <div v-if="s.status !== 'pending'" class="fact">
         <dt>Agent</dt>
-        <dd><AgentUpgrade :server-id="s.id" :current="r?.agent_version" /></dd>
+        <!-- 查看者（修订第 161 条）只显示版本号：升级是管理操作 -->
+        <dd v-if="isViewer" class="num">{{ r?.agent_version || DASH }}</dd>
+        <dd v-else><AgentUpgrade :server-id="s.id" :current="r?.agent_version" /></dd>
       </div>
       <div v-for="f in facts" :key="f.k" class="fact" :class="{ wide: f.wide }">
         <dt>{{ f.k }}</dt>

@@ -33,13 +33,28 @@ const (
 
 var errNoUser = errors.New("user not found")
 
-// User 是管理员账号（设计 18.1）。MVP 只有单管理员（设计 35.2）。
+// User 是 Web 账号（设计 18.1）：一个管理员，另可有只读的查看者（修订第 161 条）。
 type User struct {
 	ID                 int64
 	Username           string
 	PasswordHash       string
 	MustChangePassword bool
+	Role               string // roleAdmin 或 roleViewer
 }
+
+// actor 是审计日志中的主体类型：管理员为 admin，查看者为 viewer。
+func (u User) actor() string {
+	if u.Role == roleViewer {
+		return roleViewer
+	}
+	return "admin"
+}
+
+// 账号角色（修订第 161 条）：查看者只能访问读取类接口（与只读 API Key 相同）与自己的账号设置。
+const (
+	roleAdmin  = "admin"
+	roleViewer = "viewer"
+)
 
 // session 是一次登录会话。
 type session struct {
@@ -97,8 +112,8 @@ func (s *Store) UserCount() (int, error) {
 // UserByName 按用户名（不区分大小写）查找账号。
 func (s *Store) UserByName(name string) (*User, error) {
 	var u User
-	err := s.DB.QueryRow(`SELECT id, username, password_hash, must_change_password FROM users WHERE username = ? AND status = 'active'`,
-		name).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.MustChangePassword)
+	err := s.DB.QueryRow(`SELECT id, username, password_hash, must_change_password, role FROM users WHERE username = ? AND status = 'active'`,
+		name).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.MustChangePassword, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errNoUser
 	}
@@ -108,8 +123,8 @@ func (s *Store) UserByName(name string) (*User, error) {
 // userByID 按 ID 读取启用中的账号（两步验证的第二步）。
 func (s *Store) userByID(id int64) (*User, error) {
 	var u User
-	err := s.DB.QueryRow(`SELECT id, username, password_hash, must_change_password FROM users WHERE id = ? AND status = 'active'`,
-		id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.MustChangePassword)
+	err := s.DB.QueryRow(`SELECT id, username, password_hash, must_change_password, role FROM users WHERE id = ? AND status = 'active'`,
+		id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.MustChangePassword, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errNoUser
 	}
@@ -134,9 +149,9 @@ func (s *Store) CreateSession(userID int64, ip, ua string, now time.Time) (strin
 // LookupSession 按令牌查找有效会话；不存在、空闲超时或已过期时返回 nil（过期的顺便删除）。
 func (s *Store) LookupSession(tok string, now time.Time) (*session, error) {
 	var se session
-	err := s.DB.QueryRow(`SELECT s.id, s.last_seen_at, s.expires_at, s.reauth_until, u.id, u.username, u.must_change_password
+	err := s.DB.QueryRow(`SELECT s.id, s.last_seen_at, s.expires_at, s.reauth_until, u.id, u.username, u.must_change_password, u.role
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND u.status = 'active'`, HashToken(tok)).
-		Scan(&se.ID, &se.LastSeenAt, &se.ExpiresAt, &se.ReauthUntil, &se.User.ID, &se.User.Username, &se.User.MustChangePassword)
+		Scan(&se.ID, &se.LastSeenAt, &se.ExpiresAt, &se.ReauthUntil, &se.User.ID, &se.User.Username, &se.User.MustChangePassword, &se.User.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -230,7 +245,13 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 //   - 查询出错时返回 500，不放行，也不伪装成 401（设计 43.1）
 //
 // TODO(C): App Device Token，只读范围（设计 12.5）。
-func (s *Server) admin(h http.HandlerFunc) http.Handler {
+func (s *Server) admin(h http.HandlerFunc) http.Handler { return s.webSession(h, false) }
+
+// self 允许任何 Web 账号（管理员或查看者）：只用于自己的账号设置——登录信息、退出、改密码、两步验证、登录设备（修订第 161 条）。
+func (s *Server) self(h http.HandlerFunc) http.Handler { return s.webSession(h, true) }
+
+// webSession 校验会话 Cookie 与 CSRF；viewerOK 为 false 时查看者返回 403。
+func (s *Server) webSession(h http.HandlerFunc, viewerOK bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(sessionCookie)
 		if err != nil || !strings.HasPrefix(c.Value, PrefixSession) {
@@ -258,8 +279,13 @@ func (s *Server) admin(h http.HandlerFunc) http.Handler {
 			s.writeError(w, r, errorf(CodePasswordChangeRequired, ""))
 			return
 		}
+		// 【安全】查看者只能读取（修订第 161 条）：管理接口一律 403，在鉴权中间件中统一判断
+		if !viewerOK && se.User.Role != roleAdmin {
+			s.writeError(w, r, errorf(CodeForbidden, "查看者账号只能查看，不能修改设置"))
+			return
+		}
 		ri := info(r)
-		ri.principal, ri.principalID, ri.session = "admin", se.User.ID, se
+		ri.principal, ri.principalID, ri.session = se.User.Role, se.User.ID, se
 		ri.sessionToken = c.Value
 		h(w, r)
 	})
@@ -268,6 +294,7 @@ func (s *Server) admin(h http.HandlerFunc) http.Handler {
 // meView 是当前登录信息；csrf_token 供页面在修改类请求中放进 X-CSRF-Token。
 type meView struct {
 	Username           string `json:"username"`
+	Role               string `json:"role"` // admin / viewer（修订第 161 条）
 	MustChangePassword bool   `json:"must_change_password"`
 	CSRFToken          string `json:"csrf_token"`
 	TOTPEnabled        bool   `json:"totp_enabled"`        // 是否已开启两步验证（修订第 160 条）
@@ -275,7 +302,7 @@ type meView struct {
 }
 
 func meOf(u User, tok string) meView {
-	return meView{Username: u.Username, MustChangePassword: u.MustChangePassword, CSRFToken: csrfFor(tok)}
+	return meView{Username: u.Username, Role: u.Role, MustChangePassword: u.MustChangePassword, CSRFToken: csrfFor(tok)}
 }
 
 // decodeJSON 读取小请求体（上限 4 KB）。
@@ -385,7 +412,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clearSessionCookie(w, r)
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: ri.session.User.Username, Action: "auth.logout", Success: true})
+	s.audit(r, AuditEntry{ActorType: ri.session.User.actor(), ActorID: ri.session.User.Username, Action: "auth.logout", Success: true})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -430,7 +457,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.password_change", Success: true})
+	s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.password_change", Success: true})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -457,7 +484,7 @@ func (s *Server) handleReauth(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok, _, err := VerifyPassword(body.Password, u.PasswordHash); err != nil || !ok {
 		s.loginLimit.fail(ip)
-		s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.reauth", Success: false})
+		s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.reauth", Success: false})
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "password", Message: "密码不正确"}}})
 		return
 	}
@@ -465,7 +492,7 @@ func (s *Server) handleReauth(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", ActorID: u.Username, Action: "auth.reauth", Success: true})
+	s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.reauth", Success: true})
 	w.WriteHeader(http.StatusNoContent)
 }
 

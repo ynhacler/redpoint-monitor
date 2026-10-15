@@ -13,7 +13,7 @@ const router = useRouter()
 const tab = computed(() => (route.query.tab === 'operation' ? 'operation' : 'login'))
 const result = computed(() => (route.query.result === 'success' || route.query.result === 'failure' ? route.query.result : ''))
 const qstr = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '')
-const actorQ = computed(() => (['admin', 'agent', 'apikey', 'app', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
+const actorQ = computed(() => (['admin', 'viewer', 'agent', 'apikey', 'app', 'cli', 'system'].includes(qstr('actor')) ? qstr('actor') : ''))
 const actionQ = computed(() => qstr('action'))
 const fromQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('from')) ? qstr('from') : ''))
 const toQ = computed(() => (/^\d{4}-\d{2}-\d{2}$/.test(qstr('to')) ? qstr('to') : ''))
@@ -88,6 +88,7 @@ const actionOptions = computed(() =>
   Object.entries(actionNames).filter(([k]) => loginActionSet.has(k) === (tab.value === 'login')))
 const reasonNames: Record<string, string> = {
   captcha: '验证码未通过', unknown_user: '用户名不存在', bad_password: '密码错误', password_too_long: '密码过长',
+  bad_totp: '两步验证码错误', bad_recovery: '恢复码错误',
 }
 
 function actor(l: AuditLog) {
@@ -96,6 +97,7 @@ function actor(l: AuditLog) {
   if (l.actor_type === 'apikey') return `API Key #${l.actor_id}`
   if (l.actor_type === 'system') return '系统'
   if (l.actor_type === 'app') return l.actor_id ? `App（${l.actor_id}）` : 'App'
+  if (l.actor_type === 'viewer') return `${l.actor_id}（查看者）`
   return l.actor_id || DASH
 }
 function target(l: AuditLog) {

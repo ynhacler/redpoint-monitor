@@ -6,6 +6,8 @@ import type { RouteLocationNormalizedLoaded } from 'vue-router'
 export interface NavItem {
   name: string
   to: string
+  /** 查看者（只读账号，修订第 161 条）也能打开 */
+  viewer?: boolean
 }
 
 /** 顶栏的一个分组；items 只有一项时不显示二级导航 */
@@ -19,10 +21,10 @@ export interface NavGroup {
 
 /** 顶栏分组：仪表板、告警、监测、费用、系统 */
 export const navGroups: NavGroup[] = [
-  { key: 'dashboard', name: '仪表板', items: [{ name: '节点', to: '/' }], extra: ['/servers'] },
+  { key: 'dashboard', name: '仪表板', items: [{ name: '节点', to: '/', viewer: true }], extra: ['/servers'] },
   {
     key: 'alerts', name: '告警', items: [
-      { name: '告警', to: '/alerts' },
+      { name: '告警', to: '/alerts', viewer: true },
       { name: '规则', to: '/alerts?tab=rules' },
       { name: '静音', to: '/alerts?tab=silences' },
       { name: '通知', to: '/alerts?tab=notify' },
@@ -30,7 +32,7 @@ export const navGroups: NavGroup[] = [
   },
   {
     key: 'monitor', name: '监测', items: [
-      { name: '测速对比', to: '/latency' },
+      { name: '测速对比', to: '/latency', viewer: true },
       { name: '测速设置', to: '/probes' },
       { name: '证书', to: '/ssl' },
       { name: '服务', to: '/services' },
@@ -44,7 +46,7 @@ export const navGroups: NavGroup[] = [
   },
   {
     key: 'system', name: '系统', items: [
-      { name: '账号', to: '/account' },
+      { name: '账号', to: '/account', viewer: true },
       { name: 'App 接入', to: '/app' },
       { name: 'Agent 升级', to: '/upgrades' },
       { name: '日志', to: '/logs' },
@@ -66,8 +68,14 @@ export function itemActive(item: NavItem, route: RouteLocationNormalizedLoaded, 
   return !group.items.some((x) => x !== item && split(x.to).path === path && split(x.to).tab === cur)
 }
 
+/** 按账号角色筛选：查看者只保留能打开的页面，没有可用页面的分组整个隐藏 */
+export function groupsFor(viewer: boolean): NavGroup[] {
+  if (!viewer) return navGroups
+  return navGroups.map((g) => ({ ...g, items: g.items.filter((x) => x.viewer) })).filter((g) => g.items.length)
+}
+
 /** 当前地址所属的分组（没有时为 undefined，如登录页） */
-export function activeGroup(route: RouteLocationNormalizedLoaded): NavGroup | undefined {
-  return navGroups.find((g) => g.items.some((x) => split(x.to).path === route.path)
+export function activeGroup(route: RouteLocationNormalizedLoaded, groups = navGroups): NavGroup | undefined {
+  return groups.find((g) => g.items.some((x) => split(x.to).path === route.path)
     || g.extra?.some((p) => route.path.startsWith(p)))
 }

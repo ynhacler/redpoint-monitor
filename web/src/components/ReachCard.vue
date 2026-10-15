@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getServerReach, type ServerReach } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
+import { isViewer } from '../store'
 import Chart, { type Series } from './Chart.vue'
 
 const props = defineProps<{ serverId: number }>()
@@ -53,7 +54,7 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
     <div class="head">
       <h3>国内可达性</h3>
       <span v-if="view?.text" class="verdict" :class="tone(view.status)">{{ view.text }}</span>
-      <RouterLink to="/probes#reach" class="btn secondary small set">国内探针</RouterLink>
+      <RouterLink v-if="!isViewer" to="/probes#reach" class="btn secondary small set">国内探针</RouterLink>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">

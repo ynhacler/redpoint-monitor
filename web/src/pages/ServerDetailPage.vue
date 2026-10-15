@@ -18,7 +18,7 @@ import TrafficCard from '../components/TrafficCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
-import { serverById, state } from '../store'
+import { isViewer, serverById, state } from '../store'
 
 const props = defineProps<{
   /** 路由参数中的节点 ID */
@@ -195,7 +195,7 @@ const charts = computed(() => [
   <main class="page">
     <div class="nav-row">
       <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />仪表板</RouterLink>
-      <div v-if="s" class="actions-row">
+      <div v-if="s && !isViewer" class="actions-row">
         <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
         <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary"><Icon name="edit" />编辑</RouterLink>
       </div>
@@ -206,7 +206,7 @@ const charts = computed(() => [
 
     <template v-else>
       <div v-if="s.status === 'pending'" class="banner warn">
-        该节点尚未安装 Agent。<RouterLink :to="`/servers/${s.id}/install`">查看安装命令</RouterLink>
+        该节点尚未安装 Agent。<RouterLink v-if="!isViewer" :to="`/servers/${s.id}/install`">查看安装命令</RouterLink>
       </div>
       <div v-else-if="problems.length" class="banner" :class="{ warn: problems[0].level === 'warn' }">
         {{ problems.map((p) => p.text).join(' · ') }}
@@ -214,7 +214,7 @@ const charts = computed(() => [
       </div>
 
       <!-- 静音与维护（设计 16.6） -->
-      <SilenceControls v-if="s.status !== 'pending'" :server="s" class="section-tight" />
+      <SilenceControls v-if="s.status !== 'pending' && !isViewer" :server="s" class="section-tight" />
 
       <!-- 概况（设计 11.1） -->
       <ServerSummary :server="liveServer ?? s" :live="live" />
@@ -243,7 +243,7 @@ const charts = computed(() => [
       <section class="section">
         <TrafficCard :server="s" />
         <TrafficHistory :server="s" class="section-tight" />
-        <CloudInstanceCard :server="s" class="section-tight" />
+        <CloudInstanceCard v-if="!isViewer" :server="s" class="section-tight" />
       </section>
 
       <!-- 测速（设计 42.3.2） -->

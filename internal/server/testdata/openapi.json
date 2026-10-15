@@ -344,6 +344,177 @@
         }
       }
     },
+    "/users": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Web 账号列表（管理员与查看者，修订第 161 条）",
+        "responses": {
+          "200": {
+            "description": "账号列表，管理员在前",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "next_cursor",
+                    "items"
+                  ],
+                  "properties": {
+                    "next_cursor": {
+                      "type": "string",
+                      "description": "空表示没有更多"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UserView"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "新建查看者账号（需重新验证密码；记入操作日志）。返回随机初始密码，只显示这一次，首次登录须修改",
+        "description": "查看者只能访问读取类接口（节点、指标、流量、测速、告警列表，与只读 API Key 相同）与自己的账号设置；最多 20 个。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "3～32 位字母、数字、点、下划线或连字符；不区分大小写"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "删除查看者账号（需重新验证密码；其登录立即失效；记入操作日志）。不能删除管理员",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/users/{id}/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "重置查看者的密码（需重新验证密码；其登录全部退出；记入操作日志）。返回新的随机密码，只显示这一次",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "新密码",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "password"
+                  ],
+                  "properties": {
+                    "password": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/auth/me": {
       "get": {
         "tags": [
@@ -3742,6 +3913,7 @@
               "type": "string",
               "enum": [
                 "admin",
+                "viewer",
                 "agent",
                 "apikey",
                 "app",
@@ -3839,6 +4011,7 @@
                             "type": "string",
                             "enum": [
                               "admin",
+                              "viewer",
                               "agent",
                               "apikey",
                               "app",
@@ -3935,6 +4108,7 @@
               "type": "string",
               "enum": [
                 "admin",
+                "viewer",
                 "agent",
                 "apikey",
                 "app",
@@ -5916,6 +6090,7 @@
         "type": "object",
         "required": [
           "username",
+          "role",
           "must_change_password",
           "csrf_token",
           "totp_enabled",
@@ -5924,6 +6099,14 @@
         "properties": {
           "username": {
             "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "viewer"
+            ],
+            "description": "viewer 为只读的查看者（修订第 161 条）"
           },
           "must_change_password": {
             "type": "boolean",
@@ -5940,6 +6123,63 @@
           "recovery_codes_left": {
             "type": "integer",
             "description": "未使用的恢复码数量；未开启时为 0"
+          }
+        }
+      },
+      "UserView": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "role",
+          "must_change_password",
+          "totp_enabled",
+          "created_at",
+          "last_login_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "viewer"
+            ]
+          },
+          "must_change_password": {
+            "type": "boolean",
+            "description": "尚未修改初始 / 重置的密码"
+          },
+          "totp_enabled": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "last_login_at": {
+            "type": "integer",
+            "description": "0 表示从未登录"
+          }
+        }
+      },
+      "UserCreated": {
+        "type": "object",
+        "required": [
+          "user",
+          "password"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserView"
+          },
+          "password": {
+            "type": "string",
+            "description": "初始密码，只显示这一次"
           }
         }
       },

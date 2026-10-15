@@ -5,6 +5,7 @@ import {
   errorText, getTrafficAdjustments, getTrafficMonthly, type ServerView, type TrafficAdjustment, type TrafficCycle,
 } from '../api'
 import { DASH, fmtDateTime, fmtPct, fmtTraffic } from '../format'
+import { isViewer } from '../store'
 import EmptyState from './EmptyState.vue'
 
 const props = defineProps<{
@@ -22,8 +23,9 @@ const fmt = (n: number) => fmtTraffic(n, unit.value)
 
 async function load() {
   try {
+    // 校准记录是管理接口：查看者（修订第 161 条）只看周期用量
     ;[cycles.value, adjustments.value] = await Promise.all([
-      getTrafficMonthly(props.server.id, 12), getTrafficAdjustments(props.server.id),
+      getTrafficMonthly(props.server.id, 12), isViewer.value ? Promise.resolve([]) : getTrafficAdjustments(props.server.id),
     ])
     error.value = ''
   } catch (e) {
@@ -52,7 +54,7 @@ const shownCycles = computed(() => cycles.value.filter((c, i) => i === 0 || c.rx
   <div class="panel history">
     <div class="top">
       <h3>流量记录</h3>
-      <div class="segmented" role="tablist">
+      <div v-if="!isViewer" class="segmented" role="tablist">
         <button type="button" role="tab" :class="{ active: tab === 'cycles' }" @click="tab = 'cycles'">按计费周期</button>
         <button type="button" role="tab" :class="{ active: tab === 'adjustments' }" @click="tab = 'adjustments'">
           校准记录<template v-if="adjustments.length">（{{ adjustments.length }}）</template>
