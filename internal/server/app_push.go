@@ -362,9 +362,12 @@ func (n *notifier) sendPush(ctx context.Context, t pushTarget, m notifyMessage) 
 	push.Sign(req, body, key, now)
 	res, err := n.http.Do(req)
 	if err != nil {
+		s.pushResult(false) // 连续送不到 Relay 时发面板自身告警（设计 16.1）
 		return errors.New("无法连接 Push Relay")
 	}
 	defer res.Body.Close()
+	// 送达与否只看 Relay 本身：5xx 与签名被拒算失败；设备 Token 失效、请求内容问题属于单台设备，不计入
+	s.pushResult(res.StatusCode < 500 && res.StatusCode != http.StatusUnauthorized)
 	switch {
 	case res.StatusCode == http.StatusOK:
 		return nil

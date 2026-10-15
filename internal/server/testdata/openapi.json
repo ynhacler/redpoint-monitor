@@ -7007,10 +7007,12 @@
               "still_firing",
               "panel_down",
               "panel_up",
+              "panel_issue",
+              "panel_issue_resolved",
               "quiet_summary",
               "reminder"
             ],
-            "description": "reminder：到期 / 云账户提醒（设计 1.2.5、44.6）；quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）"
+            "description": "panel_issue / panel_issue_resolved：面板自身告警 / 恢复——后台任务反复崩溃、磁盘空间不足、写库失败、推送失败（设计 16.1）；reminder：到期 / 云账户提醒（设计 1.2.5、44.6）；quiet_summary：免打扰结束后的汇总；flapping：状态频繁变化（之后暂停该告警的通知）；still_firing：抖动结束时仍在告警；panel_down / panel_up：面板自检（设计 16.4）"
           },
           "title": {
             "type": "string"

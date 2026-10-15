@@ -73,6 +73,7 @@ type Server struct {
 	quiet         *quietState     // 免打扰时段（设计 16.5）
 	heartbeat     *heartbeatState // 面板心跳（设计 1.10.3）
 	totp          *totpFlows      // 进行中的两步验证登录与设置（修订第 160 条）
+	health        *panelHealth    // 面板自身告警：后台任务、磁盘、写库、推送（设计 16.1）
 	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 	ws            *wsHub          // WebSocket 事件推送（设计 20）
 	cloud         *cloudState     // 云厂商账户同步（设计 44）
@@ -136,7 +137,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
-	s.notify, s.noise, s.totp = newNotifier(s), newAlertNoise(), newTOTPFlows()
+	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
@@ -172,6 +173,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "reminders", s.reminderLoop)
 	go s.runTask(ctx, "services", s.serviceLoop)
 	go s.runTask(ctx, "heartbeat", s.heartbeatLoop)
+	go s.runTask(ctx, "panel-health", s.panelHealthLoop)
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -620,6 +622,7 @@ func (s *Server) flush() {
 	}
 	committed := false
 	defer func() {
+		s.dbWriteResult(committed) // 连续失败时发面板自身告警（设计 16.1）
 		if !committed {
 			// 写库失败时保留原批次，并排在并发到达的新上报之前，确保计数与指标按序落盘。
 			s.mu.Lock()
@@ -713,7 +716,7 @@ func (s *Server) flush() {
 }
 
 // runTask 运行后台任务：捕获 panic 并记录堆栈，按 1 秒、2 秒、4 秒…最长 1 分钟的间隔自动重启（设计 43.3.1）。
-// 任务正常返回（ctx 取消）时结束。TODO(A5): 连续失败时触发面板自身告警（设计 16.1）。
+// 任务正常返回（ctx 取消）时结束。反复崩溃时发面板自身告警（panel_health.go，设计 16.1）。
 func (s *Server) runTask(ctx context.Context, name string, fn func(context.Context)) {
 	backoff := time.Second
 	for {
@@ -722,6 +725,7 @@ func (s *Server) runTask(ctx context.Context, name string, fn func(context.Conte
 				if v := recover(); v != nil {
 					s.log.Error("background task panicked", "component", "task", "task", name,
 						"panic", v, "stack", string(debug.Stack()))
+					s.taskCrashed(name, time.Now())
 				}
 			}()
 			fn(ctx)

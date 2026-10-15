@@ -127,7 +127,7 @@ async function test(c: NotifyChannel) {
 
 const kindNames: Record<Delivery['kind'], string> = {
   firing: '告警', resolved: '恢复', repeat: '重复提醒', test: '测试',
-  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', quiet_summary: '免打扰汇总', reminder: '提醒',
+  flapping: '频繁变化', still_firing: '仍在告警', panel_down: '面板异常', panel_up: '面板恢复', panel_issue: '面板自身异常', panel_issue_resolved: '面板自身恢复', quiet_summary: '免打扰汇总', reminder: '提醒',
 }
 const statusNames: Record<Delivery['status'], string> = { sent: '已发送', failed: '失败', retrying: '重试中' }
 const typeNames: Record<ChannelType, string> = {
