@@ -751,6 +751,23 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /system-events:
+    get:
+      tags: [alerts]
+      summary: 系统事件（修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警与自检，最新在前，保留 180 天
+      description: |
+        与告警事件（/alerts）分开：这些事件没有触发 / 恢复两个状态，只是一条记录。
+        只读 API Key 与 App 设备按授权范围过滤；不属于某个节点的事件（证书、云账户、面板）只有“全部节点”范围才能看到。
+      parameters:
+        - { name: cursor, in: query, schema: { type: string }, description: 上一页的 next_cursor }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: 事件列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 空表示没有更多 }, items: { type: array, items: { $ref: '#/components/schemas/SystemEvent' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /alert-rules:
     get:
       tags: [alerts]
@@ -2168,6 +2185,19 @@ components:
         csrf_token: { type: string, description: 修改类请求放在 X-CSRF-Token 头中 }
         totp_enabled: { type: boolean, description: 是否已开启两步验证（修订第 160 条） }
         recovery_codes_left: { type: integer, description: 未使用的恢复码数量；未开启时为 0 }
+
+    SystemEvent:
+      type: object
+      required: [id, kind, severity, server_id, server_name, title, message, created_at]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [upgrade, reminder, panel], description: 'upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检' }
+        severity: { type: string, enum: [critical, warning, info] }
+        server_id: { type: integer, description: 0 表示不属于某个节点 }
+        server_name: { type: string, description: 节点已删除或不属于节点时为空 }
+        title: { type: string, description: 一行摘要，与通知标题相同 }
+        message: { type: string, description: 说明，可为空 }
+        created_at: { type: integer }
 
     UserView:
       type: object

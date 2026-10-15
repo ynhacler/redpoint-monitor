@@ -264,6 +264,33 @@ class AlertEvent {
       );
 }
 
+/// 系统事件（GET /system-events，修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警；serverId 为 0 表示不属于某个节点。
+class SystemEvent {
+  SystemEvent({required this.id, required this.kind, required this.severity, required this.serverId, required this.serverName,
+      required this.title, required this.message, required this.createdAt});
+  final int id;
+
+  /// upgrade / reminder / panel
+  final String kind;
+  final String severity;
+  final int serverId;
+  final String serverName;
+  final String title;
+  final String message;
+  final int createdAt;
+
+  factory SystemEvent.fromJson(Map<String, dynamic> j) => SystemEvent(
+        id: _int(j['id'])!,
+        kind: (j['kind'] as String?) ?? '',
+        severity: (j['severity'] as String?) ?? 'info',
+        serverId: _int(j['server_id']) ?? 0,
+        serverName: (j['server_name'] as String?) ?? '',
+        title: (j['title'] as String?) ?? '',
+        message: (j['message'] as String?) ?? '',
+        createdAt: _int(j['created_at']) ?? 0,
+      );
+}
+
 /// 健康摘要（GET /servers/{id}/health，设计 1.5.7）：面板计算的结论与文字，与 Web 相同。
 class HealthSummary {
   HealthSummary({required this.level, required this.status, required this.items});

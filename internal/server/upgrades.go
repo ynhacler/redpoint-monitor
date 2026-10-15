@@ -152,26 +152,43 @@ func (s *Store) SetUpgradeStatus(id, serverID int64, status, reason string, now 
 	return n > 0, nil
 }
 
-// ExpireUpgradeTasks 把超时仍未结束的任务判为失败。
+// ExpireUpgradeTasks 把超时仍未结束的任务判为失败，返回这些任务（只含 ID、节点、目标版本与原因），用于记录系统事件。
 // 15 分钟没有被领取的任务单独判为失败并说明原因：Agent 不会来取，没有必要等满 1 小时。
-func (s *Store) ExpireUpgradeTasks(now time.Time) (int64, error) {
-	res, err := s.DB.Exec(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
+func (s *Store) ExpireUpgradeTasks(now time.Time) ([]UpgradeTask, error) {
+	var out []UpgradeTask
+	collect := func(q string, args ...any) error {
+		rows, err := s.DB.Query(q+` RETURNING id, server_id, target_version, reason`, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var t UpgradeTask
+			if err := rows.Scan(&t.ID, &t.ServerID, &t.TargetVersion, &t.Reason); err != nil {
+				return err
+			}
+			out = append(out, t)
+		}
+		return rows.Err()
+	}
+	if err := collect(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
 		WHERE status = ? AND updated_at < ?`, UpgradeFailed,
 		"Agent 15 分钟内没有领取任务：节点离线、主机未启用远程升级（sudo vpsmon-agent enable-remote-upgrade），"+
 			"或 Agent 版本过旧（v0.3.0 之前不支持远程升级，请在主机上执行 sudo vpsmon-agent upgrade）",
-		now.Unix(), UpgradePending, now.Add(-upgradeClaimTimeout).Unix())
-	if err != nil {
-		return 0, err
+		now.Unix(), UpgradePending, now.Add(-upgradeClaimTimeout).Unix()); err != nil {
+		return out, err
 	}
-	claimed, _ := res.RowsAffected()
-	res, err = s.DB.Exec(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
+	err := collect(`UPDATE upgrade_tasks SET status = ?, reason = ?, updated_at = ?
 		WHERE status IN (?,?) AND updated_at < ?`, UpgradeFailed, "超时：1 小时内没有完成（节点离线或下载失败）", now.Unix(),
 		UpgradeDelivered, UpgradeStaged, now.Add(-upgradeTaskTimeout).Unix())
-	if err != nil {
-		return claimed, err
-	}
-	n, _ := res.RowsAffected()
-	return claimed + n, nil
+	return out, err
+}
+
+// upgradeTarget 返回任务的目标版本（记录系统事件用）；不存在时为空。
+func (s *Store) upgradeTarget(id int64) string {
+	var v string
+	_ = s.DB.QueryRow(`SELECT target_version FROM upgrade_tasks WHERE id = ?`, id).Scan(&v)
+	return v
 }
 
 var (
@@ -407,6 +424,7 @@ func (s *Server) handleAgentUpgradeStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if b.Status != UpgradeStaged {
+		s.recordUpgrade(sid, s.store.upgradeTarget(b.TaskID), b.Status, reason, time.Now()) // 系统事件（修订第 163 条）
 		s.audit(r, AuditEntry{ActorType: "agent", ActorID: itoa64(sid), Action: "upgrade_task.result", TargetType: "server",
 			TargetID: sid, Success: b.Status == UpgradeSuccess, Details: map[string]any{"task_id": b.TaskID, "status": b.Status, "reason": reason}})
 	}
