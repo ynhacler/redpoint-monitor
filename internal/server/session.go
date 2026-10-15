@@ -243,8 +243,6 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 //   - 修改类请求（非 GET / HEAD）必须带正确的 X-CSRF-Token（设计 17.4）
 //   - 使用初始 / 重置密码登录时，只允许访问 /api/v1/auth/，其余接口要求先修改密码
 //   - 查询出错时返回 500，不放行，也不伪装成 401（设计 43.1）
-//
-// TODO(C): App Device Token，只读范围（设计 12.5）。
 func (s *Server) admin(h http.HandlerFunc) http.Handler { return s.webSession(h, false) }
 
 // self 允许任何 Web 账号（管理员或查看者）：只用于自己的账号设置——登录信息、退出、改密码、两步验证、登录设备（修订第 161 条）。

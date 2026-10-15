@@ -50,6 +50,9 @@ const (
 	NotifyStillFiring = "still_firing" // 抖动结束时仍在告警
 	NotifyPanelDown   = "panel_down"   // 全部节点同时停止上报，疑似面板一侧异常
 	NotifyPanelUp     = "panel_up"
+	// 面板自身告警 / 恢复（设计 16.1，panel_health.go）；Type 为问题（task:名称、disk、db、push）
+	NotifyPanelIssue         = "panel_issue"
+	NotifyPanelIssueResolved = "panel_issue_resolved"
 	// 免打扰结束后的汇总（设计 16.5，quiet.go）
 	NotifyQuietSummary = "quiet_summary"
 )
@@ -436,6 +439,9 @@ func (m notifyMessage) title() string {
 	case NotifyPanelDown, NotifyPanelUp:
 		t, _ := panelText(m)
 		return t
+	case NotifyPanelIssue, NotifyPanelIssueResolved:
+		t, _ := panelIssueText(m)
+		return t
 	case NotifyTest:
 		return "🔔 测试通知"
 	}
@@ -466,6 +472,9 @@ func (m notifyMessage) text(now time.Time) string {
 		lines = append(lines, fmt.Sprintf("30 分钟内触发 %d 次，暂停这条告警的通知；稳定 30 分钟后恢复。", m.Count))
 	case NotifyPanelDown:
 		_, d := panelText(m)
+		lines = append(lines, d)
+	case NotifyPanelIssue:
+		_, d := panelIssueText(m)
 		lines = append(lines, d)
 	case NotifyFiring, NotifyRepeat, NotifyStillFiring:
 		// 刚触发时持续时间不足 1 分钟（离线等规则的时长已写在 Message 里），不显示“已持续”
@@ -516,6 +525,8 @@ func (m notifyMessage) webhookPayload(now time.Time) []byte {
 		p["type"], p["severity"], p["count"], p["servers"] = m.Type, m.Severity, m.Count, m.Servers
 	} else if m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp {
 		p["severity"], p["count"] = m.Severity, m.Count
+	} else if m.Kind == NotifyPanelIssue || m.Kind == NotifyPanelIssueResolved {
+		p["severity"], p["issue"], p["message"] = m.Severity, m.Type, m.Message
 	} else if m.Kind != NotifyTest {
 		p["event_id"] = m.EventID
 		p["server"] = map[string]any{"id": m.ServerID, "name": m.ServerName}
@@ -562,8 +573,8 @@ func (c NotifyChannel) wants(m notifyMessage) bool {
 	if !c.Enabled {
 		return false
 	}
-	if m.Kind == NotifyTest || m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp {
-		return true // 面板自检影响全部节点，所有渠道都发
+	if m.Kind == NotifyTest || m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp || m.Kind == NotifyPanelIssue || m.Kind == NotifyPanelIssueResolved {
+		return true // 面板自检与面板自身告警影响全部节点，所有渠道都发
 	}
 	if m.Kind == NotifyResolved && !c.NotifyResolved {
 		return false
