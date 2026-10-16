@@ -232,11 +232,11 @@ func TestUpgradeBlockers(t *testing.T) {
 	}
 
 	// 15 分钟没有被领取：判为失败并说明原因（不用等满 1 小时）
-	if n, err := s.store.ExpireUpgradeTasks(time.Now().Add(10 * time.Minute)); err != nil || n != 0 {
-		t.Fatalf("10 分钟时不应过期：%d %v", n, err)
+	if n, err := s.store.ExpireUpgradeTasks(time.Now().Add(10 * time.Minute)); err != nil || len(n) != 0 {
+		t.Fatalf("10 分钟时不应过期：%d %v", len(n), err)
 	}
-	if n, err := s.store.ExpireUpgradeTasks(time.Now().Add(16 * time.Minute)); err != nil || n != 2 {
-		t.Fatalf("16 分钟时应过期 2 个：%d %v", n, err)
+	if n, err := s.store.ExpireUpgradeTasks(time.Now().Add(16 * time.Minute)); err != nil || len(n) != 2 {
+		t.Fatalf("16 分钟时应过期 2 个：%d %v", len(n), err)
 	}
 	var list struct{ Items []UpgradeTask }
 	json.Unmarshal(do(h, "GET", "/api/v1/upgrade-tasks?server_id="+itoa(unknown), admin, nil).Body.Bytes(), &list)

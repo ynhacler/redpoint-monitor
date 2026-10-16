@@ -870,6 +870,18 @@ var migrations = []string{
 		used_at    INTEGER NOT NULL DEFAULT 0
 	);
 	CREATE INDEX totp_recovery_user ON totp_recovery (user_id);`,
+	// 迁移 44：系统事件（修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警与自检；server_id 0 表示不属于某个节点。
+	// 节点删除后保留事件（名称显示为空），180 天后删除
+	`CREATE TABLE system_events (
+		id         INTEGER PRIMARY KEY,
+		kind       TEXT NOT NULL,
+		severity   TEXT NOT NULL,
+		server_id  INTEGER NOT NULL DEFAULT 0,
+		title      TEXT NOT NULL,
+		message    TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX system_events_time ON system_events (created_at);`,
 }
 
 func (s *Store) migrate() error {

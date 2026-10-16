@@ -33,6 +33,22 @@ export interface Me {
   recovery_codes_left: number
 }
 
+export interface SystemEvent {
+  id: number
+  /** upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检 */
+  kind: 'upgrade' | 'reminder' | 'panel'
+  severity: 'critical' | 'warning' | 'info'
+  /** 0 表示不属于某个节点 */
+  server_id: number
+  /** 节点已删除或不属于节点时为空 */
+  server_name: string
+  /** 一行摘要，与通知标题相同 */
+  title: string
+  /** 说明，可为空 */
+  message: string
+  created_at: number
+}
+
 export interface UserView {
   id: number
   username: string
@@ -1726,6 +1742,21 @@ export interface Paths {
       response: {
         next_cursor: string
         items: AlertEvent[]
+      }
+    }
+  }
+  '/system-events': {
+    /** 系统事件（修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警与自检，最新在前，保留 180 天 */
+    get: {
+      query?: {
+        /** 上一页的 next_cursor */
+        cursor?: string
+        limit?: number
+      }
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: SystemEvent[]
       }
     }
   }

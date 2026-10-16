@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
 // “静音”列出生效中的静音与维护，并可静音分组、规则或全部（设计 16.6）；“通知”管理通知渠道（设计 16.5）。
-// 服务、证书与测速的设置在“监测”分组（修订第 126、158 条）。
+// “系统事件”列出 Agent 升级结果、到期提醒与面板自身异常（修订第 163 条）。服务、证书与测速的设置在“监测”分组（修订第 126、158 条）。
 // 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -12,13 +12,14 @@ import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
 import NotificationChannels from '../components/NotificationChannels.vue'
+import SystemEvents from '../components/SystemEvents.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
 import { installed } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const tabTitles: Record<string, string> = { alerts: '告警', rules: '告警规则', silences: '静音', notify: '通知渠道' }
-const tab = computed(() => (['rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
+const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '告警规则', silences: '静音', notify: '通知渠道' }
+const tab = computed(() => (['system', 'rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
@@ -127,7 +128,7 @@ const silenceScope = (x: Silence) =>
   x.scope_type === 'global' ? '全部节点' : x.scope_type === 'group' ? `分组 ${x.scope_id}`
     : x.scope_type === 'rule' ? `规则 ${ruleNames[x.scope_id] ?? x.scope_id}` : `节点 ${serverName(x.scope_id)}`
 
-watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' ? undefined : loadEvents()), { immediate: true })
+watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' || tab.value === 'system' ? undefined : loadEvents()), { immediate: true })
 </script>
 
 <template>
@@ -164,6 +165,9 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
       </ul>
       <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loadingEvents" @click="loadEvents(true)">加载更多</button></div>
     </template>
+
+    <!-- 系统事件（修订第 163 条） -->
+    <SystemEvents v-else-if="tab === 'system'" />
 
     <!-- 通知渠道（设计 16.5） -->
     <NotificationChannels v-else-if="tab === 'notify'" />

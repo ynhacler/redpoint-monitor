@@ -222,7 +222,9 @@ func (s *Server) checkPanel(rows []ServerRow, snaps map[int64]snapshot, now time
 		} else {
 			s.log.Info("nodes reporting again", "component", "alert")
 		}
-		s.notify.dispatch(notifyMessage{Kind: kind, Severity: SeverityCritical, Count: count, StartedAt: now, Link: s.publicURL})
+		m := notifyMessage{Kind: kind, Severity: SeverityCritical, Count: count, StartedAt: now, Link: s.publicURL}
+		s.recordNotice(eventPanel, m, now) // 系统事件（修订第 163 条）
+		s.notify.dispatch(m)
 	}
 	return down
 }

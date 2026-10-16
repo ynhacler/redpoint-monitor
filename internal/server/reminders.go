@@ -105,6 +105,7 @@ func (s *Server) remind(key string, m notifyMessage, now time.Time) {
 	}
 	m.Kind = NotifyReminder
 	s.log.Info("reminder", "component", "reminder", "key", key, "server", m.ServerName)
+	s.recordNotice(eventReminder, m, now) // 系统事件（修订第 163 条）
 	s.send(m, now)
 }
 

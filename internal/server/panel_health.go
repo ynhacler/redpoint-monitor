@@ -79,8 +79,10 @@ func (s *Server) panelIssue(key string, on bool, detail string, count int) {
 	} else {
 		s.log.Info("panel issue resolved", "component", "health", "issue", key)
 	}
-	s.notify.dispatch(notifyMessage{Kind: kind, Severity: SeverityCritical, Type: key, Message: detail, Count: count,
-		StartedAt: time.Now(), Link: s.publicURL})
+	m := notifyMessage{Kind: kind, Severity: SeverityCritical, Type: key, Message: detail, Count: count,
+		StartedAt: time.Now(), Link: s.publicURL}
+	s.recordNotice(eventPanel, m, m.StartedAt) // 系统事件（修订第 163 条）
+	s.notify.dispatch(m)
 }
 
 // ---- 后台任务 ----

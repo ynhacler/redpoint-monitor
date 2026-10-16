@@ -174,6 +174,14 @@ class ApiClient {
     return (items, (body['next_cursor'] as String?) ?? '');
   }
 
+  /// 系统事件（修订第 163 条）：按时间倒序，cursor 翻页；面板按设备的授权范围过滤。旧版面板没有该接口时抛出 ApiException（404）。
+  Future<(List<SystemEvent>, String)> systemEvents({String cursor = '', int limit = 50}) async {
+    final body = await getJson('/system-events', query: {'limit': '$limit', if (cursor.isNotEmpty) 'cursor': cursor})
+        as Map<String, dynamic>;
+    final items = (body['items'] as List<dynamic>).map((e) => SystemEvent.fromJson(e as Map<String, dynamic>)).toList();
+    return (items, (body['next_cursor'] as String?) ?? '');
+  }
+
   /// 健康摘要（设计 1.5.7）。
   Future<HealthSummary> health(int id) async => HealthSummary.fromJson(await getJson('/servers/$id/health') as Map<String, dynamic>);
 

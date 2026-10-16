@@ -503,6 +503,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/audit-logs":                          accessAdmin,
 		"GET /api/v1/audit-logs/export":                   accessAdmin,
 		"GET /api/v1/alerts":                              accessRead,
+		"GET /api/v1/system-events":                       accessRead,
 		"GET /api/v1/alert-rules":                         accessAdmin,
 		"POST /api/v1/alert-rules":                        accessAdmin,
 		"POST /api/v1/alert-rules/preview":                accessAdmin,

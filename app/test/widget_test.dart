@@ -93,6 +93,13 @@ void main() {
           {'id': 8, 'server_id': 1, 'server_name': 'Tokyo', 'type': 'cpu', 'severity': 'warning', 'state': 'resolved',
             'message': 'CPU 96%', 'fired_at': 1759640000, 'resolved_at': 1759640600},
         ]};
+      } else if (p == '/api/v1/system-events') {
+        body = {'next_cursor': '', 'items': [
+          {'id': 3, 'kind': 'panel', 'severity': 'critical', 'server_id': 0, 'server_name': '', 'title': '⚠️ 面板异常：磁盘空间不足',
+            'message': '数据目录所在磁盘剩余 5.0%（1.0 GB）', 'created_at': 1759650000},
+          {'id': 2, 'kind': 'upgrade', 'severity': 'info', 'server_id': 1, 'server_name': 'Tokyo', 'title': '✅ Tokyo Agent 已升级到 v0.5.8',
+            'message': '', 'created_at': 1759640000},
+        ]};
       } else if (p == '/api/v1/app/cloud') {
         body = cloudJson;
       } else if (p.endsWith('/reach')) {
@@ -164,6 +171,16 @@ void main() {
     await tester.pump();
     expect(find.textContaining('超过 120 秒未收到上报'), findsOneWidget);
     expect(find.textContaining('恢复'), findsWidgets);
+    // 系统事件（修订第 163 条）
+    await tester.tap(find.text('系统'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('磁盘空间不足'), findsOneWidget);
+    expect(find.textContaining('已升级到 v0.5.8'), findsOneWidget);
+    expect(find.textContaining('超过 120 秒未收到上报'), findsNothing);
+    await tester.tap(find.text('告警'));
+    await tester.pump();
+    await tester.pump();
 
     // 我的：隐私模式
     await tester.tap(find.text('我的'));

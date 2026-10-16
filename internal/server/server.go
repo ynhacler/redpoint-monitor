@@ -305,6 +305,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/audit-logs", accessAdmin, s.handleAuditLogs)
 	handle("GET /api/v1/audit-logs/export", accessAdmin, s.handleAuditExport)
 	handle("GET /api/v1/alerts", accessRead, s.handleAlerts)
+	handle("GET /api/v1/system-events", accessRead, s.handleSystemEvents) // 系统事件（修订第 163 条）
 	handle("GET /api/v1/alert-rules", accessAdmin, s.handleAlertRules)
 	handle("POST /api/v1/alert-rules", accessAdmin, s.handleCreateAlertRule)
 	handle("POST /api/v1/alert-rules/preview", accessAdmin, s.handlePreviewAlertRule)
@@ -759,10 +760,18 @@ func (s *Server) maintenance(ctx context.Context) {
 			if err := s.store.PruneSessions(now); err != nil {
 				s.log.Error("session prune failed", "component", "auth", "err", err)
 			}
-			if n, err := s.store.ExpireUpgradeTasks(now); err != nil {
+			if expired, err := s.store.ExpireUpgradeTasks(now); err != nil {
 				s.log.Error("upgrade task expiry failed", "component", "upgrade", "err", err)
+			} else if len(expired) > 0 {
+				s.log.Info("upgrade tasks timed out", "component", "upgrade", "tasks", len(expired))
+				for _, t := range expired {
+					s.recordUpgrade(t.ServerID, t.TargetVersion, UpgradeFailed, t.Reason, now) // 系统事件（修订第 163 条）
+				}
+			}
+			if n, err := s.store.PruneSystemEvents(now); err != nil {
+				s.log.Error("system event prune failed", "component", "events", "err", err)
 			} else if n > 0 {
-				s.log.Info("upgrade tasks timed out", "component", "upgrade", "tasks", n)
+				s.log.Info("expired system events deleted", "component", "events", "rows", n)
 			}
 			if n, err := s.store.PruneAlertEvents(now); err != nil {
 				s.log.Error("alert prune failed", "component", "alert", "err", err)
