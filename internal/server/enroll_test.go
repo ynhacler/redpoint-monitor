@@ -543,6 +543,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/reach-probes":                        accessAdmin,
 		"PUT /api/v1/reach-probes":                        accessAdmin,
 		"GET /api/v1/servers/{id}/reach":                  accessRead,
+		"PUT /api/v1/servers/{id}/container-names":        accessAdmin,
 		"GET /api/v1/servers/{id}/probe":                  accessAdmin,
 		"PUT /api/v1/servers/{id}/probe":                  accessAdmin,
 		"GET /api/v1/service-monitors":                    accessAdmin,

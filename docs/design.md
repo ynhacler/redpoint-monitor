@@ -362,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 164 | 容器监控：Agent 从 cgroup 读取运行中的 Docker / Podman 容器（CPU、内存与上限、进程数），不连接 Docker 套接字；容器名由用户在 Web 中命名；Web 与 App 节点详情显示 | 33.4 |
 | 163 | 系统事件：Agent 升级结果（含超时）、到期提醒、面板自身告警与自检另存为事件（180 天），GET /system-events 按授权范围过滤；App 事件中心增加“系统”标签，Web“告警 → 系统事件” | 1.5.17 |
 | 162 | 面板自身告警：后台任务反复崩溃、数据目录磁盘空间不足、写库连续失败、App 推送连续送不到 Relay，各告警一次、恢复时通知；所有渠道、不受免打扰限制 | 16.1 |
 | 161 | 查看者账号：只读的 Web 账号（最多 20 个），权限与只读 API Key 相同，可改自己的密码与两步验证；管理员在“系统 → 账号”中新建、重置密码、删除（需重新验证密码，密码只显示一次）；界面按角色隐藏修改类操作 | 17.4 |
@@ -8680,6 +8681,19 @@ SSL 到期时间
 CPU
 Memory
 Restart Count
+```
+
+实现（修订第 164 条）：Agent 只读 cgroup，不连接 Docker / Podman 套接字——能访问 docker.sock 等于拥有 root（约束 8）：
+
+```text
+来源      /sys/fs/cgroup 下 system.slice/docker-<ID>.scope、docker/<ID>（cgroupfs 驱动）、machine.slice/libpod-<ID>.scope；
+          v2 读 cpu.stat、memory.current / memory.max / memory.stat、pids.current，v1 读 memory、cpuacct、pids 三个层级
+每个容器  ID 前 12 位、运行时（docker / podman）、CPU（两次采样之间占整机的百分比，首次省略）、
+          内存（不含可回收的非活跃文件页，与整机口径一致，设计 4.5）与上限、进程数；按 CPU、内存从高到低最多 50 个
+做不到    容器名、已停止的容器、重启次数（都需要 Docker API）。容器名由用户在 Web 节点详情中给容器 ID 起名
+          （PUT /servers/{id}/container-names，container_names 表，节点删除时一并删除）
+面板      只在实时状态中（Report.containers），不入库；只在节点详情接口中返回，节点列表与实时推送省略
+界面      Web 节点详情“容器”卡片（管理员可命名，查看者只看）；App 节点详情“容器”区块（只读）
 ```
 
 ---

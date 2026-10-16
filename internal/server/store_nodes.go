@@ -161,6 +161,7 @@ func (s *Store) DeleteServer(id int64) (string, error) {
 		`DELETE FROM upgrade_tasks WHERE server_id = ?`,
 		`DELETE FROM probe_results WHERE server_id = ?`,
 		`DELETE FROM reach_results WHERE ? IN (server_id, probe_id)`, // 国内探针：被测与作为探针的结果
+		`DELETE FROM container_names WHERE server_id = ?`,            // 容器名称（修订第 164 条）
 		`DELETE FROM probe_targets WHERE server_id = ?`,              // 节点自己的测试目标
 		`DELETE FROM alert_rules WHERE scope_type = 'server' AND scope_id = CAST(? AS TEXT)`,
 		`DELETE FROM servers WHERE id = ?`,

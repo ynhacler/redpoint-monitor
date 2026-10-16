@@ -381,6 +381,12 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	if v.Latest != nil && len(v.Latest.Containers) > 0 {
+		if v.ContainerNames, err = s.store.ContainerNames(id); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+	}
 	writeJSON(w, v)
 }
 

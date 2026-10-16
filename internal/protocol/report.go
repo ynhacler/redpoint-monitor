@@ -22,6 +22,8 @@ type Report struct {
 	Processes *Processes   `json:"processes,omitempty"` // 可选（设计 4.9）
 	Conns     *Conns       `json:"conns,omitempty"`     // 可选（设计 4.9）
 	Ports     []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
+	// 可选：运行中的容器（Docker / Podman，设计 33.4，修订第 164 条）；从 cgroup 读取，没有容器时省略
+	Containers []Container `json:"containers,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -140,6 +142,17 @@ type ListenPort struct {
 	Proto string   `json:"proto"` // tcp / udp
 	Port  int      `json:"port"`
 	Addrs []string `json:"addrs"` // 监听地址，如 0.0.0.0、::、127.0.0.1
+}
+
+// Container 是一个运行中的容器（设计 33.4，修订第 164 条）：只读 cgroup 文件，不连接 Docker 套接字，
+// 因此没有容器名（由用户在面板中命名）、已停止的容器与重启次数。
+type Container struct {
+	ID       string   `json:"id"`                  // 容器 ID 的前 12 位
+	Runtime  string   `json:"runtime"`             // docker / podman
+	CPU      *float64 `json:"cpu,omitempty"`       // 占整机 CPU 的百分比（0～100）；首次采样省略
+	Memory   uint64   `json:"memory"`              // 内存用量（字节），不含可回收的非活跃文件页
+	MemLimit uint64   `json:"mem_limit,omitempty"` // 内存上限（字节）；0 表示不限
+	Pids     int      `json:"pids,omitempty"`      // 进程数
 }
 
 // ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。

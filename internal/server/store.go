@@ -882,6 +882,13 @@ var migrations = []string{
 		created_at INTEGER NOT NULL
 	);
 	CREATE INDEX system_events_time ON system_events (created_at);`,
+	// 迁移 45：容器名称（设计 33.4，修订第 164 条）：Agent 读不到容器名，由用户给容器 ID（前 12 位）命名；节点删除时一并删除
+	`CREATE TABLE container_names (
+		server_id    INTEGER NOT NULL,
+		container_id TEXT NOT NULL,
+		name         TEXT NOT NULL,
+		PRIMARY KEY (server_id, container_id)
+	);`,
 }
 
 func (s *Store) migrate() error {

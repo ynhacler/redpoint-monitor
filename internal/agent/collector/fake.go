@@ -71,7 +71,8 @@ func (f *fake) Collect() (protocol.Report, error) {
 		},
 		Memory: protocol.Memory{Total: memTotal, Used: memUsed, Available: memTotal - memUsed, Usage: pct(memUsed, memTotal),
 			Buffers: 48 << 20, Cached: 512 << 20, Free: memTotal - memUsed - 560<<20},
-		Processes: &protocol.Processes{Total: 120 + int(5*math.Sin(t/30)), Running: 1 + rand.Intn(3)},
+		Processes:  &protocol.Processes{Total: 120 + int(5*math.Sin(t/30)), Running: 1 + rand.Intn(3)},
+		Containers: fakeContainers(t),
 		Ports: []protocol.ListenPort{
 			{Proto: "tcp", Port: 22, Addrs: []string{"0.0.0.0", "::"}},
 			{Proto: "tcp", Port: 80, Addrs: []string{"0.0.0.0", "::"}},
@@ -98,4 +99,16 @@ func (f *fake) Collect() (protocol.Report, error) {
 			Interface: "eth0", IfIndex: 2, RxBytes: f.rx, TxBytes: f.tx, RxSpeed: rxSpeed, TxSpeed: txSpeed,
 		}},
 	}, nil
+}
+
+// fakeContainers 是开发用的示例容器（设计 33.4）：三个容器，CPU 与内存缓慢变化。
+func fakeContainers(t float64) []protocol.Container {
+	pct := func(base, amp, period float64) *float64 { v := base + amp*math.Sin(t/period); return &v }
+	cs := []protocol.Container{
+		{ID: "3f9a1c2b7d4e", Runtime: "docker", CPU: pct(12, 8, 25), Memory: uint64(310e6 + 40e6*math.Sin(t/90)), MemLimit: 512 << 20, Pids: 23},
+		{ID: "a81d0e55c6f2", Runtime: "docker", CPU: pct(2, 1, 40), Memory: 96 << 20, Pids: 4},
+		{ID: "c04be1f7a993", Runtime: "podman", CPU: pct(0.4, 0.2, 60), Memory: 18 << 20, MemLimit: 64 << 20, Pids: 1},
+	}
+	sortContainers(cs)
+	return cs
 }
