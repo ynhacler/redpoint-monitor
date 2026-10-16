@@ -69,7 +69,7 @@ func New(opts Options) Collector {
 	if len(opts.Exclude) == 0 {
 		opts.Exclude = DefaultExclude
 	}
-	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{},
+	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{}, containers: containerState{proc: "/proc"},
 		bits: counterBits(unameMachine()), statfs: newStatfsProber(statfs)}
 }
 

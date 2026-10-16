@@ -9378,6 +9378,10 @@
                 },
                 "pids": {
                   "type": "integer"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "容器主进程的进程名（如 nginx），容器重建后不变，可作默认标识；只有进程名、没有命令行。读不到时省略（修订第 165 条）"
                 }
               }
             }

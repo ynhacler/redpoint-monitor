@@ -105,9 +105,9 @@ func (f *fake) Collect() (protocol.Report, error) {
 func fakeContainers(t float64) []protocol.Container {
 	pct := func(base, amp, period float64) *float64 { v := base + amp*math.Sin(t/period); return &v }
 	cs := []protocol.Container{
-		{ID: "3f9a1c2b7d4e", Runtime: "docker", CPU: pct(12, 8, 25), Memory: uint64(310e6 + 40e6*math.Sin(t/90)), MemLimit: 512 << 20, Pids: 23},
-		{ID: "a81d0e55c6f2", Runtime: "docker", CPU: pct(2, 1, 40), Memory: 96 << 20, Pids: 4},
-		{ID: "c04be1f7a993", Runtime: "podman", CPU: pct(0.4, 0.2, 60), Memory: 18 << 20, MemLimit: 64 << 20, Pids: 1},
+		{ID: "3f9a1c2b7d4e", Runtime: "docker", CPU: pct(12, 8, 25), Memory: uint64(310e6 + 40e6*math.Sin(t/90)), MemLimit: 512 << 20, Pids: 23, Command: "nginx"},
+		{ID: "a81d0e55c6f2", Runtime: "docker", CPU: pct(2, 1, 40), Memory: 96 << 20, Pids: 4, Command: "node"},
+		{ID: "c04be1f7a993", Runtime: "podman", CPU: pct(0.4, 0.2, 60), Memory: 18 << 20, MemLimit: 64 << 20, Pids: 1, Command: "redis-server"},
 	}
 	sortContainers(cs)
 	return cs

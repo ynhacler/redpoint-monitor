@@ -11,9 +11,13 @@ package collector
 //	docker/<64 位十六进制>                       Docker，cgroupfs 驱动
 //	machine.slice/libpod-<64 位十六进制>.scope   Podman（root 运行）
 //
+// 自动标识（修订第 165 条）：容器重建后 ID 会变，用户起的名字随之失效；容器主进程的进程名（/proc/<pid>/comm）不变，
+// 随上报带上作为默认标识。只读进程名，不读命令行（命令行中可能有密码）；/proc 设置了 hidepid 时读不到，省略。
+//
 // 本文件不依赖操作系统（根目录作为参数，测试中用临时目录），linux.go 以 /sys/fs/cgroup 调用。
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,6 +41,7 @@ type containerDir struct {
 // containerSample 是一次读取的累计 CPU 时间与当前用量。
 type containerSample struct {
 	runtime  string
+	command  string
 	cpuUsec  uint64
 	cpuOK    bool
 	memory   uint64
@@ -133,8 +138,15 @@ func parseCPUStatUsec(s string) (uint64, bool) {
 }
 
 // readContainer 读取一个容器的当前数据；内存不含可回收的非活跃文件页（与整机内存口径一致，设计 4.5）。
-func readContainer(d containerDir) containerSample {
+func readContainer(d containerDir, proc string) containerSample {
 	smp := containerSample{runtime: d.runtime}
+	procsDir := d.v2
+	if procsDir == "" {
+		procsDir = cmp.Or(d.pidsV1, d.memory)
+	}
+	if procsDir != "" && proc != "" {
+		smp.command = containerCommand(procsDir, proc)
+	}
 	memDir, memCur, memMax, statFile := d.memory, "memory.usage_in_bytes", "memory.limit_in_bytes", "memory.stat"
 	if d.v2 != "" {
 		memDir, memCur, memMax = d.v2, "memory.current", "memory.max"
@@ -175,6 +187,7 @@ func readContainer(d containerDir) containerSample {
 type containerState struct {
 	prev   map[string]uint64
 	prevAt time.Time
+	proc   string // /proc 的位置；空表示不读进程名（测试中替换为临时目录）
 }
 
 // collect 读取全部容器并计算 CPU 占比（占整机，cpus 为 CPU 核数）；没有容器时返回 nil。
@@ -188,8 +201,9 @@ func (st *containerState) collect(root string, cpus int, now time.Time) []protoc
 	cur := make(map[string]uint64, len(dirs))
 	out := make([]protocol.Container, 0, len(dirs))
 	for _, d := range dirs {
-		smp := readContainer(d)
-		c := protocol.Container{ID: d.id[:12], Runtime: smp.runtime, Memory: smp.memory, MemLimit: smp.memLimit, Pids: smp.pids}
+		smp := readContainer(d, st.proc)
+		c := protocol.Container{ID: d.id[:12], Runtime: smp.runtime, Memory: smp.memory, MemLimit: smp.memLimit, Pids: smp.pids,
+			Command: smp.command}
 		if smp.cpuOK {
 			cur[d.id] = smp.cpuUsec
 			if p, ok := st.prev[d.id]; ok && dt > 0 && cpus > 0 && smp.cpuUsec >= p {
@@ -225,4 +239,59 @@ func sortContainers(cs []protocol.Container) {
 		}
 		return cs[i].ID < cs[j].ID
 	})
+}
+
+// wrapperComms 是容器里常见的引导进程：跳过它们，取真正的服务进程名。
+var wrapperComms = map[string]bool{"sh": true, "bash": true, "ash": true, "tini": true, "docker-init": true, "dumb-init": true,
+	"s6-svscan": true, "s6-supervise": true, "runsvdir": true, "supervisord": true, "catatonit": true}
+
+// containerCommand 返回容器主进程的进程名：在容器 cgroup（v2 中进程可能在子 cgroup 里，最多往下找两层）的前 20 个进程中，
+// 取第一个不是引导进程的；都是引导进程时取第一个。读不到时为空。
+func containerCommand(dir, proc string) string {
+	pids := cgroupPids(dir, 2)
+	first := ""
+	for i, pid := range pids {
+		if i >= 20 {
+			break
+		}
+		b, err := os.ReadFile(filepath.Join(proc, pid, "comm"))
+		if err != nil {
+			continue
+		}
+		comm := strings.TrimSpace(string(b))
+		if comm == "" {
+			continue
+		}
+		if !wrapperComms[comm] {
+			return comm
+		}
+		if first == "" {
+			first = comm
+		}
+	}
+	return first
+}
+
+// cgroupPids 读取 cgroup.procs；为空时到子目录中查找（depth 为最多再往下的层数）。
+func cgroupPids(dir string, depth int) []string {
+	if b, err := os.ReadFile(filepath.Join(dir, "cgroup.procs")); err == nil {
+		if f := strings.Fields(string(b)); len(f) > 0 {
+			return f
+		}
+	}
+	if depth == 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if p := cgroupPids(filepath.Join(dir, e.Name()), depth-1); len(p) > 0 {
+				return p
+			}
+		}
+	}
+	return nil
 }

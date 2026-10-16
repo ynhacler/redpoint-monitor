@@ -153,6 +153,9 @@ type Container struct {
 	Memory   uint64   `json:"memory"`              // 内存用量（字节），不含可回收的非活跃文件页
 	MemLimit uint64   `json:"mem_limit,omitempty"` // 内存上限（字节）；0 表示不限
 	Pids     int      `json:"pids,omitempty"`      // 进程数
+	// 可选：容器主进程的进程名（/proc/<pid>/comm，如 nginx、postgres），容器重建后 ID 变化而它不变，可作自动标识；
+	// 只取进程名，不取命令行（命令行中可能有密码）。读不到时省略（修订第 165 条）
+	Command string `json:"command,omitempty"`
 }
 
 // ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。

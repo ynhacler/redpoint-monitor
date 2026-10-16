@@ -612,13 +612,17 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Text(c.name.isNotEmpty ? c.name : c.id, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+              Expanded(child: Text(c.label, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
               Text('CPU ${fmtPct(c.cpu)}', style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
             ]),
             const SizedBox(height: 2),
             Row(children: [
               Expanded(
-                child: Text([c.id, c.runtime == 'podman' ? 'Podman' : 'Docker', if (c.pids > 0) '${c.pids} 个进程'].join(' · '), style: muted),
+                child: Text(
+                  [c.id, if (c.name.isNotEmpty && c.command.isNotEmpty) c.command, c.runtime == 'podman' ? 'Podman' : 'Docker',
+                    if (c.pids > 0) '${c.pids} 个进程'].join(' · '),
+                  style: muted,
+                ),
               ),
               Text(c.memLimit > 0 ? '${fmtBytes(c.memory)} / ${fmtBytes(c.memLimit)}' : fmtBytes(c.memory), style: muted),
             ]),

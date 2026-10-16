@@ -266,7 +266,8 @@ class AlertEvent {
 
 /// 运行中的容器（设计 33.4，修订第 164 条）：Agent 从 cgroup 读取，没有容器名；name 为用户在 Web 中起的名字（可为空）。
 class ContainerInfo {
-  ContainerInfo({required this.id, required this.runtime, this.cpu, required this.memory, this.memLimit = 0, this.pids = 0, this.name = ''});
+  ContainerInfo({required this.id, required this.runtime, this.cpu, required this.memory, this.memLimit = 0, this.pids = 0, this.name = '',
+      this.command = ''});
   final String id;
 
   /// docker / podman
@@ -280,6 +281,12 @@ class ContainerInfo {
   final int memLimit;
   final int pids;
   final String name;
+
+  /// 主进程名（如 nginx），容器重建后不变；旧版 Agent 或读不到时为空（修订第 165 条）
+  final String command;
+
+  /// 显示的标识：用户起的名字 → 主进程名 → 容器 ID
+  String get label => name.isNotEmpty ? name : (command.isNotEmpty ? command : id);
 
   /// 从节点详情的原始 JSON 读取（latest.containers 与 container_names）；旧版面板或没有容器时为空列表。
   static List<ContainerInfo> of(ServerView s) {
@@ -296,6 +303,7 @@ class ContainerInfo {
             memLimit: _int(c['mem_limit']) ?? 0,
             pids: _int(c['pids']) ?? 0,
             name: (names[c['id']] as String?) ?? '',
+            command: (c['command'] as String?) ?? '',
           ),
     ];
   }
