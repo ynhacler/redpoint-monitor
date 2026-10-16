@@ -329,6 +329,11 @@ export function listAlerts(q: Query<'/alerts', 'get'>) {
   return request('get', '/alerts', { query: q })
 }
 
+/** 设置节点的容器名称（容器 ID 前 12 位 → 名称；整体替换，名称为空表示删除，修订第 164 条） */
+export function putContainerNames(id: number, names: Record<string, string>) {
+  return request('put', '/servers/{id}/container-names', { params: { id }, body: { names } })
+}
+
 /** 系统事件（修订第 163 条） */
 export type SystemEvent = G.SystemEvent
 /** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */

@@ -77,6 +77,12 @@ void main() {
       node(2, 'HK-1', 'offline', group: 'hk'),
       node(3, 'SG-calm', 'online', group: 'sg'),
     ];
+    // Tokyo 上有容器（设计 33.4）：一个已命名、长名称测试窄屏不溢出，一个首次采样没有 CPU
+    (nodes[0]['latest'] as Map)['containers'] = [
+      {'id': '3f9a1c2b7d4e', 'runtime': 'docker', 'cpu': 18.4, 'memory': 480000000, 'mem_limit': 536870912, 'pids': 23},
+      {'id': 'c04be1f7a993', 'runtime': 'podman', 'memory': 18000000},
+    ];
+    nodes[0]['container_names'] = {'3f9a1c2b7d4e': 'nginx-reverse-proxy-with-a-very-long-container-name'};
     // 正常节点 SG-calm 没有告警，CPU 改成 10
     (nodes[2]['latest'] as Map)['cpu'] = {'usage': 10, 'cores': 2, 'load1': 0.1};
     final client = MockClient((req) async {
@@ -208,6 +214,12 @@ void main() {
     await tester.scrollUntilVisible(find.text('资产'), 200, scrollable: detail);
     expect(find.text('103.***.***.1'), findsOneWidget);
     expect(find.text('DMIT'), findsNothing);
+    // 容器：名称或 ID、CPU、内存与上限
+    await tester.scrollUntilVisible(find.text('容器'), 200, scrollable: detail);
+    expect(find.text('nginx-reverse-proxy-with-a-very-long-container-name'), findsOneWidget);
+    expect(find.text('c04be1f7a993'), findsOneWidget);
+    expect(find.text('CPU 18%'), findsOneWidget);
+    expect(find.textContaining('Podman'), findsOneWidget);
     // 国内可达性：结论、各探针状态与最近一轮
     await tester.scrollUntilVisible(find.text('国内可达性'), 200, scrollable: detail);
     expect(find.text('移动不可达'), findsOneWidget);

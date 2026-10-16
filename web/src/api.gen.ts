@@ -436,6 +436,8 @@ export interface ServerView {
   traffic_count_mode: 'sum' | 'rx' | 'tx' | 'max'
   created_at: number
   latest?: Report
+  /** 用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略 */
+  container_names?: Record<string, string>
   traffic_unit: 'decimal' | 'binary'
   traffic_factor: number
   traffic: TrafficView
@@ -889,6 +891,19 @@ export interface Report {
     /** 监听地址，如 0.0.0.0、::、127.0.0.1 */
     addrs: string[]
   })[]
+  /** 可选（设计 33.4，修订第 164 条）：运行中的 Docker / Podman 容器，从 cgroup 读取，按 CPU、内存从高到低，最多 50 个。 不连接 Docker 套接字，因此没有容器名（见节点的 container_names）、已停止的容器与重启次数。节点列表接口省略此字段 */
+  containers?: ({
+    /** 容器 ID 前 12 位 */
+    id: string
+    runtime: 'docker' | 'podman'
+    /** 占整机 CPU 的百分比；首次采样省略 */
+    cpu?: number
+    /** 内存用量（字节），不含可回收的非活跃文件页 */
+    memory: number
+    /** 内存上限（字节）；省略或 0 表示不限 */
+    mem_limit?: number
+    pids?: number
+  })[]
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
     name: string
@@ -946,7 +961,7 @@ export interface Report {
   }[]
   /** 可选：本轮失败的采集项及原因，对应字段留空，其余照常（设计 43.5） */
   collect_errors?: ({
-    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'extra'
+    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'containers' | 'extra'
     message: string
   })[]
   /** 可选：扩展指标（设计 4.10），字段定义见 internal/protocol.Extra。面板保存在实时状态中随接口返回，暂不入库也不展示。 读不到或内核不提供的项省略；速率为与上一次采样之间的平均值。 */
@@ -2520,6 +2535,21 @@ export interface Paths {
         probes: ReachProbe[]
       }
       response: ReachProbes
+    }
+  }
+  '/servers/{id}/container-names': {
+    /** 设置容器名称（修订第 164 条）：整体替换，名称为空表示删除；最多 100 个（记入操作日志） */
+    put: {
+      params: {
+        id: number
+      }
+      body: {
+        /** 容器 ID 前 12 位（十六进制）→ 名称 */
+        names: Record<string, string>
+      }
+      response: {
+        names: Record<string, string>
+      }
     }
   }
   '/servers/{id}/reach': {

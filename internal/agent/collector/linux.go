@@ -56,6 +56,8 @@ type linux struct {
 	prevSnmp  map[string]map[string]uint64
 	prevExtra time.Time
 	env       cached[*protocol.Environment]
+
+	containers containerState // 容器的上一次 CPU 累计时间（设计 33.4）
 }
 
 // sensorFile 是一个可信 CPU 温度传感器的读数文件。
@@ -181,6 +183,7 @@ func (c *linux) Collect() (protocol.Report, error) {
 		}
 		r.Ports = c.ports
 	})
+	guard(&errs, "containers", func() { r.Containers = c.containers.collect("/sys/fs/cgroup", runtime.NumCPU(), now) })
 	guard(&errs, "disk", func() { r.Disk = c.collectDisks(&errs, readFile("/proc/self/mounts")) })
 	guard(&errs, "disk_io", func() { r.DiskIO = c.collectDiskIO(now) })
 	guard(&errs, "network", func() { r.Network = c.collectNetwork(&errs, now) })

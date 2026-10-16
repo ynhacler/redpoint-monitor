@@ -264,6 +264,43 @@ class AlertEvent {
       );
 }
 
+/// 运行中的容器（设计 33.4，修订第 164 条）：Agent 从 cgroup 读取，没有容器名；name 为用户在 Web 中起的名字（可为空）。
+class ContainerInfo {
+  ContainerInfo({required this.id, required this.runtime, this.cpu, required this.memory, this.memLimit = 0, this.pids = 0, this.name = ''});
+  final String id;
+
+  /// docker / podman
+  final String runtime;
+
+  /// 占整机 CPU 的百分比；首次采样为 null
+  final double? cpu;
+  final int memory;
+
+  /// 0 表示不限
+  final int memLimit;
+  final int pids;
+  final String name;
+
+  /// 从节点详情的原始 JSON 读取（latest.containers 与 container_names）；旧版面板或没有容器时为空列表。
+  static List<ContainerInfo> of(ServerView s) {
+    final latest = s.raw['latest'] as Map<String, dynamic>?;
+    final names = (s.raw['container_names'] as Map<String, dynamic>?) ?? const {};
+    return [
+      for (final c in (latest?['containers'] as List<dynamic>?) ?? const [])
+        if (c is Map<String, dynamic>)
+          ContainerInfo(
+            id: (c['id'] as String?) ?? '',
+            runtime: (c['runtime'] as String?) ?? 'docker',
+            cpu: (c['cpu'] as num?)?.toDouble(),
+            memory: _int(c['memory']) ?? 0,
+            memLimit: _int(c['mem_limit']) ?? 0,
+            pids: _int(c['pids']) ?? 0,
+            name: (names[c['id']] as String?) ?? '',
+          ),
+    ];
+  }
+}
+
 /// 系统事件（GET /system-events，修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警；serverId 为 0 表示不属于某个节点。
 class SystemEvent {
   SystemEvent({required this.id, required this.kind, required this.severity, required this.serverId, required this.serverName,

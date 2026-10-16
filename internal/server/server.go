@@ -365,6 +365,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/reach-probes", accessAdmin, s.handleReachProbes)        // 国内探针（修订第 154 条）
 	handle("PUT /api/v1/reach-probes", accessAdmin, s.handlePutReachProbes)
 	handle("GET /api/v1/servers/{id}/reach", accessRead, s.handleServerReach)
+	handle("PUT /api/v1/servers/{id}/container-names", accessAdmin, s.handleContainerNames) // 容器名称（修订第 164 条）
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
@@ -826,6 +827,8 @@ type serverView struct {
 	// 生效中的维护与节点级静音（节点、分组或全部）；没有时省略（设计 16.6）
 	Maintenance *Silence `json:"maintenance,omitempty"`
 	Muted       *Silence `json:"muted,omitempty"`
+	// 容器名称（修订第 164 条）：只在节点详情中、且上报带容器时返回
+	ContainerNames map[string]string `json:"container_names,omitempty"`
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。

@@ -309,6 +309,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
             _section(context, '测速延迟', _latencyView(context)),
           if (_reach != null && _reach!.configured && _reach!.probes.isNotEmpty) _section(context, '国内可达性', _reachView(context)),
+          if (ContainerInfo.of(s).isNotEmpty) _section(context, '容器', _containersView(context, ContainerInfo.of(s))),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
@@ -601,6 +602,45 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   }
 
   /// 云实例：账户、地区与类型、规格、状态、到期、流量包与账户本月费用；隐私模式下账户名打码
+  /// 容器（设计 33.4，修订第 164 条）：只读；名称在 Web 中设置，没有名称时显示容器 ID。
+  Widget _containersView(BuildContext context, List<ContainerInfo> cs) {
+    final ac = appColors(context);
+    final muted = TextStyle(fontSize: 12, color: ac.textMuted);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (final c in cs)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(c.name.isNotEmpty ? c.name : c.id, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+              Text('CPU ${fmtPct(c.cpu)}', style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+            ]),
+            const SizedBox(height: 2),
+            Row(children: [
+              Expanded(
+                child: Text([c.id, c.runtime == 'podman' ? 'Podman' : 'Docker', if (c.pids > 0) '${c.pids} 个进程'].join(' · '), style: muted),
+              ),
+              Text(c.memLimit > 0 ? '${fmtBytes(c.memory)} / ${fmtBytes(c.memLimit)}' : fmtBytes(c.memory), style: muted),
+            ]),
+            if (c.memLimit > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: (c.memory / c.memLimit).clamp(0.0, 1.0),
+                    minHeight: 4,
+                    backgroundColor: ac.track,
+                    color: c.memory >= c.memLimit * 0.95 ? ac.bad : (c.memory >= c.memLimit * 0.8 ? ac.warn : ac.ok),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      Text('从 cgroup 读取，不含已停止的容器；容器名在 Web 节点详情中设置。', style: muted),
+    ]);
+  }
+
   Widget _cloudView(BuildContext context) {
     final c = appColors(context);
     final muted = TextStyle(fontSize: 13, color: c.textMuted);

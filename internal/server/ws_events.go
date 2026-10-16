@@ -8,12 +8,13 @@ import (
 	"time"
 )
 
-// listView 返回节点在列表中的视图：去掉只在详情页使用的每核使用率、监听端口与扩展指标，减小事件体积。
+// listView 返回节点在列表中的视图：去掉只在详情页使用的每核使用率、监听端口、容器与扩展指标，减小事件体积。
 func listView(v serverView) serverView {
-	if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil || v.Latest.Extra != nil) {
+	if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil || v.Latest.Containers != nil || v.Latest.Extra != nil) {
 		rep := *v.Latest
 		rep.CPU.PerCore = nil
 		rep.Ports = nil
+		rep.Containers = nil
 		rep.Extra = nil
 		v.Latest = &rep
 	}

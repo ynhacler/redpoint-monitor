@@ -5461,6 +5461,79 @@
         }
       }
     },
+    "/servers/{id}/container-names": {
+      "put": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "设置容器名称（修订第 164 条）：整体替换，名称为空表示删除；最多 100 个（记入操作日志）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "names"
+                ],
+                "properties": {
+                  "names": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "description": "容器 ID 前 12 位（十六进制）→ 名称"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存后的名称",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "names"
+                  ],
+                  "properties": {
+                    "names": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/servers/{id}/reach": {
       "get": {
         "security": [
@@ -7595,6 +7668,13 @@
           "latest": {
             "$ref": "#/components/schemas/Report"
           },
+          "container_names": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略"
+          },
           "traffic_unit": {
             "type": "string",
             "enum": [
@@ -9261,6 +9341,47 @@
               }
             }
           },
+          "containers": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "可选（设计 33.4，修订第 164 条）：运行中的 Docker / Podman 容器，从 cgroup 读取，按 CPU、内存从高到低，最多 50 个。\n不连接 Docker 套接字，因此没有容器名（见节点的 container_names）、已停止的容器与重启次数。节点列表接口省略此字段\n",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "runtime",
+                "memory"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "容器 ID 前 12 位"
+                },
+                "runtime": {
+                  "type": "string",
+                  "enum": [
+                    "docker",
+                    "podman"
+                  ]
+                },
+                "cpu": {
+                  "type": "number",
+                  "description": "占整机 CPU 的百分比；首次采样省略"
+                },
+                "memory": {
+                  "type": "integer",
+                  "description": "内存用量（字节），不含可回收的非活跃文件页"
+                },
+                "mem_limit": {
+                  "type": "integer",
+                  "description": "内存上限（字节）；省略或 0 表示不限"
+                },
+                "pids": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "watch_procs": {
             "type": "array",
             "maxItems": 20,
@@ -9453,6 +9574,7 @@
                     "processes",
                     "conns",
                     "ports",
+                    "containers",
                     "extra"
                   ]
                 },
