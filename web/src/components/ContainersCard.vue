@@ -48,22 +48,25 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
       <h3>容器</h3>
       <span class="muted small">{{ containers.length }} 个运行中</span>
     </div>
-    <p class="muted small note">从 cgroup 读取（不连接 Docker），因此没有容器名、已停止的容器与重启次数；{{ isViewer ? '' : '可以给容器起名。' }}</p>
+    <p class="muted small note">
+      从 cgroup 读取（不连接 Docker），因此没有容器名、已停止的容器与重启次数；默认显示容器主进程名。{{ isViewer ? '' : '名字按容器 ID 保存，容器重建后需重新命名。' }}
+    </p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <ul class="list">
       <li v-for="c in containers" :key="c.id">
         <div class="who">
           <form v-if="editing === c.id" class="rename" @submit.prevent="save">
-            <input v-model="draft" maxlength="40" :placeholder="c.id" aria-label="容器名称" autofocus />
+            <input v-model="draft" maxlength="40" :placeholder="c.command || c.id" aria-label="容器名称" autofocus />
             <button type="submit" class="small" :disabled="saving">保存</button>
             <button type="button" class="text small" @click="editing = ''">取消</button>
           </form>
           <template v-else>
-            <strong>{{ names[c.id] || c.id }}</strong>
+            <!-- 标识：用户起的名字 → 主进程名（容器重建后不变，修订第 165 条）→ 容器 ID -->
+            <strong>{{ names[c.id] || c.command || c.id }}</strong>
             <button v-if="!isViewer" type="button" class="text small" @click="edit(c.id)">{{ names[c.id] ? '改名' : '命名' }}</button>
           </template>
           <div class="muted small">
-            <span class="num">{{ c.id }}</span> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ c.pids }} 个进程</template>
+            <span class="num">{{ c.id }}</span><template v-if="names[c.id] && c.command"> · {{ c.command }}</template> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ c.pids }} 个进程</template>
           </div>
         </div>
         <div class="nums">

@@ -46,7 +46,7 @@ func TestContainersV2(t *testing.T) {
 		p + "cpu.stat":       "usage_usec 0\n",
 		p + "memory.current": "2000",
 		// 不是容器：普通服务与 ID 不完整的目录
-		"system.slice/sshd.service/cpu.stat":    "usage_usec 1\n",
+		"system.slice/sshd.service/cpu.stat":     "usage_usec 1\n",
 		"system.slice/docker-abc.scope/cpu.stat": "usage_usec 1\n",
 	})
 	var st containerState
@@ -131,5 +131,51 @@ func TestContainersCap(t *testing.T) {
 	var st containerState
 	if got := st.collect(root, 1, time.Now()); len(got) != maxContainers {
 		t.Fatalf("应只保留 %d 个，实际 %d", maxContainers, len(got))
+	}
+}
+
+// 自动标识（修订第 165 条）：跳过引导进程取服务进程名；进程在子 cgroup 中（Podman）也能找到；读不到时为空。
+func TestContainerCommand(t *testing.T) {
+	root, proc := t.TempDir(), t.TempDir()
+	a := "system.slice/docker-" + idA + ".scope/"
+	p := "machine.slice/libpod-" + idP + ".scope/"
+	b := "docker/" + idB + "/"
+	writeFiles(t, root, map[string]string{
+		"cgroup.controllers":         "memory",
+		a + "memory.current":         "1",
+		a + "cgroup.procs":           "101\n102\n103\n",
+		p + "memory.current":         "1",
+		p + "cgroup.procs":           "",
+		p + "container/cgroup.procs": "201\n",
+		b + "memory.current":         "1",
+		b + "cgroup.procs":           "301\n",
+	})
+	writeFiles(t, proc, map[string]string{
+		"101/comm": "tini\n",
+		"102/comm": "sh\n",
+		"103/comm": "nginx\n",
+		"201/comm": "postgres\n",
+		// 301 读不到（进程已退出或 hidepid）
+	})
+	st := containerState{proc: proc}
+	got := map[string]string{}
+	for _, c := range st.collect(root, 1, time.Now()) {
+		got[c.ID] = c.Command
+	}
+	if got[idA[:12]] != "nginx" || got[idP[:12]] != "postgres" || got[idB[:12]] != "" {
+		t.Fatalf("进程名不对：%v", got)
+	}
+	// 只有引导进程时取第一个
+	writeFiles(t, root, map[string]string{a + "cgroup.procs": "101\n102\n"})
+	for _, c := range st.collect(root, 1, time.Now()) {
+		if c.ID == idA[:12] && c.Command != "tini" {
+			t.Fatalf("只有引导进程时应取第一个：%q", c.Command)
+		}
+	}
+	// 不读 /proc（proc 为空）时省略
+	for _, c := range (&containerState{}).collect(root, 1, time.Now()) {
+		if c.Command != "" {
+			t.Fatalf("不读 /proc 时不应有进程名：%+v", c)
+		}
 	}
 }

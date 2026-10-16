@@ -27,7 +27,7 @@ func TestContainersRealDocker(t *testing.T) {
 	id := strings.TrimSpace(string(out))
 	defer exec.Command("docker", "rm", "-f", id).Run()
 
-	var st containerState
+	st := containerState{proc: "/proc"}
 	st.collect("/sys/fs/cgroup", 1, time.Now())
 	time.Sleep(1500 * time.Millisecond)
 	got := st.collect("/sys/fs/cgroup", 1, time.Now())
@@ -35,7 +35,7 @@ func TestContainersRealDocker(t *testing.T) {
 		if c.ID != id[:12] {
 			continue
 		}
-		if c.Runtime != "docker" || c.MemLimit != 64<<20 || c.Memory == 0 || c.CPU == nil || *c.CPU <= 0 || c.Pids < 1 {
+		if c.Runtime != "docker" || c.MemLimit != 64<<20 || c.Memory == 0 || c.CPU == nil || *c.CPU <= 0 || c.Pids < 1 || c.Command != "sh" {
 			t.Fatalf("测试容器的读数不对：%+v cpu=%v", c, c.CPU)
 		}
 		return

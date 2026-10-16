@@ -903,6 +903,8 @@ export interface Report {
     /** 内存上限（字节）；省略或 0 表示不限 */
     mem_limit?: number
     pids?: number
+    /** 容器主进程的进程名（如 nginx），容器重建后不变，可作默认标识；只有进程名、没有命令行。读不到时省略（修订第 165 条） */
+    command?: string
   })[]
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
