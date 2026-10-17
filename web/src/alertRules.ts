@@ -20,6 +20,7 @@ export const ruleNames: Record<string, string> = {
   probe_latency: '测速延迟',
   probe_loss: '测速丢包',
   reach: '国内不可达（疑似被墙）',
+  container: '容器已停止',
 }
 
 /** 告警级别的中文名称 */
@@ -29,7 +30,7 @@ export const severityNames: Record<AlertSeverity, string> = { critical: '严重'
 export function thresholdUnit(type: string): string {
   if (type === 'offline' || type === 'agent_clock') return '秒'
   if (type === 'load') return '倍核数'
-  if (type === 'process') return '个'
+  if (type === 'process' || type === 'container') return '个'
   if (type === 'probe_latency') return 'ms'
   if (type === 'reach') return '级' // 1 不稳定、2 单运营商或端口不可达、3 全部探针不可达（修订第 154 条）
   return '%'
@@ -43,7 +44,7 @@ export function thresholdRange(type: string): { min: number; max: number; step: 
     case 'traffic': return { min: 1, max: 200, step: 1 }
     case 'traffic_forecast': return { min: 50, max: 1000, step: 1 }
     case 'agent_clock': return { min: 10, max: 86400, step: 10 }
-    case 'process': return { min: 1, max: 20, step: 1 }
+    case 'process': case 'container': return { min: 1, max: 20, step: 1 }
     case 'probe_latency': return { min: 20, max: 2000, step: 10 }
     case 'reach': return { min: 1, max: 3, step: 1 }
   }

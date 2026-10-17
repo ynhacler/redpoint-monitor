@@ -309,7 +309,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
             _section(context, '测速延迟', _latencyView(context)),
           if (_reach != null && _reach!.configured && _reach!.probes.isNotEmpty) _section(context, '国内可达性', _reachView(context)),
-          if (ContainerInfo.of(s).isNotEmpty) _section(context, '容器', _containersView(context, ContainerInfo.of(s))),
+          if (ContainerInfo.of(s).isNotEmpty || ContainerMissing.of(s).isNotEmpty)
+            _section(context, '容器', _containersView(context, ContainerInfo.of(s), ContainerMissing.of(s))),
           if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
           if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
           if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
@@ -603,10 +604,21 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
 
   /// 云实例：账户、地区与类型、规格、状态、到期、流量包与账户本月费用；隐私模式下账户名打码
   /// 容器（设计 33.4，修订第 164 条）：只读；名称在 Web 中设置，没有名称时显示容器 ID。
-  Widget _containersView(BuildContext context, List<ContainerInfo> cs) {
+  Widget _containersView(BuildContext context, List<ContainerInfo> cs, List<ContainerMissing> missing) {
     final ac = appColors(context);
     final muted = TextStyle(fontSize: 12, color: ac.textMuted);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 已停止的容器（修订第 166 条）：“不再提醒”在 Web 中操作
+      for (final m in missing)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(children: [
+            Icon(Icons.stop_circle_outlined, size: 16, color: ac.warn),
+            const SizedBox(width: 6),
+            Expanded(child: Text('已停止：${m.label}${m.missing > 1 ? ' ×${m.missing}' : ''}', style: TextStyle(color: ac.warn))),
+            Text('${fmtTime(m.since)} 起', style: muted),
+          ]),
+        ),
       for (final c in cs)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),

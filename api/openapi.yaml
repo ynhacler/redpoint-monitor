@@ -1926,6 +1926,18 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/containers/forget:
+    post:
+      tags: [servers]
+      summary: 不再提醒已停止的容器（修订第 166 条）：以当前运行的容器为准，“容器已停止”告警随之恢复（记入操作日志）
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { label: { type: string, description: 只忘记这个主进程名；省略表示全部 } } } } }
+      responses:
+        '204': { description: 已更新 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/reach:
     get:
       security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
@@ -2585,6 +2597,18 @@ components:
           type: object
           additionalProperties: { type: string }
           description: 用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略
+        containers_missing:
+          type: array
+          description: |
+            已停止的容器（修订第 166 条）：按主进程名统计，运行中的数量少于曾经运行的数量；“容器已停止”告警据此评估。
+            只在节点详情接口中返回，没有时省略
+          items:
+            type: object
+            required: [label, missing, since]
+            properties:
+              label: { type: string, description: 主进程名，如 nginx }
+              missing: { type: integer, description: 少了几个 }
+              since: { type: integer, description: 开始缺少的时间（Unix 秒） }
         traffic_unit: { type: string, enum: [decimal, binary] }
         traffic_factor: { type: number }
         traffic: { $ref: '#/components/schemas/TrafficView' }
@@ -2627,7 +2651,7 @@ components:
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
         scope_type: { type: string, enum: [global, group, server] }
         scope_id: { type: string }
-        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process, probe_latency, probe_loss, reach] }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process, probe_latency, probe_loss, reach, container] }
         operator: { type: string, enum: ['>', '>='] }
         threshold: { type: number }
         recover_threshold: { type: number, description: 低于此值恢复（回差） }

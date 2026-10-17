@@ -309,6 +309,21 @@ class ContainerInfo {
   }
 }
 
+/// 已停止的容器（修订第 166 条）：按主进程名比曾经运行的少了 missing 个，since 起；只在节点详情中返回。
+class ContainerMissing {
+  ContainerMissing({required this.label, required this.missing, required this.since});
+  final String label;
+  final int missing;
+  final int since;
+
+  /// 从节点详情的原始 JSON 读取；旧版面板或没有时为空列表。
+  static List<ContainerMissing> of(ServerView s) => [
+        for (final m in (s.raw['containers_missing'] as List<dynamic>?) ?? const [])
+          if (m is Map<String, dynamic>)
+            ContainerMissing(label: (m['label'] as String?) ?? '', missing: _int(m['missing']) ?? 1, since: _int(m['since']) ?? 0),
+      ];
+}
+
 /// 系统事件（GET /system-events，修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警；serverId 为 0 表示不属于某个节点。
 class SystemEvent {
   SystemEvent({required this.id, required this.kind, required this.severity, required this.serverId, required this.serverName,

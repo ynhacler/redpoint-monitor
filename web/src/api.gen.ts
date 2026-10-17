@@ -438,6 +438,15 @@ export interface ServerView {
   latest?: Report
   /** 用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略 */
   container_names?: Record<string, string>
+  /** 已停止的容器（修订第 166 条）：按主进程名统计，运行中的数量少于曾经运行的数量；“容器已停止”告警据此评估。 只在节点详情接口中返回，没有时省略 */
+  containers_missing?: {
+    /** 主进程名，如 nginx */
+    label: string
+    /** 少了几个 */
+    missing: number
+    /** 开始缺少的时间（Unix 秒） */
+    since: number
+  }[]
   traffic_unit: 'decimal' | 'binary'
   traffic_factor: number
   traffic: TrafficView
@@ -476,7 +485,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -2552,6 +2561,19 @@ export interface Paths {
       response: {
         names: Record<string, string>
       }
+    }
+  }
+  '/servers/{id}/containers/forget': {
+    /** 不再提醒已停止的容器（修订第 166 条）：以当前运行的容器为准，“容器已停止”告警随之恢复（记入操作日志） */
+    post: {
+      params: {
+        id: number
+      }
+      body?: {
+        /** 只忘记这个主进程名；省略表示全部 */
+        label?: string
+      }
+      response: void
     }
   }
   '/servers/{id}/reach': {

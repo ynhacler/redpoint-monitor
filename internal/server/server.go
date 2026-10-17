@@ -74,6 +74,7 @@ type Server struct {
 	heartbeat     *heartbeatState // 面板心跳（设计 1.10.3）
 	totp          *totpFlows      // 进行中的两步验证登录与设置（修订第 160 条）
 	health        *panelHealth    // 面板自身告警：后台任务、磁盘、写库、推送（设计 16.1）
+	cwatch        *containerWatch // 容器已停止：各节点曾经运行的容器数量（修订第 166 条）
 	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 	ws            *wsHub          // WebSocket 事件推送（设计 20）
 	cloud         *cloudState     // 云厂商账户同步（设计 44）
@@ -138,6 +139,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
+	s.cwatch = newContainerWatch()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
@@ -365,7 +367,8 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/reach-probes", accessAdmin, s.handleReachProbes)        // 国内探针（修订第 154 条）
 	handle("PUT /api/v1/reach-probes", accessAdmin, s.handlePutReachProbes)
 	handle("GET /api/v1/servers/{id}/reach", accessRead, s.handleServerReach)
-	handle("PUT /api/v1/servers/{id}/container-names", accessAdmin, s.handleContainerNames) // 容器名称（修订第 164 条）
+	handle("PUT /api/v1/servers/{id}/container-names", accessAdmin, s.handleContainerNames)      // 容器名称（修订第 164 条）
+	handle("POST /api/v1/servers/{id}/containers/forget", accessAdmin, s.handleForgetContainers) // 不再提醒已停止的容器（修订第 166 条）
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
 	handle("GET /api/v1/servers/{id}/install-command", accessAdmin, s.handleInstallCommand)
@@ -447,6 +450,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 	// 实时事件（设计 45.2）：补发的旧数据不改变实时状态，不推送
 	if !old {
+		s.trackContainers(sid, rep, now) // 容器已停止（修订第 166 条）
 		s.publishMetrics(sid, now)
 	}
 }
@@ -829,6 +833,8 @@ type serverView struct {
 	Muted       *Silence `json:"muted,omitempty"`
 	// 容器名称（修订第 164 条）：只在节点详情中、且上报带容器时返回
 	ContainerNames map[string]string `json:"container_names,omitempty"`
+	// 已停止的容器（修订第 166 条）：只在节点详情中返回
+	ContainersMissing []containerMissing `json:"containers_missing,omitempty"`
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。

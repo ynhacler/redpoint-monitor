@@ -387,6 +387,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if v.ContainersMissing, err = s.containersMissing(id); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
 	writeJSON(w, v)
 }
 
@@ -454,6 +458,10 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 清理内存状态；同时丢弃尚未写库的上报，避免删除后又写入孤立的指标行
+	s.cwatch.mu.Lock() // 容器记录的缓存（修订第 166 条）：节点 ID 可能被复用
+	delete(s.cwatch.expect, id)
+	delete(s.cwatch.running, id)
+	s.cwatch.mu.Unlock()
 	s.mu.Lock()
 	delete(s.latest, id)
 	delete(s.counters, id)

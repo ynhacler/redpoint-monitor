@@ -1,13 +1,27 @@
 <script setup lang="ts">
 // 容器（设计 33.4，修订第 164 条）：Agent 从 cgroup 读到的运行中 Docker / Podman 容器，按 CPU、内存从高到低。
 // Agent 不连接 Docker 套接字，拿不到容器名：管理员可以给容器 ID 起名（保存在面板），查看者只看。
+// 已停止的容器（修订第 166 条）：按主进程名比曾经运行的少了的，列在顶部；主动停止的可点“不再提醒”。
 import { computed, ref, watch } from 'vue'
-import { errorText, putContainerNames, type ServerView } from '../api'
-import { fmtBytes, fmtPct } from '../format'
+import { errorText, forgetContainers, putContainerNames, type ServerView } from '../api'
+import { fmtBytes, fmtPct, fmtTime } from '../format'
 import { isViewer } from '../store'
 
 const props = defineProps<{ server: ServerView }>()
 const containers = computed(() => props.server.latest?.containers ?? [])
+const missing = computed(() => (props.server.containers_missing ?? []).filter((m) => !forgotten.value.has(m.label)))
+// 点了“不再提醒”的：立即隐藏，不必等下一次刷新
+const forgotten = ref(new Set<string>())
+
+async function forget(label: string) {
+  error.value = ''
+  try {
+    await forgetContainers(props.server.id, label)
+    forgotten.value = new Set([...forgotten.value, label])
+  } catch (e) {
+    error.value = errorText(e, '操作失败')
+  }
+}
 // 本地副本：保存后立即显示，不必等下一次刷新
 const names = ref<Record<string, string>>({ ...(props.server.container_names ?? {}) })
 
@@ -52,6 +66,14 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
       从 cgroup 读取（不连接 Docker），因此没有容器名、已停止的容器与重启次数；默认显示容器主进程名。{{ isViewer ? '' : '名字按容器 ID 保存，容器重建后需重新命名。' }}
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
+    <ul v-if="missing.length" class="missing">
+      <li v-for="m in missing" :key="m.label">
+        <span class="stopped">已停止</span>
+        <strong>{{ m.label }}</strong><span v-if="m.missing > 1" class="num"> ×{{ m.missing }}</span>
+        <span class="muted small">{{ fmtTime(m.since) }} 起</span>
+        <button v-if="!isViewer" type="button" class="text small" title="主动停止或缩容时点这里：以当前运行的容器为准" @click="forget(m.label)">不再提醒</button>
+      </li>
+    </ul>
     <ul class="list">
       <li v-for="c in containers" :key="c.id">
         <div class="who">
@@ -87,6 +109,11 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
 .head { display: flex; align-items: baseline; gap: var(--space-2); }
 .head h3 { margin: 0; }
 .note { margin: var(--space-1) 0 0; }
+.missing { list-style: none; margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 10%, transparent); display: flex; flex-direction: column; gap: var(--space-1); }
+.missing li { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.missing button { margin-left: auto; padding: 0; }
+.stopped { font-size: var(--font-xs); color: var(--warn); border: 1px solid currentColor; border-radius: var(--radius-full); padding: 0 var(--space-2); }
 .list { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
 .list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; flex-wrap: wrap; }
 .list li + li { border-top: 1px solid var(--border); }

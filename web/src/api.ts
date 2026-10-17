@@ -334,6 +334,11 @@ export function putContainerNames(id: number, names: Record<string, string>) {
   return request('put', '/servers/{id}/container-names', { params: { id }, body: { names } })
 }
 
+/** 不再提醒已停止的容器：以当前运行的为准；省略 label 表示全部（修订第 166 条） */
+export function forgetContainers(id: number, label?: string) {
+  return request('post', '/servers/{id}/containers/forget', { params: { id }, body: label ? { label } : {} })
+}
+
 /** 系统事件（修订第 163 条） */
 export type SystemEvent = G.SystemEvent
 /** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */
