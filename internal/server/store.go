@@ -889,6 +889,18 @@ var migrations = []string{
 		name         TEXT NOT NULL,
 		PRIMARY KEY (server_id, container_id)
 	);`,
+	// 迁移 46：容器已停止（修订第 166 条）。按主进程名记录节点曾经运行的容器数量与开始缺少的时间（0 表示不缺）；
+	// “容器已停止”规则默认启用：缺少 ≥ 1 个持续 2 分钟触发（避开重建时的短暂空档），全部回来即恢复
+	`CREATE TABLE container_expect (
+		server_id     INTEGER NOT NULL,
+		label         TEXT NOT NULL,
+		count         INTEGER NOT NULL,
+		missing_since INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (server_id, label)
+	);
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('container', 'container', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

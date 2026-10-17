@@ -313,6 +313,11 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		in.Reach = &v
 	}
 	s.alerts.mu.Unlock()
+	if in.Report != nil { // 离线时暂停评估（离线告警已覆盖）
+		if v, ok := s.containerAlertInput(row.ID); ok {
+			in.Containers = v
+		}
+	}
 	return in
 }
 

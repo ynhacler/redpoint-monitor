@@ -83,6 +83,9 @@ void main() {
       {'id': 'c04be1f7a993', 'runtime': 'podman', 'memory': 18000000, 'command': 'redis-server'},
     ];
     nodes[0]['container_names'] = {'3f9a1c2b7d4e': 'nginx-reverse-proxy-with-a-very-long-container-name'};
+    nodes[0]['containers_missing'] = [
+      {'label': 'postgres', 'missing': 1, 'since': 1759650000},
+    ];
     // 正常节点 SG-calm 没有告警，CPU 改成 10
     (nodes[2]['latest'] as Map)['cpu'] = {'usage': 10, 'cores': 2, 'load1': 0.1};
     final client = MockClient((req) async {
@@ -220,6 +223,7 @@ void main() {
     expect(find.text('redis-server'), findsOneWidget); // 没有名字时显示主进程名（修订第 165 条）
     expect(find.text('CPU 18%'), findsOneWidget);
     expect(find.textContaining('Podman'), findsOneWidget);
+    expect(find.text('已停止：postgres'), findsOneWidget); // 修订第 166 条
     // 国内可达性：结论、各探针状态与最近一轮
     await tester.scrollUntilVisible(find.text('国内可达性'), 200, scrollable: detail);
     expect(find.text('移动不可达'), findsOneWidget);
