@@ -7719,6 +7719,13 @@
             },
             "description": "用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略"
           },
+          "container_restarts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回"
+          },
           "containers_missing": {
             "type": "array",
             "description": "已停止的容器（修订第 166 条）：按主进程名统计，运行中的数量少于曾经运行的数量；“容器已停止”告警据此评估。\n只在节点详情接口中返回，没有时省略\n",
@@ -7921,7 +7928,8 @@
               "probe_latency",
               "probe_loss",
               "reach",
-              "container"
+              "container",
+              "container_restart"
             ]
           },
           "operator": {
@@ -9453,6 +9461,10 @@
                 "command": {
                   "type": "string",
                   "description": "容器主进程的进程名（如 nginx），容器重建后不变，可作默认标识；只有进程名、没有命令行。读不到时省略（修订第 165 条）"
+                },
+                "restarts": {
+                  "type": "integer",
+                  "description": "Agent 启动以来检测到的重启次数（CPU 累计时间归零，或消失后以同一 ID 再出现）；0 时省略（修订第 167 条）"
                 }
               }
             }

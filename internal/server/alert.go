@@ -22,12 +22,13 @@ const (
 	AlertLoad            = "load"
 	AlertTraffic         = "traffic"
 	AlertTrafficForecast = "traffic_forecast"
-	AlertAgentClock      = "agent_clock"   // Agent 异常：时钟偏差（设计 16.1、43.5）
-	AlertProcess         = "process"       // 关注的进程没有在运行（设计 33.5.1）
-	AlertProbeLatency    = "probe_latency" // 三网延迟偏高（设计 42.3.4）
-	AlertProbeLoss       = "probe_loss"    // 测速丢包偏高（设计 42.3.4）
-	AlertReach           = "reach"         // 国内不可达（疑似被墙，设计 42.2，修订第 154 条）
-	AlertContainer       = "container"     // 容器已停止（设计 33.4，修订第 166 条）
+	AlertAgentClock      = "agent_clock"       // Agent 异常：时钟偏差（设计 16.1、43.5）
+	AlertProcess         = "process"           // 关注的进程没有在运行（设计 33.5.1）
+	AlertProbeLatency    = "probe_latency"     // 三网延迟偏高（设计 42.3.4）
+	AlertProbeLoss       = "probe_loss"        // 测速丢包偏高（设计 42.3.4）
+	AlertReach           = "reach"             // 国内不可达（疑似被墙，设计 42.2，修订第 154 条）
+	AlertContainer       = "container"         // 容器已停止（设计 33.4，修订第 166 条）
+	AlertContainerLoop   = "container_restart" // 容器反复重启（设计 33.4，修订第 167 条）
 )
 
 // 告警级别（设计 16.1）。
@@ -90,13 +91,14 @@ func EffectiveRules(all []AlertRule, serverID int64, group string) []AlertRule {
 
 // alertInput 是评估一个节点所需的数据；字段为空表示该项没有数据（对应规则本轮跳过）。
 type alertInput struct {
-	OfflineFor time.Duration       // 距最后一次上报的时长
-	Report     *protocol.Report    // 最新上报；离线时为 nil（资源规则暂停评估，设计 16.3 NODATA）
-	Traffic    *trafficView        // 本周期流量；未计算时为 nil
-	ClockSkew  *float64            // Agent 时钟偏差（秒，正数为偏快）；离线或无法测量时为 nil
-	Probe      *probeAlertView     // 最近 30 分钟的三网延迟汇总；没有探测结果时为 nil
-	Reach      *reachVerdict       // 国内可达性结论；没有国内探针数据时为 nil
-	Containers *containerAlertView // 缺少的容器；没有容器记录或离线时为 nil
+	OfflineFor time.Duration         // 距最后一次上报的时长
+	Report     *protocol.Report      // 最新上报；离线时为 nil（资源规则暂停评估，设计 16.3 NODATA）
+	Traffic    *trafficView          // 本周期流量；未计算时为 nil
+	ClockSkew  *float64              // Agent 时钟偏差（秒，正数为偏快）；离线或无法测量时为 nil
+	Probe      *probeAlertView       // 最近 30 分钟的三网延迟汇总；没有探测结果时为 nil
+	Reach      *reachVerdict         // 国内可达性结论；没有国内探针数据时为 nil
+	Containers *containerAlertView   // 缺少的容器；没有容器记录或离线时为 nil
+	Restarts   *containerRestartView // 10 分钟内的容器重启；从未上报过容器或离线时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -169,6 +171,10 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if c := in.Containers; c != nil {
 			return float64(c.Missing), c.Detail, true
 		}
+	case AlertContainerLoop:
+		if c := in.Restarts; c != nil {
+			return float64(c.Max), c.Detail, true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -205,6 +211,8 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return "进程没有在运行：" + detail
 	case AlertContainer:
 		return "容器已停止：" + detail
+	case AlertContainerLoop:
+		return "容器反复重启（10 分钟内）：" + detail
 	case AlertProbeLatency:
 		return fmt.Sprintf("测速延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, detail)
 	case AlertProbeLoss:

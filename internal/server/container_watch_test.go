@@ -150,3 +150,69 @@ func TestContainerWatchIgnoresOldAgents(t *testing.T) {
 		t.Fatal("不应写入记录")
 	}
 }
+
+// 容器反复重启（修订第 167 条）：累计次数的增加记为重启；10 分钟内 ≥ 3 次告警，之后没有重启即恢复；
+// 节点详情显示 24 小时内的次数；Agent 重启（累计值变小）不算。
+func TestContainerRestartAlert(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	id, _, _ := s.store.CreateServer("loop-host", 0, 1)
+	t0 := time.Now().Add(time.Hour)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	report := func(sec, restarts int) {
+		t.Helper()
+		rep := protocol.Report{System: protocol.System{BootID: "b"}, Containers: []protocol.Container{
+			{ID: "aaaaaaaaaaaa", Runtime: "docker", Command: "worker", Restarts: restarts}}}
+		s.mu.Lock()
+		s.latest[id] = &snapshot{ReceivedAt: at(sec), At: at(sec), Report: rep}
+		s.mu.Unlock()
+		s.store.DB.Exec(`UPDATE servers SET last_seen_at = ?, enroll_state = 'enrolled' WHERE id = ?`, at(sec).Unix(), id)
+		s.trackContainers(id, rep, at(sec))
+		if err := s.evaluateAlerts(at(sec)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firing := func() []AlertEvent {
+		items, _, _ := s.store.ListAlertEvents(AlertQuery{State: StateFiring, Limit: 10})
+		var out []AlertEvent
+		for _, e := range items {
+			if e.Type == AlertContainerLoop {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	report(0, 4) // 面板第一次看到时已有的累计次数只作基线
+	report(10, 4)
+	report(20, 5)
+	report(30, 6)
+	if len(firing()) != 0 {
+		t.Fatal("10 分钟内 2 次不应告警")
+	}
+	report(40, 7)
+	f := firing()
+	if len(f) != 1 || !strings.Contains(f[0].Message, "worker 3 次") {
+		t.Fatalf("10 分钟内 3 次应告警：%+v", f)
+	}
+	// Agent 重启：累计值变小，只更新基线
+	report(50, 0)
+	report(60, 0)
+	// 24 小时内 3 次（Agent 重启不算）
+	if got := s.containerRestarts(id, at(60)); got["aaaaaaaaaaaa"] != 3 {
+		t.Fatalf("24 小时内应为 3 次：%v", got)
+	}
+	// 10 分钟后没有新的重启：恢复
+	report(700, 0)
+	if f := firing(); len(f) != 0 {
+		t.Fatalf("10 分钟内没有重启应恢复：%+v", f)
+	}
+	// 节点详情接口返回 24 小时内的次数
+	var v struct {
+		Restarts map[string]int `json:"container_restarts"`
+	}
+	rec := do(h, "GET", "/api/v1/servers/"+itoa(id), admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &v)
+	if rec.Code != 200 || v.Restarts["aaaaaaaaaaaa"] != 3 {
+		t.Fatalf("详情中的重启次数不对：%d %s", rec.Code, rec.Body)
+	}
+}

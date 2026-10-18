@@ -901,6 +901,10 @@ var migrations = []string{
 	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('container', 'container', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
+	// 迁移 47：“容器反复重启”规则（修订第 167 条）：某个容器 10 分钟内重启 ≥ 3 次触发，10 分钟内没有重启即恢复；默认启用
+	`INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('container_restart', 'container_restart', '>=', 3, 1, 0, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

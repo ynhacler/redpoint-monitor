@@ -438,6 +438,8 @@ export interface ServerView {
   latest?: Report
   /** 用户给容器起的名字（容器 ID 前 12 位 → 名称，修订第 164 条）；只在节点详情接口中返回，没有时省略 */
   container_names?: Record<string, string>
+  /** 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回 */
+  container_restarts?: Record<string, number>
   /** 已停止的容器（修订第 166 条）：按主进程名统计，运行中的数量少于曾经运行的数量；“容器已停止”告警据此评估。 只在节点详情接口中返回，没有时省略 */
   containers_missing?: {
     /** 主进程名，如 nginx */
@@ -485,7 +487,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container' | 'container_restart'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -914,6 +916,8 @@ export interface Report {
     pids?: number
     /** 容器主进程的进程名（如 nginx），容器重建后不变，可作默认标识；只有进程名、没有命令行。读不到时省略（修订第 165 条） */
     command?: string
+    /** Agent 启动以来检测到的重启次数（CPU 累计时间归零，或消失后以同一 ID 再出现）；0 时省略（修订第 167 条） */
+    restarts?: number
   })[]
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {

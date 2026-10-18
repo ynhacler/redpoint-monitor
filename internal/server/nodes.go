@@ -391,6 +391,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	v.ContainerRestarts = s.containerRestarts(id, time.Now())
 	writeJSON(w, v)
 }
 
@@ -461,6 +462,9 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	s.cwatch.mu.Lock() // 容器记录的缓存（修订第 166 条）：节点 ID 可能被复用
 	delete(s.cwatch.expect, id)
 	delete(s.cwatch.running, id)
+	delete(s.cwatch.lastRestarts, id)
+	delete(s.cwatch.restartAt, id)
+	delete(s.cwatch.labels, id)
 	s.cwatch.mu.Unlock()
 	s.mu.Lock()
 	delete(s.latest, id)

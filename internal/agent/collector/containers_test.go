@@ -179,3 +179,49 @@ func TestContainerCommand(t *testing.T) {
 		}
 	}
 }
+
+// 重启检测（修订第 167 条）：CPU 累计时间归零算一次；消失后以同一 ID 再出现算一次；消失超过 10 分钟后忘记；正常增长不算。
+func TestContainerRestarts(t *testing.T) {
+	root := t.TempDir()
+	dir := "system.slice/docker-" + idA + ".scope/"
+	writeFiles(t, root, map[string]string{"cgroup.controllers": "cpu", dir + "cpu.stat": "usage_usec 5000000\n", dir + "memory.current": "1"})
+	var st containerState
+	t0 := time.Unix(1_000_000, 0)
+	restarts := func(sec int) (int, bool) {
+		t.Helper()
+		got := st.collect(root, 1, t0.Add(time.Duration(sec)*time.Second))
+		if len(got) == 0 {
+			return 0, false
+		}
+		return got[0].Restarts, got[0].CPU != nil
+	}
+	if n, _ := restarts(0); n != 0 {
+		t.Fatal("首次不应有重启")
+	}
+	writeFiles(t, root, map[string]string{dir + "cpu.stat": "usage_usec 6000000\n"})
+	if n, cpu := restarts(10); n != 0 || !cpu {
+		t.Fatalf("正常增长不算重启：%d cpu=%v", n, cpu)
+	}
+	// 归零：重启一次，本轮不算 CPU 占比
+	writeFiles(t, root, map[string]string{dir + "cpu.stat": "usage_usec 20000\n"})
+	if n, cpu := restarts(20); n != 1 || cpu {
+		t.Fatalf("CPU 累计归零应算一次重启、本轮无 CPU：%d cpu=%v", n, cpu)
+	}
+	// 消失一轮后再出现：再算一次
+	os.RemoveAll(filepath.Join(root, dir))
+	if _, ok := restarts(30); ok {
+		t.Fatal("消失时不应上报")
+	}
+	writeFiles(t, root, map[string]string{dir + "cpu.stat": "usage_usec 100\n", dir + "memory.current": "1"})
+	if n, _ := restarts(40); n != 2 {
+		t.Fatalf("消失后再出现应再算一次：%d", n)
+	}
+	// 消失超过 10 分钟：忘记，再出现从 0 开始
+	os.RemoveAll(filepath.Join(root, dir))
+	restarts(50)
+	restarts(50 + 11*60)
+	writeFiles(t, root, map[string]string{dir + "cpu.stat": "usage_usec 100\n", dir + "memory.current": "1"})
+	if n, _ := restarts(50 + 12*60); n != 0 {
+		t.Fatalf("消失超过 10 分钟后应忘记：%d", n)
+	}
+}

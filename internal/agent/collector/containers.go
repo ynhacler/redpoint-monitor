@@ -183,38 +183,74 @@ func readContainer(d containerDir, proc string) containerSample {
 	return smp
 }
 
-// containerState 保存上一次的 CPU 累计时间，用于计算两次采样之间的 CPU 占比。
+// containerState 保存各容器上一次的 CPU 累计时间（计算 CPU 占比）与检测到的重启次数（修订第 167 条）。
 type containerState struct {
-	prev   map[string]uint64
+	seen   map[string]*seenContainer // 键为完整容器 ID
 	prevAt time.Time
 	proc   string // /proc 的位置；空表示不读进程名（测试中替换为临时目录）
 }
 
+// seenContainer 是一个见过的容器。
+type seenContainer struct {
+	usec        uint64
+	cpuOK       bool
+	absentSince time.Time // 本轮不在时记下时间；零值表示在
+	restarts    int       // Agent 启动以来检测到的重启次数
+}
+
+// restartForget 是容器消失多久后不再记住它：之后同一 ID 再出现不算重启（如几天后手动 docker start）。
+const restartForget = 10 * time.Minute
+
 // collect 读取全部容器并计算 CPU 占比（占整机，cpus 为 CPU 核数）；没有容器时返回 nil。
+//
+// 重启检测（修订第 167 条，不需要 Docker API）：容器重启时 cgroup 会重建，同一 ID 的 CPU 累计时间从 0 开始，
+// 比上一次小即为重启；容器短暂消失后以同一 ID 再出现（如反复崩溃、等待重启的间隙恰好采样）也算一次。
+// 两次采样之间多次重启只计一次。
 func (st *containerState) collect(root string, cpus int, now time.Time) []protocol.Container {
-	dirs := findContainers(root)
-	if len(dirs) == 0 {
-		st.prev = nil
-		return nil
+	if st.seen == nil {
+		st.seen = map[string]*seenContainer{}
 	}
+	dirs := findContainers(root)
 	dt := now.Sub(st.prevAt).Seconds()
-	cur := make(map[string]uint64, len(dirs))
+	present := make(map[string]bool, len(dirs))
 	out := make([]protocol.Container, 0, len(dirs))
 	for _, d := range dirs {
+		present[d.id] = true
 		smp := readContainer(d, st.proc)
 		c := protocol.Container{ID: d.id[:12], Runtime: smp.runtime, Memory: smp.memory, MemLimit: smp.memLimit, Pids: smp.pids,
 			Command: smp.command}
-		if smp.cpuOK {
-			cur[d.id] = smp.cpuUsec
-			if p, ok := st.prev[d.id]; ok && dt > 0 && cpus > 0 && smp.cpuUsec >= p {
-				pct := float64(smp.cpuUsec-p) / (dt * 1e6 * float64(cpus)) * 100
-				pct = min(max(pct, 0), 100)
-				c.CPU = &pct
-			}
+		sc := st.seen[d.id]
+		restarted := false
+		if sc == nil {
+			sc = &seenContainer{}
+			st.seen[d.id] = sc
+		} else if !sc.absentSince.IsZero() || (smp.cpuOK && sc.cpuOK && smp.cpuUsec < sc.usec) {
+			restarted = true
+			sc.restarts++
 		}
+		if smp.cpuOK && sc.cpuOK && !restarted && sc.absentSince.IsZero() && dt > 0 && cpus > 0 {
+			pct := float64(smp.cpuUsec-sc.usec) / (dt * 1e6 * float64(cpus)) * 100
+			pct = min(max(pct, 0), 100)
+			c.CPU = &pct
+		}
+		sc.usec, sc.cpuOK, sc.absentSince = smp.cpuUsec, smp.cpuOK, time.Time{}
+		c.Restarts = sc.restarts
 		out = append(out, c)
 	}
-	st.prev, st.prevAt = cur, now
+	for id, sc := range st.seen {
+		if present[id] {
+			continue
+		}
+		if sc.absentSince.IsZero() {
+			sc.absentSince = now
+		} else if now.Sub(sc.absentSince) > restartForget {
+			delete(st.seen, id)
+		}
+	}
+	st.prevAt = now
+	if len(out) == 0 {
+		return nil
+	}
 	sortContainers(out)
 	if len(out) > maxContainers {
 		out = out[:maxContainers]

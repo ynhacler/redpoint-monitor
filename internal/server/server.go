@@ -835,6 +835,8 @@ type serverView struct {
 	ContainerNames map[string]string `json:"container_names,omitempty"`
 	// 已停止的容器（修订第 166 条）：只在节点详情中返回
 	ContainersMissing []containerMissing `json:"containers_missing,omitempty"`
+	// 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）：只在节点详情中、有重启时返回
+	ContainerRestarts map[string]int `json:"container_restarts,omitempty"`
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
