@@ -165,7 +165,11 @@ const revokeError = ref('')
 const revokeDone = ref(false)
 const revoking = ref(false)
 async function revoke() {
-  if (!props.server || !revokePassword.value) return
+  if (!props.server) return
+  if (!revokePassword.value) {
+    revokeError.value = '请输入登录密码以确认'
+    return
+  }
   revoking.value = true
   revokeError.value = ''
   try {
@@ -185,7 +189,11 @@ const deletePassword = ref('')
 const deleteError = ref('')
 const deleting = ref(false)
 async function remove() {
-  if (!props.server || !deletePassword.value) return
+  if (!props.server) return
+  if (!deletePassword.value) {
+    deleteError.value = '请输入登录密码以确认'
+    return
+  }
   deleting.value = true
   deleteError.value = ''
   try {
@@ -404,7 +412,7 @@ async function remove() {
         <div class="row">
           <input v-model="revokePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
             @keydown.enter.prevent="revoke" />
-          <button type="button" class="danger-btn" :disabled="!revokePassword || revoking" @click="revoke">
+          <button type="button" class="danger-btn" :disabled="revoking" @click="revoke">
             {{ revoking ? '吊销中…' : '吊销 Token' }}
           </button>
         </div>
@@ -418,7 +426,7 @@ async function remove() {
       <div class="row">
         <input v-model="deletePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
           @keydown.enter.prevent="remove" />
-        <button type="button" class="danger-btn" :disabled="!deletePassword || deleting" @click="remove">
+        <button type="button" class="danger-btn" :disabled="deleting" @click="remove">
           {{ deleting ? '删除中…' : `删除 ${server.name}` }}
         </button>
       </div>

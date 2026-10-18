@@ -132,8 +132,8 @@ async function submit() {
       <SliderCaptcha v-if="captchaOn" ref="captchaRef" @done="(a) => (answer = a)" @disabled="captchaOn = false" />
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
       <button type="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
-      <p class="small muted hint">忘记密码：在面板主机上执行 <code>vpsmon-server admin reset-password</code>；
-        丢失两步验证设备且没有恢复码：执行 <code>vpsmon-server admin disable-totp</code></p>
+      <!-- 恢复命令不展示给未登录的访客（修订第 173 条）：见文档与 vpsmon-server --help -->
+      <p class="small muted hint">忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。</p>
     </form>
   </main>
 </template>

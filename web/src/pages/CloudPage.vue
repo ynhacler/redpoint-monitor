@@ -151,7 +151,10 @@ const deleting = ref<number | null>(null)
 const deletePassword = ref('')
 const deleteError = ref('')
 async function remove(a: CloudAccount) {
-  if (!deletePassword.value) return
+  if (!deletePassword.value) {
+    deleteError.value = '请输入登录密码以确认'
+    return
+  }
   deleteError.value = ''
   try {
     await reauth(deletePassword.value)
@@ -552,7 +555,7 @@ function expireTone(i: CloudInstance): string {
         <form v-if="deleting === a.id" class="confirm" @submit.prevent="remove(a)">
           <span class="small">删除账户及同步的费用、实例数据（不影响云上的资源）。输入当前登录密码确认：</span>
           <input v-model="deletePassword" type="password" autocomplete="current-password" />
-          <button type="submit" class="danger" :disabled="!deletePassword">删除</button>
+          <button type="submit" class="danger">删除</button>
           <span v-if="deleteError" class="small err">{{ deleteError }}</span>
         </form>
       </li>

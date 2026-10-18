@@ -167,7 +167,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
         <Chart :title="`${selectedName} · 延迟`" :series="series.lat" :format="fmtLatency" />
         <Chart :title="`${selectedName} · 丢包率`" :series="series.loss" :format="fmtPct" :max="100" />
       </div>
-      <p v-if="hasData" class="small muted foot">数值为最近 1 小时的中位数与丢包率；从这台 VPS 出发测量（设计 42.3.2），点击一行查看曲线。</p>
+      <p v-if="hasData" class="small muted foot">数值为最近 1 小时的中位数与丢包率；从这台 VPS 出发测量，点击一行查看曲线。</p>
     </template>
   </section>
 </template>

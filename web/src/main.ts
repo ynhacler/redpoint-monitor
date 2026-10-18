@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import { installAutofillSync } from './autofill'
 import { router } from './router'
 import './style.css'
 
@@ -24,4 +25,5 @@ router.onError((err) => {
   if (/dynamically imported module|Importing a module script failed|Failed to fetch/.test(String(err))) reloadOnce()
 })
 
+installAutofillSync() // 自动填充的值同步到页面状态（修订第 173 条）
 createApp(App).use(router).mount('#app')

@@ -145,6 +145,7 @@ WebSocket（实时刷新）经 Caddy 自动转发，无需额外配置。Nginx �
 浏览器打开 `https://monitor.example.com`，用 `admin` 和第 1.3 节显示的初始密码登录，按提示修改密码（至少 12 位）。
 
 > 忘记密码：在面板主机上执行 `sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon`。
+> 丢失两步验证设备且没有恢复码：执行 `sudo -u vpsmon vpsmon-server admin disable-totp --data /var/lib/vpsmon`，之后只用密码登录。
 
 ---
 
