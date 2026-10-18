@@ -1,11 +1,12 @@
 // 页面路由（设计 3.3、8.1、10、11）。地址可刷新、可分享；服务端对未知路径返回 index.html（SPA 回退）。
 // 未登录访问任何页面都先到 /login，登录后回到原页面；使用初始密码时只能停留在 /account（设计 17.4）。
 // 页面按 nav.ts 的 5 个分组组织（修订第 158 条）；原“设置”页拆到“监测”与“系统”，旧地址照常可用。
+import { ref } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
 
 // 原“设置”页各标签的新地址（修订第 158 条）；修订第 126 条前这些标签在告警页，/alerts?tab=… 同样转过去
-const settingsMoved: Record<string, string> = { probes: '/probes', ssl: '/ssl', services: '/services', account: '/account' }
+const settingsMoved: Record<string, string> = { probes: '/probes', ssl: '/ssl', services: '/services', account: '/account' } // /ssl 再转到告警规则
 
 /** 页面路由 */
 export const router = createRouter({
@@ -15,7 +16,8 @@ export const router = createRouter({
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { viewer: true, title: '账号' } },
     { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '告警' } },
     { path: '/probes', name: 'probes', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'probes' }, meta: { title: '测速设置' } },
-    { path: '/ssl', name: 'ssl', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'ssl' }, meta: { title: '证书' } },
+    // 证书到期并入“告警 → 规则”（修订第 173 条）：旧地址照常可用
+    { path: '/ssl', redirect: { path: '/alerts', query: { tab: 'rules' }, hash: '#ssl' } },
     { path: '/services', name: 'services', component: () => import('./pages/MonitorSettingsPage.vue'), props: { kind: 'services' }, meta: { title: '服务' } },
     // 旧“设置”页：按标签转到新位置，保留 #锚点（如国内探针 #reach）
     { path: '/settings', redirect: (to) => ({ path: settingsMoved[to.query.tab as string] ?? '/probes', query: {}, hash: to.hash }) },
@@ -81,3 +83,38 @@ router.beforeEach(async (to) => {
 router.afterEach((to) => {
   document.title = `${to.meta.title ?? ''} · VPS Monitor`
 })
+
+// ---- 加载状态与预取（修订第 173 条） ----
+// 页面按需加载：首次打开某页要先下载它的代码（节点详情还要下载图表库），网络慢时会有数秒没有反应，
+// 用户以为点击无效又点一次。这里提供“正在加载”的状态供顶部进度条使用，并在登录后空闲时预取全部页面的代码。
+
+/** 是否正在切换页面（超过 150 毫秒才置为 true，快速切换时进度条不闪） */
+export const navigating = ref(false)
+let navTimer: ReturnType<typeof setTimeout> | undefined
+router.beforeEach(() => {
+  clearTimeout(navTimer)
+  navTimer = setTimeout(() => (navigating.value = true), 150)
+})
+const navDone = () => {
+  clearTimeout(navTimer)
+  navigating.value = false
+}
+router.afterEach(navDone)
+router.onError(navDone)
+
+let prefetched = false
+/** 登录后在浏览器空闲时预取全部页面的代码（含图表库），之后切换页面不再等待下载 */
+export function prefetchPages() {
+  if (prefetched) return
+  prefetched = true
+  const run = () => {
+    for (const r of router.getRoutes()) {
+      const c = r.components?.default
+      if (typeof c === 'function') (c as () => Promise<unknown>)().catch(() => { /* 预取失败不影响使用，打开时再加载 */ })
+    }
+    import('./components/Chart.vue').catch(() => {})
+  }
+  const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback
+  if (idle) idle(run)
+  else setTimeout(run, 1500)
+}

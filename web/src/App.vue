@@ -8,6 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
 import { activeAlertCount } from './metrics'
 import { activeGroup, groupsFor, itemActive } from './nav'
+import { navigating, prefetchPages } from './router'
 import { isViewer, logout, state, stopPolling } from './store'
 import { applyTheme, cycleTheme, themeMode } from './theme'
 
@@ -22,6 +23,8 @@ const group = computed(() => activeGroup(route, groups.value))
 
 // 面板版本显示在页脚（登录后读取一次）；git describe 的形式如 v0.4.1、v0.4.1-3-gabc123
 const panelVersion = ref('')
+// 登录后预取全部页面的代码，之后切换页面不再等待下载（修订第 173 条）
+watch(signedIn, (on) => { if (on) prefetchPages() }, { immediate: true })
 watch(signedIn, async (on) => {
   if (!on || panelVersion.value) return
   try {
@@ -71,8 +74,11 @@ onUnmounted(stopPolling)
   <div v-if="state.error && signedIn" class="page banner-wrap">
     <div class="banner">{{ state.error }}</div>
   </div>
+  <!-- 页面加载中：顶部细进度条；首次确认登录状态时显示占位，不再只剩顶栏（修订第 173 条） -->
+  <div v-if="navigating || !state.authChecked" class="progress" role="progressbar" aria-label="加载中" />
   <ErrorBoundary>
     <RouterView v-if="state.authChecked" />
+    <main v-else class="page loading muted small">加载中…</main>
   </ErrorBoundary>
   <footer v-if="signedIn && panelVersion" class="footer small">
     VPS Monitor 面板 <span class="num" title="面板版本（Agent 版本见“Agent 升级”页）">{{ panelVersion }}</span>
@@ -80,6 +86,11 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
+.progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 20; overflow: hidden; }
+.progress::after { content: ''; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--accent);
+  animation: progress 1s ease-in-out infinite; }
+@keyframes progress { from { left: -30%; } to { left: 100%; } }
+.loading { text-align: center; padding-top: var(--space-8); }
 .footer { max-width: var(--max-width); margin: var(--space-7) auto var(--space-5); padding: 0 var(--space-4); color: var(--text-muted);
   text-align: center; }
 .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }

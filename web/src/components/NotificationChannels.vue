@@ -9,6 +9,7 @@ import { severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
 import HeartbeatSettings from './HeartbeatSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
+import { setNotifyChannels } from './NotifyWarning.vue'
 
 
 const channels = ref<NotifyChannel[]>([])
@@ -24,6 +25,7 @@ async function load() {
   try {
     const [c, d] = await Promise.all([listChannels(), listDeliveries(30)])
     channels.value = c.items
+    setNotifyChannels(c.items.filter((x) => x.enabled).length) // 更新“没有通知渠道”的提醒（修订第 173 条）
     deliveries.value = d.items
   } catch (e) {
     fail(e)

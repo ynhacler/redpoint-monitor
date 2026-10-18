@@ -90,3 +90,7 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
   .page { padding: var(--space-4) var(--space-3) var(--space-6); }
   .panel { padding: var(--space-4); }
 }
+
+/* 自动填充检测（autofill.ts，修订第 173 条）：浏览器自动填充时触发这个空动画，脚本据此把值同步到页面状态 */
+@keyframes vpsmon-autofill { from { opacity: 1; } to { opacity: 1; } }
+input:-webkit-autofill { animation-name: vpsmon-autofill; animation-duration: 1ms; }

@@ -12,6 +12,8 @@ import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
 import NotificationChannels from '../components/NotificationChannels.vue'
+import NotifyWarning from '../components/NotifyWarning.vue'
+import SslMonitors from '../components/SslMonitors.vue'
 import SystemEvents from '../components/SystemEvents.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
 import { installed } from '../store'
@@ -23,7 +25,7 @@ const tab = computed(() => (['system', 'rules', 'silences', 'notify'].includes(r
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
-  set(errorText(e, '加载失败，请稍后重试'))
+  set(errorText(e, '加载失败，请稍后重试') || '登录已过期，请刷新页面')
 }
 
 // ---- 告警 ----
@@ -50,12 +52,17 @@ const duration = (e: AlertEvent) => fmtDuration((e.resolved_at || Date.now() / 1
 const rules = ref<AlertRule[]>([])
 const rulesError = ref('')
 const editing = ref<number | null>(null) // 正在编辑的规则 ID
+// 加载中显示提示：网络慢时不再是一片空白（修订第 173 条）
+const loadingRules = ref(false)
 async function loadRules() {
+  loadingRules.value = true
   try {
     rules.value = await listAlertRules()
     rulesError.value = ''
   } catch (e) {
     fail(e, (m) => (rulesError.value = m))
+  } finally {
+    loadingRules.value = false
   }
 }
 const globals = computed(() => rules.value.filter((r) => r.scope_type === 'global'))
@@ -137,6 +144,8 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
       <!-- 告警 / 规则 / 静音 / 通知在顶栏下方的二级导航中切换（修订第 158 条） -->
       <h1>{{ tabTitles[tab] }}</h1>
     </div>
+    <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
+    <NotifyWarning v-if="tab !== 'notify'" />
 
     <!-- 告警：全部节点 -->
     <template v-if="tab === 'alerts'">
@@ -148,7 +157,10 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
         <span class="muted small">告警事件保留 180 天；通知渠道见“通知”标签</span>
       </div>
       <p v-if="eventsError" class="banner">{{ eventsError }}</p>
-      <EmptyState v-else-if="!loadingEvents && !events.length" :text="stateFilter === 'active' ? '没有进行中的告警，全部节点运行正常。' : '还没有告警。'" />
+      <p v-else-if="loadingEvents && !events.length" class="muted small">加载中…</p>
+      <!-- 两个标签的空状态说法一致（修订第 173 条） -->
+      <EmptyState v-else-if="!events.length"
+        :text="stateFilter === 'active' ? '没有进行中的告警，全部节点运行正常。' : '最近 180 天没有告警记录，全部节点一直运行正常。'" />
       <ul v-if="events.length" class="panel list">
         <li v-for="e in events" :key="e.id" :class="[e.severity, e.state]">
           <span class="sev">{{ severityNames[e.severity] }}</span>
@@ -223,13 +235,15 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
     <!-- 规则 -->
     <template v-else>
       <p class="muted small intro">
-        规则分三层：默认规则 → 分组覆盖 → 节点覆盖，下层覆盖上层（设计 16.2）。修改后下一轮评估（10 秒内）生效。
+        规则分三层：默认规则 → 分组覆盖 → 节点覆盖，下层覆盖上层。修改后下一轮评估（10 秒内）生效。
       </p>
       <p v-if="rulesError" class="banner">{{ rulesError }}</p>
 
       <section class="section">
         <h3>默认规则</h3>
-        <ul class="panel rules">
+        <p v-if="loadingRules && !globals.length" class="muted small">加载中…</p>
+        <p v-else-if="!globals.length && !rulesError" class="muted small">没有读到默认规则，请刷新页面。</p>
+        <ul v-if="globals.length" class="panel rules">
           <li v-for="r in globals" :key="r.id" :class="{ off: !r.enabled }">
             <div class="rule">
               <label class="switch" :title="r.enabled ? '点击关闭' : '点击启用'">
@@ -300,6 +314,12 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
             <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" />
           </li>
         </ul>
+      </section>
+
+      <!-- 证书到期（设计 33.3）：原“监测 → 证书”页并入这里（修订第 173 条），提醒经通知渠道发送 -->
+      <section id="ssl" class="section">
+        <h3>证书到期</h3>
+        <SslMonitors />
       </section>
     </template>
   </main>

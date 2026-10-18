@@ -112,6 +112,13 @@ const revokedByText: Record<string, string> = {
   admin: '管理员吊销', app: '设备自行解除', access_key: '随 AK 吊销', refresh_reuse: '凭证重复使用，已自动吊销',
 }
 const activeDevices = computed(() => devices.value.filter((d) => d.status === 'active').length)
+// 已失效的设备与 AK 默认收起（修订第 173 条）：用完、过期、吊销的记录不再占满列表，需要时再展开
+const showOldDevices = ref(false)
+const showOldKeys = ref(false)
+const shownDevices = computed(() => (showOldDevices.value ? devices.value : devices.value.filter((d) => d.status === 'active')))
+const shownKeys = computed(() => (showOldKeys.value ? keys.value : keys.value.filter((k) => k.status === 'active')))
+const oldDevices = computed(() => devices.value.length - activeDevices.value)
+const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').length)
 </script>
 
 <template>
@@ -213,8 +220,8 @@ const activeDevices = computed(() => devices.value.filter((d) => d.status === 'a
 
     <section class="panel">
       <h2>已连接设备 <span class="muted small num">{{ activeDevices }}</span></h2>
-      <ul v-if="devices.length" class="list">
-        <li v-for="d in devices" :key="d.id" :class="{ off: d.status !== 'active' }">
+      <ul v-if="shownDevices.length" class="list">
+        <li v-for="d in shownDevices" :key="d.id" :class="{ off: d.status !== 'active' }">
           <div class="who">
             <strong>{{ d.name }}</strong>
             <span class="small muted"> {{ platformName[d.platform] ?? d.platform }}{{ d.app_version ? ` · App ${d.app_version}` : '' }}</span>
@@ -229,13 +236,17 @@ const activeDevices = computed(() => devices.value.filter((d) => d.status === 'a
           <button v-if="d.status === 'active'" type="button" class="secondary small" @click="revokeDevice(d)">吊销</button>
         </li>
       </ul>
-      <p v-else class="small muted empty">{{ DASH }} 还没有设备。创建 AK 后在 App 中扫码或填写即可配对。</p>
+      <p v-else-if="!devices.length" class="small muted empty">{{ DASH }} 还没有设备。创建 AK 后在 App 中扫码或填写即可配对。</p>
+      <p v-else-if="!showOldDevices" class="small muted empty">{{ DASH }} 没有在用的设备。</p>
+      <button v-if="oldDevices" type="button" class="text small more" @click="showOldDevices = !showOldDevices">
+        {{ showOldDevices ? '收起已失效的设备' : `显示已失效的 ${oldDevices} 台设备` }}
+      </button>
     </section>
 
     <section class="panel">
       <h2>配对 AK</h2>
-      <ul v-if="keys.length" class="list">
-        <li v-for="k in keys" :key="k.id" :class="{ off: k.status !== 'active' }">
+      <ul v-if="shownKeys.length" class="list">
+        <li v-for="k in shownKeys" :key="k.id" :class="{ off: k.status !== 'active' }">
           <div class="who">
             <strong>{{ k.name }}</strong> <span class="small muted mono">{{ k.hint }}</span>
             <span class="tag" :class="{ live: k.status === 'active' }">{{ statusText[k.status] ?? k.status }}</span>
@@ -248,12 +259,17 @@ const activeDevices = computed(() => devices.value.filter((d) => d.status === 'a
           <button v-if="!k.revoked_at" type="button" class="secondary small" @click="revokeKey(k)">吊销</button>
         </li>
       </ul>
-      <p v-else class="small muted empty">{{ DASH }} 还没有 AK</p>
+      <p v-else-if="!keys.length" class="small muted empty">{{ DASH }} 还没有 AK</p>
+      <p v-else-if="!showOldKeys" class="small muted empty">{{ DASH }} 没有可用的 AK。</p>
+      <button v-if="oldKeys" type="button" class="text small more" @click="showOldKeys = !showOldKeys">
+        {{ showOldKeys ? '收起已失效的 AK' : `显示已用完、过期或吊销的 ${oldKeys} 个 AK` }}
+      </button>
     </section>
   </main>
 </template>
 
 <style scoped>
+.more { margin-top: var(--space-2); padding: 0; }
 .intro { margin: 0 0 var(--space-4); max-width: 72ch; }
 .panel + .panel, .created + .panel, .editor + .panel { margin-top: var(--space-4); }
 .panel h2 { font-size: var(--font-lg); margin-bottom: var(--space-2); }

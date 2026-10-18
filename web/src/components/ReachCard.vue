@@ -50,7 +50,8 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
 </script>
 
 <template>
-  <section class="panel reach">
+  <!-- 没有国内探针时不显示（修订第 173 条）：设置入口与说明只在“监测 → 测速设置”中 -->
+  <section v-if="error || view?.configured" class="panel reach">
     <div class="head">
       <h3>国内可达性</h3>
       <span v-if="view?.text" class="verdict" :class="tone(view.status)">{{ view.text }}</span>
@@ -58,10 +59,7 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="!view.configured" class="small muted note">
-        还没有国内探针。把一台位于国内的节点设为探针后，它会定期探测其他节点，判断国内能否访问（疑似被墙、端口被封、线路不稳定）。
-      </p>
-      <p v-else-if="!view.probes.length" class="small muted note">国内探针还没有测到这台节点：探针收到列表后约 20 秒测第一轮。</p>
+      <p v-if="!view.probes.length" class="small muted note">国内探针还没有测到这台节点：探针收到列表后约 20 秒测第一轮。</p>
       <template v-else>
         <table class="probes">
           <thead>

@@ -35,7 +35,6 @@ export const navGroups: NavGroup[] = [
     key: 'monitor', name: '监测', items: [
       { name: '测速对比', to: '/latency', viewer: true },
       { name: '测速设置', to: '/probes' },
-      { name: '证书', to: '/ssl' },
       { name: '服务', to: '/services' },
     ],
   },

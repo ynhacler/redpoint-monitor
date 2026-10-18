@@ -53,8 +53,8 @@ async function run(kind: 'save' | 'test') {
       </span>
     </div>
     <p class="muted small">
-      面板自己停止或断网时，上面的告警都发不出去。在 Healthchecks.io、Uptime Kuma（推送监控）、Better Stack 等外部服务建一个心跳监控，
-      把它给的地址填在这里：面板按间隔访问这个地址，超时没收到时由那边通知你。请求不带任何节点数据。
+      面板自己停止或断网时，上面的告警都发不出去。填一个任意心跳监控服务给的 URL（如 Healthchecks.io）：
+      面板按间隔访问它，超时没收到时由那边通知你。请求不带任何节点数据。
     </p>
     <div class="fields" :class="{ off: !form.enabled }">
       <label class="url">地址
