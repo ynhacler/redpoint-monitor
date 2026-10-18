@@ -8,6 +8,7 @@ import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import ContainersCard from '../components/ContainersCard.vue'
 import FirewallCard from '../components/FirewallCard.vue'
+import PortBaselineCard from '../components/PortBaselineCard.vue'
 import ProxiesCard from '../components/ProxiesCard.vue'
 import HealthCard from '../components/HealthCard.vue'
 import LatencyCard from '../components/LatencyCard.vue'
@@ -236,6 +237,10 @@ const charts = computed(() => [
         <!-- 容器（设计 33.4，修订第 164 条）：上报带容器时显示 -->
         <section v-if="liveServer.latest.containers?.length || liveServer.containers_missing?.length" class="section">
           <ContainersCard :server="liveServer" />
+        </section>
+        <!-- 端口基线（修订第 170 条）：只给管理员 -->
+        <section v-if="!isViewer && liveServer.latest.ports" class="section">
+          <PortBaselineCard :server="liveServer" />
         </section>
         <!-- 代理（修订第 169 条）：面板只返回给管理员 -->
         <section v-if="liveServer.latest.proxies?.length || liveServer.proxies_missing?.length" class="section">

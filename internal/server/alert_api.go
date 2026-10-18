@@ -140,6 +140,8 @@ func thresholdRange(typ string) (lo, hi float64, unit string) {
 		return 1, 20, "个"
 	case AlertContainerLoop:
 		return 1, 100, "次"
+	case AlertPortNew, AlertPortGone:
+		return 1, 200, "个"
 	case AlertProbeLatency:
 		return 20, 2000, "ms"
 	case AlertReach:

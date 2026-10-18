@@ -916,6 +916,17 @@ var migrations = []string{
 	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('proxy', 'proxy', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
+	// 迁移 49：端口基线（修订第 170 条）。ports 为 JSON 数组（如 ["22/tcp","443/tcp"]）；没有行表示没有设置、不评估。
+	// 两条规则默认启用：未知监听端口持续 1 分钟、基线端口未监听持续 2 分钟触发（监听端口每分钟刷新一次）
+	`CREATE TABLE port_baseline (
+		server_id  INTEGER PRIMARY KEY,
+		ports      TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('port_new', 'port_new', '>=', 1, 1, 60, 0, 'warning', 0, 1, unixepoch(), unixepoch()),
+		('port_gone', 'port_gone', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {
