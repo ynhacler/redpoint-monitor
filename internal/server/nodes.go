@@ -392,7 +392,13 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.ContainerRestarts = s.containerRestarts(id, time.Now())
-	writeJSON(w, adminOnly(v, r)) // 防火墙只给管理员（修订第 168 条）
+	if info(r).principal == roleAdmin { // 代理只给管理员（修订第 169 条）
+		if v.ProxiesMissing, err = s.proxiesMissing(id); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+	}
+	writeJSON(w, adminOnly(v, r)) // 防火墙与代理只给管理员（修订第 168、169 条）
 }
 
 // handleUpdateServer：PUT /api/v1/servers/{id}，admin。整体替换可编辑信息（字段同新建，enroll_ttl 忽略）；
@@ -466,6 +472,10 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	delete(s.cwatch.restartAt, id)
 	delete(s.cwatch.labels, id)
 	s.cwatch.mu.Unlock()
+	s.pwatch.mu.Lock()
+	delete(s.pwatch.seen, id)
+	delete(s.pwatch.problems, id)
+	s.pwatch.mu.Unlock()
 	s.mu.Lock()
 	delete(s.latest, id)
 	delete(s.counters, id)

@@ -320,6 +320,9 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		if v, ok := s.containerRestartInput(row.ID, now); ok {
 			in.Restarts = v
 		}
+		if v, ok := s.proxyAlertInput(row.ID); ok {
+			in.Proxies = v
+		}
 	}
 	return in
 }

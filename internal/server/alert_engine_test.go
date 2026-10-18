@@ -165,8 +165,8 @@ func TestAlertEngine(t *testing.T) {
 	}
 	var rules struct{ Items []AlertRule }
 	json.Unmarshal(do(h, "GET", "/api/v1/alert-rules", admin, nil).Body.Bytes(), &rules)
-	if len(rules.Items) != 20 || rules.Items[0].ScopeType != "global" || rules.Items[19].ScopeType != "server" {
-		t.Errorf("规则列表应为 19 条默认 + 1 条节点规则：%d", len(rules.Items))
+	if len(rules.Items) != 21 || rules.Items[0].ScopeType != "global" || rules.Items[20].ScopeType != "server" {
+		t.Errorf("规则列表应为 20 条默认 + 1 条节点规则：%d", len(rules.Items))
 	}
 }
 

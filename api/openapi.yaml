@@ -1938,6 +1938,18 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/proxies/forget:
+    post:
+      tags: [servers]
+      summary: 不再提醒没有运行的代理（修订第 169 条）：主动停用或卸载后点这里，“代理异常”告警中这部分随之恢复（记入操作日志）
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { name: { type: string, description: 只忘记这个代理；省略表示全部没有运行的 } } } } }
+      responses:
+        '204': { description: 已更新 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/reach:
     get:
       security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
@@ -2601,6 +2613,15 @@ components:
           type: object
           additionalProperties: { type: integer }
           description: 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回
+        proxies_missing:
+          type: array
+          description: 曾经运行、现在没有运行的代理程序（修订第 169 条）；只在管理员的节点详情中返回，没有时省略
+          items:
+            type: object
+            required: [name, since]
+            properties:
+              name: { type: string }
+              since: { type: integer, description: 发现没有运行的时间（Unix 秒） }
         containers_missing:
           type: array
           description: |
@@ -2655,7 +2676,7 @@ components:
         rule_key: { type: string, description: 同一规则在三层中的标识，下层按它覆盖上层 }
         scope_type: { type: string, enum: [global, group, server] }
         scope_id: { type: string }
-        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process, probe_latency, probe_loss, reach, container, container_restart] }
+        type: { type: string, enum: [offline, cpu, memory, disk, swap, load, traffic, traffic_forecast, agent_clock, process, probe_latency, probe_loss, reach, container, container_restart, proxy] }
         operator: { type: string, enum: ['>', '>='] }
         threshold: { type: number }
         recover_threshold: { type: number, description: 低于此值恢复（回差） }
@@ -3122,6 +3143,34 @@ components:
                         port: { type: string, description: '22、8000:9000；省略表示全部端口' }
                         from: { type: string, description: 来源地址；省略表示任意 }
                         service: { type: string, description: 服务名（firewalld 服务、fail2ban jail） }
+        proxies:
+          type: array
+          description: |
+            可选（修订第 169 条）：代理程序——按进程名识别，协议与端口来自可读的配置文件，不含任何密钥。
+            只在管理员的节点详情中返回（查看者、只读 API Key、App 与节点列表都省略）
+          items:
+            type: object
+            required: [name, running]
+            properties:
+              name: { type: string, description: 'xray、v2ray、sing-box、hysteria、trojan、trojan-go、shadowsocks、tuic、gost、brook、frps、openvpn、wireguard、x-ui' }
+              running: { type: boolean, description: 有进程在运行（WireGuard 为接口存在）；false 表示只找到了配置 }
+              procs: { type: integer }
+              config: { type: string, description: 读取的配置文件 }
+              config_no: { type: string, enum: [unreadable, invalid], description: 'unreadable：配置只有 root 可读；invalid：格式无法识别' }
+              inbounds:
+                type: array
+                maxItems: 30
+                items:
+                  type: object
+                  required: [protocol, port, listening]
+                  properties:
+                    protocol: { type: string, description: 'vless、vmess、trojan、shadowsocks、hysteria2、tuic、socks、http、wireguard、openvpn 等' }
+                    port: { type: integer }
+                    network: { type: string, enum: [tcp, udp] }
+                    transport: { type: string, description: 'ws、grpc、h2、httpupgrade、xhttp、kcp、quic 等' }
+                    security: { type: string, description: 'tls、reality、none' }
+                    local: { type: boolean, description: 只监听回环地址 }
+                    listening: { type: boolean, description: 本机正在监听该端口 }
         watch_procs:
           type: array
           maxItems: 20
@@ -3192,7 +3241,7 @@ components:
             type: object
             required: [item, message]
             properties:
-              item: { type: string, enum: [system, cpu, memory, disk, disk_io, network, processes, conns, ports, containers, firewall, extra] }
+              item: { type: string, enum: [system, cpu, memory, disk, disk_io, network, processes, conns, ports, containers, firewall, proxies, extra] }
               message: { type: string }
         extra:
           type: object

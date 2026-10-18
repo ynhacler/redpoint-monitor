@@ -29,6 +29,7 @@ const (
 	AlertReach           = "reach"             // 国内不可达（疑似被墙，设计 42.2，修订第 154 条）
 	AlertContainer       = "container"         // 容器已停止（设计 33.4，修订第 166 条）
 	AlertContainerLoop   = "container_restart" // 容器反复重启（设计 33.4，修订第 167 条）
+	AlertProxy           = "proxy"             // 代理异常：曾经运行的代理没有运行，或入站端口没有在监听（修订第 169 条）
 )
 
 // 告警级别（设计 16.1）。
@@ -99,6 +100,7 @@ type alertInput struct {
 	Reach      *reachVerdict         // 国内可达性结论；没有国内探针数据时为 nil
 	Containers *containerAlertView   // 缺少的容器；没有容器记录或离线时为 nil
 	Restarts   *containerRestartView // 10 分钟内的容器重启；从未上报过容器或离线时为 nil
+	Proxies    *proxyAlertView       // 代理的问题；从未上报过代理或离线时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -175,6 +177,10 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if c := in.Restarts; c != nil {
 			return float64(c.Max), c.Detail, true
 		}
+	case AlertProxy:
+		if p := in.Proxies; p != nil {
+			return float64(p.Problems), p.Detail, true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -211,6 +217,8 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return "进程没有在运行：" + detail
 	case AlertContainer:
 		return "容器已停止：" + detail
+	case AlertProxy:
+		return "代理异常：" + detail
 	case AlertContainerLoop:
 		return "容器反复重启（10 分钟内）：" + detail
 	case AlertProbeLatency:

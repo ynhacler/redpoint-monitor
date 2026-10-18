@@ -440,6 +440,12 @@ export interface ServerView {
   container_names?: Record<string, string>
   /** 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回 */
   container_restarts?: Record<string, number>
+  /** 曾经运行、现在没有运行的代理程序（修订第 169 条）；只在管理员的节点详情中返回，没有时省略 */
+  proxies_missing?: {
+    name: string
+    /** 发现没有运行的时间（Unix 秒） */
+    since: number
+  }[]
   /** 已停止的容器（修订第 166 条）：按主进程名统计，运行中的数量少于曾经运行的数量；“容器已停止”告警据此评估。 只在节点详情接口中返回，没有时省略 */
   containers_missing?: {
     /** 主进程名，如 nginx */
@@ -487,7 +493,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container' | 'container_restart'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container' | 'container_restart' | 'proxy'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -944,6 +950,32 @@ export interface Report {
       })[]
     })[]
   }
+  /** 可选（修订第 169 条）：代理程序——按进程名识别，协议与端口来自可读的配置文件，不含任何密钥。 只在管理员的节点详情中返回（查看者、只读 API Key、App 与节点列表都省略） */
+  proxies?: ({
+    /** xray、v2ray、sing-box、hysteria、trojan、trojan-go、shadowsocks、tuic、gost、brook、frps、openvpn、wireguard、x-ui */
+    name: string
+    /** 有进程在运行（WireGuard 为接口存在）；false 表示只找到了配置 */
+    running: boolean
+    procs?: number
+    /** 读取的配置文件 */
+    config?: string
+    /** unreadable：配置只有 root 可读；invalid：格式无法识别 */
+    config_no?: 'unreadable' | 'invalid'
+    inbounds?: ({
+      /** vless、vmess、trojan、shadowsocks、hysteria2、tuic、socks、http、wireguard、openvpn 等 */
+      protocol: string
+      port: number
+      network?: 'tcp' | 'udp'
+      /** ws、grpc、h2、httpupgrade、xhttp、kcp、quic 等 */
+      transport?: string
+      /** tls、reality、none */
+      security?: string
+      /** 只监听回环地址 */
+      local?: boolean
+      /** 本机正在监听该端口 */
+      listening: boolean
+    })[]
+  })[]
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
     name: string
@@ -1001,7 +1033,7 @@ export interface Report {
   }[]
   /** 可选：本轮失败的采集项及原因，对应字段留空，其余照常（设计 43.5） */
   collect_errors?: ({
-    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'containers' | 'firewall' | 'extra'
+    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'containers' | 'firewall' | 'proxies' | 'extra'
     message: string
   })[]
   /** 可选：扩展指标（设计 4.10），字段定义见 internal/protocol.Extra。面板保存在实时状态中随接口返回，暂不入库也不展示。 读不到或内核不提供的项省略；速率为与上一次采样之间的平均值。 */
@@ -2601,6 +2633,19 @@ export interface Paths {
       body?: {
         /** 只忘记这个主进程名；省略表示全部 */
         label?: string
+      }
+      response: void
+    }
+  }
+  '/servers/{id}/proxies/forget': {
+    /** 不再提醒没有运行的代理（修订第 169 条）：主动停用或卸载后点这里，“代理异常”告警中这部分随之恢复（记入操作日志） */
+    post: {
+      params: {
+        id: number
+      }
+      body?: {
+        /** 只忘记这个代理；省略表示全部没有运行的 */
+        name?: string
       }
       response: void
     }

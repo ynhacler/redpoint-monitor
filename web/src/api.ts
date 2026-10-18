@@ -339,6 +339,11 @@ export function forgetContainers(id: number, label?: string) {
   return request('post', '/servers/{id}/containers/forget', { params: { id }, body: label ? { label } : {} })
 }
 
+/** 不再提醒没有运行的代理；省略 name 表示全部（修订第 169 条） */
+export function forgetProxies(id: number, name?: string) {
+  return request('post', '/servers/{id}/proxies/forget', { params: { id }, body: name ? { name } : {} })
+}
+
 /** 系统事件（修订第 163 条） */
 export type SystemEvent = G.SystemEvent
 /** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */
