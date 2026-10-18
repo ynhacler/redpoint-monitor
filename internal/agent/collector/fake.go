@@ -74,6 +74,7 @@ func (f *fake) Collect() (protocol.Report, error) {
 		Processes:  &protocol.Processes{Total: 120 + int(5*math.Sin(t/30)), Running: 1 + rand.Intn(3)},
 		Containers: fakeContainers(t),
 		Firewall:   fakeFirewall(),
+		Proxies:    fakeProxies(),
 		Ports: []protocol.ListenPort{
 			{Proto: "tcp", Port: 22, Addrs: []string{"0.0.0.0", "::"}},
 			{Proto: "tcp", Port: 80, Addrs: []string{"0.0.0.0", "::"}},
@@ -125,4 +126,20 @@ func fakeFirewall() *protocol.Firewall {
 			{Action: "ban", Service: "sshd"},
 		}},
 	}}
+}
+
+// fakeProxies 是开发用的示例代理（修订第 169 条）：xray 的 Reality 与回环 API、sing-box 的 Hysteria 2（端口没在监听）、未运行的 Trojan-Go。
+func fakeProxies() []protocol.Proxy {
+	return []protocol.Proxy{
+		{Name: "xray", Running: true, Procs: 1, Config: "/usr/local/etc/xray/config.json", Inbounds: []protocol.ProxyInbound{
+			{Protocol: "vless", Port: 443, Network: "tcp", Security: "reality", Listening: true},
+			{Protocol: "dokodemo-door", Port: 10085, Network: "tcp", Local: true, Listening: true},
+		}},
+		{Name: "sing-box", Running: true, Procs: 1, Config: "/etc/sing-box/config.json", Inbounds: []protocol.ProxyInbound{
+			{Protocol: "hysteria2", Port: 8443, Network: "udp", Security: "tls"},
+		}},
+		{Name: "trojan-go", Config: "/etc/trojan-go/config.json", Inbounds: []protocol.ProxyInbound{
+			{Protocol: "trojan", Port: 4443, Network: "tcp", Transport: "ws", Security: "tls"},
+		}},
+	}
 }

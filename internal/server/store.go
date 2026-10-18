@@ -905,6 +905,17 @@ var migrations = []string{
 	`INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('container_restart', 'container_restart', '>=', 3, 1, 0, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
+	// 迁移 48：代理异常（修订第 169 条）。曾经运行的代理（missing_since 为发现没有运行的时间，0 表示在运行）；
+	// “代理异常”规则默认启用：问题 ≥ 1 个持续 2 分钟触发（避开重启的短暂空档），全部恢复即恢复
+	`CREATE TABLE proxy_seen (
+		server_id     INTEGER NOT NULL,
+		name          TEXT NOT NULL,
+		missing_since INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (server_id, name)
+	);
+	INSERT INTO alert_rules (rule_key, type, operator, threshold, recover_threshold, duration_s, recover_duration_s,
+		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
+		('proxy', 'proxy', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
 }
 
 func (s *Store) migrate() error {

@@ -12,26 +12,31 @@ import (
 // listView 返回节点在列表中的视图：去掉只在详情页使用的每核使用率、监听端口、容器、防火墙与扩展指标，减小事件体积。
 func listView(v serverView) serverView {
 	if v.Latest != nil && (v.Latest.CPU.PerCore != nil || v.Latest.Ports != nil || v.Latest.Containers != nil || v.Latest.Firewall != nil ||
-		v.Latest.Extra != nil) {
+		v.Latest.Proxies != nil || v.Latest.Extra != nil) {
 		rep := *v.Latest
 		rep.CPU.PerCore = nil
 		rep.Ports = nil
 		rep.Containers = nil
 		rep.Firewall = nil
+		rep.Proxies = nil
 		rep.Extra = nil
 		v.Latest = &rep
 	}
 	return v
 }
 
-// adminOnly 去掉只给管理员看的安全信息（修订第 168 条）：防火墙。查看者、只读 API Key 与 App 都看不到——
-// 它们说明服务器是怎样防护的。
+// adminOnly 去掉只给管理员看的安全信息：防火墙（修订第 168 条）与代理程序（修订第 169 条）。查看者、只读 API Key
+// 与 App 都看不到——它们说明服务器是怎样防护的、运行着什么代理。
 func adminOnly(v serverView, r *http.Request) serverView {
-	if info(r).principal == roleAdmin || v.Latest == nil || v.Latest.Firewall == nil {
+	if info(r).principal == roleAdmin {
+		return v
+	}
+	v.ProxiesMissing = nil
+	if v.Latest == nil || (v.Latest.Firewall == nil && v.Latest.Proxies == nil) {
 		return v
 	}
 	rep := *v.Latest
-	rep.Firewall = nil
+	rep.Firewall, rep.Proxies = nil, nil
 	v.Latest = &rep
 	return v
 }

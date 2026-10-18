@@ -27,6 +27,9 @@ type Report struct {
 	// 可选：防火墙（修订第 168 条）：不需要 root 能看到的部分——哪些防火墙在运行、默认策略与可读配置中的规则。
 	// 每分钟刷新一次；没有检测到任何防火墙时 tools 为空数组。面板只返回给管理员
 	Firewall *Firewall `json:"firewall,omitempty"`
+	// 可选：代理程序（修订第 169 条）：按进程名识别，协议与端口来自可读的配置文件（不含任何密钥）；
+	// 每分钟刷新一次。没有检测到时省略。面板只返回给管理员
+	Proxies []Proxy `json:"proxies,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -187,6 +190,28 @@ type FirewallRule struct {
 	Port    string `json:"port,omitempty"`    // 22、8000:9000；空表示全部端口
 	From    string `json:"from,omitempty"`    // 来源地址；空表示任意
 	Service string `json:"service,omitempty"` // 服务名（firewalld 服务、fail2ban jail）
+}
+
+// Proxy 是一个代理程序（修订第 169 条）。只读进程名与配置文件中的协议、端口、传输方式与 TLS 类型；
+// 【安全】不读也不上报命令行、UUID、密码、密钥、SNI 与路径参数。
+type Proxy struct {
+	Name     string         `json:"name"`                // xray / v2ray / sing-box / hysteria / trojan / trojan-go / shadowsocks / tuic / gost / brook / frps / openvpn / wireguard / x-ui
+	Running  bool           `json:"running"`             // 有进程在运行（WireGuard 为接口存在）
+	Procs    int            `json:"procs,omitempty"`     // 进程数
+	Config   string         `json:"config,omitempty"`    // 读取的配置文件；空表示没有找到
+	ConfigNo string         `json:"config_no,omitempty"` // 读不到配置的原因：unreadable（只有 root 可读）/ invalid（格式无法识别）
+	Inbounds []ProxyInbound `json:"inbounds,omitempty"`
+}
+
+// ProxyInbound 是代理的一个入站。
+type ProxyInbound struct {
+	Protocol  string `json:"protocol"`            // vless / vmess / trojan / shadowsocks / hysteria2 / tuic / socks / http / wireguard / openvpn …
+	Port      int    `json:"port"`                // 端口范围时为起始端口
+	Network   string `json:"network,omitempty"`   // tcp / udp
+	Transport string `json:"transport,omitempty"` // ws / grpc / h2 / httpupgrade / xhttp / kcp / quic
+	Security  string `json:"security,omitempty"`  // tls / reality / none
+	Local     bool   `json:"local,omitempty"`     // 只监听回环地址（如 API、上游转发）
+	Listening bool   `json:"listening"`           // 本机正在监听该端口
 }
 
 // ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。
