@@ -83,6 +83,7 @@ void main() {
       {'id': 'c04be1f7a993', 'runtime': 'podman', 'memory': 18000000, 'command': 'redis-server'},
     ];
     nodes[0]['container_names'] = {'3f9a1c2b7d4e': 'nginx-reverse-proxy-with-a-very-long-container-name'};
+    nodes[0]['container_restarts'] = {'c04be1f7a993': 4};
     nodes[0]['containers_missing'] = [
       {'label': 'postgres', 'missing': 1, 'since': 1759650000},
     ];
@@ -224,6 +225,7 @@ void main() {
     expect(find.text('CPU 18%'), findsOneWidget);
     expect(find.textContaining('Podman'), findsOneWidget);
     expect(find.text('已停止：postgres'), findsOneWidget); // 修订第 166 条
+    expect(find.textContaining('24 小时内重启 4 次'), findsOneWidget); // 修订第 167 条
     // 国内可达性：结论、各探针状态与最近一轮
     await tester.scrollUntilVisible(find.text('国内可达性'), 200, scrollable: detail);
     expect(find.text('移动不可达'), findsOneWidget);

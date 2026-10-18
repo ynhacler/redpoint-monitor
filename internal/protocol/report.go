@@ -145,7 +145,7 @@ type ListenPort struct {
 }
 
 // Container 是一个运行中的容器（设计 33.4，修订第 164 条）：只读 cgroup 文件，不连接 Docker 套接字，
-// 因此没有容器名（由用户在面板中命名）、已停止的容器与重启次数。
+// 因此没有容器名（由用户在面板中命名）与已停止容器的详情；重启次数由 Agent 自行检测（Restarts）。
 type Container struct {
 	ID       string   `json:"id"`                  // 容器 ID 的前 12 位
 	Runtime  string   `json:"runtime"`             // docker / podman
@@ -156,6 +156,9 @@ type Container struct {
 	// 可选：容器主进程的进程名（/proc/<pid>/comm，如 nginx、postgres），容器重建后 ID 变化而它不变，可作自动标识；
 	// 只取进程名，不取命令行（命令行中可能有密码）。读不到时省略（修订第 165 条）
 	Command string `json:"command,omitempty"`
+	// 可选：Agent 启动以来检测到的重启次数（CPU 累计时间归零，或消失后以同一 ID 再出现，修订第 167 条）；
+	// 两次采样之间多次重启只计一次。0 时省略
+	Restarts int `json:"restarts,omitempty"`
 }
 
 // ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。

@@ -9,6 +9,8 @@ import { isViewer } from '../store'
 
 const props = defineProps<{ server: ServerView }>()
 const containers = computed(() => props.server.latest?.containers ?? [])
+// 24 小时内的重启次数（面板统计，修订第 167 条）
+const restarts = computed(() => props.server.container_restarts ?? {})
 const missing = computed(() => (props.server.containers_missing ?? []).filter((m) => !forgotten.value.has(m.label)))
 // 点了“不再提醒”的：立即隐藏，不必等下一次刷新
 const forgotten = ref(new Set<string>())
@@ -63,7 +65,7 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
       <span class="muted small">{{ containers.length }} 个运行中</span>
     </div>
     <p class="muted small note">
-      从 cgroup 读取（不连接 Docker），因此没有容器名、已停止的容器与重启次数；默认显示容器主进程名。{{ isViewer ? '' : '名字按容器 ID 保存，容器重建后需重新命名。' }}
+      从 cgroup 读取（不连接 Docker），默认显示容器主进程名；重启按 CPU 计数归零检测，两次采样之间多次重启只计一次。{{ isViewer ? '' : '名字按容器 ID 保存，容器重建后需重新命名。' }}
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <ul v-if="missing.length" class="missing">
@@ -88,7 +90,8 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
             <button v-if="!isViewer" type="button" class="text small" @click="edit(c.id)">{{ names[c.id] ? '改名' : '命名' }}</button>
           </template>
           <div class="muted small">
-            <span class="num">{{ c.id }}</span><template v-if="names[c.id] && c.command"> · {{ c.command }}</template> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ c.pids }} 个进程</template>
+            <span class="num">{{ c.id }}</span><template v-if="names[c.id] && c.command"> · {{ c.command }}</template> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ c.pids }} 个进程</template><b v-if="restarts[c.id]" class="restarted" title="面板统计的 24 小时内重启次数">
+              · 24 小时内重启 {{ restarts[c.id] }} 次</b>
           </div>
         </div>
         <div class="nums">
@@ -128,6 +131,7 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
 .bar i.warn { background: var(--warn); }
 .bar i.bad { background: var(--bad); }
 .bad { color: var(--bad); }
+.restarted { color: var(--warn); font-weight: var(--weight-regular); }
 /* 窄屏：数值统一放在名称下方一行，各行对齐一致 */
 @media (max-width: 600px) {
   .nums { flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }

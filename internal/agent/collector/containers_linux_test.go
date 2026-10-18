@@ -19,7 +19,7 @@ func TestContainersRealDocker(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--memory", "64m", "busybox",
+	out, err := exec.CommandContext(ctx, "docker", "run", "-d", "--memory", "64m", "busybox",
 		"sh", "-c", "while :; do :; done").Output()
 	if err != nil {
 		t.Skipf("无法启动测试容器：%v", err)
@@ -38,7 +38,20 @@ func TestContainersRealDocker(t *testing.T) {
 		if c.Runtime != "docker" || c.MemLimit != 64<<20 || c.Memory == 0 || c.CPU == nil || *c.CPU <= 0 || c.Pids < 1 || c.Command != "sh" {
 			t.Fatalf("测试容器的读数不对：%+v cpu=%v", c, c.CPU)
 		}
-		return
+		// 重启检测（修订第 167 条）：docker restart 后同一 ID 的重启次数加一
+		if err := exec.CommandContext(ctx, "docker", "restart", "-t", "0", id).Run(); err != nil {
+			t.Skipf("无法重启测试容器：%v", err)
+		}
+		time.Sleep(500 * time.Millisecond)
+		for _, c2 := range st.collect("/sys/fs/cgroup", 1, time.Now()) {
+			if c2.ID == c.ID {
+				if c2.Restarts != 1 {
+					t.Fatalf("docker restart 后应检测到 1 次重启：%+v", c2)
+				}
+				return
+			}
+		}
+		t.Fatal("重启后没有找到测试容器")
 	}
 	t.Fatalf("没有在 cgroup 中找到测试容器 %s：%+v", id[:12], got)
 }

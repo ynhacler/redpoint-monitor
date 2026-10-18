@@ -317,6 +317,9 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		if v, ok := s.containerAlertInput(row.ID); ok {
 			in.Containers = v
 		}
+		if v, ok := s.containerRestartInput(row.ID, now); ok {
+			in.Restarts = v
+		}
 	}
 	return in
 }

@@ -632,7 +632,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
               Expanded(
                 child: Text(
                   [c.id, if (c.name.isNotEmpty && c.command.isNotEmpty) c.command, c.runtime == 'podman' ? 'Podman' : 'Docker',
-                    if (c.pids > 0) '${c.pids} 个进程'].join(' · '),
+                    if (c.pids > 0) '${c.pids} 个进程', if (c.restarts24h > 0) '24 小时内重启 ${c.restarts24h} 次'].join(' · '),
                   style: muted,
                 ),
               ),

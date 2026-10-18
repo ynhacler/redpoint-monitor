@@ -267,7 +267,7 @@ class AlertEvent {
 /// 运行中的容器（设计 33.4，修订第 164 条）：Agent 从 cgroup 读取，没有容器名；name 为用户在 Web 中起的名字（可为空）。
 class ContainerInfo {
   ContainerInfo({required this.id, required this.runtime, this.cpu, required this.memory, this.memLimit = 0, this.pids = 0, this.name = '',
-      this.command = ''});
+      this.command = '', this.restarts24h = 0});
   final String id;
 
   /// docker / podman
@@ -284,6 +284,9 @@ class ContainerInfo {
 
   /// 主进程名（如 nginx），容器重建后不变；旧版 Agent 或读不到时为空（修订第 165 条）
   final String command;
+
+  /// 24 小时内的重启次数（面板统计，修订第 167 条）
+  final int restarts24h;
 
   /// 显示的标识：用户起的名字 → 主进程名 → 容器 ID
   String get label => name.isNotEmpty ? name : (command.isNotEmpty ? command : id);
@@ -304,6 +307,7 @@ class ContainerInfo {
             pids: _int(c['pids']) ?? 0,
             name: (names[c['id']] as String?) ?? '',
             command: (c['command'] as String?) ?? '',
+            restarts24h: _int((s.raw['container_restarts'] as Map<String, dynamic>?)?[c['id']]) ?? 0,
           ),
     ];
   }
