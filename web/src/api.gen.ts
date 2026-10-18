@@ -49,6 +49,21 @@ export interface SystemEvent {
   created_at: number
 }
 
+/** 最近一次“检测公网可达”的结果（修订第 171 条，只在内存中，面板重启后清空）；只在管理员的节点详情中返回，没有检测过时省略 */
+export interface PortExposure {
+  checked_at: number
+  /** 检测的地址（节点的公网 IP） */
+  target: string
+  results: ({
+    port: number
+    proto: 'tcp' | 'udp'
+    /** open 可达；refused 被拒绝；timeout 超时（多为防火墙或安全组丢弃）；error 其他错误；skipped 不检测（UDP） */
+    state: 'open' | 'refused' | 'timeout' | 'error' | 'skipped'
+    /** 建立连接用时（毫秒），open 时有 */
+    ms?: number
+  })[]
+}
+
 export interface UserView {
   id: number
   username: string
@@ -440,6 +455,7 @@ export interface ServerView {
   container_names?: Record<string, string>
   /** 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回 */
   container_restarts?: Record<string, number>
+  port_exposure?: PortExposure
   /** 端口基线（修订第 170 条）：允许对公网开放的监听端口。未设置时省略（不评估“未知监听端口”与“基线端口未监听”）。 只在管理员的节点详情中返回 */
   port_baseline?: {
     /** 如 22/tcp、443/tcp、51820/udp */
@@ -2654,6 +2670,15 @@ export interface Paths {
         name?: string
       }
       response: void
+    }
+  }
+  '/servers/{id}/exposure-check': {
+    /** 从面板检测公网可达（修订第 171 条）：对节点的公网地址逐个 TCP 连接它报告的、对公网开放的监听端口（记入操作日志） */
+    post: {
+      params: {
+        id: number
+      }
+      response: PortExposure
     }
   }
   '/servers/{id}/port-baseline': {

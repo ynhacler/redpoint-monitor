@@ -31,7 +31,7 @@ func adminOnly(v serverView, r *http.Request) serverView {
 	if info(r).principal == roleAdmin {
 		return v
 	}
-	v.ProxiesMissing, v.PortBaseline = nil, nil
+	v.ProxiesMissing, v.PortBaseline, v.PortExposure = nil, nil, nil
 	if v.Latest == nil || (v.Latest.Firewall == nil && v.Latest.Proxies == nil) {
 		return v
 	}

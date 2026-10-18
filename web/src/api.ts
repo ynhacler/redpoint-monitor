@@ -349,6 +349,11 @@ export function putPortBaseline(id: number, ports: string[]) {
   return request('put', '/servers/{id}/port-baseline', { params: { id }, body: { ports } })
 }
 
+/** 从面板检测公网可达：TCP 连接节点公网地址上它报告的监听端口（修订第 171 条） */
+export function checkExposure(id: number) {
+  return request('post', '/servers/{id}/exposure-check', { params: { id } })
+}
+
 /** 系统事件（修订第 163 条） */
 export type SystemEvent = G.SystemEvent
 /** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */
