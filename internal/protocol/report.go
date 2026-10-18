@@ -24,6 +24,9 @@ type Report struct {
 	Ports     []ListenPort `json:"ports,omitempty"`     // 可选：本机监听端口（设计 4.9.1）
 	// 可选：运行中的容器（Docker / Podman，设计 33.4，修订第 164 条）；从 cgroup 读取，没有容器时省略
 	Containers []Container `json:"containers,omitempty"`
+	// 可选：防火墙（修订第 168 条）：不需要 root 能看到的部分——哪些防火墙在运行、默认策略与可读配置中的规则。
+	// 每分钟刷新一次；没有检测到任何防火墙时 tools 为空数组。面板只返回给管理员
+	Firewall *Firewall `json:"firewall,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -159,6 +162,31 @@ type Container struct {
 	// 可选：Agent 启动以来检测到的重启次数（CPU 累计时间归零，或消失后以同一 ID 再出现，修订第 167 条）；
 	// 两次采样之间多次重启只计一次。0 时省略
 	Restarts int `json:"restarts,omitempty"`
+}
+
+// Firewall 是本机的防火墙概况（修订第 168 条）。Agent 不以 root 运行（约束 8），读不到内核中的实时规则：
+// 规则来自可读的配置文件（ufw、firewalld、iptables-persistent、nftables.conf、fail2ban），不可读时 RulesReadable 为 false。
+type Firewall struct {
+	Tools []FirewallTool `json:"tools"`
+}
+
+// FirewallTool 是一种防火墙。
+type FirewallTool struct {
+	Name          string         `json:"name"`             // ufw / firewalld / nftables / iptables / fail2ban / csf
+	Active        bool           `json:"active"`           // 正在运行或已启用（ufw 看配置，firewalld / fail2ban / csf 看进程，nftables / iptables 看内核模块）
+	Policy        string         `json:"policy,omitempty"` // 入站默认策略：allow / deny；不知道时省略
+	RulesReadable bool           `json:"rules_readable"`   // 规则配置可读；为 false 时需要 root 才能查看
+	Source        string         `json:"source,omitempty"` // 规则来源（配置文件路径）
+	Rules         []FirewallRule `json:"rules,omitempty"`  // 最多 100 条
+}
+
+// FirewallRule 是一条入站规则（只取放行 / 拒绝的端口与来源，不含其他细节）。
+type FirewallRule struct {
+	Action  string `json:"action"`            // allow / deny / reject / limit / ban
+	Proto   string `json:"proto,omitempty"`   // tcp / udp；空表示全部
+	Port    string `json:"port,omitempty"`    // 22、8000:9000；空表示全部端口
+	From    string `json:"from,omitempty"`    // 来源地址；空表示任意
+	Service string `json:"service,omitempty"` // 服务名（firewalld 服务、fail2ban jail）
 }
 
 // ProcWatch 是一个关注的进程名及当前匹配的进程数（设计 33.5.1）。0 表示没有在运行。

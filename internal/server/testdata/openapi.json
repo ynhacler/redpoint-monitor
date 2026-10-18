@@ -9469,6 +9469,97 @@
               }
             }
           },
+          "firewall": {
+            "type": "object",
+            "description": "可选（修订第 168 条）：防火墙概况——Agent 不以 root 运行，读不到实时规则；规则来自可读的配置文件，不可读时 rules_readable 为 false。\n只在管理员的节点详情中返回（查看者、只读 API Key、App 与节点列表都省略）\n",
+            "required": [
+              "tools"
+            ],
+            "properties": {
+              "tools": {
+                "type": "array",
+                "description": "检测到的防火墙；空数组表示没有检测到",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "active",
+                    "rules_readable"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "enum": [
+                        "ufw",
+                        "firewalld",
+                        "nftables",
+                        "iptables",
+                        "fail2ban",
+                        "csf"
+                      ]
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "正在运行或已启用"
+                    },
+                    "policy": {
+                      "type": "string",
+                      "enum": [
+                        "allow",
+                        "deny"
+                      ],
+                      "description": "入站默认策略；不知道时省略"
+                    },
+                    "rules_readable": {
+                      "type": "boolean",
+                      "description": "规则配置可读；false 时需要 root 才能查看"
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "规则来源（配置文件）"
+                    },
+                    "rules": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "action"
+                        ],
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "allow",
+                              "deny",
+                              "reject",
+                              "limit",
+                              "ban"
+                            ]
+                          },
+                          "proto": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "type": "string",
+                            "description": "22、8000:9000；省略表示全部端口"
+                          },
+                          "from": {
+                            "type": "string",
+                            "description": "来源地址；省略表示任意"
+                          },
+                          "service": {
+                            "type": "string",
+                            "description": "服务名（firewalld 服务、fail2ban jail）"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "watch_procs": {
             "type": "array",
             "maxItems": 20,
@@ -9662,6 +9753,7 @@
                     "conns",
                     "ports",
                     "containers",
+                    "firewall",
                     "extra"
                   ]
                 },
