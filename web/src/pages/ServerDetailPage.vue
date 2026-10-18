@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 节点详情（设计 11）。自上而下：概况 → 指标速览与实时网速 → CPU → 内存 → 磁盘 → 网络 → 流量 → 历史 → 系统与资产，
-// 指标顺序与 App 一致（设计 41.6）。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
+// 节点详情（设计 11）。顶部：提示、静音与维护、概况、健康摘要；其下分页（修订第 172 条）：监控（速览 → CPU → 内存 → 磁盘 →
+// 网络 → 历史，指标顺序与 App 一致，设计 41.6）、流量、网络、容器与代理、安全（管理员）、告警。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { errorText, getHistory, getServer, type HistoryRange, type HistoryView, type ServerView } from '../api'
 import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
@@ -24,6 +25,10 @@ import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
 import { isViewer, serverById, state } from '../store'
 
+// ---- 分页（修订第 172 条） ----
+type TabKey = 'monitor' | 'traffic' | 'network' | 'apps' | 'security' | 'alerts'
+interface Tab { key: TabKey; name: string; badge?: number; badgeLevel?: string; dot?: boolean }
+
 const props = defineProps<{
   /** 路由参数中的节点 ID */
   id: string
@@ -34,6 +39,35 @@ const s = computed(() => serverById(sid.value))
 const live = computed(() => (s.value ? isLive(s.value) : false))
 const problems = computed(() => (s.value ? issues(s.value) : []))
 const sys = computed(() => s.value?.latest?.system)
+
+const route = useRoute()
+const router = useRouter()
+// 只列出这台节点有内容的页：容器与代理在有数据时出现；安全页只给管理员；待安装节点只有监控与流量
+const tabs = computed<Tab[]>(() => {
+  const v = s.value
+  if (!v) return []
+  const d = liveServer.value ?? v
+  const pending = v.status === 'pending'
+  const out: Tab[] = [{ key: 'monitor', name: '监控' }, { key: 'traffic', name: '流量' }]
+  if (!pending) out.push({ key: 'network', name: '网络' })
+  const stopped = (d.containers_missing?.length ?? 0) + (d.proxies_missing?.length ?? 0)
+  if (d.latest?.containers?.length || d.latest?.proxies?.length || stopped) {
+    out.push({ key: 'apps', name: '容器与代理', dot: stopped > 0 })
+  }
+  if (!isViewer.value && (d.latest?.ports || d.latest?.firewall)) {
+    const fw = d.latest?.firewall
+    const weak = !!fw && (!fw.tools.some((t) => t.active && t.name !== 'fail2ban') || fw.tools.some((t) => t.active && t.policy === 'allow'))
+    out.push({ key: 'security', name: '安全', dot: weak })
+  }
+  if (!pending) {
+    const n = v.alerts.length
+    out.push({ key: 'alerts', name: '告警', badge: n || undefined, badgeLevel: v.alerts.some((a) => a.severity === 'critical') ? 'bad' : 'warn' })
+  }
+  return out
+})
+// 地址中的页不存在（如节点没有容器）时回到监控
+const tab = computed<TabKey>(() => tabs.value.find((t) => t.key === route.query.tab)?.key ?? 'monitor')
+const setTab = (t: TabKey) => router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
 
 // ---- 实时采样：迷你折线与实时网速图 ----
 // 保留最近 10 分钟；打开页面时用 1 小时历史中最近 10 分钟的点预填，避免图表从空白开始。
@@ -226,69 +260,85 @@ const charts = computed(() => [
       <!-- 健康摘要（设计 1.5.7） -->
       <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
-      <!-- 实时：速览 → CPU → 内存 → 磁盘 → 网络；离线时不显示旧数值（设计 43.6） -->
-      <template v-if="live && liveServer?.latest">
+      <!-- 分页（修订第 172 条）：概况与健康摘要之下按主题分页，地址带 ?tab=，刷新与分享后保持；未打开的页不加载 -->
+      <nav class="tabs" role="tablist" aria-label="节点详情">
+        <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ active: tab === t.key }"
+          @click="setTab(t.key)">
+          {{ t.name }}<span v-if="t.badge" class="badge num" :class="t.badgeLevel">{{ t.badge }}</span><i v-else-if="t.dot" class="dot" />
+        </button>
+      </nav>
+
+      <!-- 监控：速览 → CPU → 内存 → 磁盘 → 网络 → 历史；离线时不显示旧数值（设计 43.6） -->
+      <template v-if="tab === 'monitor'">
+        <template v-if="live && liveServer?.latest">
+          <section class="section">
+            <QuickTiles :server="liveServer" :samples="samples" />
+          </section>
+          <section class="section">
+            <LivePanels :server="liveServer" />
+          </section>
+          <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
+          <section v-if="collectErrors.length" class="section collect-errors small">
+            <strong>部分指标本轮未采集到</strong>
+            <ul>
+              <li v-for="(e, i) in collectErrors" :key="i"><span class="muted">{{ e.item }}</span>{{ e.message }}</li>
+            </ul>
+          </section>
+        </template>
+        <p v-else-if="s.status !== 'pending'" class="muted section">节点离线，不显示实时数值；历史曲线见下方。</p>
+
+        <!-- 历史曲线（设计 11.2、41.5） -->
         <section class="section">
-          <QuickTiles :server="liveServer" :samples="samples" />
-        </section>
-        <section class="section">
-          <LivePanels :server="liveServer" />
-        </section>
-        <!-- 容器（设计 33.4，修订第 164 条）：上报带容器时显示 -->
-        <section v-if="liveServer.latest.containers?.length || liveServer.containers_missing?.length" class="section">
-          <ContainersCard :server="liveServer" />
-        </section>
-        <!-- 端口基线（修订第 170 条）：只给管理员 -->
-        <section v-if="!isViewer && liveServer.latest.ports" class="section">
-          <PortBaselineCard :server="liveServer" />
-        </section>
-        <!-- 代理（修订第 169 条）：面板只返回给管理员 -->
-        <section v-if="liveServer.latest.proxies?.length || liveServer.proxies_missing?.length" class="section">
-          <ProxiesCard :server="liveServer" />
-        </section>
-        <!-- 防火墙（修订第 168 条）：面板只返回给管理员 -->
-        <section v-if="liveServer.latest.firewall" class="section">
-          <FirewallCard :server="liveServer" />
-        </section>
-        <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
-        <section v-if="collectErrors.length" class="section collect-errors small">
-          <strong>部分指标本轮未采集到</strong>
-          <ul>
-            <li v-for="(e, i) in collectErrors" :key="i"><span class="muted">{{ e.item }}</span>{{ e.message }}</li>
-          </ul>
+          <div class="section-head">
+            <h3>历史</h3>
+            <div class="segmented" role="group" aria-label="时间范围">
+              <button v-for="r in ranges" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
+            </div>
+          </div>
+          <p v-if="historyError" class="banner">{{ historyError }}</p>
+          <p v-else-if="history && !pts.length" class="muted">这个时间范围内还没有数据。</p>
+          <div v-else class="charts">
+            <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
+          </div>
         </section>
       </template>
 
       <!-- 流量 -->
-      <section class="section">
+      <section v-else-if="tab === 'traffic'" class="section">
         <TrafficCard :server="s" />
         <TrafficHistory :server="s" class="section-tight" />
         <CloudInstanceCard v-if="!isViewer" :server="s" class="section-tight" />
       </section>
 
-      <!-- 测速（设计 42.3.2） -->
-      <LatencyCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
-      <!-- 国内可达性（设计 42.2，修订第 155 条）：国内探针到这台节点的结论与延迟 -->
-      <ReachCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
+      <!-- 网络：测速（设计 42.3.2）与国内可达性（设计 42.2，修订第 155 条） -->
+      <template v-else-if="tab === 'network'">
+        <LatencyCard :server-id="s.id" class="section" />
+        <ReachCard :server-id="s.id" class="section" />
+      </template>
+
+      <!-- 容器与代理（设计 33.4、4.9.3）：代理只给管理员 -->
+      <template v-else-if="tab === 'apps' && liveServer">
+        <section v-if="liveServer.latest?.containers?.length || liveServer.containers_missing?.length" class="section">
+          <ContainersCard :server="liveServer" />
+        </section>
+        <section v-if="liveServer.latest?.proxies?.length || liveServer.proxies_missing?.length" class="section">
+          <ProxiesCard :server="liveServer" />
+        </section>
+      </template>
+
+      <!-- 安全（只给管理员）：端口基线（修订第 170、171 条）与防火墙（设计 4.9.2） -->
+      <template v-else-if="tab === 'security' && liveServer">
+        <section v-if="liveServer.latest?.ports" class="section">
+          <PortBaselineCard :server="liveServer" />
+        </section>
+        <section v-if="liveServer.latest?.firewall" class="section">
+          <FirewallCard :server="liveServer" />
+        </section>
+      </template>
 
       <!-- 告警记录（设计 16） -->
-      <section v-if="s.status !== 'pending'" class="section">
+      <section v-else-if="tab === 'alerts'" class="section">
         <AlertHistory :server-id="s.id" :version="`${s.alerts.map((a) => a.event_id).join(',')}|${s.maintenance?.id ?? ''}`" />
-      </section>
-
-      <!-- 历史曲线（设计 11.2、41.5） -->
-      <section class="section">
-        <div class="section-head">
-          <h3>历史</h3>
-          <div class="segmented" role="group" aria-label="时间范围">
-            <button v-for="r in ranges" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
-          </div>
-        </div>
-        <p v-if="historyError" class="banner">{{ historyError }}</p>
-        <p v-else-if="history && !pts.length" class="muted">这个时间范围内还没有数据。</p>
-        <div v-else class="charts">
-          <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
-        </div>
       </section>
 
     </template>
@@ -305,6 +355,19 @@ const charts = computed(() => [
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--space-3); }
 @media (max-width: 600px) {
   .charts { grid-template-columns: 1fr; }
+}
+.tabs { display: flex; gap: var(--space-1); margin: var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted);
+  padding: var(--space-2) var(--space-3); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-1); }
+.tabs button:hover { color: var(--text); }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
+.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-full); font-size: 10px; line-height: 16px; text-align: center;
+  color: var(--on-accent); background: var(--warn); }
+.badge.bad { background: var(--bad); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); display: inline-block; }
+@media (max-width: 600px) {
+  .tabs button { padding: var(--space-2); }
 }
 .collect-errors { padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); }
 .collect-errors ul { margin: var(--space-2) 0 0; padding-left: var(--space-4); }
