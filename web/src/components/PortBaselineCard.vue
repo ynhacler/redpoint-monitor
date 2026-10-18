@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // 端口基线（修订第 170 条）：只给管理员。指定允许对公网开放的监听端口；不在基线中的为“未知监听端口”，
 // 基线中没有在监听的为“基线端口未监听”，各有一条告警。只比较对公网开放的端口（与“监听端口”的暴露范围一致），
-// 这是本机看到的监听，是否真能从公网访问还取决于防火墙与安全组。
+// 这是本机看到的监听，是否真能从公网访问还取决于防火墙与安全组：“从面板检测公网可达”逐个 TCP 连接确认（修订第 171 条），
+// 手动触发——自动定时检测会在节点日志里留下大量连接记录，fail2ban 等可能封禁面板地址。
 import { computed, ref, watch } from 'vue'
-import { ApiError, errorText, putPortBaseline, type ServerView } from '../api'
+import { ApiError, checkExposure, errorText, putPortBaseline, type ServerView } from '../api'
 import { fmtTime } from '../format'
 import { exposure, serviceName } from '../ports'
 
@@ -18,6 +19,24 @@ const exposed = computed(() => (props.server.latest?.ports ?? []).filter((p) => 
 const allowed = computed(() => new Set(baseline.value?.ports ?? []))
 const unknown = computed(() => exposed.value.filter((p) => !allowed.value.has(p.key)))
 const gone = computed(() => (baseline.value?.ports ?? []).filter((k) => !exposed.value.some((p) => p.key === k)))
+
+// 最近一次公网可达检测（修订第 171 条）
+const exposureRes = ref(props.server.port_exposure ?? null)
+const checking = ref(false)
+const reach = computed(() => new Map((exposureRes.value?.results ?? []).map((r) => [`${r.port}/${r.proto}`, r])))
+const stateNames: Record<string, string> = { open: '公网可达', refused: '被拒绝', timeout: '超时（被拦截）', error: '连接出错', skipped: '未检测' }
+
+async function runCheck() {
+  checking.value = true
+  error.value = ''
+  try {
+    exposureRes.value = await checkExposure(props.server.id)
+  } catch (e) {
+    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, '检测失败')
+  } finally {
+    checking.value = false
+  }
+}
 
 const editing = ref(false)
 const draft = ref('')
@@ -85,12 +104,20 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
         <li v-for="p in exposed" :key="p.key" :class="baseline ? (allowed.has(p.key) ? 'ok' : 'unknown') : ''">
           <span class="num">{{ p.key }}</span><span v-if="p.service" class="muted small">{{ p.service }}</span>
           <span v-if="baseline && !allowed.has(p.key)" class="tag warn">不在基线中</span>
+          <span v-if="reach.get(p.key)" class="tag" :class="'r-' + reach.get(p.key)!.state">{{ stateNames[reach.get(p.key)!.state] }}</span>
         </li>
         <li v-for="k in gone" :key="'g' + k" class="gone">
           <span class="num">{{ k }}</span><span class="tag bad">未监听</span>
         </li>
       </ul>
       <p v-if="!exposed.length && !gone.length" class="muted small">没有对公网开放的监听端口。</p>
+      <div v-if="exposed.length" class="check">
+        <button type="button" class="secondary small" :disabled="checking" @click="runCheck">{{ checking ? '检测中…' : '从面板检测公网可达' }}</button>
+        <span v-if="exposureRes" class="muted small">{{ fmtTime(exposureRes.checked_at) }} 检测 {{ exposureRes.target }}</span>
+      </div>
+      <p v-if="exposureRes" class="muted small note">
+        逐个 TCP 连接节点的公网地址（连上即断开）。“超时”多为防火墙或安全组拦截；结果反映的是从面板所在网络能否访问。
+      </p>
     </template>
   </section>
 </template>
@@ -112,5 +139,8 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
 .tag { font-size: var(--font-xs); padding: 0 var(--space-1); border-radius: var(--radius-full); }
 .tag.warn { color: var(--warn); }
 .tag.bad { color: var(--bad); }
+.tag.r-open { color: var(--ok); }
+.tag.r-refused, .tag.r-timeout, .tag.r-skipped, .tag.r-error { color: var(--text-muted); }
+.check { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
 .bad, .danger-text { color: var(--bad); }
 </style>

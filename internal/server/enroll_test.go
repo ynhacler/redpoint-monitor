@@ -547,6 +547,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/servers/{id}/containers/forget":     accessAdmin,
 		"POST /api/v1/servers/{id}/proxies/forget":        accessAdmin,
 		"PUT /api/v1/servers/{id}/port-baseline":          accessAdmin,
+		"POST /api/v1/servers/{id}/exposure-check":        accessAdmin,
 		"GET /api/v1/servers/{id}/probe":                  accessAdmin,
 		"PUT /api/v1/servers/{id}/probe":                  accessAdmin,
 		"GET /api/v1/service-monitors":                    accessAdmin,

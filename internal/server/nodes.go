@@ -401,6 +401,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, r, internalError(err))
 			return
 		}
+		v.PortExposure = s.lastExposure(id) // 公网可达检测（修订第 171 条）
 	}
 	writeJSON(w, adminOnly(v, r)) // 防火墙与代理只给管理员（修订第 168、169 条）
 }
@@ -483,6 +484,9 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	s.pbase.mu.Lock()
 	delete(s.pbase.m, id)
 	s.pbase.mu.Unlock()
+	s.exposure.mu.Lock()
+	delete(s.exposure.last, id)
+	s.exposure.mu.Unlock()
 	s.mu.Lock()
 	delete(s.latest, id)
 	delete(s.counters, id)
