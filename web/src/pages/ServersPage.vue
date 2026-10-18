@@ -5,6 +5,7 @@
 // “自定义”排序按面板保存的顺序（修订第 150 条）：点“调整顺序”进入排列模式，拖动或用上下按钮排列后保存到面板，
 // 所有浏览器与（本机没有自己顺序的）App 共用。
 import NotifyWarning from '../components/NotifyWarning.vue'
+import FleetCards from '../components/FleetCards.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorText, putServerOrder, type ServerView } from '../api'
@@ -166,6 +167,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
     <NotifyWarning v-if="installed.length" />
+
+    <!-- 舰队总览：剩余流量与先用完的节点、每月总成本、30 天内到期（修订第 174 条） -->
+    <FleetCards v-if="installed.length" />
 
     <!-- 统计即筛选：数字为该状态的节点数，点击只看这些节点 -->
     <div v-if="installed.length" class="stats" role="tablist" aria-label="按状态筛选">
