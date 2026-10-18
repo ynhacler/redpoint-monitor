@@ -344,6 +344,11 @@ export function forgetProxies(id: number, name?: string) {
   return request('post', '/servers/{id}/proxies/forget', { params: { id }, body: name ? { name } : {} })
 }
 
+/** 设置端口基线（允许对公网开放的监听端口，如 22/tcp）；空数组表示取消（修订第 170 条） */
+export function putPortBaseline(id: number, ports: string[]) {
+  return request('put', '/servers/{id}/port-baseline', { params: { id }, body: { ports } })
+}
+
 /** 系统事件（修订第 163 条） */
 export type SystemEvent = G.SystemEvent
 /** 系统事件：最新在前，cursor 翻页；按调用方的授权范围过滤 */

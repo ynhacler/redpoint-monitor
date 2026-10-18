@@ -76,6 +76,7 @@ type Server struct {
 	health        *panelHealth    // 面板自身告警：后台任务、磁盘、写库、推送（设计 16.1）
 	cwatch        *containerWatch // 容器已停止：各节点曾经运行的容器数量（修订第 166 条）
 	pwatch        *proxyWatch     // 代理异常：各节点曾经运行的代理（修订第 169 条）
+	pbase         *portBaselines  // 端口基线（修订第 170 条）
 	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
 	ws            *wsHub          // WebSocket 事件推送（设计 20）
 	cloud         *cloudState     // 云厂商账户同步（设计 44）
@@ -140,7 +141,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
-	s.cwatch, s.pwatch = newContainerWatch(), newProxyWatch()
+	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
@@ -370,6 +371,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/reach", accessRead, s.handleServerReach)
 	handle("PUT /api/v1/servers/{id}/container-names", accessAdmin, s.handleContainerNames)      // 容器名称（修订第 164 条）
 	handle("POST /api/v1/servers/{id}/containers/forget", accessAdmin, s.handleForgetContainers) // 不再提醒已停止的容器（修订第 166 条）
+	handle("PUT /api/v1/servers/{id}/port-baseline", accessAdmin, s.handlePortBaseline)          // 端口基线（修订第 170 条）
 	handle("POST /api/v1/servers/{id}/proxies/forget", accessAdmin, s.handleForgetProxies)       // 不再提醒没有运行的代理（修订第 169 条）
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
@@ -842,6 +844,8 @@ type serverView struct {
 	ContainerRestarts map[string]int `json:"container_restarts,omitempty"`
 	// 曾经运行、现在没有运行的代理（修订第 169 条）：只在管理员的节点详情中返回
 	ProxiesMissing []proxyMissing `json:"proxies_missing,omitempty"`
+	// 端口基线（修订第 170 条）：只在管理员的节点详情中返回，没有设置时省略
+	PortBaseline *portBaselineView `json:"port_baseline,omitempty"`
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。

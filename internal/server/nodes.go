@@ -397,6 +397,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, r, internalError(err))
 			return
 		}
+		if v.PortBaseline, err = s.baselineFor(id); err != nil { // 端口基线（修订第 170 条）
+			s.writeError(w, r, internalError(err))
+			return
+		}
 	}
 	writeJSON(w, adminOnly(v, r)) // 防火墙与代理只给管理员（修订第 168、169 条）
 }
@@ -476,6 +480,9 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	delete(s.pwatch.seen, id)
 	delete(s.pwatch.problems, id)
 	s.pwatch.mu.Unlock()
+	s.pbase.mu.Lock()
+	delete(s.pbase.m, id)
+	s.pbase.mu.Unlock()
 	s.mu.Lock()
 	delete(s.latest, id)
 	delete(s.counters, id)

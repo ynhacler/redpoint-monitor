@@ -440,6 +440,12 @@ export interface ServerView {
   container_names?: Record<string, string>
   /** 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回 */
   container_restarts?: Record<string, number>
+  /** 端口基线（修订第 170 条）：允许对公网开放的监听端口。未设置时省略（不评估“未知监听端口”与“基线端口未监听”）。 只在管理员的节点详情中返回 */
+  port_baseline?: {
+    /** 如 22/tcp、443/tcp、51820/udp */
+    ports: string[]
+    updated_at: number
+  }
   /** 曾经运行、现在没有运行的代理程序（修订第 169 条）；只在管理员的节点详情中返回，没有时省略 */
   proxies_missing?: {
     name: string
@@ -493,7 +499,7 @@ export interface AlertRule {
   rule_key: string
   scope_type: 'global' | 'group' | 'server'
   scope_id: string
-  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container' | 'container_restart' | 'proxy'
+  type: 'offline' | 'cpu' | 'memory' | 'disk' | 'swap' | 'load' | 'traffic' | 'traffic_forecast' | 'agent_clock' | 'process' | 'probe_latency' | 'probe_loss' | 'reach' | 'container' | 'container_restart' | 'proxy' | 'port_new' | 'port_gone'
   operator: '>' | '>='
   threshold: number
   /** 低于此值恢复（回差） */
@@ -2648,6 +2654,22 @@ export interface Paths {
         name?: string
       }
       response: void
+    }
+  }
+  '/servers/{id}/port-baseline': {
+    /** 设置端口基线（修订第 170 条）：允许对公网开放的监听端口；空数组表示取消（记入操作日志） */
+    put: {
+      params: {
+        id: number
+      }
+      body: {
+        /** 端口/协议，如 22/tcp；只写端口时为 tcp */
+        ports: string[]
+      }
+      response: {
+        ports: string[]
+        updated_at: number
+      }
     }
   }
   '/servers/{id}/reach': {

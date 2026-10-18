@@ -30,6 +30,8 @@ const (
 	AlertContainer       = "container"         // 容器已停止（设计 33.4，修订第 166 条）
 	AlertContainerLoop   = "container_restart" // 容器反复重启（设计 33.4，修订第 167 条）
 	AlertProxy           = "proxy"             // 代理异常：曾经运行的代理没有运行，或入站端口没有在监听（修订第 169 条）
+	AlertPortNew         = "port_new"          // 未知监听端口：对公网开放、不在端口基线中（修订第 170 条）
+	AlertPortGone        = "port_gone"         // 基线端口未监听（修订第 170 条）
 )
 
 // 告警级别（设计 16.1）。
@@ -101,6 +103,7 @@ type alertInput struct {
 	Containers *containerAlertView   // 缺少的容器；没有容器记录或离线时为 nil
 	Restarts   *containerRestartView // 10 分钟内的容器重启；从未上报过容器或离线时为 nil
 	Proxies    *proxyAlertView       // 代理的问题；从未上报过代理或离线时为 nil
+	Ports      *portAlertView        // 与端口基线的差异；没有基线、离线或旧版 Agent 时为 nil
 }
 
 // alertValue 取规则对应的当前值与说明；ok 为 false 表示没有数据，本轮不评估。
@@ -181,6 +184,14 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 		if p := in.Proxies; p != nil {
 			return float64(p.Problems), p.Detail, true
 		}
+	case AlertPortNew:
+		if p := in.Ports; p != nil {
+			return float64(len(p.Unknown)), strings.Join(p.Unknown, "、"), true
+		}
+	case AlertPortGone:
+		if p := in.Ports; p != nil {
+			return float64(len(p.Gone)), strings.Join(p.Gone, "、"), true
+		}
 	case AlertAgentClock:
 		// 快慢都算偏差，按绝对值比较阈值；说明中指出方向
 		if sk := in.ClockSkew; sk != nil {
@@ -219,6 +230,10 @@ func alertMessage(r AlertRule, v float64, detail string) string {
 		return "容器已停止：" + detail
 	case AlertProxy:
 		return "代理异常：" + detail
+	case AlertPortNew:
+		return "未知监听端口（不在端口基线中）：" + detail
+	case AlertPortGone:
+		return "基线端口没有在监听：" + detail
 	case AlertContainerLoop:
 		return "容器反复重启（10 分钟内）：" + detail
 	case AlertProbeLatency:

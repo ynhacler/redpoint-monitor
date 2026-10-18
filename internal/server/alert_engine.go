@@ -323,6 +323,9 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		if v, ok := s.proxyAlertInput(row.ID); ok {
 			in.Proxies = v
 		}
+		if v, ok := s.portAlertInput(row.ID, in.Report); ok {
+			in.Ports = v
+		}
 	}
 	return in
 }
