@@ -392,7 +392,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.ContainerRestarts = s.containerRestarts(id, time.Now())
-	writeJSON(w, v)
+	writeJSON(w, adminOnly(v, r)) // 防火墙只给管理员（修订第 168 条）
 }
 
 // handleUpdateServer：PUT /api/v1/servers/{id}，admin。整体替换可编辑信息（字段同新建，enroll_ttl 忽略）；

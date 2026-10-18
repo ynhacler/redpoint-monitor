@@ -919,6 +919,31 @@ export interface Report {
     /** Agent 启动以来检测到的重启次数（CPU 累计时间归零，或消失后以同一 ID 再出现）；0 时省略（修订第 167 条） */
     restarts?: number
   })[]
+  /** 可选（修订第 168 条）：防火墙概况——Agent 不以 root 运行，读不到实时规则；规则来自可读的配置文件，不可读时 rules_readable 为 false。 只在管理员的节点详情中返回（查看者、只读 API Key、App 与节点列表都省略） */
+  firewall?: {
+    /** 检测到的防火墙；空数组表示没有检测到 */
+    tools: ({
+      name: 'ufw' | 'firewalld' | 'nftables' | 'iptables' | 'fail2ban' | 'csf'
+      /** 正在运行或已启用 */
+      active: boolean
+      /** 入站默认策略；不知道时省略 */
+      policy?: 'allow' | 'deny'
+      /** 规则配置可读；false 时需要 root 才能查看 */
+      rules_readable: boolean
+      /** 规则来源（配置文件） */
+      source?: string
+      rules?: ({
+        action: 'allow' | 'deny' | 'reject' | 'limit' | 'ban'
+        proto?: string
+        /** 22、8000:9000；省略表示全部端口 */
+        port?: string
+        /** 来源地址；省略表示任意 */
+        from?: string
+        /** 服务名（firewalld 服务、fail2ban jail） */
+        service?: string
+      })[]
+    })[]
+  }
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
     name: string
@@ -976,7 +1001,7 @@ export interface Report {
   }[]
   /** 可选：本轮失败的采集项及原因，对应字段留空，其余照常（设计 43.5） */
   collect_errors?: ({
-    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'containers' | 'extra'
+    item: 'system' | 'cpu' | 'memory' | 'disk' | 'disk_io' | 'network' | 'processes' | 'conns' | 'ports' | 'containers' | 'firewall' | 'extra'
     message: string
   })[]
   /** 可选：扩展指标（设计 4.10），字段定义见 internal/protocol.Extra。面板保存在实时状态中随接口返回，暂不入库也不展示。 读不到或内核不提供的项省略；速率为与上一次采样之间的平均值。 */

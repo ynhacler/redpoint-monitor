@@ -73,6 +73,7 @@ func (f *fake) Collect() (protocol.Report, error) {
 			Buffers: 48 << 20, Cached: 512 << 20, Free: memTotal - memUsed - 560<<20},
 		Processes:  &protocol.Processes{Total: 120 + int(5*math.Sin(t/30)), Running: 1 + rand.Intn(3)},
 		Containers: fakeContainers(t),
+		Firewall:   fakeFirewall(),
 		Ports: []protocol.ListenPort{
 			{Proto: "tcp", Port: 22, Addrs: []string{"0.0.0.0", "::"}},
 			{Proto: "tcp", Port: 80, Addrs: []string{"0.0.0.0", "::"}},
@@ -111,4 +112,17 @@ func fakeContainers(t float64) []protocol.Container {
 	}
 	sortContainers(cs)
 	return cs
+}
+
+// fakeFirewall 是开发用的示例防火墙（修订第 168 条）：ufw 已启用、默认拒绝；fail2ban 保护 sshd；nftables 规则只有 root 可读。
+func fakeFirewall() *protocol.Firewall {
+	return &protocol.Firewall{Tools: []protocol.FirewallTool{
+		{Name: "ufw", Active: true, Policy: "deny", RulesReadable: true, Source: "/etc/ufw/user.rules", Rules: []protocol.FirewallRule{
+			{Action: "allow", Proto: "tcp", Port: "22"}, {Action: "allow", Port: "443"}, {Action: "limit", Proto: "tcp", Port: "2222", From: "203.0.113.0/24"},
+		}},
+		{Name: "nftables", Active: true},
+		{Name: "fail2ban", Active: true, RulesReadable: true, Source: "/etc/fail2ban/jail.local、jail.d", Rules: []protocol.FirewallRule{
+			{Action: "ban", Service: "sshd"},
+		}},
+	}}
 }

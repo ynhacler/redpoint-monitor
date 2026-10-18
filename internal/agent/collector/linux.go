@@ -36,8 +36,10 @@ type linux struct {
 	prevIOAt    time.Time              // prevIO 的采样时间
 	ports       []protocol.ListenPort  // 上次采集的监听端口
 	portsAt     time.Time              // ports 的采集时间：监听端口变化少，每分钟刷新一次（设计 4.9.1）
-	statfs      *statfsProber          // 带超时的 statfs（设计 43.5）
-	memEstimate bool                   // 已记录过“没有 MemAvailable，按估算”的日志
+	firewall    *protocol.Firewall     // 防火墙概况（修订第 168 条），与监听端口一样每分钟刷新一次
+	firewallAt  time.Time
+	statfs      *statfsProber // 带超时的 statfs（设计 43.5）
+	memEstimate bool          // 已记录过“没有 MemAvailable，按估算”的日志
 
 	// 很少变化的信息按 refreshEvery 刷新，减少每轮的文件读取（设计 4.2）
 	osInfo    cached[[2]string] // /etc/os-release 的 ID 与 VERSION_ID（系统升级后无需重启即可反映）
@@ -184,6 +186,12 @@ func (c *linux) Collect() (protocol.Report, error) {
 		r.Ports = c.ports
 	})
 	guard(&errs, "containers", func() { r.Containers = c.containers.collect("/sys/fs/cgroup", runtime.NumCPU(), now) })
+	guard(&errs, "firewall", func() {
+		if now.Sub(c.firewallAt) >= time.Minute {
+			c.firewall, c.firewallAt = collectFirewall(fwEnv{root: "/", modules: readFile("/proc/modules"), running: procNames(scanProcs("/proc"))}), now
+		}
+		r.Firewall = c.firewall
+	})
 	guard(&errs, "disk", func() { r.Disk = c.collectDisks(&errs, readFile("/proc/self/mounts")) })
 	guard(&errs, "disk_io", func() { r.DiskIO = c.collectDiskIO(now) })
 	guard(&errs, "network", func() { r.Network = c.collectNetwork(&errs, now) })

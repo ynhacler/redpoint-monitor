@@ -7,6 +7,7 @@ import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import ContainersCard from '../components/ContainersCard.vue'
+import FirewallCard from '../components/FirewallCard.vue'
 import HealthCard from '../components/HealthCard.vue'
 import LatencyCard from '../components/LatencyCard.vue'
 import ReachCard from '../components/ReachCard.vue'
@@ -234,6 +235,10 @@ const charts = computed(() => [
         <!-- 容器（设计 33.4，修订第 164 条）：上报带容器时显示 -->
         <section v-if="liveServer.latest.containers?.length || liveServer.containers_missing?.length" class="section">
           <ContainersCard :server="liveServer" />
+        </section>
+        <!-- 防火墙（修订第 168 条）：面板只返回给管理员 -->
+        <section v-if="liveServer.latest.firewall" class="section">
+          <FirewallCard :server="liveServer" />
         </section>
         <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
         <section v-if="collectErrors.length" class="section collect-errors small">
