@@ -23,7 +23,7 @@ import TrafficCard from '../components/TrafficCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
-import { isViewer, serverById, state } from '../store'
+import { alertsOn, isViewer, serverById, state } from '../store'
 
 // ---- 分页（修订第 172 条） ----
 type TabKey = 'monitor' | 'traffic' | 'network' | 'apps' | 'security' | 'alerts'
@@ -59,7 +59,7 @@ const tabs = computed<Tab[]>(() => {
     const weak = !!fw && (!fw.tools.some((t) => t.active && t.name !== 'fail2ban') || fw.tools.some((t) => t.active && t.policy === 'allow'))
     out.push({ key: 'security', name: '安全', dot: weak })
   }
-  if (!pending) {
+  if (!pending && alertsOn.value) {
     const n = v.alerts.length
     out.push({ key: 'alerts', name: '告警', badge: n || undefined, badgeLevel: v.alerts.some((a) => a.severity === 'critical') ? 'bad' : 'warn' })
   }
@@ -252,7 +252,7 @@ const charts = computed(() => [
       </div>
 
       <!-- 静音与维护（设计 16.6） -->
-      <SilenceControls v-if="s.status !== 'pending' && !isViewer" :server="s" class="section-tight" />
+      <SilenceControls v-if="s.status !== 'pending' && !isViewer && alertsOn" :server="s" class="section-tight" />
 
       <!-- 概况（设计 11.1） -->
       <ServerSummary :server="liveServer ?? s" :live="live" />

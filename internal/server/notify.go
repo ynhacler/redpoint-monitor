@@ -606,6 +606,9 @@ func newNotifier(s *Server) *notifier {
 
 // dispatch 把通知交给所有接收它的渠道（异步）。
 func (n *notifier) dispatch(m notifyMessage) {
+	if !n.s.alertsEnabled() { // 告警关闭时不发送任何通知（修订第 175 条）
+		return
+	}
 	channels, err := n.s.store.ListChannels()
 	if err != nil {
 		n.s.log.Error("list notification channels failed", "component", "notify", "err", err)

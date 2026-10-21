@@ -3,7 +3,7 @@
 // 页面按 nav.ts 的 5 个分组组织（修订第 158 条）；原“设置”页拆到“监测”与“系统”，旧地址照常可用。
 import { ref } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
+import { alertsOn, checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
 
 // 原“设置”页各标签的新地址（修订第 158 条）；修订第 126 条前这些标签在告警页，/alerts?tab=… 同样转过去
 const settingsMoved: Record<string, string> = { probes: '/probes', ssl: '/ssl', services: '/services', account: '/account' } // /ssl 再转到告警规则
@@ -76,6 +76,7 @@ router.beforeEach(async (to) => {
     if (!to.meta.viewer) return '/'
     if (to.name === 'alerts' && to.query.tab && to.query.tab !== 'system') return { name: 'alerts' }
   }
+  if (to.name === 'alerts' && !alertsOn.value) return '/' // 告警已关闭（修订第 175 条）
   if (to.name === 'alerts' && ['probes', 'ssl', 'services'].includes(to.query.tab as string)) return { path: settingsMoved[to.query.tab as string], query: {} }
   return true
 })

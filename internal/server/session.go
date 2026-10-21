@@ -297,6 +297,7 @@ type meView struct {
 	CSRFToken          string `json:"csrf_token"`
 	TOTPEnabled        bool   `json:"totp_enabled"`        // 是否已开启两步验证（修订第 160 条）
 	RecoveryCodesLeft  int    `json:"recovery_codes_left"` // 未使用的恢复码数量
+	AlertsEnabled      bool   `json:"alerts_enabled"`      // 告警总开关；关闭时 Web 隐藏告警分组（修订第 175 条）
 }
 
 func meOf(u User, tok string) meView {

@@ -2257,7 +2257,7 @@ components:
 
     Me:
       type: object
-      required: [username, role, must_change_password, csrf_token, totp_enabled, recovery_codes_left]
+      required: [username, role, must_change_password, csrf_token, totp_enabled, recovery_codes_left, alerts_enabled]
       properties:
         username: { type: string }
         role: { type: string, enum: [admin, viewer], description: viewer 为只读的查看者（修订第 161 条） }
@@ -2265,6 +2265,7 @@ components:
         csrf_token: { type: string, description: 修改类请求放在 X-CSRF-Token 头中 }
         totp_enabled: { type: boolean, description: 是否已开启两步验证（修订第 160 条） }
         recovery_codes_left: { type: integer, description: 未使用的恢复码数量；未开启时为 0 }
+        alerts_enabled: { type: boolean, description: '告警总开关（修订第 175 条）：关闭时面板不评估告警、不发送通知，Web 隐藏告警分组；在面板主机上用 vpsmon-server admin alerts on|off 切换' }
 
     SystemEvent:
       type: object

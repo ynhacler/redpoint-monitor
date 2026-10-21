@@ -58,6 +58,7 @@ type Server struct {
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
 	alerts      *alertEngine   // 告警引擎（设计 16.7）
+	alertsOn    alertsSwitch   // 告警总开关（修订第 175 条）
 
 	// 官方版本同步（设计 29.1）：发布地址与验签公钥默认为官方值，测试中替换
 	releaseBase   string
@@ -144,6 +145,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
 	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
 	s.exposure = newExposureState()
+	s.reloadAlertsSwitch()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
 	}
@@ -912,9 +914,12 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 		return v, err
 	}
 	v.Traffic = t
-	v.Alerts = s.alerts.firingFor(row)
-	v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
-	v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
+	v.Alerts = []alertBrief{}
+	if s.alertsEnabled() { // 告警关闭时不带告警、静音与维护（修订第 175 条）
+		v.Alerts = s.alerts.firingFor(row)
+		v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
+		v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
+	}
 	return v, nil
 }
 

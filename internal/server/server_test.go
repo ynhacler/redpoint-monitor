@@ -37,6 +37,7 @@ func testServer(t *testing.T) (*Server, http.Handler, *bytes.Buffer) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.alertsOn.on.Store(true) // 告警相关测试默认开启；关闭时的行为在 alerts_switch_test.go
 	return s, s.routes(), &buf
 }
 

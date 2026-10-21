@@ -137,7 +137,7 @@ func (s *Server) heartbeatLoop(ctx context.Context) {
 		}
 		c := s.heartbeat.config()
 		wait = time.Duration(c.Interval) * time.Second
-		if c.Enabled && c.URL != "" {
+		if c.Enabled && c.URL != "" && s.alertsEnabled() { // 告警关闭时也不发心跳（修订第 175 条）
 			s.sendHeartbeat(ctx, c.URL)
 		}
 	}

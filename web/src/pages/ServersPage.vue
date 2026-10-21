@@ -16,7 +16,7 @@ import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
-import { installed, isViewer, pending, refresh, state, statusRank } from '../store'
+import { alertsOn, installed, isViewer, pending, refresh, state, statusRank } from '../store'
 
 const route = useRoute()
 const router = useRouter()
@@ -166,7 +166,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     </div>
 
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
-    <NotifyWarning v-if="installed.length" />
+    <NotifyWarning v-if="installed.length && alertsOn" />
 
     <!-- 舰队总览：剩余流量与先用完的节点、每月总成本、30 天内到期（修订第 174 条） -->
     <FleetCards v-if="installed.length" />
