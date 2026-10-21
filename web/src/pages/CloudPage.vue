@@ -345,7 +345,7 @@ function expireTone(i: CloudInstance): string {
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>云账户</h1>
+      <h1>云平台</h1>
       <button v-if="editing === null" type="button" @click="openNew">添加账户</button>
     </div>
     <p class="muted small intro">
