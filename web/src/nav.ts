@@ -1,4 +1,4 @@
-// Web 导航分组（设计 41.6，修订第 158 条）：顶栏只放 5 个分组，分组内的页面在顶栏下方的二级导航中切换。
+// Web 导航分组（设计 41.6，修订第 158、176 条）：顶栏只放 3 个分组，分组内的页面在顶栏下方的二级导航中切换。
 // 分组与页面集中写在这里，顶栏、二级导航与路由守卫都用这一份，新增页面时只改这里。
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import { alertsOn } from './store'
@@ -20,33 +20,14 @@ export interface NavGroup {
   extra?: string[]
 }
 
-/** 顶栏分组：仪表板、告警、监测、费用、系统 */
+/** 顶栏分组：仪表板、云平台、系统（修订第 176 条）；告警与监测是“系统”下的页面，测速对比与费用统计不再显示 */
 export const navGroups: NavGroup[] = [
   { key: 'dashboard', name: '仪表板', items: [{ name: '节点', to: '/', viewer: true }], extra: ['/servers'] },
-  {
-    key: 'alerts', name: '告警', items: [
-      { name: '告警', to: '/alerts', viewer: true },
-      { name: '系统事件', to: '/alerts?tab=system', viewer: true },
-      { name: '规则', to: '/alerts?tab=rules' },
-      { name: '静音', to: '/alerts?tab=silences' },
-      { name: '通知', to: '/alerts?tab=notify' },
-    ],
-  },
-  {
-    key: 'monitor', name: '监测', items: [
-      { name: '测速对比', to: '/latency', viewer: true },
-      { name: '测速设置', to: '/probes' },
-      { name: '服务', to: '/services' },
-    ],
-  },
-  {
-    key: 'costs', name: '费用', items: [
-      { name: '费用统计', to: '/costs' },
-      { name: '云账户', to: '/cloud' },
-    ],
-  },
+  { key: 'cloud', name: '云平台', items: [{ name: '云平台', to: '/cloud' }] },
   {
     key: 'system', name: '系统', items: [
+      { name: '监测', to: '/monitor' },
+      { name: '告警', to: '/alerts', viewer: true },
       { name: '账号', to: '/account', viewer: true },
       { name: 'App 接入', to: '/app' },
       { name: 'Agent 升级', to: '/upgrades' },
@@ -69,11 +50,10 @@ export function itemActive(item: NavItem, route: RouteLocationNormalizedLoaded, 
   return !group.items.some((x) => x !== item && split(x.to).path === path && split(x.to).tab === cur)
 }
 
-/** 按账号角色筛选：查看者只保留能打开的页面，没有可用页面的分组整个隐藏；告警关闭时不显示告警分组（修订第 175 条） */
+/** 按账号角色筛选：查看者只保留能打开的页面，没有可用页面的分组整个隐藏；告警关闭时不显示告警页（修订第 175 条） */
 export function groupsFor(viewer: boolean): NavGroup[] {
-  const groups = alertsOn.value ? navGroups : navGroups.filter((g) => g.key !== 'alerts')
-  if (!viewer) return groups
-  return groups.map((g) => ({ ...g, items: g.items.filter((x) => x.viewer) })).filter((g) => g.items.length)
+  const keep = (x: NavItem) => (viewer ? !!x.viewer : true) && (alertsOn.value || x.to !== '/alerts')
+  return navGroups.map((g) => ({ ...g, items: g.items.filter(keep) })).filter((g) => g.items.length)
 }
 
 /** 当前地址所属的分组（没有时为 undefined，如登录页） */

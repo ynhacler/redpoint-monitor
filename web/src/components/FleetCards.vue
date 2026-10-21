@@ -71,7 +71,7 @@ function dueText(days: number) {
       </template>
       <p v-else class="muted small">还没有价格信息。在节点“编辑”中填写续费价格与周期，或接入云账户。</p>
       <ul v-if="cost.unpriced || unlinked || cost.inCloud" class="hints small">
-        <li v-if="cost.unpriced"><RouterLink to="/costs">{{ cost.unpriced }} 台节点没填价格</RouterLink>，总成本不完整</li>
+        <li v-if="cost.unpriced">{{ cost.unpriced }} 台节点没填价格（在节点编辑页填写），总成本不完整</li>
         <li v-if="unlinked"><RouterLink to="/cloud">{{ unlinked }} 个云实例未关联节点</RouterLink></li>
         <li v-if="cost.inCloud" class="muted">{{ cost.inCloud }} 台关联云实例的节点按云账单计算，不重复计入续费价格</li>
       </ul>
@@ -88,7 +88,6 @@ function dueText(days: number) {
             <span class="num" :class="r.days <= 3 ? 'bad' : r.days <= 7 ? 'warn' : 'muted'">{{ dueText(r.days) }}</span>
           </li>
         </ul>
-        <RouterLink v-if="renewals.length > 4 && !isViewer" to="/costs" class="small">查看全部</RouterLink>
       </template>
       <p v-else class="ok small">未来 30 天没有节点到期。</p>
     </section>

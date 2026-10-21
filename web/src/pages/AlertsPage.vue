@@ -2,7 +2,7 @@
 // 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
 // “静音”列出生效中的静音与维护，并可静音分组、规则或全部（设计 16.6）；“通知”管理通知渠道（设计 16.5）。
 // “系统事件”列出 Agent 升级结果、到期提醒与面板自身异常（修订第 163 条）。服务、证书与测速的设置在“监测”分组（修订第 126、158 条）。
-// 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。
+// 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。告警是“系统”下的一页，标签在页内切换（修订第 176 条）。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -16,11 +16,14 @@ import NotifyWarning from '../components/NotifyWarning.vue'
 import SslMonitors from '../components/SslMonitors.vue'
 import SystemEvents from '../components/SystemEvents.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
-import { installed } from '../store'
+import { installed, isViewer } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '告警规则', silences: '静音', notify: '通知渠道' }
+const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '规则', silences: '静音', notify: '通知' }
+// 查看者只有告警与系统事件（修订第 161 条）
+const tabKeys = computed(() => (isViewer.value ? ['alerts', 'system'] : Object.keys(tabTitles)))
+const setTab = (t: string) => router.replace({ query: { tab: t === 'alerts' ? undefined : t } })
 const tab = computed(() => (['system', 'rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
@@ -141,9 +144,12 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 <template>
   <main class="page">
     <div class="page-head">
-      <!-- 告警 / 规则 / 静音 / 通知在顶栏下方的二级导航中切换（修订第 158 条） -->
-      <h1>{{ tabTitles[tab] }}</h1>
+      <h1>告警</h1>
     </div>
+    <nav class="tabs" role="tablist" aria-label="告警">
+      <button v-for="k in tabKeys" :key="k" type="button" role="tab" :aria-selected="tab === k" :class="{ active: tab === k }"
+        @click="setTab(k)">{{ tabTitles[k] }}</button>
+    </nav>
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
     <NotifyWarning v-if="tab !== 'notify'" />
 
@@ -326,6 +332,15 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 </template>
 
 <style scoped>
+.tabs { display: flex; gap: var(--space-1); margin: 0 0 var(--space-3); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted);
+  padding: var(--space-2) var(--space-3); white-space: nowrap; }
+.tabs button:hover { color: var(--text); }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
+@media (max-width: 600px) {
+  .tabs button { padding: var(--space-2); }
+}
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .list, .rules { list-style: none; margin: 0; padding: 0; }
 .list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-4); }
