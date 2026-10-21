@@ -1,6 +1,7 @@
 // Web 导航分组（设计 41.6，修订第 158 条）：顶栏只放 5 个分组，分组内的页面在顶栏下方的二级导航中切换。
 // 分组与页面集中写在这里，顶栏、二级导航与路由守卫都用这一份，新增页面时只改这里。
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
+import { alertsOn } from './store'
 
 /** 二级导航的一项：to 可以带 ?tab=，此时只有地址中的 tab 相同才算当前项 */
 export interface NavItem {
@@ -68,10 +69,11 @@ export function itemActive(item: NavItem, route: RouteLocationNormalizedLoaded, 
   return !group.items.some((x) => x !== item && split(x.to).path === path && split(x.to).tab === cur)
 }
 
-/** 按账号角色筛选：查看者只保留能打开的页面，没有可用页面的分组整个隐藏 */
+/** 按账号角色筛选：查看者只保留能打开的页面，没有可用页面的分组整个隐藏；告警关闭时不显示告警分组（修订第 175 条） */
 export function groupsFor(viewer: boolean): NavGroup[] {
-  if (!viewer) return navGroups
-  return navGroups.map((g) => ({ ...g, items: g.items.filter((x) => x.viewer) })).filter((g) => g.items.length)
+  const groups = alertsOn.value ? navGroups : navGroups.filter((g) => g.key !== 'alerts')
+  if (!viewer) return groups
+  return groups.map((g) => ({ ...g, items: g.items.filter((x) => x.viewer) })).filter((g) => g.items.length)
 }
 
 /** 当前地址所属的分组（没有时为 undefined，如登录页） */

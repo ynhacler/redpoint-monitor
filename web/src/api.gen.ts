@@ -31,6 +31,8 @@ export interface Me {
   totp_enabled: boolean
   /** 未使用的恢复码数量；未开启时为 0 */
   recovery_codes_left: number
+  /** 告警总开关（修订第 175 条）：关闭时面板不评估告警、不发送通知，Web 隐藏告警分组；在面板主机上用 vpsmon-server admin alerts on|off 切换 */
+  alerts_enabled: boolean
 }
 
 export interface SystemEvent {

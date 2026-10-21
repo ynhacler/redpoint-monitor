@@ -6436,7 +6436,8 @@
           "must_change_password",
           "csrf_token",
           "totp_enabled",
-          "recovery_codes_left"
+          "recovery_codes_left",
+          "alerts_enabled"
         ],
         "properties": {
           "username": {
@@ -6465,6 +6466,10 @@
           "recovery_codes_left": {
             "type": "integer",
             "description": "未使用的恢复码数量；未开启时为 0"
+          },
+          "alerts_enabled": {
+            "type": "boolean",
+            "description": "告警总开关（修订第 175 条）：关闭时面板不评估告警、不发送通知，Web 隐藏告警分组；在面板主机上用 vpsmon-server admin alerts on|off 切换"
           }
         }
       },

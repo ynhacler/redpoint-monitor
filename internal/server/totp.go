@@ -259,6 +259,7 @@ func (f *totpFlows) done(tok string) {
 // meFor 是带两步验证状态的登录信息。
 func (s *Server) meFor(u User, tok string) (meView, error) {
 	v := meOf(u, tok)
+	v.AlertsEnabled = s.alertsEnabled()
 	secret, _, err := s.store.totpState(u.ID)
 	if err != nil {
 		return v, err
