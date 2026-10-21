@@ -159,10 +159,8 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <div class="page-head">
       <h1>节点</h1>
       <span v-if="state.updatedAt" class="muted small updated">更新于 {{ state.updatedAt.toLocaleTimeString() }}</span>
-      <template v-if="!isViewer">
-        <RouterLink to="/servers/batch" class="btn secondary">批量新建</RouterLink>
-        <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
-      </template>
+      <!-- 批量新建的入口在新建节点页（修订第 178 条） -->
+      <RouterLink v-if="!isViewer" to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
     </div>
 
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
@@ -171,9 +169,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <!-- 舰队总览：剩余流量与先用完的节点、每月总成本、30 天内到期（修订第 174 条） -->
     <FleetCards v-if="installed.length" />
 
-    <!-- 统计即筛选：数字为该状态的节点数，点击只看这些节点 -->
+    <!-- 统计即筛选：数字为该状态的节点数，点击只看这些节点；离线、需要关注等为 0 时不显示（修订第 178 条） -->
     <div v-if="installed.length" class="stats" role="tablist" aria-label="按状态筛选">
-      <button v-for="x in filters" :key="x.v" type="button" role="tab" class="stat" :aria-selected="statusFilter === x.v"
+      <button v-for="x in filters.filter((f) => f.v === 'all' || f.v === 'online' || counts[f.v] || statusFilter === f.v)" :key="x.v" type="button" role="tab" class="stat" :aria-selected="statusFilter === x.v"
         :class="{ active: statusFilter === x.v }" @click="setFilter(x.v)">
         <span class="muted small">{{ x.t }}</span>
         <span class="n num" :class="counts[x.v] && x.level && x.v !== 'all' ? x.level : ''">{{ counts[x.v] }}</span>
@@ -192,9 +190,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
         <option value="">全部分组</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
       </select>
-      <div class="segmented" role="group" aria-label="排序">
-        <button v-for="o in sorts" :key="o.v" type="button" :class="{ active: sortBy === o.v }" @click="sortBy = o.v">{{ o.t }}</button>
-      </div>
+      <select v-model="sortBy" aria-label="排序">
+        <option v-for="o in sorts" :key="o.v" :value="o.v">排序：{{ o.t }}</option>
+      </select>
       <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
         <Icon name="grip" />调整顺序
       </button>

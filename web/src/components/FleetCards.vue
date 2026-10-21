@@ -26,6 +26,7 @@ onMounted(async () => {
   }
 })
 const cost = computed(() => costFleet(installed.value, accounts.value, linked.value))
+const shown = computed(() => traffic.value.limited > 0 || (!isViewer.value && cost.value.lines.length > 0) || renewals.value.length > 0)
 const money = (cents: number, cur: string) => fmtMoney(Math.round(cents), cur === '—' ? '' : cur)
 
 function dueText(days: number) {
@@ -36,12 +37,12 @@ function dueText(days: number) {
 </script>
 
 <template>
-  <div class="fleet" :class="{ two: isViewer }">
+  <!-- 只显示有内容的卡片（修订第 178 条）：没有流量额度、价格或近期到期时不占位置 -->
+  <div v-if="shown" class="fleet">
     <!-- 流量 -->
-    <section class="panel card">
+    <section v-if="traffic.limited" class="panel card">
       <h3>本月剩余流量</h3>
-      <template v-if="traffic.limited">
-        <p class="big num">{{ fmtTraffic(traffic.remaining) }}</p>
+      <p class="big num">{{ fmtTraffic(traffic.remaining) }}</p>
         <p class="muted small">{{ traffic.limited }} 台节点有流量额度</p>
         <ul v-if="traffic.risks.length" class="list">
           <li v-for="r in traffic.risks.slice(0, 3)" :key="r.server.id">
@@ -52,15 +53,12 @@ function dueText(days: number) {
           </li>
         </ul>
         <p v-else class="ok small">按当前用量，本周期没有节点会用完流量。</p>
-      </template>
-      <p v-else class="muted small">还没有节点设置流量额度。在节点“编辑”中填写套餐流量后，这里会预计哪台先用完。</p>
     </section>
 
     <!-- 成本（管理员） -->
-    <section v-if="!isViewer" class="panel card">
+    <section v-if="!isViewer && cost.lines.length" class="panel card">
       <h3>每月总成本</h3>
-      <template v-if="cost.lines.length">
-        <p v-for="l in cost.lines.slice(0, 2)" :key="l.currency" class="big num">
+      <p v-for="l in cost.lines.slice(0, 2)" :key="l.currency" class="big num">
           {{ money(l.nodes + l.cloud, l.currency) }}<small class="muted"> / 月</small>
         </p>
         <p class="muted small">
@@ -68,8 +66,6 @@ function dueText(days: number) {
             <template v-if="i"> · </template>节点续费 {{ money(l.nodes, l.currency) }}<template v-if="l.cloud"> + 云账单本月 {{ money(l.cloud, l.currency) }}</template>
           </template>
         </p>
-      </template>
-      <p v-else class="muted small">还没有价格信息。在节点“编辑”中填写续费价格与周期，或接入云账户。</p>
       <ul v-if="cost.unpriced || unlinked || cost.inCloud" class="hints small">
         <li v-if="cost.unpriced">{{ cost.unpriced }} 台节点没填价格（在节点编辑页填写），总成本不完整</li>
         <li v-if="unlinked"><RouterLink to="/cloud">{{ unlinked }} 个云实例未关联节点</RouterLink></li>
@@ -78,25 +74,21 @@ function dueText(days: number) {
     </section>
 
     <!-- 到期 -->
-    <section class="panel card">
+    <section v-if="renewals.length" class="panel card">
       <h3>未来 30 天到期</h3>
-      <template v-if="renewals.length">
-        <p class="big num">{{ renewals.length }}<small class="muted"> 台</small></p>
+      <p class="big num">{{ renewals.length }}<small class="muted"> 台</small></p>
         <ul class="list">
           <li v-for="r in renewals.slice(0, 4)" :key="r.node.id">
             <RouterLink :to="`/servers/${r.node.id}`">{{ r.node.name }}</RouterLink>
             <span class="num" :class="r.days <= 3 ? 'bad' : r.days <= 7 ? 'warn' : 'muted'">{{ dueText(r.days) }}</span>
           </li>
         </ul>
-      </template>
-      <p v-else class="ok small">未来 30 天没有节点到期。</p>
     </section>
   </div>
 </template>
 
 <style scoped>
 .fleet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.fleet.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .card h3 { margin: 0; font-size: var(--font-sm); color: var(--text-muted); font-weight: var(--weight-regular); }
 .card p { margin: 0; }
@@ -111,6 +103,6 @@ function dueText(days: number) {
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
 @media (max-width: 900px) {
-  .fleet, .fleet.two { grid-template-columns: minmax(0, 1fr); }
+  .fleet { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
