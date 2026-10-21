@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// 节点详情顶部的概况卡片（设计 11.1）：名称与状态、CPU 型号，系统、负载、运行时间、容量、本周期流量等信息块，
+// 节点详情顶部的概况卡片（设计 11.1）：名称与状态、处理器型号，系统、架构、内存与磁盘容量等信息块
+// （负载、运行时间在 CPU 块，本周期流量在“流量”页，不在这里重复，修订第 177 条），
 // 以及系统与资产信息（主机名、IP、内核、Agent、供应商、续费与到期等）。
 // 只显示读一眼就能用的静态或慢变信息，没有填写的资产字段不显示；实时指标在下方的指标块中。
 import { computed, ref } from 'vue'
 import type { ServerView } from '../api'
 import { countryName } from '../countries'
-import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, fmtTraffic, fmtUptime, periodNames } from '../format'
+import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, periodNames } from '../format'
 import { isViewer } from '../store'
 import AgentUpgrade from './AgentUpgrade.vue'
 import Flag from './Flag.vue'
@@ -82,13 +83,6 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
   { icon: 'list', label: '操作系统', value: [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' ') || DASH },
   { icon: 'cpu', label: '架构', value: sys.value?.arch || DASH },
   {
-    icon: 'chart', label: '负载 1 / 5 / 15',
-    value: props.live && r.value
-      ? [r.value.cpu.load1, r.value.cpu.load5, r.value.cpu.load15].filter((v) => v != null).map((v) => v!.toFixed(2)).join('/')
-      : DASH,
-  },
-  { icon: 'clock', label: '运行时间', value: props.live ? fmtUptime(sys.value?.uptime) : DASH },
-  {
     icon: 'layers', label: '内存',
     value: r.value ? fmtBytes(r.value.memory.total) : DASH,
     extra: r.value?.swap.total ? `Swap ${fmtBytesShort(r.value.swap.total)}` : '',
@@ -98,8 +92,6 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
     value: diskTotal.value ? fmtBytes(diskTotal.value) : DASH,
     extra: r.value && r.value.disk.length > 1 ? `挂载 ${r.value.disk.length}` : '',
   },
-  { icon: 'arrow-up', label: '本周期上传', value: fmtTraffic(s.value.traffic.tx, s.value.traffic.unit), tone: 'up' },
-  { icon: 'arrow-down', label: '本周期下载', value: fmtTraffic(s.value.traffic.rx, s.value.traffic.unit), tone: 'down' },
 ])
 </script>
 
@@ -119,7 +111,7 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
       <div v-if="sys?.cpu_model" class="tile wide">
         <Icon name="cpu" :size="18" />
         <div class="body">
-          <div class="label">CPU</div>
+          <div class="label">处理器</div>
           <div class="value" :title="sys.cpu_model"><span class="ellipsis">{{ sys.cpu_model }}</span><span v-if="r" class="extra">{{ r.cpu.cores }} 核</span></div>
         </div>
       </div>
@@ -170,8 +162,6 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
   border: 1px solid var(--border); background: var(--surface); min-width: 0; }
 .tile.wide { grid-column: 1 / -1; }
 .tile svg { flex: none; color: var(--text-muted); }
-.tile.up svg { color: var(--ok); }
-.tile.down svg { color: var(--accent); }
 .body { min-width: 0; flex: 1; }
 .label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
 .value { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);

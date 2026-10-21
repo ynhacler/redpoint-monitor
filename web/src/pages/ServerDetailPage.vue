@@ -16,7 +16,6 @@ import LatencyCard from '../components/LatencyCard.vue'
 import ReachCard from '../components/ReachCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
-import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
@@ -69,7 +68,7 @@ const tabs = computed<Tab[]>(() => {
 const tab = computed<TabKey>(() => tabs.value.find((t) => t.key === route.query.tab)?.key ?? 'monitor')
 const setTab = (t: TabKey) => router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
 
-// ---- 实时采样：迷你折线与实时网速图 ----
+// ---- 实时采样：网络块中的实时网速曲线 ----
 // 保留最近 10 分钟；打开页面时用 1 小时历史中最近 10 分钟的点预填，避免图表从空白开始。
 // 相邻两点间隔超过 30 秒（Agent 停报）插入空点，折线在此断开。
 const SAMPLE_WINDOW = 600
@@ -193,9 +192,13 @@ const line = (name: string, f: (p: (typeof pts.value)[number]) => number | null)
 }
 const hasData = (f: (p: (typeof pts.value)[number]) => number | null) => pts.value.some((p) => f(p) != null)
 const charts = computed(() => [
+  // CPU 只有一张图（修订第 177 条）：使用率与被抢占（steal，高说明宿主机超售）、IO 等待（高说明在等磁盘，设计 4.4）画在一起；
+  // 旧版 Agent 没有占比数据时只画使用率，长时间范围有峰值时补上峰值
   {
-    title: 'CPU', max: 100, format: (v: number) => `${Math.round(v)}%`,
-    series: coarse.value ? [line('平均', (p) => p.cpu), line('峰值', (p) => p.cpu_max)] : [line('CPU', (p) => p.cpu)],
+    title: 'CPU', max: 100, format: (v: number) => `${v.toFixed(v < 10 ? 1 : 0)}%`,
+    series: hasData((p) => p.steal ?? p.iowait)
+      ? [line('使用率', (p) => p.cpu), line('被抢占', (p) => p.steal), line('IO 等待', (p) => p.iowait)]
+      : coarse.value ? [line('平均', (p) => p.cpu), line('峰值', (p) => p.cpu_max)] : [line('使用率', (p) => p.cpu)],
   },
   {
     title: '内存', max: 100, format: (v: number) => `${Math.round(v)}%`,
@@ -213,13 +216,6 @@ const charts = computed(() => [
     title: '负载（1 分钟）', format: (v: number) => v.toFixed(v < 10 ? 2 : 0),
     series: [line('Load1', (p) => p.load1)],
   },
-  // steal 高说明宿主机超售，iowait 高说明在等磁盘（设计 4.4）；旧版 Agent 没有数据时不显示
-  ...(hasData((p) => p.steal ?? p.iowait)
-    ? [{
-        title: 'CPU 等待（steal / iowait）', format: (v: number) => `${v.toFixed(v < 10 ? 1 : 0)}%`,
-        series: [line('steal', (p) => p.steal), line('iowait', (p) => p.iowait)],
-      }]
-    : []),
   ...(hasData((p) => p.tcp)
     ? [{
         title: 'TCP 连接数', format: (v: number) => String(Math.round(v)),
@@ -246,7 +242,8 @@ const charts = computed(() => [
       <div v-if="s.status === 'pending'" class="banner warn">
         该节点尚未安装 Agent。<RouterLink v-if="!isViewer" :to="`/servers/${s.id}/install`">查看安装命令</RouterLink>
       </div>
-      <div v-else-if="problems.length" class="banner" :class="{ warn: problems[0].level === 'warn' }">
+      <!-- 只在离线 / 未知时提示；资源与流量的问题见下方健康摘要，不重复显示（修订第 177 条） -->
+      <div v-else-if="s.status !== 'online' && problems.length" class="banner" :class="{ warn: problems[0].level === 'warn' }">
         {{ problems.map((p) => p.text).join(' · ') }}
         <template v-if="s.status === 'offline' && s.last_seen_at">，最后上报 {{ fmtTime(s.last_seen_at) }}</template>
       </div>
@@ -272,10 +269,7 @@ const charts = computed(() => [
       <template v-if="tab === 'monitor'">
         <template v-if="live && liveServer?.latest">
           <section class="section">
-            <QuickTiles :server="liveServer" :samples="samples" />
-          </section>
-          <section class="section">
-            <LivePanels :server="liveServer" />
+            <LivePanels :server="liveServer" :samples="samples" />
           </section>
           <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
           <section v-if="collectErrors.length" class="section collect-errors small">

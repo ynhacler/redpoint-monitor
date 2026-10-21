@@ -1,21 +1,24 @@
 <script setup lang="ts">
 // 节点详情的实时指标块（设计 11.1、41.6，参考 ServerCat）：CPU → 内存 → 网络 → 端口 → 磁盘，顺序与 App 一致。
-// 磁盘可能有多块，网络与端口放在磁盘之前，避免被挤到页面底部。每块左上角为图标 + 指标名。
-// 版式规则：标签全大写、次要色、小号（界面字体）；数值用等宽字体（与参考一致），单位缩小一档并用次要色（Qty）；
+// 每项指标只出现一次（修订第 177 条）：原速览卡片并入这里，实时网速曲线放在网络块中。
+// 磁盘可能有多块，网络与端口放在磁盘之前，避免被挤到页面底部。块标题与其他卡片一致（中文 h3，无图标）。
+// 版式规则：标签用中文、次要色、小号；数值用等宽字体，单位缩小一档并用次要色（Qty）；
 // 每块“左侧数值、右侧图形”，图形表达占比（环）或分布（每核分段条、竖向容量条）。
 // CPU 时间占比、每核、内存缓存、IOPS 等为可选字段（设计 4.4～4.9），旧版 Agent 不上报时对应部分不显示。
 import { computed } from 'vue'
 import type { DiskInfo, ServerView } from '../api'
-import { DASH, fmtBytesShort, fmtPct, uptimeParts } from '../format'
-import { cpu, gaugeLevel, ioForDisk, mem, rx, tx } from '../metrics'
+import { DASH, fmtBytes, fmtBytesShort, fmtPct, uptimeParts } from '../format'
+import { cpu, gaugeLevel, ioForDisk, mem, rx, tx, type LiveSample } from '../metrics'
 import { exposure, exposureNames, isRisky, serviceName, sortPorts } from '../ports'
-import Icon from './Icon.vue'
+import Chart, { type Series } from './Chart.vue'
 import Qty from './Qty.vue'
 import Ring, { type RingSegment } from './Ring.vue'
 
 const props = defineProps<{
   /** 节点；调用方保证 latest 存在且在线 */
   server: ServerView
+  /** 最近 10 分钟的实时采样（网络块中的网速曲线） */
+  samples: LiveSample[]
 }>()
 
 const r = computed(() => props.server.latest!)
@@ -29,17 +32,17 @@ const cpuParts = computed(() => {
   if (!x) {
     // 旧版 Agent 不上报占比：版式不变，数值显示“—”
     return [
-      { key: 'sys', name: 'SYS', value: NaN, color: 'var(--bad)', hint: '内核态（含中断）' },
-      { key: 'user', name: 'USER', value: NaN, color: 'var(--ok)', hint: '用户态（含 nice）' },
-      { key: 'iowait', name: 'IOWAIT', value: NaN, color: 'var(--series-2)', hint: '等待磁盘；计为空闲' },
-      { key: 'steal', name: 'STEAL', value: NaN, color: 'var(--warn)', hint: '被宿主机占用；持续偏高说明超售' },
+      { key: 'sys', name: '内核', value: NaN, color: 'var(--bad)', hint: '内核态（含中断）' },
+      { key: 'user', name: '用户', value: NaN, color: 'var(--ok)', hint: '用户态（含 nice）' },
+      { key: 'iowait', name: 'IO 等待', value: NaN, color: 'var(--series-2)', hint: '等待磁盘；计为空闲' },
+      { key: 'steal', name: '被抢占', value: NaN, color: 'var(--warn)', hint: '被宿主机占用；持续偏高说明超售' },
     ]
   }
   return [
-    { key: 'sys', name: 'SYS', value: x.system + x.irq + x.softirq, color: 'var(--bad)', hint: '内核态（含中断）' },
-    { key: 'user', name: 'USER', value: x.user + x.nice, color: 'var(--ok)', hint: '用户态（含 nice）' },
-    { key: 'iowait', name: 'IOWAIT', value: x.iowait, color: 'var(--series-2)', hint: '等待磁盘；计为空闲' },
-    { key: 'steal', name: 'STEAL', value: x.steal, color: 'var(--warn)', hint: '被宿主机占用；持续偏高说明超售' },
+    { key: 'sys', name: '内核', value: x.system + x.irq + x.softirq, color: 'var(--bad)', hint: '内核态（含中断）' },
+    { key: 'user', name: '用户', value: x.user + x.nice, color: 'var(--ok)', hint: '用户态（含 nice）' },
+    { key: 'iowait', name: 'IO 等待', value: x.iowait, color: 'var(--series-2)', hint: '等待磁盘；计为空闲' },
+    { key: 'steal', name: '被抢占', value: x.steal, color: 'var(--warn)', hint: '被宿主机占用；持续偏高说明超售' },
   ]
 })
 
@@ -84,17 +87,11 @@ const memSegments = computed<RingSegment[] | undefined>(() => {
   ]
 })
 
-// 网络：开机以来累计（与计费周期无关，计费用量见流量卡片）；环表示下行与上行的比例
-const totalRx = computed(() => r.value.network.reduce((a, n) => a + n.rx_bytes, 0))
-const totalTx = computed(() => r.value.network.reduce((a, n) => a + n.tx_bytes, 0))
-const netSegments = computed<RingSegment[]>(() => {
-  const sum = totalRx.value + totalTx.value
-  if (!sum) return []
-  return [
-    { value: (totalRx.value / sum) * 100, color: 'var(--accent)' },
-    { value: (totalTx.value / sum) * 100, color: 'var(--ok)' },
-  ]
-})
+// 网络：当前网速 + 最近 10 分钟曲线（计费用量见“流量”页）
+const speedSeries = computed<Series[]>(() => [
+  { name: '下行', data: props.samples.map((p) => [p.ts * 1000, p.rx]) },
+  { name: '上行', data: props.samples.map((p) => [p.ts * 1000, p.tx]) },
+])
 
 // 磁盘：竖向容量条 + 所在磁盘的 IO。IO 按整块磁盘统计，同一块盘的多个分区只在第一个分区显示 IO 表，
 // 其余分区注明与哪个挂载点共用，避免同样的数字重复出现
@@ -137,7 +134,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     </p>
     <!-- CPU -->
     <section class="block cpu">
-      <h4 class="title"><span class="ico"><Icon name="cpu" :size="15" /></span>CPU</h4>
+      <h3 class="title">CPU<span class="title-extra">{{ r.cpu.cores }} 核</span></h3>
       <div class="cpu-top">
         <div class="hero-col">
           <div class="hero" :class="cpuLv"><Qty :v="Math.round(cpu(server) ?? 0)" u="%" /></div>
@@ -164,13 +161,12 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
       <div class="foot">
         <dl class="facts">
-          <div><dt>CORES</dt><dd><Qty :v="r.cpu.cores" /></dd></div>
-          <div><dt>IDLE</dt><dd><Qty :v="pct1(idle)" u="%" /></dd></div>
-          <div><dt>UPTIME</dt><dd><Qty :v="up.v" :u="up.u" /></dd></div>
+          <div><dt>空闲</dt><dd><Qty :v="pct1(idle)" u="%" /></dd></div>
+          <div><dt>运行</dt><dd><Qty :v="up.v" :u="up.u" /></dd></div>
         </dl>
         <div class="load" :title="`负载 1 / 5 / 15 分钟：${loads.join(' / ')}，核心 ${r.cpu.cores}`">
           <div class="load-text">
-            <dt>LOAD</dt>
+            <dt>负载</dt>
             <dd class="load-vals">{{ loads.join('/') }}</dd>
           </div>
           <svg class="load-rings" viewBox="0 0 52 52" role="img" :aria-label="`负载 ${loads.join(' / ')}`">
@@ -187,47 +183,43 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 内存 -->
     <section class="block row-block">
-      <h4 class="title"><span class="ico"><Icon name="memory" :size="15" /></span>Mem</h4>
+      <h3 class="title">内存</h3>
       <dl class="cols">
-        <div><dt><i style="background: var(--track)" />FREE</dt><dd><Qty :text="m.free != null ? fmtBytesShort(m.free) : DASH" /></dd></div>
-        <div><dt><i :style="{ background: `var(--${memLv})` }" />USED</dt><dd><Qty :text="fmtBytesShort(m.used)" /></dd></div>
-        <div><dt><i style="background: var(--series-2)" />PAGE CACHE</dt><dd><Qty :text="m.cached != null ? fmtBytesShort(cache) : DASH" /></dd></div>
+        <div><dt><i style="background: var(--track)" />可用</dt><dd><Qty :text="m.free != null ? fmtBytesShort(m.free) : DASH" /></dd></div>
+        <div><dt><i :style="{ background: `var(--${memLv})` }" />已用</dt><dd><Qty :text="fmtBytesShort(m.used)" /></dd></div>
+        <div><dt><i style="background: var(--series-2)" />缓存</dt><dd><Qty :text="m.cached != null ? fmtBytesShort(cache) : DASH" /></dd></div>
       </dl>
       <Ring :pct="mem(server)" :level="memLv" :segments="memSegments" :size="60" label="内存" />
       <p class="sub-line muted">
-        <span>SWAP <template v-if="r.swap.total"><b><Qty :text="fmtBytesShort(r.swap.used)" /></b> / <Qty :text="fmtBytesShort(r.swap.total)" /></template><b v-else>未启用</b></span>
-        <span>TOTAL <b><Qty :text="fmtBytesShort(m.total)" /></b></span>
+        <span>Swap <template v-if="r.swap.total"><b><Qty :text="fmtBytesShort(r.swap.used)" /></b> / <Qty :text="fmtBytesShort(r.swap.total)" /></template><b v-else>未启用</b></span>
+        <span>总量 <b><Qty :text="fmtBytesShort(m.total)" /></b></span>
       </p>
     </section>
 
     <!-- 网络 -->
     <section class="block row-block net">
-      <h4 class="title"><span class="ico"><Icon name="network" :size="15" /></span>Net</h4>
+      <h3 class="title">网络<span class="title-extra">最近 10 分钟</span></h3>
       <dl class="cols speeds">
-        <div><dt>↓ RX</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
-        <div><dt>↑ TX</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
+        <div><dt><i style="background: var(--accent)" />下行</dt><dd><Qty :text="fmtBytesShort(rx(server), true)" /></dd></div>
+        <div><dt><i style="background: var(--ok)" />上行</dt><dd><Qty :text="fmtBytesShort(tx(server), true)" /></dd></div>
       </dl>
-      <dl class="totals" title="开机以来累计（网卡计数，重启后清零）；计费用量见“流量”">
-        <div><dt>↓<i style="background: var(--accent)" /></dt><dd><Qty :text="fmtBytesShort(totalRx)" /></dd></div>
-        <div><dt>↑<i style="background: var(--ok)" /></dt><dd><Qty :text="fmtBytesShort(totalTx)" /></dd></div>
-      </dl>
-      <Ring v-if="netSegments.length" :pct="undefined" :segments="netSegments" :size="60" label="下行与上行累计比例" />
+      <div class="speed-chart"><Chart title="" :series="speedSeries" :format="(v: number) => fmtBytes(v, true)" hide-legend /></div>
       <p class="sub-line muted">
         <span>TCP <b>{{ r.conns?.tcp ?? DASH }}</b></span><span>UDP <b>{{ r.conns?.udp ?? DASH }}</b></span>
         <span>TIME_WAIT <b>{{ r.conns?.time_wait ?? DASH }}</b></span>
-        <span>PROC <b>{{ r.processes?.total ?? DASH }}</b></span>
+        <span>进程 <b>{{ r.processes?.total ?? DASH }}</b></span>
       </p>
     </section>
 
     <!-- 关注的进程（设计 33.5.1）：节点设置了才显示 -->
     <section v-if="procs.length" class="block procs">
-      <h4 class="title">
-        <span class="ico"><Icon name="list" :size="15" /></span>Procs
+      <h3 class="title">
+        关注的进程
         <span class="title-extra">
           <span v-if="procsDown" class="bad">未运行 <b>{{ procsDown }}</b></span>
           <span v-else-if="procs.every((p) => p.count != null)">全部运行中</span>
         </span>
-      </h4>
+      </h3>
       <ul class="port-list">
         <li v-for="p in procs" :key="p.name" :class="{ risky: p.count === 0 }">
           <span class="svc mono">{{ p.name }}</span>
@@ -240,14 +232,14 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 监听端口（设计 4.9.1） -->
     <section class="block ports">
-      <h4 class="title">
-        <span class="ico"><Icon name="plug" :size="15" /></span>Ports
+      <h3 class="title">
+        监听端口
         <span v-if="ports?.length" class="title-extra">
           <span v-if="portCounts.public">公网 <b>{{ portCounts.public }}</b></span>
           <span v-if="portCounts.private">内网 <b>{{ portCounts.private }}</b></span>
           <span v-if="portCounts.local">本机 <b>{{ portCounts.local }}</b></span>
         </span>
-      </h4>
+      </h3>
       <p v-if="!ports" class="muted small empty">当前 Agent 未上报监听端口，升级 Agent 后显示。</p>
       <p v-else-if="!ports.length" class="muted small empty">没有监听中的端口。</p>
       <ul v-else class="port-list">
@@ -262,7 +254,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 
     <!-- 磁盘（设计 4.6、4.7）：每个挂载点一块 -->
     <section v-for="d in r.disk" :key="d.mount" class="block disk">
-      <h4 class="title"><span class="ico"><Icon name="hard-drive" :size="15" /></span>Disk</h4>
+      <h3 class="title">磁盘</h3>
       <div class="disk-head">
         <div class="disk-name">
           <div class="mount">{{ d.mount }}</div>
@@ -276,17 +268,17 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       </div>
       <p v-if="sharedWith(d)" class="muted shared">与 <span class="mono">{{ sharedWith(d) }}</span> 同在 {{ io(d)!.device }}，IO 见该分区</p>
       <table v-else-if="io(d)" class="io">
-        <thead><tr><th /><th>SPEED</th><th>BYTES</th><th>IOPS</th><th title="每次 IO 的平均耗时（含排队）">WAIT</th></tr></thead>
+        <thead><tr><th /><th>速度</th><th>累计</th><th>IOPS</th><th title="每次 IO 的平均耗时（含排队）">延迟</th></tr></thead>
         <tbody>
           <tr>
-            <th>R</th>
+            <th>读</th>
             <td><Qty :text="fmtBytesShort(io(d)!.read_speed, true)" /></td>
             <td><Qty :text="fmtBytesShort(io(d)!.read_bytes)" /></td>
             <td><Qty :v="iops(io(d)!.read_iops)" /></td>
             <td rowspan="2" class="wait"><Qty :v="io(d)!.await_ms != null ? io(d)!.await_ms!.toFixed(1) : DASH" :u="io(d)!.await_ms != null ? 'ms' : ''" /></td>
           </tr>
           <tr>
-            <th>W</th>
+            <th>写</th>
             <td><Qty :text="fmtBytesShort(io(d)!.write_speed, true)" /></td>
             <td><Qty :text="fmtBytesShort(io(d)!.write_bytes)" /></td>
             <td><Qty :v="iops(io(d)!.write_iops)" /></td>
@@ -301,7 +293,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
 <style scoped>
 /* 宽屏两列：CPU 占左列两行，内存、网络在右列，各磁盘依次排在其后 */
 .live { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-items: start; }
-.block { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-4) var(--space-5); min-width: 0;
+.block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 0;
   font-variant-numeric: tabular-nums; }
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
@@ -313,11 +305,9 @@ dd { font-size: 22px; line-height: 28px; white-space: nowrap; font-family: var(-
 dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 
 
-/* 块标题：左上角图标 + 指标名 */
-.title { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); flex-basis: 100%;
+/* 块标题：与详情页其他卡片一致（h3，无图标） */
+.title { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-3); flex-basis: 100%;
   font-size: var(--font-md); line-height: var(--line-md); font-weight: var(--weight-strong); color: var(--text); }
-.ico { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .title-extra { margin-left: auto; display: flex; gap: var(--space-3); font-size: var(--font-sm); font-weight: var(--weight-regular); color: var(--text-muted); }
 .title-extra b { color: var(--text); font-family: var(--font-mono); font-weight: var(--weight-regular); }
 
@@ -406,15 +396,18 @@ dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(
 .risky .port { color: var(--bad); }
 
 /* 网络 */
-.totals { display: flex; flex-direction: column; gap: var(--space-1); }
-.totals div { display: flex; align-items: center; gap: var(--space-2); }
-.totals dt { gap: 4px; }
-.totals dd { font-size: var(--font-lg); line-height: var(--line-lg); }
 .speeds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Chart 自带面板样式，嵌在网络块中时去掉边框与内边距 */
+.speed-chart { flex-basis: 100%; min-width: 0; }
+.speed-chart :deep(.chart) { border: 0; padding: 0; background: none; }
+.speed-chart :deep(.chart h3) { display: none; }
 
 @media (min-width: 900px) {
   .live { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .cpu { grid-row: span 2; }
+  /* CPU 占左列两行并拉伸到与右列同高，底部一行贴底 */
+  .cpu { grid-row: span 2; align-self: stretch; display: flex; flex-direction: column; }
+  .cpu .foot { margin-top: auto; padding-top: var(--space-5); }
+  .cpu .title { flex-basis: auto; }
 }
 @media (max-width: 600px) {
   .block { padding: var(--space-4); }
@@ -425,7 +418,7 @@ dd :deep(.u), .hero :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(
   .parts dd { font-size: 17px; line-height: 22px; }
   .core-row { gap: 3px; }
   .seg { height: 12px; }
-  /* 底部一行：CORES / IDLE / UPTIME 与 LOAD + 负载环（参考 ServerCat） */
+  /* 底部一行：空闲 / 运行与负载 + 负载环（参考 ServerCat） */
   .facts { gap: var(--space-4); }
   .facts dd { font-size: 18px; line-height: 24px; }
   .load { gap: var(--space-2); }
