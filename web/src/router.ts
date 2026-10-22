@@ -41,8 +41,10 @@ export const router = createRouter({
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   // 地址带 #锚点 时滚动到该元素：页面内容多为异步加载，最多等 2 秒；否则回到顶部
-  scrollBehavior: (to) => {
-    if (!to.hash) return { top: 0 }
+  scrollBehavior: (to, from, saved) => {
+    // 前进 / 后退回到原来的位置；同一页面只改查询参数（切换标签、筛选）时不滚动（修订第 180 条）
+    if (saved) return saved
+    if (!to.hash) return to.path === from.path ? false : { top: 0 }
     return new Promise((resolve) => {
       let tries = 0
       const tick = () => {
