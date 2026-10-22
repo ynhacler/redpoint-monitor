@@ -4,7 +4,7 @@
 // 以及系统与资产信息（主机名、IP、内核、Agent、供应商、续费与到期等）。
 // 只显示读一眼就能用的静态或慢变信息，没有填写的资产字段不显示；实时指标在下方的指标块中。
 import { computed, ref } from 'vue'
-import type { IPInfo, ServerView } from '../api'
+import { ApiError, errorText, refreshIPInfo, type IPInfo, type ServerView } from '../api'
 import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, periodNames } from '../format'
 import { isViewer } from '../store'
@@ -75,6 +75,25 @@ const facts = computed<Fact[]>(() => {
   asset({ k: '备注', v: x.note, wide: true })
   return out
 })
+
+// 还没有 ASN 时（开关关闭、尚未查询或查询失败），管理员看到一行“ASN”与查询入口，而不是什么都不显示（修订第 193 条）
+const ipInfoNow = computed(() => props.ipInfo ?? s.value.ip_info)
+const asnMissing = computed(() => !isViewer.value && s.value.status !== 'pending' && !ipInfoNow.value?.asn)
+const asnBusy = ref(false)
+const asnOff = ref(false) // 查询返回 409：开关关闭
+const asnError = ref('')
+async function lookupASN() {
+  asnBusy.value = true
+  asnError.value = ''
+  try {
+    await refreshIPInfo(s.value.id) // 结果随节点详情的定时刷新显示
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) asnOff.value = true
+    else asnError.value = errorText(e, '查询失败')
+  } finally {
+    asnBusy.value = false
+  }
+}
 
 const copied = ref('')
 async function copy(v: string) {
@@ -156,6 +175,16 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
           <template v-else><Flag v-if="f.flag" :code="f.flag" class="flag" />{{ f.v }}</template>
         </dd>
       </div>
+      <div v-if="asnMissing" class="fact">
+        <dt>ASN</dt>
+        <dd>
+          <RouterLink v-if="asnOff" to="/monitor#ipinfo">未开启，去“系统 → 监测”打开</RouterLink>
+          <template v-else>
+            <span v-if="asnError || ipInfoNow?.error" class="muted small">{{ asnError || ipInfoNow?.error }} </span>
+            <button type="button" class="link" :disabled="asnBusy" @click="lookupASN">{{ asnBusy ? '查询中…' : '查询' }}</button>
+          </template>
+        </dd>
+      </div>
     </dl>
     <p v-if="missingAssets && !isViewer" class="more small">
       <RouterLink :to="`/servers/${s.id}/edit`">补充资产信息</RouterLink>
@@ -205,6 +234,9 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 .fact dd.empty { color: var(--text-muted); }
 .more { margin: var(--space-3) 0 0; }
 .flag { margin-right: var(--space-1); }
+.link { all: unset; cursor: pointer; color: var(--accent); }
+.link:disabled { color: var(--text-muted); cursor: default; }
+.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .copy { all: unset; cursor: pointer; position: relative; overflow-wrap: anywhere; }
 .copy:hover { color: var(--accent); }
 .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
