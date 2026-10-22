@@ -265,7 +265,7 @@ const charts = computed(() => [
       <SilenceControls v-if="s.status !== 'pending' && !isViewer && alertsOn" :server="s" class="section-tight" />
 
       <!-- 概况（设计 11.1） -->
-      <ServerSummary :server="liveServer ?? s" :live="live" />
+      <ServerSummary :server="liveServer ?? s" :live="live" :ip-info="detail?.id === sid ? detail.ip_info : undefined" />
 
       <!-- 健康摘要（设计 1.5.7） -->
       <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />

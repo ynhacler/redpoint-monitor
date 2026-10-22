@@ -59,6 +59,8 @@ type Server struct {
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
 	alerts      *alertEngine   // 告警引擎（设计 16.7）
 	alertsOn    alertsSwitch   // 告警总开关（修订第 175 条）
+	ipinfoBase  string         // ipinfo.io 地址（测试中替换，设计 49）
+	ipinfoHTTP  *http.Client
 
 	// 官方版本同步（设计 29.1）：发布地址与验签公钥默认为官方值，测试中替换
 	releaseBase   string
@@ -145,6 +147,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
 	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
 	s.exposure = newExposureState()
+	s.ipinfoBase, s.ipinfoHTTP = "https://ipinfo.io", &http.Client{Timeout: 15 * time.Second}
 	s.reloadAlertsSwitch()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -182,6 +185,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "services", s.serviceLoop)
 	go s.runTask(ctx, "heartbeat", s.heartbeatLoop)
 	go s.runTask(ctx, "panel-health", s.panelHealthLoop)
+	go s.runTask(ctx, "ipinfo", s.ipinfoLoop) // 节点 IP 信息（设计 49），打开开关后才查询
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -329,6 +333,9 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/agent-releases/sync", accessAdmin, s.handleSyncReleases)
 	handle("GET /api/v1/settings/quiet-hours", accessAdmin, s.handleGetQuietHours)
 	handle("PUT /api/v1/settings/quiet-hours", accessAdmin, s.handlePutQuietHours)
+	handle("GET /api/v1/settings/ipinfo", accessAdmin, s.handleGetIPInfoSetting) // 节点 IP 信息（设计 49）
+	handle("PUT /api/v1/settings/ipinfo", accessAdmin, s.handlePutIPInfoSetting)
+	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)
 	handle("PUT /api/v1/settings/heartbeat", accessAdmin, s.handlePutHeartbeat)
 	handle("POST /api/v1/settings/heartbeat/test", accessAdmin, s.handleTestHeartbeat)
@@ -860,6 +867,7 @@ type serverView struct {
 	PortBaseline *portBaselineView `json:"port_baseline,omitempty"`
 	// 最近一次公网可达检测（修订第 171 条）：只在管理员的节点详情中返回
 	PortExposure *portExposure `json:"port_exposure,omitempty"`
+	IPInfo       *IPInfo       `json:"ip_info,omitempty"` // ASN 与位置（设计 49），只在节点详情中
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。

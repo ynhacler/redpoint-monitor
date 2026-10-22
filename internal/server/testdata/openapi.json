@@ -2831,6 +2831,103 @@
         }
       }
     },
+    "/settings/ipinfo": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "节点 IP 信息（ASN、位置）查询开关（设计 49）",
+        "responses": {
+          "200": {
+            "description": "当前设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IPInfoSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "打开或关闭 ipinfo.io 查询（记入操作日志 setting.update）",
+        "description": "默认关闭（设计 1.8：IP 上传默认关闭）。打开后面板每周把各节点的公网 IP 发给 ipinfo.io 查询 ASN 与位置；关闭时不发送任何 IP，已保存的结果保留。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IPInfoSetting"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IPInfoSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/servers/{id}/ipinfo": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "立即查询一次节点的 IP 信息（开关关闭时 409；节点没有公网 IP 时 422）",
+        "responses": {
+          "200": {
+            "description": "查询结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IPInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/heartbeat/test": {
       "post": {
         "tags": [
@@ -6776,6 +6873,71 @@
           }
         }
       },
+      "IPInfoSetting": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "用 ipinfo.io 查询节点的 ASN 与位置；默认关闭"
+          }
+        }
+      },
+      "IPInfo": {
+        "type": "object",
+        "required": [
+          "ip",
+          "asn",
+          "org",
+          "hostname",
+          "city",
+          "region",
+          "country",
+          "timezone",
+          "fetched_at",
+          "error"
+        ],
+        "properties": {
+          "ip": {
+            "type": "string",
+            "description": "查询的公网地址"
+          },
+          "asn": {
+            "type": "string",
+            "description": "如 AS13335；没有时为空"
+          },
+          "org": {
+            "type": "string",
+            "description": "运营方名称，如 Cloudflare, Inc."
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string",
+            "description": "两位国家 / 地区代码"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "fetched_at": {
+            "type": "integer",
+            "description": "最近一次查询时间（Unix 秒）"
+          },
+          "error": {
+            "type": "string",
+            "description": "最近一次查询失败的原因；成功时为空"
+          }
+        }
+      },
       "PortExposure": {
         "type": "object",
         "description": "最近一次“检测公网可达”的结果（修订第 171 条，只在内存中，面板重启后清空）；只在管理员的节点详情中返回，没有检测过时省略",
@@ -8200,6 +8362,10 @@
           },
           "port_exposure": {
             "$ref": "#/components/schemas/PortExposure"
+          },
+          "ip_info": {
+            "$ref": "#/components/schemas/IPInfo",
+            "description": "节点公网 IP 的 ASN 与位置（设计 49，来自 ipinfo.io，需在设置中打开）；只在节点详情接口中、查询过时返回"
           },
           "port_baseline": {
             "type": "object",

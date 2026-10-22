@@ -51,6 +51,30 @@ export interface SystemEvent {
   created_at: number
 }
 
+export interface IPInfoSetting {
+  /** 用 ipinfo.io 查询节点的 ASN 与位置；默认关闭 */
+  enabled: boolean
+}
+
+export interface IPInfo {
+  /** 查询的公网地址 */
+  ip: string
+  /** 如 AS13335；没有时为空 */
+  asn: string
+  /** 运营方名称，如 Cloudflare, Inc. */
+  org: string
+  hostname: string
+  city: string
+  region: string
+  /** 两位国家 / 地区代码 */
+  country: string
+  timezone: string
+  /** 最近一次查询时间（Unix 秒） */
+  fetched_at: number
+  /** 最近一次查询失败的原因；成功时为空 */
+  error: string
+}
+
 /** 最近一次“检测公网可达”的结果（修订第 171 条，只在内存中，面板重启后清空）；只在管理员的节点详情中返回，没有检测过时省略 */
 export interface PortExposure {
   checked_at: number
@@ -458,6 +482,8 @@ export interface ServerView {
   /** 各容器 24 小时内的重启次数（容器 ID 前 12 位 → 次数，修订第 167 条）；只在节点详情接口中、有重启时返回 */
   container_restarts?: Record<string, number>
   port_exposure?: PortExposure
+  /** 节点公网 IP 的 ASN 与位置（设计 49，来自 ipinfo.io，需在设置中打开）；只在节点详情接口中、查询过时返回 */
+  ip_info?: IPInfo
   /** 端口基线（修订第 170 条）：允许对公网开放的监听端口。未设置时省略（不评估“未知监听端口”与“基线端口未监听”）。 只在管理员的节点详情中返回 */
   port_baseline?: {
     /** 如 22/tcp、443/tcp、51820/udp */
@@ -2138,6 +2164,26 @@ export interface Paths {
     put: {
       body: HeartbeatInput
       response: HeartbeatView
+    }
+  }
+  '/settings/ipinfo': {
+    /** 节点 IP 信息（ASN、位置）查询开关（设计 49） */
+    get: {
+      response: IPInfoSetting
+    }
+    /** 打开或关闭 ipinfo.io 查询（记入操作日志 setting.update） */
+    put: {
+      body: IPInfoSetting
+      response: IPInfoSetting
+    }
+  }
+  '/servers/{id}/ipinfo': {
+    /** 立即查询一次节点的 IP 信息（开关关闭时 409；节点没有公网 IP 时 422） */
+    post: {
+      params: {
+        id: number
+      }
+      response: IPInfo
     }
   }
   '/settings/heartbeat/test': {
