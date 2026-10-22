@@ -48,6 +48,8 @@ type Instance struct {
 	TrafficLimit       uint64
 	TrafficUsed        uint64
 	TrafficPeriodStart string // YYYY-MM-DD
+	// CDTPool：公网按流量计费、流量走阿里云 CDT 的 ECS 所属的免费额度池（cdt_cn / cdt_intl，修订第 186 条）；其他为空
+	CDTPool string
 }
 
 // TrafficPool 是账户级的流量额度池（修订第 181 条）：阿里云 CDT 的公网流量免费额度按账号计算，

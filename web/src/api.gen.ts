@@ -1227,6 +1227,8 @@ export interface CloudInstance {
   traffic_used_bytes: number
   /** YYYY-MM-DD */
   traffic_period_start: string
+  /** 阿里云 ECS 公网按流量计费（含按流量计费的 EIP）时走 CDT，为所属的免费额度池（账号内共用，用量见账户的 traffic_pools）；空表示不走 CDT（修订第 186 条） */
+  cdt_pool: '' | 'cdt_cn' | 'cdt_intl'
   /** 关联的节点（设计 44.5） */
   server_id: number | null
   /** 未关联时，公网 IP 与之唯一匹配的节点（建议关联，需用户确认） */

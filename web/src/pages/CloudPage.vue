@@ -265,6 +265,9 @@ const awsPolicy = JSON.stringify({
   }],
 }, null, 2)
 
+// 实例所属账户的 CDT 额度池（修订第 186 条）
+const cdtPool = (i: CloudInstance) => accounts.value.find((a) => a.id === i.account_id)?.traffic_pools.find((p) => p.key === i.cdt_pool)
+
 // CDT 免费额度池（修订第 181 条）
 const poolPct = (p: CloudTrafficPool) => (p.limit_bytes ? (p.used_bytes / p.limit_bytes) * 100 : 0)
 const poolTip = (p: CloudTrafficPool) =>
@@ -586,6 +589,7 @@ function expireTone(i: CloudInstance): string {
           <div class="inst-main">
             <div class="ellipsis"><b>{{ i.name || i.instance_id }}</b>
               <span class="muted small meta">{{ kindNames[i.kind] ?? i.kind }} · {{ i.region }} · {{ i.plan }}</span>
+              <span v-if="i.cdt_pool" class="tag-cdt small" title="公网按流量计费，流量走 CDT，使用账号的 CDT 免费额度">CDT</span>
             </div>
             <div class="muted small ellipsis mono">{{ [i.public_ipv4, i.public_ipv6].filter(Boolean).join(' / ') || '无公网 IP' }}</div>
           </div>
@@ -597,6 +601,14 @@ function expireTone(i: CloudInstance): string {
             <UsageBar :pct="trafficPct(i)" />
             <span class="small num muted">{{ fmtBytes(i.traffic_used_bytes) }} / {{ fmtBytes(i.traffic_limit_bytes) }}</span>
           </div>
+          <!-- CDT（修订第 186 条）：额度按账号与地域类别共用，这里显示所属池子的用量，不是这台实例自己的流量 -->
+          <div v-else-if="i.cdt_pool && cdtPool(i)" class="traffic" :title="`${cdtPool(i)!.name}：账号内同类地域的按流量计费实例共用这份免费额度`">
+            <UsageBar :pct="poolPct(cdtPool(i)!)" />
+            <span class="small num" :class="poolPct(cdtPool(i)!) >= 95 ? 'bad' : poolPct(cdtPool(i)!) >= 80 ? 'warn' : 'muted'">
+              {{ cdtPool(i)!.name.replace('CDT ', '') }}（共用）{{ fmtTraffic(cdtPool(i)!.used_bytes, 'binary') }} / {{ fmtTraffic(cdtPool(i)!.limit_bytes, 'binary') }}
+            </span>
+          </div>
+          <span v-else-if="i.cdt_pool" class="traffic muted small" title="需要子用户有 AliyunCDTReadOnlyAccess；本月还没有 CDT 流量时也不显示">CDT：本月暂无数据</span>
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
           <!-- 与节点关联：已关联 / 建议关联（公网 IP 唯一匹配）/ 手动选择 -->
           <div v-if="i.kind !== 'oci_egress'" class="link small">
@@ -625,7 +637,7 @@ function expireTone(i: CloudInstance): string {
       </ul>
       <p v-if="linkError" class="small err">{{ linkError }}</p>
       <p class="muted small">
-        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量；阿里云 ECS 的公网流量见账户卡片中的 CDT 免费额度（按账号计算，不分实例）。
+        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量；阿里云 ECS 公网按流量计费时标有 CDT，显示所属 CDT 免费额度池的用量（按账号计算、同类地域共用，不是单台实例的流量）。
         关联节点后，节点详情显示云厂商口径的状态、流量包与到期时间，可一键写入节点的到期日。
       </p>
     </section>
@@ -665,6 +677,8 @@ function expireTone(i: CloudInstance): string {
 .pool > :first-child { flex: none; }
 .pool > :nth-child(2) { flex: 1; }
 .pool-name { min-width: 8em; }
+.tag-cdt { margin-left: var(--space-2); padding: 0 var(--space-1); border-radius: var(--radius-sm); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .confirm { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-3);
   padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .confirm input { width: 200px; }

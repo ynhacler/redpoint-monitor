@@ -220,6 +220,7 @@ type CloudInstance struct {
 	TrafficLimitBytes  int64  `json:"traffic_limit_bytes"`
 	TrafficUsedBytes   int64  `json:"traffic_used_bytes"`
 	TrafficPeriodStart string `json:"traffic_period_start"`
+	CDTPool            string `json:"cdt_pool"` // 阿里云 ECS 走 CDT 时所属的免费额度池（账号内共用，修订第 186 条）；空表示不走 CDT
 	ServerID           *int64 `json:"server_id"`
 	UpdatedAt          int64  `json:"updated_at"`
 	// 自动流量校准（设计 44.5）：开关、上次执行时间与结果说明
@@ -247,14 +248,14 @@ func (s *Store) ReplaceCloudInstancesExcept(accountID int64, insts []cloud.Insta
 	keep = append(keep, accountID)
 	for _, in := range insts {
 		if _, err := tx.Exec(`INSERT INTO cloud_instances (account_id, instance_id, name, region, kind, state, public_ipv4,
-			public_ipv6, plan, expire_at, traffic_limit_bytes, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+			public_ipv6, plan, expire_at, traffic_limit_bytes, cdt_pool, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT (account_id, instance_id) DO UPDATE SET name = excluded.name, region = excluded.region,
 			kind = excluded.kind, state = excluded.state, public_ipv4 = excluded.public_ipv4, public_ipv6 = excluded.public_ipv6,
-			plan = excluded.plan, expire_at = excluded.expire_at,
+			plan = excluded.plan, expire_at = excluded.expire_at, cdt_pool = excluded.cdt_pool,
 			-- 实例列表不含流量包额度时（阿里云轻量）保留流量同步得到的值
 			traffic_limit_bytes = CASE WHEN excluded.traffic_limit_bytes > 0 THEN excluded.traffic_limit_bytes ELSE cloud_instances.traffic_limit_bytes END,
 			updated_at = excluded.updated_at`, accountID, in.ID, in.Name, in.Region, in.Kind, in.State, in.IPv4, in.IPv6,
-			in.Plan, in.ExpireAt, int64(in.TrafficLimit), now.Unix()); err != nil {
+			in.Plan, in.ExpireAt, int64(in.TrafficLimit), in.CDTPool, now.Unix()); err != nil {
 			return err
 		}
 		keep = append(keep, in.ID)
@@ -297,7 +298,7 @@ func (s *Store) SaveCloudTraffic(accountID int64, insts []cloud.Instance, now ti
 func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 	rows, err := s.DB.Query(`SELECT i.id, i.account_id, a.name, a.provider, i.instance_id, i.name, i.region, i.kind, i.state,
 		i.public_ipv4, i.public_ipv6, i.plan, i.expire_at, i.renew_price_cents, i.traffic_limit_bytes, i.traffic_used_bytes,
-		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status
+		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status, i.cdt_pool
 		FROM cloud_instances i JOIN cloud_accounts a ON a.id = i.account_id
 		WHERE ? = 0 OR i.account_id = ? ORDER BY a.name, i.kind, i.region, i.name, i.instance_id`, accountID, accountID)
 	if err != nil {
@@ -310,7 +311,7 @@ func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 		if err := rows.Scan(&c.ID, &c.AccountID, &c.AccountName, &c.Provider, &c.InstanceID, &c.Name, &c.Region, &c.Kind,
 			&c.State, &c.PublicIPv4, &c.PublicIPv6, &c.Plan, &c.ExpireAt, &c.RenewPriceCents, &c.TrafficLimitBytes,
 			&c.TrafficUsedBytes, &c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt,
-			&c.CalibrateStatus); err != nil {
+			&c.CalibrateStatus, &c.CDTPool); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
