@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 订阅（设计 47，修订第 189 条）：记录影音、工具、云服务等个人订阅的价格、周期与起止日期。
 // “列表”按下次扣费日排列，已结束的置灰；“统计”按本月 / 本年 / 全部显示各类别占比（环形图）与前后几个月的扣费（柱状）。
-// 添加时先从常用服务目录中选择（按类别、可搜索），也可自定义；图标为品牌色方块加首字母，不加载外部图片。
+// 添加时先从常用服务目录中选择（按类别、可搜索），也可自定义；图标为内置的标志（SubAvatar），不加载外部图片。
 // 金额按币种分别统计，不换算；主币种为折算月费最大的币种。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,9 +11,10 @@ import {
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
+import SubAvatar from '../components/SubAvatar.vue'
 import { fmtMoney } from '../format'
 import {
-  avatarOf, byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, mainCurrency, monthStart,
+  byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, mainCurrency, monthStart,
   remindOptions, spendBetween, trialOptions, ymd, type CatalogItem, type Money, type SubCategory,
 } from '../subscriptions'
 
@@ -171,7 +172,6 @@ async function remove() {
   }
 }
 const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开始订阅`
-const formAvatar = computed(() => avatarOf(form))
 </script>
 
 <template>
@@ -198,7 +198,7 @@ const formAvatar = computed(() => avatarOf(form))
       <ul class="pick-list">
         <li v-for="c in picks" :key="c.key">
           <button type="button" class="pick" @click="choose(c)">
-            <span class="avatar" :style="{ background: c.color }">{{ avatarOf(c).letter }}</span>
+            <SubAvatar :brand="c.key" :name="c.name" />
             <span class="pick-name">{{ c.name }}</span>
             <Icon name="plus" class="muted" />
           </button>
@@ -210,7 +210,7 @@ const formAvatar = computed(() => avatarOf(form))
     <!-- 填写 / 编辑 -->
     <form v-else-if="step === 'form'" class="panel editor" novalidate @submit.prevent="save">
       <div class="form-head">
-        <span class="avatar big" :style="{ background: formAvatar.color }">{{ formAvatar.letter }}</span>
+        <SubAvatar :brand="form.brand" :name="form.name || '?'" :size="64" />
         <h2>{{ form.name || '自定义订阅' }}</h2>
       </div>
       <div class="grid">
@@ -288,7 +288,7 @@ const formAvatar = computed(() => avatarOf(form))
         <ul v-if="view === 'list'" class="subs">
           <li v-for="s in list" :key="s.id">
             <button type="button" class="panel sub-row" :class="{ ended: s.ended }" @click="openEdit(s)">
-              <span class="avatar" :style="{ background: avatarOf(s).color }">{{ avatarOf(s).letter }}</span>
+              <SubAvatar :brand="s.brand" :name="s.name" />
               <span class="sub-main">
                 <b class="ellipsis">{{ s.name }}</b>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
@@ -349,9 +349,6 @@ const formAvatar = computed(() => avatarOf(form))
 </template>
 
 <style scoped>
-.avatar { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex: none; color: var(--on-accent);
-  font-weight: var(--weight-strong); font-size: var(--font-lg); }
-.avatar.big { width: 64px; height: 64px; border-radius: 16px; font-size: 28px; }
 
 /* 概览：与仪表板总览同一版式 */
 .strip { display: flex; flex-wrap: wrap; padding: var(--space-3) 0; margin-bottom: var(--space-3); }

@@ -1,7 +1,7 @@
 // 订阅（设计 47，修订第 189 条）：常用服务目录、类别、扣费日计算与统计。全部是纯函数，界面只负责展示。
 // 扣费日规则与面板（internal/server/subscriptions.go）一致：首次扣费 = 开始日期 + 试用天数，之后按周期递推，
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
-// 图标不使用各家商标图片（也不从外部加载），用品牌色方块加首字母。
+// 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts），没有标志的用品牌色方块加首字母；不从外部加载。
 import type { Subscription } from './api'
 
 /** 订阅类别 */
@@ -39,7 +39,7 @@ export interface CatalogItem {
   currency?: string
 }
 
-/** 常用服务目录：名称与品牌色仅用于识别，图标为色块与首字母 */
+/** 常用服务目录：名称与品牌色仅用于识别；有标志的见 brandIcons.ts */
 export const catalog: CatalogItem[] = [
   { key: 'netflix', name: 'Netflix', category: 'video', color: '#E50914', hot: true, currency: 'USD' },
   { key: 'spotify', name: 'Spotify', category: 'video', color: '#1DB954', hot: true, currency: 'USD' },
