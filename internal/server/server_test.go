@@ -684,3 +684,22 @@ func TestWebStatic(t *testing.T) {
 		}
 	}
 }
+
+// 连通性测试的探测页（设计 48）：单独的 CSP 只允许本面板脚本与 HTTPS 请求，只能被本面板嵌入；其他页面仍禁止被嵌入
+func TestProbePageHeaders(t *testing.T) {
+	_, h, _ := testServer(t)
+	rec := do(h, "GET", "/probe.html", "", nil)
+	csp := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "script-src 'self'", "connect-src https:", "frame-ancestors 'self'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("探测页 CSP 缺少 %q：%s", want, csp)
+		}
+	}
+	if rec.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
+		t.Errorf("探测页应只允许同源嵌入：%s", rec.Header().Get("X-Frame-Options"))
+	}
+	rec = do(h, "GET", "/", "", nil)
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") || strings.Contains(csp, "connect-src https:") {
+		t.Errorf("其他页面的 CSP 不应放宽：%s", csp)
+	}
+}

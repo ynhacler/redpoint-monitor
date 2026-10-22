@@ -86,6 +86,16 @@ func (w *statusRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter 
 //
 // 【安全】WebSocket 地址取自请求的 Host，只接受主机名、IP 与端口字符，避免把请求中的内容注入到策略里。
 func setSecurityHeaders(h http.Header, r *http.Request) {
+	// 连通性测试的探测页（设计 48，修订第 190 条）：在面板页面里以 sandbox iframe（不带 allow-same-origin，取不到面板的
+	// Cookie 与页面）加载，只允许本面板的脚本与对外的 HTTPS 请求，结果经 postMessage 交回；只能被本面板嵌入
+	if r.URL.Path == "/probe.html" {
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src https:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		return
+	}
 	connect := "'self'"
 	if host := r.Host; host != "" && validHostHeader(host) {
 		connect += " ws://" + host + " wss://" + host
