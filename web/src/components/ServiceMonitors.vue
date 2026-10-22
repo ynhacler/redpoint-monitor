@@ -7,7 +7,7 @@ import {
   updateServiceMonitor, type ServiceMonitor, type ServiceMonitorInput,
 } from '../api'
 import { DASH, fmtAvailability, fmtLatency, fmtTime } from '../format'
-import { state } from '../store'
+import { alertsOn, state } from '../store'
 import Chart, { type Series } from './Chart.vue'
 
 const items = ref<ServiceMonitor[]>([])
@@ -137,9 +137,9 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
 
 <template>
   <div>
+    <!-- 告警关闭时（修订第 175 条）不提通知（修订第 185 条） -->
     <p class="muted small intro">
-      面板按间隔检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 解析与 Ping（ICMP）。连续失败达到设定次数判为异常并通知，
-      恢复时再通知一次；通知经“通知”中的渠道与 App 推送发送，遵守免打扰。检查记录保留 7 天。
+      面板定时检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 与 Ping，连续失败达到设定次数判为异常{{ alertsOn ? '并通知，恢复时再通知一次' : '' }}；记录保留 7 天。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <div class="toolbar">
@@ -177,7 +177,7 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
           <small v-if="fieldErrors.interval_s" class="bad">{{ fieldErrors.interval_s }}</small></label>
         <label>超时（秒）<input v-model.number="form.timeout_s" type="number" min="1" max="30" />
           <small v-if="fieldErrors.timeout_s" class="bad">{{ fieldErrors.timeout_s }}</small></label>
-        <label>连续失败几次告警<input v-model.number="form.fail_threshold" type="number" min="1" max="10" />
+        <label>连续失败几次判为异常<input v-model.number="form.fail_threshold" type="number" min="1" max="10" />
           <small v-if="fieldErrors.fail_threshold" class="bad">{{ fieldErrors.fail_threshold }}</small></label>
         <label>级别
           <select v-model="form.severity"><option value="critical">严重</option><option value="warning">警告</option></select></label>
