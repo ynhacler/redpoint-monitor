@@ -432,3 +432,33 @@ func TestFlushBudget(t *testing.T) {
 		t.Errorf("应发出一部分、其余留在队列中：剩余 %d", q)
 	}
 }
+
+type fakeUnlock struct {
+	mu   sync.Mutex
+	reqs []string
+}
+
+func (f *fakeUnlock) Supported() string { return protocol.UnlockVersion }
+func (f *fakeUnlock) Request(id string) {
+	f.mu.Lock()
+	f.reqs = append(f.reqs, id)
+	f.mu.Unlock()
+}
+
+// 解锁检测（设计 50）：请求头声明支持；响应头的请求号交给 Unlock
+func TestUnlockHeaders(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(protocol.HeaderUnlock)
+		w.Header().Set(protocol.HeaderUnlockRequest, "abc123")
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	u := &fakeUnlock{}
+	r := &Reporter{Endpoint: srv.URL, Token: "agt_x", Client: srv.Client(), Unlock: u, Logf: func(string, ...any) {}}
+	r.Enqueue(protocol.Report{Timestamp: time.Now().Unix()})
+	r.Flush(context.Background(), true)
+	if got != protocol.UnlockVersion || len(u.reqs) != 1 || u.reqs[0] != "abc123" {
+		t.Fatalf("请求头 %q，收到请求号 %v", got, u.reqs)
+	}
+}

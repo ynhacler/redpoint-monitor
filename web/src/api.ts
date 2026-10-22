@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, SSLMonitor, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -720,6 +720,11 @@ export function putIPInfoSetting(enabled: boolean) {
 /** 立即查询一个节点的 IP 信息 */
 export function refreshIPInfo(id: number) {
   return request('post', '/servers/{id}/ipinfo', { params: { id } })
+}
+
+/** 请求节点的 Agent 检测一次流媒体与网站解锁（设计 50） */
+export function requestUnlockCheck(id: number) {
+  return request('post', '/servers/{id}/unlock-check', { params: { id } })
 }
 
 /** 测速的全局设置：频率、超时与样本间隔 */

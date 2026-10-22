@@ -2928,6 +2928,46 @@
         }
       }
     },
+    "/servers/{id}/unlock-check": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "请求节点的 Agent 检测一次流媒体与网站解锁（设计 50）",
+        "description": "Agent 下一次上报时开始检测（检测项内置在 Agent 中），约 1 分钟内随上报带回结果；已在检测中时直接返回当前状态。节点离线或 Agent 版本不支持时 409。",
+        "responses": {
+          "200": {
+            "description": "当前检测状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/heartbeat/test": {
       "post": {
         "tags": [
@@ -6938,6 +6978,79 @@
           }
         }
       },
+      "UnlockView": {
+        "type": "object",
+        "required": [
+          "supported",
+          "pending",
+          "requested_at",
+          "checked_at",
+          "items"
+        ],
+        "properties": {
+          "supported": {
+            "type": "boolean",
+            "description": "节点的 Agent 支持检测（最近一次上报声明；旧版 Agent 不支持）"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "已请求、等待结果（10 分钟没有结果视为超时）"
+          },
+          "requested_at": {
+            "type": "integer",
+            "description": "最近一次请求时间；0 表示从未检测"
+          },
+          "checked_at": {
+            "type": "integer",
+            "description": "最近一次结果的时间；0 表示还没有结果"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "service",
+                "status"
+              ],
+              "properties": {
+                "service": {
+                  "type": "string",
+                  "enum": [
+                    "netflix",
+                    "disney",
+                    "youtube",
+                    "prime",
+                    "tiktok",
+                    "chatgpt",
+                    "claude",
+                    "google",
+                    "reddit",
+                    "steam"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "yes",
+                    "no",
+                    "partial",
+                    "captcha",
+                    "failed"
+                  ],
+                  "description": "可用 / 不可用 / 部分可用（如 Netflix 仅自制剧）/ 要求人机验证 / 检测失败"
+                },
+                "region": {
+                  "type": "string",
+                  "description": "服务认定的地区（两位代码）或货币（Steam）"
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
       "PortExposure": {
         "type": "object",
         "description": "最近一次“检测公网可达”的结果（修订第 171 条，只在内存中，面板重启后清空）；只在管理员的节点详情中返回，没有检测过时省略",
@@ -8366,6 +8479,10 @@
           "ip_info": {
             "$ref": "#/components/schemas/IPInfo",
             "description": "节点公网 IP 的 ASN 与位置（设计 49，来自 ipinfo.io，需在设置中打开）；只在节点详情接口中、查询过时返回"
+          },
+          "unlock": {
+            "$ref": "#/components/schemas/UnlockView",
+            "description": "流媒体与网站解锁检测（设计 50）；只在节点详情接口中返回"
           },
           "port_baseline": {
             "type": "object",

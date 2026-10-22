@@ -47,6 +47,7 @@ import (
 	"vpsmon/internal/agent/report"
 	"vpsmon/internal/agent/sdnotify"
 	"vpsmon/internal/agent/setup"
+	"vpsmon/internal/agent/unlock"
 	"vpsmon/internal/agent/upgrade"
 	"vpsmon/internal/protocol"
 	"vpsmon/internal/release"
@@ -287,6 +288,9 @@ func readStatus(p setup.Paths) func() (string, int64, error) {
 // prober 是三网延迟探测器（设计 42.3.2），在 main 中创建。
 var prober *probe.Prober
 
+// unlocker 处理面板的解锁检测请求（设计 50），在 main 中创建；检测项内置，面板只能请求“现在检测一次”。
+var unlocker *unlock.Runner
+
 // probeDisabled：本机存在 no-probe 文件时关闭全部网络探测（设计 42.6）。
 func probeDisabled() bool {
 	_, err := os.Stat(setup.DefaultPaths.NoProbeFile())
@@ -490,6 +494,8 @@ func run() {
 	prober = probe.New(probeDisabled)
 	r.Probe = prober
 	go prober.Run(context.Background())
+	unlocker = &unlock.Runner{Client: &http.Client{}, Logf: alog.Printf}
+	r.Unlock = unlocker
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
 	_, _ = collect(col, false, nil)
@@ -630,6 +636,9 @@ func collect(col collector.Collector, final bool, procs []string) (rep protocol.
 	}
 	if prober != nil {
 		rep.Probes = prober.Drain() // 上一轮的探测结果只随一份上报带回；上报失败时随这份上报一起补发
+	}
+	if unlocker != nil {
+		rep.Unlock = unlocker.Drain() // 解锁检测结果（设计 50）只随一份上报带回
 	}
 	// 告诉面板本机是否启用了远程升级，未启用时面板创建任务会直接说明原因（设计 29.13）；只在 Linux 上有意义
 	if runtime.GOOS == "linux" {

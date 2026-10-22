@@ -396,6 +396,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	if v.Unlock, err = s.unlockViewOf(id, time.Now()); err != nil { // 解锁检测（设计 50）
+		s.writeError(w, r, internalError(err))
+		return
+	}
 	if info(r).principal == roleAdmin { // 代理只给管理员（修订第 169 条）
 		if v.ProxiesMissing, err = s.proxiesMissing(id); err != nil {
 			s.writeError(w, r, internalError(err))
