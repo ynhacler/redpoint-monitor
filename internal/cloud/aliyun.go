@@ -267,11 +267,14 @@ func (c *aliyunClient) ecsInstances(ctx context.Context, region string) ([]Insta
 					Status      string `json:"Status"`
 					ChargeType  string `json:"InstanceChargeType"`
 					ExpiredTime string `json:"ExpiredTime"`
-					PublicIP    struct {
+					// 公网带宽计费方式：PayByTraffic（按流量，走 CDT）/ PayByBandwidth（固定带宽）
+					NetCharge string `json:"InternetChargeType"`
+					PublicIP  struct {
 						IP []string `json:"IpAddress"`
 					} `json:"PublicIpAddress"`
 					EIP struct {
-						IP string `json:"IpAddress"`
+						IP         string `json:"IpAddress"`
+						ChargeType string `json:"InternetChargeType"`
 					} `json:"EipAddress"`
 					NICs struct {
 						NIC []struct {
@@ -300,6 +303,10 @@ func (c *aliyunClient) ecsInstances(ctx context.Context, region string) ([]Insta
 				if len(nic.IPv6.Set) > 0 && in.IPv6 == "" {
 					in.IPv6 = nic.IPv6.Set[0].Addr
 				}
+			}
+			// CDT（修订第 186 条）：固定公网 IP 按流量计费，或绑定的 EIP 按流量计费
+			if (len(x.PublicIP.IP) > 0 && x.NetCharge == "PayByTraffic") || (x.EIP.IP != "" && x.EIP.ChargeType == "PayByTraffic") {
+				in.CDTPool = cdtPoolKey(region)
 			}
 			// 只有包年包月有到期时间；按量付费的 ExpiredTime 是很远的占位值
 			if x.ChargeType == "PrePaid" {
@@ -412,6 +419,14 @@ const (
 	cdtFreeCN   uint64 = 20 << 30
 	cdtFreeIntl uint64 = 200 << 30
 )
+
+// cdtPoolKey 返回地域所属的 CDT 免费额度池（cdt_cn / cdt_intl）。
+func cdtPoolKey(region string) string {
+	if cdtMainland(region) {
+		return "cdt_cn"
+	}
+	return "cdt_intl"
+}
 
 // cdtMainland 判断地域是否属于中国内地：cn- 开头且不是中国香港（CDT 口径中香港属于非中国内地）。
 func cdtMainland(region string) bool {

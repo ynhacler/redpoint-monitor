@@ -749,8 +749,10 @@ func TestCloudAliyunECSOnlyPermissions(t *testing.T) {
 		case "DescribeRegions":
 			io.WriteString(w, `{"Regions":{"Region":[{"RegionId":"cn-hongkong"}]}}`)
 		case "DescribeInstances":
+			// 按流量计费的走 CDT（修订第 186 条）；固定带宽的不走
 			io.WriteString(w, `{"Instances":{"Instance":[{"InstanceId":"i-cdt","InstanceName":"hk-cdt","Status":"Running","InstanceChargeType":"PostPaid",
-				"PublicIpAddress":{"IpAddress":["47.0.0.9"]}}]}}`)
+				"InternetChargeType":"PayByTraffic","PublicIpAddress":{"IpAddress":["47.0.0.9"]}},
+				{"InstanceId":"i-bw","Status":"Running","InstanceChargeType":"PostPaid","InternetChargeType":"PayByBandwidth","PublicIpAddress":{"IpAddress":["47.0.0.10"]}}]}}`)
 		case "ListCdtInternetTraffic":
 			io.WriteString(w, `{"TrafficDetails":[{"BusinessRegionId":"cn-hongkong","ISPType":"BGP","Traffic":10737418240}]}`)
 		case "ListRegions", "QueryBillOverview", "QueryAccountBalance":
@@ -777,7 +779,8 @@ func TestCloudAliyunECSOnlyPermissions(t *testing.T) {
 		t.Fatalf("应提示轻量应用服务器没有权限：%q", a.LastWarning)
 	}
 	insts, _ := s.store.CloudInstances(v.ID)
-	if len(insts) != 1 || insts[0].InstanceID != "i-cdt" || insts[0].PublicIPv4 != "47.0.0.9" {
+	if len(insts) != 2 || insts[0].InstanceID != "i-bw" || insts[0].CDTPool != "" || insts[1].InstanceID != "i-cdt" ||
+		insts[1].PublicIPv4 != "47.0.0.9" || insts[1].CDTPool != "cdt_intl" {
 		t.Fatalf("ECS 实例 %+v", insts)
 	}
 	var out struct{ Items []cloudAccountView }

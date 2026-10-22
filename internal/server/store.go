@@ -943,6 +943,8 @@ var migrations = []string{
 	// 迁移 51：费用读取被拒绝（子用户没有费用中心只读权限）时的提示（修订第 184 条）；空表示正常。
 	// 权限不足不再让整个账户停止同步，只跳过费用
 	`ALTER TABLE cloud_accounts ADD COLUMN cost_warning TEXT NOT NULL DEFAULT '';`,
+	// 迁移 52：阿里云 ECS 公网按流量计费（走 CDT）时所属的免费额度池 cdt_cn / cdt_intl，空表示不走 CDT（修订第 186 条）
+	`ALTER TABLE cloud_instances ADD COLUMN cdt_pool TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
