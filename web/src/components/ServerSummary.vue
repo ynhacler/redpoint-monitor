@@ -4,7 +4,7 @@
 // 以及系统与资产信息（主机名、IP、内核、Agent、供应商、续费与到期等）。
 // 只显示读一眼就能用的静态或慢变信息，没有填写的资产字段不显示；实时指标在下方的指标块中。
 import { computed, ref } from 'vue'
-import type { ServerView } from '../api'
+import type { IPInfo, ServerView } from '../api'
 import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, periodNames } from '../format'
 import { isViewer } from '../store'
@@ -19,6 +19,8 @@ const props = defineProps<{
   server: ServerView
   /** 是否在线；离线时不显示负载等实时值 */
   live: boolean
+  /** ASN 与位置（设计 49）：只在节点详情接口中返回，离线节点的概况取自列表，所以单独传入 */
+  ipInfo?: IPInfo
 }>()
 
 const s = computed(() => props.server)
@@ -51,6 +53,13 @@ const facts = computed<Fact[]>(() => {
   add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
   add({ k: '内核', v: sys.value?.kernel || '', mono: true })
   add({ k: '虚拟化', v: virt.value })
+  // ASN 与位置（设计 49，来自 ipinfo.io，需在“系统 → 监测”中打开）
+  const ii = props.ipInfo ?? x.ip_info
+  if (ii && ii.asn) {
+    add({ k: 'ASN', v: `${ii.asn} ${ii.org}`.trim(), copy: true })
+    add({ k: 'IP 位置', v: [ii.city, ii.region !== ii.city ? ii.region : '', ii.country ? countryName(ii.country) : ''].filter(Boolean).join(', '),
+      flag: ii.country })
+  }
   asset({ k: '供应商', v: x.provider })
   asset({ k: '套餐', v: x.plan })
   asset({ k: '带宽', v: x.bandwidth_mbps ? fmtBandwidth(x.bandwidth_mbps) : '' })

@@ -969,6 +969,20 @@ var migrations = []string{
 		png             BLOB NOT NULL,
 		updated_at      INTEGER NOT NULL
 	);`,
+	// 迁移 54：节点 IP 信息（设计 49，修订第 191 条），来自 ipinfo.io；查询失败时 error 记录原因并保留上次成功的信息
+	`CREATE TABLE server_ipinfo (
+		server_id  INTEGER PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+		ip         TEXT NOT NULL,
+		asn        TEXT NOT NULL DEFAULT '',
+		org        TEXT NOT NULL DEFAULT '',
+		hostname   TEXT NOT NULL DEFAULT '',
+		city       TEXT NOT NULL DEFAULT '',
+		region     TEXT NOT NULL DEFAULT '',
+		country    TEXT NOT NULL DEFAULT '',
+		timezone   TEXT NOT NULL DEFAULT '',
+		fetched_at INTEGER NOT NULL,
+		error      TEXT NOT NULL DEFAULT ''
+	);`,
 }
 
 func (s *Store) migrate() error {

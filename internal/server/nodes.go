@@ -392,6 +392,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.ContainerRestarts = s.containerRestarts(id, time.Now())
+	if v.IPInfo, err = s.store.GetIPInfo(id); err != nil { // ASN 与位置（设计 49）
+		s.writeError(w, r, internalError(err))
+		return
+	}
 	if info(r).principal == roleAdmin { // 代理只给管理员（修订第 169 条）
 		if v.ProxiesMissing, err = s.proxiesMissing(id); err != nil {
 			s.writeError(w, r, internalError(err))

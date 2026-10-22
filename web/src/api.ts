@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, SSLMonitor, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -703,6 +703,23 @@ export function getNodeProbe(id: number) {
 /** 保存节点自己的测速设置，随下一份上报下发 */
 export function putNodeProbe(id: number, body: G.NodeProbe) {
   return request('put', '/servers/{id}/probe', { params: { id }, body })
+}
+
+// ---- 节点 IP 信息（设计 49） ----
+
+/** IP 信息查询开关 */
+export function getIPInfoSetting() {
+  return request('get', '/settings/ipinfo')
+}
+
+/** 打开或关闭 ipinfo.io 查询 */
+export function putIPInfoSetting(enabled: boolean) {
+  return request('put', '/settings/ipinfo', { body: { enabled } })
+}
+
+/** 立即查询一个节点的 IP 信息 */
+export function refreshIPInfo(id: number) {
+  return request('post', '/servers/{id}/ipinfo', { params: { id } })
 }
 
 /** 测速的全局设置：频率、超时与样本间隔 */
