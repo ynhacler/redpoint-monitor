@@ -959,6 +959,7 @@ var migrations = []string{
 		end_date    TEXT NOT NULL DEFAULT '',
 		remind_days INTEGER NOT NULL DEFAULT 0,
 		note        TEXT NOT NULL DEFAULT '',
+		phones      TEXT NOT NULL DEFAULT '[]', -- SIM 电话卡的号码：JSON 数组 [{"cc":"+1","number":"6505551234"}]
 		created_at  INTEGER NOT NULL,
 		updated_at  INTEGER NOT NULL
 	);

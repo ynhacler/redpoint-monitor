@@ -3,6 +3,7 @@
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
 // 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts），没有标志的用品牌色方块加首字母；不从外部加载。
 import type { Subscription } from './api'
+import { simCatalog } from './simCatalog'
 
 /** 订阅类别 */
 export type SubCategory = Subscription['category']
@@ -29,7 +30,7 @@ export const trialOptions = [{ v: 0, t: '无试用期' }, { v: 7, t: '7 天' }, 
 /** 扣费提醒选项（提前天数） */
 export const remindOptions = [{ v: 0, t: '不提醒' }, { v: 1, t: '提前 1 天' }, { v: 2, t: '提前 2 天' }, { v: 3, t: '提前 3 天' }, { v: 7, t: '提前 7 天' }]
 /** 可选币种 */
-export const currencies = ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'TWD', 'SGD']
+export const currencies = ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'TWD', 'SGD', 'MOP', 'AUD', 'MYR', 'THB', 'PHP', 'ZAR', 'NGN', 'GHS']
 
 /** 常用服务目录中的一项 */
 export interface CatalogItem {
@@ -41,6 +42,11 @@ export interface CatalogItem {
   currency?: string
   /** 图标上的字（默认取名称的第一个字母或汉字） */
   letter?: string
+  /** 内置标志的键（brandIcons.ts）；默认与 key 相同 */
+  icon?: string
+  /** SIM 电话卡：国家 / 地区键与区号（simCatalog.ts） */
+  country?: string
+  dial?: string
 }
 
 /** 常用服务目录：名称与品牌色仅用于识别；有标志的见 brandIcons.ts */
@@ -91,32 +97,18 @@ export const catalog: CatalogItem[] = [
   { key: 'switch', name: 'Nintendo Switch Online', category: 'game', color: '#E60012' },
   { key: 'psplus', name: 'PlayStation Plus', category: 'game', color: '#0070D1' },
   { key: 'gamepass', name: 'Xbox Game Pass', category: 'game', color: '#107C10' },
-  // SIM 电话卡（保号、月租；修订第 189 条）
-  { key: 'tello', name: 'Tello', category: 'sim', color: '#2A2F7A', hot: true, currency: 'USD' },
-  { key: 'rakuten', name: '乐天移动 Rakuten Mobile', category: 'sim', color: '#BF0000', hot: true, currency: 'JPY' },
-  { key: 'chinamobile', name: '中国移动', category: 'sim', color: '#0085D0', hot: true, letter: '移' },
-  { key: 'chinaunicom', name: '中国联通', category: 'sim', color: '#E60027', letter: '联' },
-  { key: 'chinatelecom', name: '中国电信', category: 'sim', color: '#0072BC', letter: '电' },
-  { key: 'cbn', name: '中国广电', category: 'sim', color: '#003F98', letter: '广' },
-  { key: 'giffgaff', name: 'giffgaff', category: 'sim', color: '#111111', hot: true, currency: 'GBP' },
-  { key: 'usmobile', name: 'US Mobile', category: 'sim', color: '#1F57FF', currency: 'USD' },
-  { key: 'mintmobile', name: 'Mint Mobile', category: 'sim', color: '#3F9C35', currency: 'USD' },
-  { key: 'googlefi', name: 'Google Fi', category: 'sim', color: '#4285F4', currency: 'USD', letter: 'Fi' },
-  { key: 'tmobile', name: 'T-Mobile', category: 'sim', color: '#E20074', currency: 'USD', letter: 'T' },
-  { key: 'vodafone', name: 'Vodafone', category: 'sim', color: '#E60000', currency: 'EUR' },
-  { key: 'ahamo', name: 'ahamo', category: 'sim', color: '#2DB9C9', currency: 'JPY' },
-  { key: 'povo', name: 'povo', category: 'sim', color: '#1A1A1A', currency: 'JPY' },
-  { key: 'threehk', name: '3 香港', category: 'sim', color: '#000000', currency: 'HKD', letter: '3' },
-  { key: 'cmhk', name: '中国移动香港', category: 'sim', color: '#0085D0', currency: 'HKD', letter: 'HK' },
+  ...simCatalog, // SIM 电话卡，按国家 / 地区（simCatalog.ts）
 ]
 const byKey = new Map(catalog.map((c) => [c.key, c]))
+/** 按键查目录项 */
+export const catalogItem = (key: string) => byKey.get(key)
 
 /** 图标：目录中的品牌色与首字母；自定义的按名称取一个稳定的颜色 */
 export function avatarOf(s: { brand?: string; name: string }): { color: string; letter: string } {
   const item = s.brand ? byKey.get(s.brand) : undefined
   const name = (item?.name ?? s.name).trim()
   const letter = item?.letter ?? (name.match(/[A-Za-z0-9一-鿿]/)?.[0] ?? '?').toUpperCase()
-  if (item) return { color: item.color, letter }
+  if (item?.color) return { color: item.color, letter }
   const palette = ['#2563EB', '#16A34A', '#7C3AED', '#0891B2', '#D97706', '#DB2777', '#4B5563']
   let h = 0
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0

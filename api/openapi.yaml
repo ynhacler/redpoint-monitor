@@ -3089,11 +3089,23 @@ components:
         end_date: { type: string, description: '结束订阅的日期（YYYY-MM-DD），空表示仍在订阅；这一天及之后不再扣费' }
         remind_days: { type: integer, enum: [0, 1, 2, 3, 7], description: '扣费前几天提醒；0 为不提醒（经通知渠道发送，告警关闭时不发送）' }
         note: { type: string, maxLength: 200 }
+        phones:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/SubscriptionPhone' }
+          description: SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空
+
+    SubscriptionPhone:
+      type: object
+      required: [cc, number]
+      properties:
+        cc: { type: string, pattern: '^[+][0-9]{1,4}$', description: 国家 / 地区区号，如 +1、+86、+852 }
+        number: { type: string, description: '号码（只保留数字，4～15 位）' }
 
     Subscription:
       type: object
       required: [id, name, brand, category, price_cents, currency, cycle, trial_days, start_date, end_date, remind_days, note,
-                 next_charge, ended, logo_version, created_at, updated_at]
+                 phones, next_charge, ended, logo_version, created_at, updated_at]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -3107,6 +3119,7 @@ components:
         end_date: { type: string, description: YYYY-MM-DD；空表示仍在订阅 }
         remind_days: { type: integer }
         note: { type: string }
+        phones: { type: array, items: { $ref: '#/components/schemas/SubscriptionPhone' } }
         next_charge: { type: string, description: '下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空' }
         ended: { type: boolean, description: 已过结束日期 }
         logo_version: { type: integer, description: '上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version' }

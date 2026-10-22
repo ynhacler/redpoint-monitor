@@ -190,3 +190,38 @@ func TestSubscriptionLogo(t *testing.T) {
 		t.Fatal("删除订阅时应删除图标")
 	}
 }
+
+// SIM 电话卡的号码（修订第 189 条）：去掉空行与分隔符，校验区号与位数，最多 10 个
+func TestSubscriptionPhones(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	body := `{"name":"Tello","brand":"sim-us-tello","category":"sim","price_cents":500,"currency":"USD","cycle":"monthly","start_date":"2026-01-01",
+		"phones":[{"cc":"+1","number":"(650) 555-1234"},{"cc":"+1","number":""},{"cc":"+86","number":"138 0013 8000"}]}`
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || len(x.Phones) != 2 || x.Phones[0] != (SubPhone{"+1", "6505551234"}) || x.Phones[1] != (SubPhone{"+86", "13800138000"}) {
+		t.Fatalf("号码：%d %s", rec.Code, rec.Body)
+	}
+	got, _ := s.store.GetSubscription(x.ID)
+	if len(got.Phones) != 2 {
+		t.Fatalf("应保存号码：%+v", got.Phones)
+	}
+	for name, phones := range map[string]string{
+		"区号": `[{"cc":"86","number":"13800138000"}]`,
+		"字母": `[{"cc":"+1","number":"650-CALL-NOW"}]`,
+		"太短": `[{"cc":"+1","number":"12"}]`,
+		"太多": "[" + strings.Repeat(`{"cc":"+1","number":"6505551234"},`, 10) + `{"cc":"+1","number":"6505551234"}]`,
+	} {
+		b := strings.Replace(body, body[strings.Index(body, `"phones":`):len(body)-1], `"phones":`+phones, 1)
+		if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(b)); rec.Code != 422 {
+			t.Errorf("%s 应被拒绝：%d %s", name, rec.Code, rec.Body)
+		}
+	}
+	// 不带号码的旧请求体：号码为空数组
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Netflix","category":"video","price_cents":1,"currency":"USD","cycle":"monthly","start_date":"2026-01-01"}`))
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.Phones == nil || len(x.Phones) != 0 {
+		t.Fatalf("没有号码时应为空数组：%s", rec.Body)
+	}
+}

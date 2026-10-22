@@ -8,6 +8,7 @@ package server
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -24,25 +25,36 @@ import (
 
 const maxSubscriptions = 500
 
+// SubPhone 是 SIM 电话卡的一个号码：区号与号码（只含数字）。
+type SubPhone struct {
+	CC     string `json:"cc"`
+	Number string `json:"number"`
+}
+
+const maxSubPhones = 10
+
+var phoneCC = regexp.MustCompile(`^\+[0-9]{1,4}$`)
+
 // Subscription 是一行 subscriptions（api/openapi.yaml Subscription）。
 type Subscription struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Brand       string `json:"brand"`
-	Category    string `json:"category"`
-	PriceCents  int64  `json:"price_cents"`
-	Currency    string `json:"currency"`
-	Cycle       string `json:"cycle"`
-	TrialDays   int    `json:"trial_days"`
-	StartDate   string `json:"start_date"`
-	EndDate     string `json:"end_date"`
-	RemindDays  int    `json:"remind_days"`
-	Note        string `json:"note"`
-	NextCharge  string `json:"next_charge"`  // 计算得到，不入库
-	Ended       bool   `json:"ended"`        // 计算得到，不入库
-	LogoVersion int64  `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	ID          int64      `json:"id"`
+	Name        string     `json:"name"`
+	Brand       string     `json:"brand"`
+	Category    string     `json:"category"`
+	PriceCents  int64      `json:"price_cents"`
+	Currency    string     `json:"currency"`
+	Cycle       string     `json:"cycle"`
+	TrialDays   int        `json:"trial_days"`
+	StartDate   string     `json:"start_date"`
+	EndDate     string     `json:"end_date"`
+	RemindDays  int        `json:"remind_days"`
+	Note        string     `json:"note"`
+	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
+	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库
+	Ended       bool       `json:"ended"`        // 计算得到，不入库
+	LogoVersion int64      `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
+	CreatedAt   int64      `json:"created_at"`
+	UpdatedAt   int64      `json:"updated_at"`
 }
 
 var (
@@ -131,13 +143,20 @@ func withSchedule(sub Subscription, now time.Time) Subscription {
 // ---- 存储 ----
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
-	s.remind_days, s.note, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
+	s.remind_days, s.note, s.phones, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
+	var phones string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
+		&x.EndDate, &x.RemindDays, &x.Note, &phones, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
+	if err == nil {
+		_ = json.Unmarshal([]byte(phones), &x.Phones)
+	}
+	if x.Phones == nil {
+		x.Phones = []SubPhone{}
+	}
 	return x, err
 }
 
@@ -170,10 +189,17 @@ func (s *Store) GetSubscription(id int64) (Subscription, error) {
 
 // SaveSubscription 新增（ID 为 0）或整体替换一个订阅。
 func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
+	if x.Phones == nil {
+		x.Phones = []SubPhone{}
+	}
+	phones, err := json.Marshal(x.Phones)
+	if err != nil {
+		return err
+	}
 	if x.ID == 0 {
 		res, err := s.DB.Exec(`INSERT INTO subscriptions (name, brand, category, price_cents, currency, cycle, trial_days, start_date,
-			end_date, remind_days, note, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, x.Name, x.Brand, x.Category,
-			x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, now.Unix(), now.Unix())
+			end_date, remind_days, note, phones, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, x.Name, x.Brand, x.Category,
+			x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), now.Unix(), now.Unix())
 		if err != nil {
 			return err
 		}
@@ -182,8 +208,8 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 		return nil
 	}
 	res, err := s.DB.Exec(`UPDATE subscriptions SET name = ?, brand = ?, category = ?, price_cents = ?, currency = ?, cycle = ?,
-		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, updated_at = ? WHERE id = ?`, x.Name, x.Brand,
-		x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, now.Unix(), x.ID)
+		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, updated_at = ? WHERE id = ?`, x.Name, x.Brand,
+		x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), now.Unix(), x.ID)
 	if err != nil {
 		return err
 	}
@@ -285,30 +311,60 @@ func validateSubscription(x *Subscription) []FieldError {
 	if utf8.RuneCountInString(x.Note) > 200 {
 		fe = append(fe, FieldError{Field: "note", Message: "描述最多 200 个字符"})
 	}
+	// 号码：去掉空行，号码只保留数字（可粘贴“650-555 1234”），区号形如 +1、+86
+	phones := []SubPhone{}
+	for i, p := range x.Phones {
+		p.CC = strings.TrimSpace(p.CC)
+		digits := strings.Map(func(r rune) rune {
+			switch {
+			case r >= '0' && r <= '9':
+				return r
+			case r == ' ' || r == '-' || r == '(' || r == ')' || r == '.':
+				return -1
+			}
+			return 'x'
+		}, strings.TrimSpace(p.Number))
+		if digits == "" {
+			continue
+		}
+		field := fmt.Sprintf("phones[%d]", i)
+		switch {
+		case !phoneCC.MatchString(p.CC):
+			fe = append(fe, FieldError{Field: field + ".cc", Message: "区号形如 +1、+86"})
+		case strings.Contains(digits, "x") || len(digits) < 4 || len(digits) > 15:
+			fe = append(fe, FieldError{Field: field + ".number", Message: "号码为 4～15 位数字"})
+		}
+		phones = append(phones, SubPhone{CC: p.CC, Number: digits})
+	}
+	if len(phones) > maxSubPhones {
+		fe = append(fe, FieldError{Field: "phones", Message: fmt.Sprintf("最多 %d 个号码", maxSubPhones)})
+	}
+	x.Phones = phones
 	return fe
 }
 
 func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request) (Subscription, bool) {
 	var x Subscription
 	var b struct {
-		Name       string `json:"name"`
-		Brand      string `json:"brand"`
-		Category   string `json:"category"`
-		PriceCents int64  `json:"price_cents"`
-		Currency   string `json:"currency"`
-		Cycle      string `json:"cycle"`
-		TrialDays  int    `json:"trial_days"`
-		StartDate  string `json:"start_date"`
-		EndDate    string `json:"end_date"`
-		RemindDays int    `json:"remind_days"`
-		Note       string `json:"note"`
+		Name       string     `json:"name"`
+		Brand      string     `json:"brand"`
+		Category   string     `json:"category"`
+		PriceCents int64      `json:"price_cents"`
+		Currency   string     `json:"currency"`
+		Cycle      string     `json:"cycle"`
+		TrialDays  int        `json:"trial_days"`
+		StartDate  string     `json:"start_date"`
+		EndDate    string     `json:"end_date"`
+		RemindDays int        `json:"remind_days"`
+		Note       string     `json:"note"`
+		Phones     []SubPhone `json:"phones"`
 	}
 	if err := decodeJSON(w, r, &b); err != nil {
 		s.writeError(w, r, err)
 		return x, false
 	}
 	x = Subscription{Name: b.Name, Brand: b.Brand, Category: b.Category, PriceCents: b.PriceCents, Currency: b.Currency, Cycle: b.Cycle,
-		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note}
+		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones}
 	if fe := validateSubscription(&x); fe != nil {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: fe})
 		return x, false

@@ -807,6 +807,15 @@ export interface SubscriptionInput {
   /** 扣费前几天提醒；0 为不提醒（经通知渠道发送，告警关闭时不发送） */
   remind_days?: 0 | 1 | 2 | 3 | 7
   note?: string
+  /** SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空 */
+  phones?: SubscriptionPhone[]
+}
+
+export interface SubscriptionPhone {
+  /** 国家 / 地区区号，如 +1、+86、+852 */
+  cc: string
+  /** 号码（只保留数字，4～15 位） */
+  number: string
 }
 
 export interface Subscription {
@@ -826,6 +835,7 @@ export interface Subscription {
   end_date: string
   remind_days: number
   note: string
+  phones: SubscriptionPhone[]
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
   next_charge: string
   /** 已过结束日期 */

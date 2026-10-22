@@ -9536,6 +9536,32 @@
           "note": {
             "type": "string",
             "maxLength": 200
+          },
+          "phones": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPhone"
+            },
+            "description": "SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空"
+          }
+        }
+      },
+      "SubscriptionPhone": {
+        "type": "object",
+        "required": [
+          "cc",
+          "number"
+        ],
+        "properties": {
+          "cc": {
+            "type": "string",
+            "pattern": "^[+][0-9]{1,4}$",
+            "description": "国家 / 地区区号，如 +1、+86、+852"
+          },
+          "number": {
+            "type": "string",
+            "description": "号码（只保留数字，4～15 位）"
           }
         }
       },
@@ -9554,6 +9580,7 @@
           "end_date",
           "remind_days",
           "note",
+          "phones",
           "next_charge",
           "ended",
           "logo_version",
@@ -9619,6 +9646,12 @@
           },
           "note": {
             "type": "string"
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPhone"
+            }
           },
           "next_charge": {
             "type": "string",

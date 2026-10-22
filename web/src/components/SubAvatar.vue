@@ -3,7 +3,7 @@
 // 其他显示色块加首字母。品牌色很浅时标志用深色，避免看不清。
 import { computed } from 'vue'
 import { brandIcons } from '../brandIcons'
-import { avatarOf } from '../subscriptions'
+import { avatarOf, catalogItem } from '../subscriptions'
 
 const props = withDefaults(defineProps<{
   /** 目录键（可为空） */
@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
   src?: string
 }>(), { brand: '', size: 40, src: '' })
 
-const icon = computed(() => (props.brand ? brandIcons[props.brand] : undefined))
+const icon = computed(() => (props.brand ? brandIcons[catalogItem(props.brand)?.icon ?? props.brand] : undefined))
 const fallback = computed(() => avatarOf({ brand: props.brand, name: props.name }))
 const bg = computed(() => (icon.value ? `#${icon.value.hex}` : fallback.value.color))
 // 相对亮度高于 0.6 时（如白色、浅黄的品牌色）用深色标志

@@ -14,6 +14,7 @@ import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
 import { fmtMoney } from '../format'
+import { simCountries } from '../simCatalog'
 import {
   byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, mainCurrency, monthStart,
   remindOptions, spendBetween, trialOptions, ymd, type CatalogItem, type Money, type SubCategory,
@@ -96,18 +97,22 @@ type Step = 'pick' | 'form'
 const step = ref<Step | null>(null)
 const editing = ref<Subscription | null>(null)
 const pickCat = ref<'all' | 'hot' | SubCategory>('all')
+const pickCountry = ref('') // SIM 电话卡按国家 / 地区筛选（空为全部）
 const query = ref('')
 const picks = computed(() => {
   const q = query.value.trim().toLowerCase()
   return catalog.filter((c) => (pickCat.value === 'all' || (pickCat.value === 'hot' ? c.hot : c.category === pickCat.value))
+    && (pickCat.value !== 'sim' || !pickCountry.value || c.country === pickCountry.value)
     && (!q || c.name.toLowerCase().includes(q) || c.key.includes(q)))
 })
+const countryOf = (key?: string) => simCountries.find((c) => c.key === key)
 const pickTabs = computed(() => [{ k: 'all', t: '全部' }, { k: 'hot', t: '热门' },
   ...(Object.keys(categoryNames) as SubCategory[]).filter((c) => c !== 'other' && catalog.some((x) => x.category === c)).map((c) => ({ k: c, t: categoryNames[c] }))])
 
-const blank = (): SubscriptionInput & { price: string } => ({
+type FormPhone = { cc: string; number: string }
+const blank = (): SubscriptionInput & { price: string; phones: FormPhone[] } => ({
   name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: cur.value, cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '',
+  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [],
 })
 const form = reactive(blank())
 const fieldErrors = ref<Record<string, string>>({})
@@ -175,13 +180,15 @@ function openAdd() {
 function choose(item: CatalogItem | null) {
   Object.assign(form, blank())
   if (item) Object.assign(form, { name: item.name, brand: item.key, category: item.category, currency: item.currency ?? cur.value })
+  if (form.category === 'sim') form.phones = [{ cc: item?.dial ?? '+86', number: '' }]
   fieldErrors.value = {}
   resetLogo()
   step.value = 'form'
 }
 function openEdit(s: Subscription) {
   editing.value = s
-  Object.assign(form, { ...s, price: (s.price_cents / 100).toFixed(2) })
+  Object.assign(form, { ...s, price: (s.price_cents / 100).toFixed(2), phones: s.phones.map((p) => ({ ...p })) })
+  if (s.category === 'sim' && !form.phones.length) form.phones = [{ cc: countryOf(catalog.find((c) => c.key === s.brand)?.country)?.dial ?? '+86', number: '' }]
   fieldErrors.value = {}
   resetLogo()
   confirmDelete.value = false
@@ -199,6 +206,7 @@ async function save() {
   const body: SubscriptionInput = {
     name: form.name, brand: form.brand, category: form.category, price_cents: Math.round(price * 100), currency: form.currency,
     cycle: form.cycle, trial_days: form.trial_days, start_date: form.start_date, end_date: form.end_date ?? '', remind_days: form.remind_days, note: form.note,
+    phones: form.category === 'sim' ? form.phones.filter((p) => p.number.trim()) : [],
   }
   saving.value = true
   try {
@@ -230,6 +238,18 @@ async function remove() {
   }
 }
 const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开始订阅`
+// 号码显示：区号 + 按当地习惯分组的号码（+1 650 555 0123、+86 138 0013 8000），其他按每 4 位分组
+function fmtPhone(p: { cc: string; number: string }) {
+  const n = p.number
+  if (p.cc === '+1' && n.length === 10) return `+1 ${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}`
+  if (p.cc === '+86' && n.length === 11) return `+86 ${n.slice(0, 3)} ${n.slice(3, 7)} ${n.slice(7)}`
+  return `${p.cc} ${n.replace(/(\d)(?=(\d{4})+$)/g, '$1 ')}`
+}
+// 号码编辑：增加一行时沿用上一行的区号
+function addPhone() {
+  form.phones.push({ cc: form.phones.at(-1)?.cc ?? '+86', number: '' })
+}
+const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldErrors.value[`phones[${i}].number`]
 </script>
 
 <template>
@@ -252,12 +272,18 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
       <nav class="cat-tabs" aria-label="类别">
         <button v-for="t in pickTabs" :key="t.k" type="button" :class="{ active: pickCat === t.k }" @click="pickCat = t.k as typeof pickCat">{{ t.t }}</button>
       </nav>
+      <div v-if="pickCat === 'sim'" class="countries" role="group" aria-label="国家 / 地区">
+        <button type="button" class="chip" :class="{ active: !pickCountry }" @click="pickCountry = ''">全部</button>
+        <button v-for="c in simCountries" :key="c.key" type="button" class="chip" :class="{ active: pickCountry === c.key }" @click="pickCountry = c.key">
+          {{ c.flag }} {{ c.name }}<span class="muted num">{{ c.dial }}</span>
+        </button>
+      </div>
       <label class="search"><Icon name="search" /><input v-model="query" type="search" placeholder="输入名称搜索" /></label>
       <ul class="pick-list">
         <li v-for="c in picks" :key="c.key">
           <button type="button" class="pick" @click="choose(c)">
             <SubAvatar :brand="c.key" :name="c.name" />
-            <span class="pick-name">{{ c.name }}</span>
+            <span class="pick-name">{{ c.name }}<small v-if="c.country" class="muted"> {{ countryOf(c.country)?.flag }} {{ c.dial }}</small></span>
             <Icon name="plus" class="muted" />
           </button>
         </li>
@@ -300,6 +326,21 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
         <label>结束订阅<input v-model="form.end_date" type="date" />
           <small v-if="fieldErrors.end_date" class="bad">{{ fieldErrors.end_date }}</small>
           <small v-else class="muted">留空表示仍在订阅</small></label>
+        <!-- SIM 电话卡的号码（修订第 189 条）：可增减，最多 10 个；空行不保存 -->
+        <div v-if="form.category === 'sim'" class="wide phones">
+          <span class="phones-label">手机号</span>
+          <div v-for="(p, i) in form.phones" :key="i" class="phone-row">
+            <select v-model="p.cc" aria-label="区号" class="cc">
+              <option v-if="!simCountries.some((c) => c.dial === p.cc)" :value="p.cc">{{ p.cc }}</option>
+              <option v-for="c in simCountries" :key="c.key" :value="c.dial">{{ c.flag }} {{ c.dial }}</option>
+            </select>
+            <input v-model="p.number" inputmode="tel" autocomplete="off" placeholder="号码" aria-label="号码" />
+            <button type="button" class="text" :aria-label="`删除第 ${i + 1} 个号码`" @click="form.phones.splice(i, 1)">删除</button>
+            <small v-if="phoneError(i)" class="bad">{{ phoneError(i) }}</small>
+          </div>
+          <button v-if="form.phones.length < 10" type="button" class="text add-phone" @click="addPhone"><Icon name="plus" :size="14" />添加号码</button>
+          <small v-if="fieldErrors.phones" class="bad">{{ fieldErrors.phones }}</small>
+        </div>
         <label class="wide">描述<input v-model="form.note" maxlength="200" placeholder="可选，如 家庭版、和朋友合租" /></label>
       </div>
       <p v-if="fieldErrors._" class="small bad">{{ fieldErrors._ }}</p>
@@ -355,6 +396,7 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
               <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
                 <b class="ellipsis">{{ s.name }}</b>
+                <span v-if="s.phones.length" class="small num phone-line">{{ fmtPhone(s.phones[0]) }}<span v-if="s.phones.length > 1" class="muted"> 等 {{ s.phones.length }} 个号码</span></span>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
               </span>
               <span class="sub-price">
@@ -488,6 +530,17 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
 .price select { width: 84px; flex: none; }
 .price input { flex: 1; min-width: 0; }
 .actions { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-4); }
+.countries { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px var(--space-2); border-radius: var(--radius-full); background: var(--surface);
+  color: var(--text-muted); border: 1px solid var(--border); font-size: var(--font-sm); }
+.chip.active { color: var(--text); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip:hover { filter: none; color: var(--text); }
+.pick-name small { font-size: var(--font-xs); }
+.phones { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--font-sm); }
+.phone-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+.phone-row small { grid-column: 1 / -1; }
+.add-phone { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.phone-line { color: var(--text); }
 .del { margin-left: auto; }
 @media (max-width: 600px) {
   .item { flex-basis: 40%; padding: var(--space-1) var(--space-3); }
