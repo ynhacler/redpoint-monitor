@@ -29,6 +29,7 @@ export const router = createRouter({
     { path: '/costs', redirect: '/cloud' },
     { path: '/latency', redirect: '/' },
     { path: '/subscriptions', name: 'subscriptions', component: () => import('./pages/SubscriptionsPage.vue'), meta: { title: '订阅' } },
+    { path: '/connectivity', name: 'connectivity', component: () => import('./pages/ConnectivityPage.vue'), meta: { viewer: true, title: '连通性测试' } },
     { path: '/cloud', name: 'cloud', component: () => import('./pages/CloudPage.vue'), meta: { title: '云平台' } },
     { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
     // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效
