@@ -119,31 +119,15 @@ func inPiece(px, py int) bool {
 	return dx*dx+dy*dy <= 7*7
 }
 
-// drawPuzzle 绘制随机背景，在 (x, y) 处挖出缺口，并返回对应的拼图块。
+// drawPuzzle 绘制随机卡通背景，在 (x, y) 处挖出缺口，并返回对应的拼图块。
 func drawPuzzle(x, y int) (*image.RGBA, *image.RGBA) {
 	bg := image.NewRGBA(image.Rect(0, 0, captchaW, captchaH))
-	// 背景：随机色调的平滑渐变 + 若干随机圆斑 + 少量噪点，每次都不同
-	h0 := mrand.Float64() * 360
-	type blob struct {
-		cx, cy, r float64
-		c         color.RGBA
-	}
-	blobs := make([]blob, 7)
-	for i := range blobs {
-		blobs[i] = blob{mrand.Float64() * captchaW, mrand.Float64() * captchaH, 18 + mrand.Float64()*40,
-			hsl(math.Mod(h0+mrand.Float64()*120, 360), 0.45, 0.45+mrand.Float64()*0.25)}
-	}
+	// 背景：随机卡通场景（修订第 183 条，captcha_scene.go），再加少量噪点，使同一场景的像素也不完全相同
+	drawScene(bg)
 	for py := 0; py < captchaH; py++ {
 		for px := 0; px < captchaW; px++ {
-			t := float64(px+py) / float64(captchaW+captchaH)
-			c := hsl(math.Mod(h0+t*80, 360), 0.35, 0.55+0.15*math.Sin(float64(px)/23))
-			for _, b := range blobs {
-				d := math.Hypot(float64(px)-b.cx, float64(py)-b.cy)
-				if d < b.r {
-					c = mix(c, b.c, 0.6*(1-d/b.r))
-				}
-			}
-			n := uint8(mrand.IntN(16))
+			c := bg.RGBAAt(px, py)
+			n := uint8(mrand.IntN(8))
 			c.R, c.G, c.B = sat(c.R, n), sat(c.G, n), sat(c.B, n)
 			bg.SetRGBA(px, py, c)
 		}
@@ -184,30 +168,6 @@ func sat(v, n uint8) uint8 {
 func mix(a, b color.RGBA, t float64) color.RGBA {
 	f := func(x, y uint8) uint8 { return uint8(float64(x)*(1-t) + float64(y)*t) }
 	return color.RGBA{f(a.R, b.R), f(a.G, b.G), f(a.B, b.B), 255}
-}
-
-// hsl 转 RGB；h 为 0～360，s、l 为 0～1。
-func hsl(h, s, l float64) color.RGBA {
-	c := (1 - math.Abs(2*l-1)) * s
-	hp := h / 60
-	x := c * (1 - math.Abs(math.Mod(hp, 2)-1))
-	var r, g, b float64
-	switch {
-	case hp < 1:
-		r, g = c, x
-	case hp < 2:
-		r, g = x, c
-	case hp < 3:
-		g, b = c, x
-	case hp < 4:
-		g, b = x, c
-	case hp < 5:
-		r, b = x, c
-	default:
-		r, b = c, x
-	}
-	m := l - c/2
-	return color.RGBA{uint8((r + m) * 255), uint8((g + m) * 255), uint8((b + m) * 255), 255}
 }
 
 // handleCaptcha：GET /api/v1/auth/captcha，无需认证。生成一次登录验证码（设计 17.4）。
