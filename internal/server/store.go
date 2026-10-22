@@ -961,6 +961,12 @@ var migrations = []string{
 		note        TEXT NOT NULL DEFAULT '',
 		created_at  INTEGER NOT NULL,
 		updated_at  INTEGER NOT NULL
+	);
+	-- 上传的图标：面板重新编码后的 PNG（不保存原文件）
+	CREATE TABLE subscription_logos (
+		subscription_id INTEGER PRIMARY KEY REFERENCES subscriptions(id) ON DELETE CASCADE,
+		png             BLOB NOT NULL,
+		updated_at      INTEGER NOT NULL
 	);`,
 }
 

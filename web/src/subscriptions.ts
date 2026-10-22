@@ -11,12 +11,14 @@ export type SubCycle = Subscription['cycle']
 
 /** 类别名称 */
 export const categoryNames: Record<SubCategory, string> = {
-  video: '影音娱乐', tools: '效率&工具', reading: '阅读&学习', social: '社交', health: '健康&运动', game: '游戏', cloud: '云与开发', other: '其他',
+  video: '影音娱乐', tools: '效率&工具', reading: '阅读&学习', social: '社交', health: '健康&运动', game: '游戏', cloud: '云与开发',
+  sim: 'SIM 电话卡', other: '其他',
 }
 /** 类别在图表中的颜色（设计令牌中的系列色与状态色） */
 export const categoryColors: Record<SubCategory, string> = {
   video: 'var(--accent)', tools: 'var(--ok)', reading: 'color-mix(in srgb, var(--ok) 50%, var(--series-3))', social: 'var(--series-2)',
-  health: 'var(--warn)', game: 'var(--bad)', cloud: 'var(--series-3)', other: 'var(--muted-state)',
+  health: 'var(--warn)', game: 'var(--bad)', cloud: 'var(--series-3)', sim: 'color-mix(in srgb, var(--accent) 50%, var(--series-2))',
+  other: 'var(--muted-state)',
 }
 /** 周期名称 */
 export const cycleNames: Record<SubCycle, string> = {
@@ -37,6 +39,8 @@ export interface CatalogItem {
   color: string
   hot?: boolean
   currency?: string
+  /** 图标上的字（默认取名称的第一个字母或汉字） */
+  letter?: string
 }
 
 /** 常用服务目录：名称与品牌色仅用于识别；有标志的见 brandIcons.ts */
@@ -87,6 +91,23 @@ export const catalog: CatalogItem[] = [
   { key: 'switch', name: 'Nintendo Switch Online', category: 'game', color: '#E60012' },
   { key: 'psplus', name: 'PlayStation Plus', category: 'game', color: '#0070D1' },
   { key: 'gamepass', name: 'Xbox Game Pass', category: 'game', color: '#107C10' },
+  // SIM 电话卡（保号、月租；修订第 189 条）
+  { key: 'tello', name: 'Tello', category: 'sim', color: '#2A2F7A', hot: true, currency: 'USD' },
+  { key: 'rakuten', name: '乐天移动 Rakuten Mobile', category: 'sim', color: '#BF0000', hot: true, currency: 'JPY' },
+  { key: 'chinamobile', name: '中国移动', category: 'sim', color: '#0085D0', hot: true, letter: '移' },
+  { key: 'chinaunicom', name: '中国联通', category: 'sim', color: '#E60027', letter: '联' },
+  { key: 'chinatelecom', name: '中国电信', category: 'sim', color: '#0072BC', letter: '电' },
+  { key: 'cbn', name: '中国广电', category: 'sim', color: '#003F98', letter: '广' },
+  { key: 'giffgaff', name: 'giffgaff', category: 'sim', color: '#111111', hot: true, currency: 'GBP' },
+  { key: 'usmobile', name: 'US Mobile', category: 'sim', color: '#1F57FF', currency: 'USD' },
+  { key: 'mintmobile', name: 'Mint Mobile', category: 'sim', color: '#3F9C35', currency: 'USD' },
+  { key: 'googlefi', name: 'Google Fi', category: 'sim', color: '#4285F4', currency: 'USD', letter: 'Fi' },
+  { key: 'tmobile', name: 'T-Mobile', category: 'sim', color: '#E20074', currency: 'USD', letter: 'T' },
+  { key: 'vodafone', name: 'Vodafone', category: 'sim', color: '#E60000', currency: 'EUR' },
+  { key: 'ahamo', name: 'ahamo', category: 'sim', color: '#2DB9C9', currency: 'JPY' },
+  { key: 'povo', name: 'povo', category: 'sim', color: '#1A1A1A', currency: 'JPY' },
+  { key: 'threehk', name: '3 香港', category: 'sim', color: '#000000', currency: 'HKD', letter: '3' },
+  { key: 'cmhk', name: '中国移动香港', category: 'sim', color: '#0085D0', currency: 'HKD', letter: 'HK' },
 ]
 const byKey = new Map(catalog.map((c) => [c.key, c]))
 
@@ -94,7 +115,7 @@ const byKey = new Map(catalog.map((c) => [c.key, c]))
 export function avatarOf(s: { brand?: string; name: string }): { color: string; letter: string } {
   const item = s.brand ? byKey.get(s.brand) : undefined
   const name = (item?.name ?? s.name).trim()
-  const letter = (name.match(/[A-Za-z0-9一-鿿]/)?.[0] ?? '?').toUpperCase()
+  const letter = item?.letter ?? (name.match(/[A-Za-z0-9一-鿿]/)?.[0] ?? '?').toUpperCase()
   if (item) return { color: item.color, letter }
   const palette = ['#2563EB', '#16A34A', '#7C3AED', '#0891B2', '#D97706', '#DB2777', '#4B5563']
   let h = 0

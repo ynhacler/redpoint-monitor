@@ -6,7 +6,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, errorText, listSubscriptions, updateSubscription,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, listSubscriptions, subscriptionLogoURL,
+  updateSubscription, uploadSubscriptionLogo,
   type Subscription, type SubscriptionInput,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
@@ -110,6 +111,58 @@ const blank = (): SubscriptionInput & { price: string } => ({
 })
 const form = reactive(blank())
 const fieldErrors = ref<Record<string, string>>({})
+// 图标：待上传的 PNG 与预览地址；removeLogo 表示保存时删除已上传的图标
+const logoBlob = ref<Blob | null>(null)
+const logoPreview = ref('')
+const removeLogo = ref(false)
+const formLogo = computed(() => logoPreview.value
+  || (editing.value?.logo_version && !removeLogo.value ? subscriptionLogoURL(editing.value) : ''))
+function resetLogo() {
+  logoBlob.value = null
+  logoPreview.value = ''
+  removeLogo.value = false
+}
+/** 读取选择的图片，居中裁成正方形并缩放为 128×128 PNG。
+ *  用 data: 地址读取与预览：面板的 CSP 只允许 'self' 与 data: 图片，不放开 blob:。 */
+async function pickLogo(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size > 10 << 20) {
+    fieldErrors.value = { ...fieldErrors.value, logo: '图片不能超过 10 MB' }
+    return
+  }
+  try {
+    const src = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result))
+      r.onerror = () => reject(r.error)
+      r.readAsDataURL(file)
+    })
+    const img = new Image()
+    img.src = src
+    await img.decode()
+    const side = Math.min(img.naturalWidth, img.naturalHeight)
+    if (!side) throw new Error('empty')
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 128
+    canvas.getContext('2d')!.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 128, 128)
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    if (!blob) throw new Error('encode')
+    resetLogo()
+    logoBlob.value = blob
+    logoPreview.value = canvas.toDataURL('image/png')
+    const { logo: _, ...rest } = fieldErrors.value
+    fieldErrors.value = rest
+  } catch {
+    fieldErrors.value = { ...fieldErrors.value, logo: '无法读取这张图片' }
+  }
+}
+function clearLogo() {
+  resetLogo()
+  removeLogo.value = true
+}
 const saving = ref(false)
 const confirmDelete = ref(false)
 
@@ -123,12 +176,14 @@ function choose(item: CatalogItem | null) {
   Object.assign(form, blank())
   if (item) Object.assign(form, { name: item.name, brand: item.key, category: item.category, currency: item.currency ?? cur.value })
   fieldErrors.value = {}
+  resetLogo()
   step.value = 'form'
 }
 function openEdit(s: Subscription) {
   editing.value = s
   Object.assign(form, { ...s, price: (s.price_cents / 100).toFixed(2) })
   fieldErrors.value = {}
+  resetLogo()
   confirmDelete.value = false
   step.value = 'form'
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -147,8 +202,11 @@ async function save() {
   }
   saving.value = true
   try {
-    if (editing.value) await updateSubscription(editing.value.id, body)
-    else await createSubscription(body)
+    const saved = editing.value ? await updateSubscription(editing.value.id, body) : await createSubscription(body)
+    editing.value = saved // 图标上传失败时再次保存只修改这一条，不会重复添加
+    if (logoBlob.value) await uploadSubscriptionLogo(saved.id, logoBlob.value)
+    else if (removeLogo.value && saved.logo_version) await deleteSubscriptionLogo(saved.id)
+    resetLogo()
     close()
     await load()
   } catch (e) {
@@ -210,8 +268,14 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
     <!-- 填写 / 编辑 -->
     <form v-else-if="step === 'form'" class="panel editor" novalidate @submit.prevent="save">
       <div class="form-head">
-        <SubAvatar :brand="form.brand" :name="form.name || '?'" :size="64" />
+        <SubAvatar :brand="form.brand" :name="form.name || '?'" :size="64" :src="formLogo" />
         <h2>{{ form.name || '自定义订阅' }}</h2>
+        <!-- 上传图标（修订第 189 条）：浏览器中裁剪为正方形并缩放为 128×128 PNG 后上传 -->
+        <div class="logo-actions small">
+          <label class="text upload">上传图标<input type="file" accept="image/*" @change="pickLogo" /></label>
+          <button v-if="formLogo" type="button" class="text" @click="clearLogo">移除图标</button>
+        </div>
+        <small v-if="fieldErrors.logo" class="bad">{{ fieldErrors.logo }}</small>
       </div>
       <div class="grid">
         <label>名称<input v-model="form.name" maxlength="64" placeholder="如 Netflix" />
@@ -288,7 +352,7 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
         <ul v-if="view === 'list'" class="subs">
           <li v-for="s in list" :key="s.id">
             <button type="button" class="panel sub-row" :class="{ ended: s.ended }" @click="openEdit(s)">
-              <SubAvatar :brand="s.brand" :name="s.name" />
+              <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
                 <b class="ellipsis">{{ s.name }}</b>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
@@ -413,6 +477,10 @@ const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开
 .pick-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty { grid-column: 1 / -1; }
 .form-head { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.form-head h2 { margin: 0; }
+.logo-actions { display: flex; gap: var(--space-3); align-items: center; }
+.upload { position: relative; cursor: pointer; color: var(--accent); }
+.upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3); }
 .grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
 .grid .wide { grid-column: 1 / -1; }

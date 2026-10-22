@@ -1357,6 +1357,34 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /subscriptions/{id}/logo:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      tags: [subscriptions]
+      summary: 上传的图标（PNG）
+      responses:
+        '200': { description: 图标, content: { image/png: { schema: { type: string, format: binary } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [subscriptions]
+      summary: 上传图标（替换）
+      description: '请求体为 PNG（不超过 256 KB，边长 16～512 像素；Web 先在浏览器中裁剪缩放为 128×128）。面板解码后重新编码保存，不保存原文件；不接受 SVG。'
+      requestBody: { required: true, content: { image/png: { schema: { type: string, format: binary } } } }
+      responses:
+        '200': { description: 已上传, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [subscriptions]
+      summary: 删除上传的图标（恢复内置标志或首字母）
+      responses:
+        '200': { description: 已删除, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /silences:
     get:
       tags: [alerts]
@@ -3052,7 +3080,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 64 }
         brand: { type: string, maxLength: 32, description: 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 }
-        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, other], description: 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / 其他 }
+        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, other], description: 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他 }
         price_cents: { type: integer, minimum: 0, maximum: 100000000, description: 每期价格（分） }
         currency: { type: string, pattern: '^[A-Z]{3}$', description: 如 CNY、USD }
         cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once], description: 扣费周期；once 为一次性 }
@@ -3065,12 +3093,12 @@ components:
     Subscription:
       type: object
       required: [id, name, brand, category, price_cents, currency, cycle, trial_days, start_date, end_date, remind_days, note,
-                 next_charge, ended, created_at, updated_at]
+                 next_charge, ended, logo_version, created_at, updated_at]
       properties:
         id: { type: integer }
         name: { type: string }
         brand: { type: string, description: 常用服务目录中的键；自定义时为空 }
-        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, other] }
+        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, other] }
         price_cents: { type: integer, description: 每期价格（分） }
         currency: { type: string }
         cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once] }
@@ -3081,6 +3109,7 @@ components:
         note: { type: string }
         next_charge: { type: string, description: '下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空' }
         ended: { type: boolean, description: 已过结束日期 }
+        logo_version: { type: integer, description: '上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version' }
         created_at: { type: integer }
         updated_at: { type: integer }
 

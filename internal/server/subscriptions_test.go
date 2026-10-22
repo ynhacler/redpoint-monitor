@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +120,73 @@ func TestSubscriptionsAPI(t *testing.T) {
 	}
 	if logs := do(h, "GET", "/api/v1/audit-logs?category=operation", admin, nil).Body.String(); !strings.Contains(logs, "subscription.delete") {
 		t.Fatal("应记入操作日志")
+	}
+}
+
+// 上传图标（修订第 189 条）：只接受 PNG、限制尺寸，重新编码后保存；SVG 等被拒绝；删除订阅时一起删除
+func TestSubscriptionLogo(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Tello","category":"sim","price_cents":500,"currency":"USD","cycle":"monthly","start_date":"2026-01-01"}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.LogoVersion != 0 {
+		t.Fatalf("添加：%d %s", rec.Code, rec.Body)
+	}
+	url := "/api/v1/subscriptions/" + itoa64(x.ID) + "/logo"
+	pngOf := func(w, hgt int) []byte {
+		img := image.NewNRGBA(image.Rect(0, 0, w, hgt))
+		for i := range img.Pix {
+			img.Pix[i] = 200
+		}
+		var b bytes.Buffer
+		png.Encode(&b, img)
+		return b.Bytes()
+	}
+	for name, body := range map[string][]byte{
+		"SVG": []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`),
+		"乱码":  []byte("not an image"),
+		"太小":  pngOf(8, 8),
+		"太大":  pngOf(600, 600),
+	} {
+		if rec := do(h, "PUT", url, admin, body); rec.Code != 422 {
+			t.Errorf("%s 应被拒绝：%d %s", name, rec.Code, rec.Body)
+		}
+	}
+	// 附加在 PNG 末尾的内容在重新编码后不再存在
+	body := append(pngOf(128, 128), []byte("<script>trailing</script>")...)
+	rec = do(h, "PUT", url, admin, body)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.LogoVersion == 0 {
+		t.Fatalf("上传：%d %s", rec.Code, rec.Body)
+	}
+	rec = do(h, "GET", url, admin, nil)
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" || rec.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		bytes.Contains(rec.Body.Bytes(), []byte("trailing")) {
+		t.Fatalf("读取：%d %v", rec.Code, rec.Header())
+	}
+	if _, err := png.Decode(bytes.NewReader(rec.Body.Bytes())); err != nil {
+		t.Fatal("应为有效 PNG：", err)
+	}
+	var list struct{ Items []Subscription }
+	json.Unmarshal(do(h, "GET", "/api/v1/subscriptions", admin, nil).Body.Bytes(), &list)
+	if list.Items[0].LogoVersion == 0 || list.Items[0].Category != "sim" {
+		t.Fatalf("列表应带图标版本：%+v", list.Items[0])
+	}
+	if rec := do(h, "GET", url, viewerToken(t, s, "viewer-logo"), nil); rec.Code != 403 {
+		t.Fatalf("查看者应为 403：%d", rec.Code)
+	}
+	// 删除图标、再删除订阅
+	rec = do(h, "DELETE", url, admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.LogoVersion != 0 || do(h, "GET", url, admin, nil).Code != 404 {
+		t.Fatalf("删除图标：%d %s", rec.Code, rec.Body)
+	}
+	do(h, "PUT", url, admin, pngOf(64, 64))
+	do(h, "DELETE", "/api/v1/subscriptions/"+itoa64(x.ID), admin, nil)
+	var n int
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM subscription_logos`).Scan(&n)
+	if n != 0 {
+		t.Fatal("删除订阅时应删除图标")
 	}
 }

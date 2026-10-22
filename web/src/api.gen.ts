@@ -790,8 +790,8 @@ export interface SubscriptionInput {
   name: string
   /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
   brand?: string
-  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / 其他 */
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'other'
+  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他 */
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
   /** 每期价格（分） */
   price_cents: number
   /** 如 CNY、USD */
@@ -814,7 +814,7 @@ export interface Subscription {
   name: string
   /** 常用服务目录中的键；自定义时为空 */
   brand: string
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'other'
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
   /** 每期价格（分） */
   price_cents: number
   currency: string
@@ -830,6 +830,8 @@ export interface Subscription {
   next_charge: string
   /** 已过结束日期 */
   ended: boolean
+  /** 上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version */
+  logo_version: number
   created_at: number
   updated_at: number
 }
@@ -2373,6 +2375,29 @@ export interface Paths {
         id: number
       }
       response: void
+    }
+  }
+  '/subscriptions/{id}/logo': {
+    /** 上传的图标（PNG） */
+    get: {
+      params: {
+        id: number
+      }
+      response: unknown
+    }
+    /** 上传图标（替换） */
+    put: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+    /** 删除上传的图标（恢复内置标志或首字母） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: Subscription
     }
   }
   '/silences': {

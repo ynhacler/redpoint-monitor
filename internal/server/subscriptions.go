@@ -6,9 +6,14 @@ package server
 // （按月类周期以首次扣费日为锚点，小月取月末）；结束日期当天及之后不再扣费；一次性只扣首次。
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
+	"io"
 	"net/http"
 	"regexp"
 	"slices"
@@ -21,26 +26,27 @@ const maxSubscriptions = 500
 
 // Subscription 是一行 subscriptions（api/openapi.yaml Subscription）。
 type Subscription struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Brand      string `json:"brand"`
-	Category   string `json:"category"`
-	PriceCents int64  `json:"price_cents"`
-	Currency   string `json:"currency"`
-	Cycle      string `json:"cycle"`
-	TrialDays  int    `json:"trial_days"`
-	StartDate  string `json:"start_date"`
-	EndDate    string `json:"end_date"`
-	RemindDays int    `json:"remind_days"`
-	Note       string `json:"note"`
-	NextCharge string `json:"next_charge"` // 计算得到，不入库
-	Ended      bool   `json:"ended"`       // 计算得到，不入库
-	CreatedAt  int64  `json:"created_at"`
-	UpdatedAt  int64  `json:"updated_at"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Brand       string `json:"brand"`
+	Category    string `json:"category"`
+	PriceCents  int64  `json:"price_cents"`
+	Currency    string `json:"currency"`
+	Cycle       string `json:"cycle"`
+	TrialDays   int    `json:"trial_days"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+	RemindDays  int    `json:"remind_days"`
+	Note        string `json:"note"`
+	NextCharge  string `json:"next_charge"`  // 计算得到，不入库
+	Ended       bool   `json:"ended"`        // 计算得到，不入库
+	LogoVersion int64  `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
 }
 
 var (
-	subCategories = []string{"video", "tools", "reading", "social", "health", "game", "cloud", "other"}
+	subCategories = []string{"video", "tools", "reading", "social", "health", "game", "cloud", "sim", "other"}
 	subCycles     = []string{"weekly", "monthly", "quarterly", "semiannually", "annually", "once"}
 	subRemind     = []int{0, 1, 2, 3, 7}
 	currencyCode  = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -124,18 +130,20 @@ func withSchedule(sub Subscription, now time.Time) Subscription {
 
 // ---- 存储 ----
 
-const subCols = `id, name, brand, category, price_cents, currency, cycle, trial_days, start_date, end_date, remind_days, note, created_at, updated_at`
+const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
+	s.remind_days, s.note, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
+	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &x.CreatedAt, &x.UpdatedAt)
+		&x.EndDate, &x.RemindDays, &x.Note, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
 	return x, err
 }
 
 // ListSubscriptions 返回全部订阅（按 id）。
 func (s *Store) ListSubscriptions() ([]Subscription, error) {
-	rows, err := s.DB.Query(`SELECT ` + subCols + ` FROM subscriptions ORDER BY id`)
+	rows, err := s.DB.Query(`SELECT ` + subCols + ` ORDER BY s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +161,7 @@ func (s *Store) ListSubscriptions() ([]Subscription, error) {
 
 // GetSubscription 读取一个订阅。
 func (s *Store) GetSubscription(id int64) (Subscription, error) {
-	x, err := scanSub(s.DB.QueryRow(`SELECT `+subCols+` FROM subscriptions WHERE id = ?`, id))
+	x, err := scanSub(s.DB.QueryRow(`SELECT `+subCols+` WHERE s.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return x, errNoSub
 	}
@@ -188,6 +196,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 
 // DeleteSubscription 删除一个订阅。
 func (s *Store) DeleteSubscription(id int64) error {
+	if _, err := s.DB.Exec(`DELETE FROM subscription_logos WHERE subscription_id = ?`, id); err != nil {
+		return err
+	}
 	res, err := s.DB.Exec(`DELETE FROM subscriptions WHERE id = ?`, id)
 	if err != nil {
 		return err
@@ -393,4 +404,129 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 	}
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.delete", Success: true, Details: map[string]any{"id": id, "name": x.Name}})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- 上传的图标（修订第 189 条） ----
+
+const (
+	maxLogoBytes = 256 << 10
+	maxLogoSide  = 512
+	minLogoSide  = 16
+)
+
+// SaveSubscriptionLogo 保存（替换）订阅的图标。
+func (s *Store) SaveSubscriptionLogo(id int64, png []byte, now time.Time) error {
+	_, err := s.DB.Exec(`INSERT INTO subscription_logos (subscription_id, png, updated_at) VALUES (?,?,?)
+		ON CONFLICT (subscription_id) DO UPDATE SET png = excluded.png, updated_at = excluded.updated_at`, id, png, now.Unix())
+	return err
+}
+
+// SubscriptionLogo 读取图标；没有时返回 nil。
+func (s *Store) SubscriptionLogo(id int64) ([]byte, error) {
+	var b []byte
+	err := s.DB.QueryRow(`SELECT png FROM subscription_logos WHERE subscription_id = ?`, id).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return b, err
+}
+
+// DeleteSubscriptionLogo 删除图标。
+func (s *Store) DeleteSubscriptionLogo(id int64) error {
+	_, err := s.DB.Exec(`DELETE FROM subscription_logos WHERE subscription_id = ?`, id)
+	return err
+}
+
+// sanitizeLogo 解码 PNG、检查尺寸并重新编码：只保存像素，丢弃元数据与任何附加内容。【安全】不接受 SVG 等可含脚本的格式。
+func sanitizeLogo(b []byte) ([]byte, *APIError) {
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "logo", Message: "图片需为 PNG"}}}
+	}
+	r := img.Bounds()
+	if r.Dx() < minLogoSide || r.Dy() < minLogoSide || r.Dx() > maxLogoSide || r.Dy() > maxLogoSide {
+		return nil, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "logo",
+			Message: fmt.Sprintf("图片边长需在 %d～%d 像素之间", minLogoSide, maxLogoSide)}}}
+	}
+	clean := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(clean, clean.Bounds(), img, r.Min, draw.Src)
+	var buf bytes.Buffer
+	if err := (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(&buf, clean); err != nil {
+		return nil, internalError(err)
+	}
+	return buf.Bytes(), nil
+}
+
+// handleSubscriptionLogo：GET /api/v1/subscriptions/{id}/logo，admin。
+func (s *Server) handleSubscriptionLogo(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	b, err := s.store.SubscriptionLogo(id)
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	if b == nil {
+		s.writeError(w, r, errorf(CodeNotFound, "没有上传图标"))
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable") // 地址带版本号 ?v=
+	_, _ = w.Write(b)
+}
+
+// handlePutSubscriptionLogo：PUT /api/v1/subscriptions/{id}/logo，admin。请求体为 PNG（≤ 256 KB）。
+func (s *Server) handlePutSubscriptionLogo(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	x, err := s.store.GetSubscription(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxLogoBytes))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	clean, apiErr := sanitizeLogo(raw)
+	if apiErr != nil {
+		s.writeError(w, r, apiErr)
+		return
+	}
+	now := time.Now()
+	if err := s.store.SaveSubscriptionLogo(id, clean, now); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.logo", Success: true, Details: map[string]any{"id": id, "name": x.Name}})
+	x.LogoVersion = now.Unix()
+	writeJSON(w, withSchedule(x, now))
+}
+
+// handleDeleteSubscriptionLogo：DELETE /api/v1/subscriptions/{id}/logo，admin。
+func (s *Server) handleDeleteSubscriptionLogo(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	x, err := s.store.GetSubscription(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.store.DeleteSubscriptionLogo(id); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	x.LogoVersion = 0
+	writeJSON(w, withSchedule(x, time.Now()))
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 订阅图标（设计 47.2）：有标志的服务显示品牌色方块上的单色标志（brandIcons.ts，取自 Simple Icons），
+// 订阅图标（设计 47.2）：上传了图标的显示上传的图片；有标志的服务显示品牌色方块上的单色标志（brandIcons.ts，取自 Simple Icons），
 // 其他显示色块加首字母。品牌色很浅时标志用深色，避免看不清。
 import { computed } from 'vue'
 import { brandIcons } from '../brandIcons'
@@ -12,7 +12,9 @@ const props = withDefaults(defineProps<{
   name: string
   /** 边长，像素 */
   size?: number
-}>(), { brand: '', size: 40 })
+  /** 上传的图标地址（优先显示） */
+  src?: string
+}>(), { brand: '', size: 40, src: '' })
 
 const icon = computed(() => (props.brand ? brandIcons[props.brand] : undefined))
 const fallback = computed(() => avatarOf({ brand: props.brand, name: props.name }))
@@ -26,7 +28,8 @@ const light = computed(() => {
 </script>
 
 <template>
-  <span class="sub-avatar" :class="{ light }" :style="{ width: `${size}px`, height: `${size}px`, background: bg, borderRadius: `${Math.round(size / 4)}px` }">
+  <img v-if="src" class="sub-avatar img" :src="src" alt="" :width="size" :height="size" :style="{ borderRadius: `${Math.round(size / 4)}px` }" />
+  <span v-else class="sub-avatar" :class="{ light }" :style="{ width: `${size}px`, height: `${size}px`, background: bg, borderRadius: `${Math.round(size / 4)}px` }">
     <svg v-if="icon" viewBox="0 0 24 24" :width="Math.round(size * 0.56)" :height="Math.round(size * 0.56)" aria-hidden="true">
       <path :d="icon.path" />
     </svg>
@@ -39,4 +42,5 @@ const light = computed(() => {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent); }
 .sub-avatar svg { fill: currentColor; }
 .sub-avatar.light { color: var(--text); }
+.sub-avatar.img { display: block; object-fit: cover; background: var(--surface-2); }
 </style>
