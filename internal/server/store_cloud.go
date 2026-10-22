@@ -129,6 +129,7 @@ func (s *Store) DeleteCloudAccount(id int64) error {
 // cloudSyncResult 是一次同步的结果：成功的部分更新对应的时间，失败时记录错误与下次重试时间。
 type cloudSyncResult struct {
 	CostSynced, InstancesSynced, TrafficSynced bool
+	CostWarning                                string // 费用因权限不足未读取时的提示（只在 CostSynced 时写入，修订第 184 条）
 	Err                                        string
 	Warning                                    string // 实例同步时跳过的区域（只在 InstancesSynced 时写入）
 	RecheckAt                                  int64  // 提前重新检查实例的时间；0 表示按常规周期（只在 InstancesSynced 时写入）
@@ -142,7 +143,7 @@ func (s *Store) RecordCloudSync(id int64, r cloudSyncResult, now time.Time) erro
 	set := []string{}
 	args := []any{}
 	if r.CostSynced {
-		set, args = append(set, "cost_synced_at = ?"), append(args, t)
+		set, args = append(set, "cost_synced_at = ?", "cost_warning = ?"), append(args, t, r.CostWarning)
 	}
 	if r.InstancesSynced {
 		set, args = append(set, "instances_synced_at = ?", "last_warning = ?", "instances_recheck_at = ?"), append(args, t, r.Warning, r.RecheckAt)
@@ -370,6 +371,13 @@ func (s *Store) SaveCloudPools(accountID int64, pools []cloud.TrafficPool, warni
 		return err
 	}
 	return tx.Commit()
+}
+
+// CloudCostWarning 返回账户费用因权限不足未读取时的提示（修订第 184 条）。
+func (s *Store) CloudCostWarning(accountID int64) (string, error) {
+	var w string
+	err := s.DB.QueryRow(`SELECT cost_warning FROM cloud_accounts WHERE id = ?`, accountID).Scan(&w)
+	return w, err
 }
 
 // CloudPools 返回账户的流量池（按 pool 排序）与最近一次读取失败的原因。

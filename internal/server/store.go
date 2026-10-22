@@ -940,6 +940,9 @@ var migrations = []string{
 		PRIMARY KEY (account_id, pool)
 	);
 	ALTER TABLE cloud_accounts ADD COLUMN pool_warning TEXT NOT NULL DEFAULT '';`,
+	// 迁移 51：费用读取被拒绝（子用户没有费用中心只读权限）时的提示（修订第 184 条）；空表示正常。
+	// 权限不足不再让整个账户停止同步，只跳过费用
+	`ALTER TABLE cloud_accounts ADD COLUMN cost_warning TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

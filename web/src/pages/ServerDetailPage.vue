@@ -71,7 +71,15 @@ const tab = computed<TabKey>(() => {
   const q = route.query.tab === 'network' ? 'traffic' : route.query.tab
   return tabs.value.find((t) => t.key === q)?.key ?? 'monitor'
 })
-const setTab = (t: TabKey) => router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
+// 切换标签（修订第 184 条）：页面已滚过标签栏时，回到标签栏（紧贴吸顶的顶栏之下），而不是停在新页内容的中间或跳回顶端
+const tabsEl = ref<HTMLElement | null>(null)
+function setTab(t: TabKey) {
+  router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
+  const el = tabsEl.value
+  if (!el) return
+  const top = (document.querySelector('.topbar')?.clientHeight ?? 0) + 8
+  if (el.getBoundingClientRect().top < top) window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - top })
+}
 
 // ---- 实时采样：速览卡片的迷你折线与实时网速图 ----
 // 保留最近 10 分钟；打开页面时用 1 小时历史中最近 10 分钟的点预填，避免图表从空白开始。
@@ -263,13 +271,15 @@ const charts = computed(() => [
       <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 分页（修订第 172 条）：概况与健康摘要之下按主题分页，地址带 ?tab=，刷新与分享后保持；未打开的页不加载 -->
-      <nav class="tabs" role="tablist" aria-label="节点详情">
+      <nav ref="tabsEl" class="tabs" role="tablist" aria-label="节点详情">
         <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ active: tab === t.key }"
           @click="setTab(t.key)">
           {{ t.name }}<span v-if="t.badge" class="badge num" :class="t.badgeLevel">{{ t.badge }}</span><i v-else-if="t.dot" class="dot" />
         </button>
       </nav>
 
+      <!-- 各页内容至少一屏高（修订第 184 条）：切到内容较短或仍在加载的页时页面不会变矮，浏览器不会把滚动位置截回顶部 -->
+      <div class="tab-body">
       <!-- 监控：速览 → CPU → 内存 → 磁盘 → 网络 → 历史；离线时不显示旧数值（设计 43.6） -->
       <template v-if="tab === 'monitor'">
         <template v-if="live && liveServer?.latest">
@@ -341,6 +351,7 @@ const charts = computed(() => [
       <section v-else-if="tab === 'alerts'" class="section">
         <AlertHistory :server-id="s.id" :version="`${s.alerts.map((a) => a.event_id).join(',')}|${s.maintenance?.id ?? ''}`" />
       </section>
+      </div>
 
     </template>
   </main>
@@ -357,6 +368,7 @@ const charts = computed(() => [
 @media (max-width: 600px) {
   .charts { grid-template-columns: 1fr; }
 }
+.tab-body { min-height: 100vh; }
 .tabs { display: flex; gap: var(--space-1); margin: var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--border);
   overflow-x: auto; scrollbar-width: none; }
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted);

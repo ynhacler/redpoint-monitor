@@ -1169,6 +1169,8 @@ export interface CloudAccount {
   traffic_pools: CloudTrafficPool[]
   /** 最近一次读取流量池失败的原因（如缺少 CDT 只读权限）；空表示正常 */
   pool_warning: string
+  /** 费用因子用户没有费用 / 账单只读权限而未读取时的提示（修订第 184 条）；空表示正常。权限不足不会停止整个账户的同步 */
+  cost_warning: string
   created_at: number
   updated_at: number
 }

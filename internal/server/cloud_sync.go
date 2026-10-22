@@ -265,6 +265,12 @@ func (s *Server) doCloudSync(ctx context.Context, a CloudAccount, k cloudKinds, 
 	}
 	if k.cost {
 		costs, err := c.Costs(ctx, now)
+		// 子用户没有费用中心只读权限：只跳过费用并提示，不让整个账户停止同步（修订第 184 条）
+		if err != nil && cloud.PermissionDenied(err) {
+			res.CostSynced, res.CostWarning = true, "费用未同步：子用户没有费用 / 账单只读权限（阿里云 AliyunBSSReadOnlyAccess）"
+			s.log.Warn("cloud cost permission denied", "component", "cloud", "account_id", a.ID, "provider", a.Provider, "err", err)
+			return nil
+		}
 		if err != nil {
 			return err
 		}

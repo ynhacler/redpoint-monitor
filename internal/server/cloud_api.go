@@ -56,6 +56,7 @@ type cloudAccountView struct {
 	// 账户级流量池（阿里云 CDT，修订第 181 条）：只返回本月的；PoolWarning 为最近一次读取失败的原因
 	TrafficPools []CloudPool `json:"traffic_pools"`
 	PoolWarning  string      `json:"pool_warning"`
+	CostWarning  string      `json:"cost_warning"` // 费用因权限不足未读取时的提示（修订第 184 条）
 	CreatedAt         int64      `json:"created_at"`
 	UpdatedAt         int64      `json:"updated_at"`
 }
@@ -85,6 +86,9 @@ func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, 
 		return v, err
 	}
 	v.TrafficPools, v.PoolWarning = currentPools(pools, a.Provider, time.Now()), warning
+	if v.CostWarning, err = s.store.CloudCostWarning(a.ID); err != nil {
+		return v, err
+	}
 	return v, nil
 }
 

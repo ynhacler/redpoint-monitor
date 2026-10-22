@@ -87,6 +87,8 @@ func (r RegionError) describe() string {
 		return fmt.Sprintf("区域 %s 的 %s 正在为账户初始化，本轮跳过，下一轮再试", r.Region, r.Label)
 	case pe != nil && notOpenedCodes[pe.Code]:
 		return fmt.Sprintf("区域 %s 的 %s 不可用（可能未开通该区域），已跳过：%v", r.Region, r.Label, r.Err)
+	case r.Region == "" && permissionDenied(r.Err): // 整个服务没有只读权限（修订第 184 条）
+		return fmt.Sprintf("%s：子用户没有只读权限，已跳过（不用这项服务时可以忽略）", r.Label)
 	}
 	return fmt.Sprintf("区域 %s 的 %s 调用失败，已跳过：%v", r.Region, r.Label, r.Err)
 }
@@ -97,6 +99,9 @@ var deniedCodes = map[string]bool{
 	"Forbidden.RAM": true, "NoPermission": true, "NotAuthorizedOrNotFound": true,
 	"AuthFailure.UnauthorizedOperation": true, "UnauthorizedOperation.PermissionDenied": true,
 }
+
+// PermissionDenied 判断错误是否为权限不足（凭证有效、只是没有授予这项权限），而非令牌无效（修订第 184 条）。
+func PermissionDenied(err error) bool { return permissionDenied(err) }
 
 // permissionDenied 判断错误是否为权限不足（而非令牌无效）。
 func permissionDenied(err error) bool {
