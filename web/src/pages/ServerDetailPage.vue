@@ -317,14 +317,15 @@ const charts = computed(() => [
         </section>
       </template>
 
-      <!-- 网络：本周期流量 → 测速（设计 42.3.2）与国内可达性（设计 42.2）→ 流量记录 → 云实例；原“流量”“网络”两页合并（修订第 179 条） -->
+      <!-- 网络：本周期流量 → 解锁检测（设计 50）→ 测速（设计 42.3.2）与国内可达性（设计 42.2）→ 流量记录 → 云实例；原“流量”“网络”两页合并（修订第 179 条） -->
       <section v-else-if="tab === 'traffic'" class="section">
         <TrafficCard :server="s" class="section-tight" />
+        <!-- 解锁检测放在流量之后、测速之前，进入“网络”页就能看到（修订第 193 条） -->
         <template v-if="s.status !== 'pending'">
-          <LatencyCard :server-id="s.id" class="section-tight" />
-          <ReachCard :server-id="s.id" class="section-tight" />
           <UnlockCard :server-id="s.id" :unlock="detail?.id === s.id ? detail.unlock : undefined" :online="live" class="section-tight"
             @requested="loadDetail" />
+          <LatencyCard :server-id="s.id" class="section-tight" />
+          <ReachCard :server-id="s.id" class="section-tight" />
         </template>
         <TrafficHistory :server="s" class="section-tight" />
         <CloudInstanceCard v-if="!isViewer" :server="s" class="section-tight" />
