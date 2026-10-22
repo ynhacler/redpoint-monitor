@@ -18,6 +18,8 @@ const errors = ref<Record<string, string>>({})
 const message = ref('')
 const busy = ref(false)
 const forced = state.me?.must_change_password ?? false
+// 修改密码表单默认收起，点击后展开；使用初始密码时直接展开（修订第 179 条）
+const editing = ref(forced)
 
 async function submit() {
   errors.value = {}
@@ -48,8 +50,15 @@ async function submit() {
 
 <template>
   <div class="account-wrap">
-    <form class="panel account" novalidate @submit.prevent="submit">
-      <h1>修改密码</h1>
+    <section v-if="!editing" class="panel account row-head">
+      <div>
+        <h2>密码</h2>
+        <p class="small muted">账号：{{ state.me?.username }}<template v-if="isViewer">（查看者，只读）</template></p>
+      </div>
+      <button type="button" class="secondary" @click="editing = true">修改密码</button>
+    </section>
+    <form v-else class="panel account" novalidate @submit.prevent="submit">
+      <h2>修改密码</h2>
       <p v-if="forced" class="banner warn">当前使用的是初始密码，请先设置自己的密码。</p>
       <p class="small muted">账号：{{ state.me?.username }}<template v-if="isViewer">（查看者，只读）</template>。新密码至少 8 位；修改后其他设备上的登录会退出。</p>
       <label class="field">
@@ -68,7 +77,10 @@ async function submit() {
         <small v-if="errors.confirm" class="bad">{{ errors.confirm }}</small>
       </label>
       <p v-if="message" class="small" role="status">{{ message }}</p>
-      <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
+      <div class="actions">
+        <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '修改密码' }}</button>
+        <button v-if="!forced" type="button" class="text" @click="editing = false">取消</button>
+      </div>
     </form>
     <TwoFactorPanel v-if="!forced" />
     <SessionsPanel v-if="!forced" />
@@ -87,5 +99,10 @@ async function submit() {
 .account p { margin: 0; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
 .account button { align-self: flex-start; }
+.actions { display: flex; gap: var(--space-2); align-items: center; }
 .account-links { margin: var(--space-4) 0 0; }
+.account h2 { margin: 0; font-size: var(--font-lg); }
+.row-head { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.row-head p { margin-top: var(--space-1); }
+.row-head button { align-self: center; }
 </style>
