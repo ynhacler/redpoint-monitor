@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 舰队总览（修订第 174 条）：仪表板顶部三张卡片，把分散在各节点与云账户的数据拼成总览——
+// 舰队总览（修订第 174 条）：仪表板顶部的一条总览（修订第 187 条：由三张大卡片压缩为一行），把分散在各节点与云账户的数据拼成总览——
 // 本月剩余流量与“预计哪台先用完”、每月总成本（节点续费折算 + 云账单本月预估）、未来 30 天到期。
+// 每项只显示一个数字与一行说明；明细（各节点、成本构成、资料不全的提醒）放在悬停提示中。
 // 成本卡只给管理员（云账户只有管理员能读）；资料不全时提醒（没填价格的节点、未关联节点的云实例）。
 import { computed, onMounted, ref } from 'vue'
 import { listCloudAccounts, listCloudInstances, type CloudAccount } from '../api'
@@ -29,6 +30,17 @@ const cost = computed(() => costFleet(installed.value, accounts.value, linked.va
 const shown = computed(() => traffic.value.limited > 0 || (!isViewer.value && cost.value.lines.length > 0) || renewals.value.length > 0)
 const money = (cents: number, cur: string) => fmtMoney(Math.round(cents), cur === '—' ? '' : cur)
 
+// 悬停提示：明细（修订第 187 条）
+const trafficTip = computed(() => [`${traffic.value.limited} 台节点有流量额度`,
+  ...traffic.value.risks.map((r) => `${r.server.name}：${r.daysLeft === 0 ? `已用完（${Math.round(r.pct)}%）` : `约 ${r.daysLeft} 天后用完`}`)].join('\n'))
+const costTip = computed(() => [
+  ...cost.value.lines.map((l) => `${l.currency}：节点续费 ${money(l.nodes, l.currency)}${l.cloud ? ` + 云账单本月 ${money(l.cloud, l.currency)}` : ''}`),
+  cost.value.unpriced ? `${cost.value.unpriced} 台节点没填价格（在节点编辑页填写），总成本不完整` : '',
+  unlinked.value ? `${unlinked.value} 个云实例未关联节点` : '',
+  cost.value.inCloud ? `${cost.value.inCloud} 台关联云实例的节点按云账单计算，不重复计入续费价格` : '',
+].filter(Boolean).join('\n'))
+const renewTip = computed(() => renewals.value.map((r) => `${r.node.name}：${dueText(r.days)}`).join('\n'))
+
 function dueText(days: number) {
   if (days < 0) return `已过期 ${-days} 天`
   if (days === 0) return '今天到期'
@@ -37,72 +49,54 @@ function dueText(days: number) {
 </script>
 
 <template>
-  <!-- 只显示有内容的卡片（修订第 178 条）：没有流量额度、价格或近期到期时不占位置 -->
-  <div v-if="shown" class="fleet">
+  <!-- 只显示有内容的项（修订第 178 条） -->
+  <div v-if="shown" class="panel fleet">
     <!-- 流量 -->
-    <section v-if="traffic.limited" class="panel card">
-      <h3>本月剩余流量</h3>
-      <p class="big num">{{ fmtTraffic(traffic.remaining) }}</p>
-        <p class="muted small">{{ traffic.limited }} 台节点有流量额度</p>
-        <ul v-if="traffic.risks.length" class="list">
-          <li v-for="r in traffic.risks.slice(0, 3)" :key="r.server.id">
-            <RouterLink :to="`/servers/${r.server.id}?tab=traffic`">{{ r.server.name }}</RouterLink>
-            <span class="num" :class="r.daysLeft === 0 ? 'bad' : 'warn'">
-              {{ r.daysLeft === 0 ? `已用完（${Math.round(r.pct)}%）` : `约 ${r.daysLeft} 天后用完` }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="ok small">按当前用量，本周期没有节点会用完流量。</p>
-    </section>
+    <div v-if="traffic.limited" class="item" :title="trafficTip">
+      <span class="label">本月剩余流量</span>
+      <span class="big num">{{ fmtTraffic(traffic.remaining) }}</span>
+      <span v-if="traffic.risks.length" class="sub" :class="traffic.risks[0].daysLeft === 0 ? 'bad' : 'warn'">
+        <RouterLink :to="`/servers/${traffic.risks[0].server.id}?tab=traffic`">{{ traffic.risks[0].server.name }}</RouterLink>
+        {{ traffic.risks[0].daysLeft === 0 ? '已用完' : `约 ${traffic.risks[0].daysLeft} 天后用完` }}<template v-if="traffic.risks.length > 1"> 等 {{ traffic.risks.length }} 台</template>
+      </span>
+      <span v-else class="sub muted">{{ traffic.limited }} 台有额度，本周期够用</span>
+    </div>
 
     <!-- 成本（管理员） -->
-    <section v-if="!isViewer && cost.lines.length" class="panel card">
-      <h3>每月总成本</h3>
-      <p v-for="l in cost.lines.slice(0, 2)" :key="l.currency" class="big num">
-          {{ money(l.nodes + l.cloud, l.currency) }}<small class="muted"> / 月</small>
-        </p>
-        <p class="muted small">
-          <template v-for="(l, i) in cost.lines.slice(0, 2)" :key="'d' + l.currency">
-            <template v-if="i"> · </template>节点续费 {{ money(l.nodes, l.currency) }}<template v-if="l.cloud"> + 云账单本月 {{ money(l.cloud, l.currency) }}</template>
-          </template>
-        </p>
-      <ul v-if="cost.unpriced || unlinked || cost.inCloud" class="hints small">
-        <li v-if="cost.unpriced">{{ cost.unpriced }} 台节点没填价格（在节点编辑页填写），总成本不完整</li>
-        <li v-if="unlinked"><RouterLink to="/cloud">{{ unlinked }} 个云实例未关联节点</RouterLink></li>
-        <li v-if="cost.inCloud" class="muted">{{ cost.inCloud }} 台关联云实例的节点按云账单计算，不重复计入续费价格</li>
-      </ul>
-    </section>
+    <div v-if="!isViewer && cost.lines.length" class="item" :title="costTip">
+      <span class="label">每月总成本</span>
+      <span class="big num">{{ money(cost.lines[0].nodes + cost.lines[0].cloud, cost.lines[0].currency) }}<small> / 月</small></span>
+      <span v-if="cost.lines.length > 1" class="sub muted num">+ {{ cost.lines.slice(1).map((l) => money(l.nodes + l.cloud, l.currency)).join(' + ') }}</span>
+      <span v-else-if="cost.unpriced" class="sub warn">{{ cost.unpriced }} 台没填价格</span>
+      <span v-else-if="unlinked" class="sub"><RouterLink to="/cloud">{{ unlinked }} 个云实例未关联</RouterLink></span>
+      <span v-else class="sub muted">节点续费 + 云账单</span>
+    </div>
 
     <!-- 到期 -->
-    <section v-if="renewals.length" class="panel card">
-      <h3>未来 30 天到期</h3>
-      <p class="big num">{{ renewals.length }}<small class="muted"> 台</small></p>
-        <ul class="list">
-          <li v-for="r in renewals.slice(0, 4)" :key="r.node.id">
-            <RouterLink :to="`/servers/${r.node.id}`">{{ r.node.name }}</RouterLink>
-            <span class="num" :class="r.days <= 3 ? 'bad' : r.days <= 7 ? 'warn' : 'muted'">{{ dueText(r.days) }}</span>
-          </li>
-        </ul>
-    </section>
+    <div v-if="renewals.length" class="item" :title="renewTip">
+      <span class="label">30 天内到期</span>
+      <span class="big num">{{ renewals.length }}<small> 台</small></span>
+      <span class="sub" :class="renewals[0].days <= 3 ? 'bad' : renewals[0].days <= 7 ? 'warn' : 'muted'">
+        <RouterLink :to="`/servers/${renewals[0].node.id}`">{{ renewals[0].node.name }}</RouterLink> {{ dueText(renewals[0].days) }}
+      </span>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.fleet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.card { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.card h3 { margin: 0; font-size: var(--font-sm); color: var(--text-muted); font-weight: var(--weight-regular); }
-.card p { margin: 0; }
-.big { font-size: 24px; line-height: 32px; font-weight: var(--weight-strong); }
-.big small { font-size: var(--font-sm); font-weight: var(--weight-regular); }
-.list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.list li { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--font-sm); min-width: 0; }
-.list a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list span { white-space: nowrap; }
-.hints { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; color: var(--warn); }
-.ok { color: var(--ok); }
+/* 一行总览：各项等宽排列、竖线分隔；手机上两列 */
+.fleet { display: flex; flex-wrap: wrap; padding: var(--space-3) 0; margin-bottom: var(--space-3); }
+.item { flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-4); }
+.item + .item { border-left: 1px solid var(--border); }
+.label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
+.big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; }
+.big small { font-size: var(--font-xs); font-weight: var(--weight-regular); color: var(--text-muted); }
+.sub { font-size: var(--font-xs); line-height: var(--line-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
-@media (max-width: 900px) {
-  .fleet { grid-template-columns: minmax(0, 1fr); }
+.muted { color: var(--text-muted); }
+@media (max-width: 600px) {
+  .item { flex-basis: 40%; padding: var(--space-1) var(--space-3); }
+  .item + .item { border-left: 0; }
 }
 </style>

@@ -169,19 +169,16 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <!-- 舰队总览：剩余流量与先用完的节点、每月总成本、30 天内到期（修订第 174 条） -->
     <FleetCards v-if="installed.length" />
 
-    <!-- 统计即筛选：数字为该状态的节点数，点击只看这些节点；离线、需要关注等为 0 时不显示（修订第 178 条） -->
-    <div v-if="installed.length" class="stats" role="tablist" aria-label="按状态筛选">
-      <button v-for="x in filters.filter((f) => f.v === 'all' || f.v === 'online' || counts[f.v] || statusFilter === f.v)" :key="x.v" type="button" role="tab" class="stat" :aria-selected="statusFilter === x.v"
-        :class="{ active: statusFilter === x.v }" @click="setFilter(x.v)">
-        <span class="muted small">{{ x.t }}</span>
-        <span class="n num" :class="counts[x.v] && x.level && x.v !== 'all' ? x.level : ''">{{ counts[x.v] }}</span>
-      </button>
-      <a v-if="pending.length" href="#pending" class="stat">
-        <span class="muted small">待安装</span><span class="n num muted">{{ pending.length }}</span>
-      </a>
-    </div>
-
     <div v-if="state.servers.length" class="filters">
+      <!-- 统计即筛选（修订第 187 条：由一排大方块改为搜索框前的小标签）：数字为该状态的节点数，点击只看这些节点；
+           离线、需要关注等为 0 时不显示 -->
+      <div v-if="installed.length" class="chips" role="tablist" aria-label="按状态筛选">
+        <button v-for="x in filters.filter((f) => f.v === 'all' || f.v === 'online' || counts[f.v] || statusFilter === f.v)" :key="x.v"
+          type="button" role="tab" class="chip" :aria-selected="statusFilter === x.v" :class="{ active: statusFilter === x.v }" @click="setFilter(x.v)">
+          {{ x.t }}<b class="num" :class="counts[x.v] && x.level && x.v !== 'all' ? x.level : ''">{{ counts[x.v] }}</b>
+        </button>
+        <a v-if="pending.length" href="#pending" class="chip">待安装<b class="num muted">{{ pending.length }}</b></a>
+      </div>
       <label class="search">
         <Icon name="search" />
         <input v-model="query" type="search" placeholder="搜索名称、IP、分组、供应商" />
@@ -262,24 +259,19 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 <style scoped>
 /* 统计：一行等宽，窄屏横向滚动而不是换行，保持紧凑 */
 .updated { margin-left: auto; margin-right: var(--space-3); }
-.stats { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, 1fr); gap: var(--space-2); margin-bottom: var(--space-4);
-  overflow-x: auto; scrollbar-width: none; }
-.stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--space-3); text-align: left;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md); text-decoration: none; }
-.stat:hover { border-color: var(--text-muted); text-decoration: none; filter: none; }
-.stat.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.n { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); }
-.n.ok { color: var(--ok); }
-.n.bad { color: var(--bad); }
-.n.warn { color: var(--warn); }
+.chips { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px var(--space-3); border-radius: var(--radius-full);
+  background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); font-size: var(--font-sm); text-decoration: none; }
+.chip:hover { color: var(--text); border-color: var(--text-muted); text-decoration: none; filter: none; }
+.chip.active { color: var(--text); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip b { color: var(--text); font-weight: var(--weight-strong); }
+.chip b.ok { color: var(--ok); }
+.chip b.bad { color: var(--bad); }
+.chip b.warn { color: var(--warn); }
 .empty-filter { display: flex; align-items: center; gap: var(--space-2); }
-/* 手机：五项挤进一行（待安装有入口时仍可横向滑动），去掉“更新于”腾出标题行空间 */
+/* 手机：去掉“更新于”腾出标题行空间 */
 @media (max-width: 600px) {
   .updated { display: none; }
-  .stats { grid-auto-columns: minmax(58px, 1fr); gap: 6px; }
-  .stat { padding: var(--space-2); align-items: center; text-align: center; }
-  .stat .small { font-size: var(--font-xs); white-space: nowrap; }
-  .n { font-size: var(--font-lg); line-height: var(--line-lg); }
   .page-head h1 { margin-right: auto; }
 }
 /* 节点卡片一行五列，最窄需要约 320px（见 ServerCard） */
