@@ -69,6 +69,11 @@ type Reporter struct {
 		Version() string
 		Update(version, encoded, interval, timing string)
 	}
+	// Unlock 处理面板的解锁检测请求（设计 50）：请求头声明支持，响应头带请求号；为空时不参与
+	Unlock interface {
+		Supported() string
+		Request(id string)
+	}
 	// StatePath 是断网缓冲的落盘文件（如 /var/lib/vpsmon-agent/queue.json）；为空时只保存在内存中
 	StatePath string
 
@@ -316,6 +321,9 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		// 空值也要发送：表示支持探测但还没有目标，面板据此下发
 		req.Header[protocol.HeaderProbeVersion] = []string{r.Probe.Version()}
 	}
+	if r.Unlock != nil {
+		req.Header.Set(protocol.HeaderUnlock, r.Unlock.Supported())
+	}
 	resp, err := r.Client.Do(req)
 	if err != nil {
 		return 0, 0, err
@@ -329,6 +337,9 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		if v := resp.Header.Get(protocol.HeaderProbeVersion); v != "" && r.Probe != nil {
 			r.Probe.Update(v, resp.Header.Get(protocol.HeaderProbeTargets), resp.Header.Get(protocol.HeaderProbeInterval),
 				resp.Header.Get(protocol.HeaderProbeTiming))
+		}
+		if v := resp.Header.Get(protocol.HeaderUnlockRequest); v != "" && r.Unlock != nil {
+			r.Unlock.Request(v)
 		}
 	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {

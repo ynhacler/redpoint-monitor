@@ -75,6 +75,25 @@ export interface IPInfo {
   error: string
 }
 
+export interface UnlockView {
+  /** 节点的 Agent 支持检测（最近一次上报声明；旧版 Agent 不支持） */
+  supported: boolean
+  /** 已请求、等待结果（10 分钟没有结果视为超时） */
+  pending: boolean
+  /** 最近一次请求时间；0 表示从未检测 */
+  requested_at: number
+  /** 最近一次结果的时间；0 表示还没有结果 */
+  checked_at: number
+  items: ({
+    service: 'netflix' | 'disney' | 'youtube' | 'prime' | 'tiktok' | 'chatgpt' | 'claude' | 'google' | 'reddit' | 'steam'
+    /** 可用 / 不可用 / 部分可用（如 Netflix 仅自制剧）/ 要求人机验证 / 检测失败 */
+    status: 'yes' | 'no' | 'partial' | 'captcha' | 'failed'
+    /** 服务认定的地区（两位代码）或货币（Steam） */
+    region?: string
+    note?: string
+  })[]
+}
+
 /** 最近一次“检测公网可达”的结果（修订第 171 条，只在内存中，面板重启后清空）；只在管理员的节点详情中返回，没有检测过时省略 */
 export interface PortExposure {
   checked_at: number
@@ -484,6 +503,8 @@ export interface ServerView {
   port_exposure?: PortExposure
   /** 节点公网 IP 的 ASN 与位置（设计 49，来自 ipinfo.io，需在设置中打开）；只在节点详情接口中、查询过时返回 */
   ip_info?: IPInfo
+  /** 流媒体与网站解锁检测（设计 50）；只在节点详情接口中返回 */
+  unlock?: UnlockView
   /** 端口基线（修订第 170 条）：允许对公网开放的监听端口。未设置时省略（不评估“未知监听端口”与“基线端口未监听”）。 只在管理员的节点详情中返回 */
   port_baseline?: {
     /** 如 22/tcp、443/tcp、51820/udp */
@@ -2184,6 +2205,15 @@ export interface Paths {
         id: number
       }
       response: IPInfo
+    }
+  }
+  '/servers/{id}/unlock-check': {
+    /** 请求节点的 Agent 检测一次流媒体与网站解锁（设计 50） */
+    post: {
+      params: {
+        id: number
+      }
+      response: UnlockView
     }
   }
   '/settings/heartbeat/test': {

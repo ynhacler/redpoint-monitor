@@ -20,6 +20,7 @@ import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
+import UnlockCard from '../components/UnlockCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { isLive, issues, type LiveSample } from '../metrics'
@@ -322,6 +323,8 @@ const charts = computed(() => [
         <template v-if="s.status !== 'pending'">
           <LatencyCard :server-id="s.id" class="section-tight" />
           <ReachCard :server-id="s.id" class="section-tight" />
+          <UnlockCard :server-id="s.id" :unlock="detail?.id === s.id ? detail.unlock : undefined" :online="live" class="section-tight"
+            @requested="loadDetail" />
         </template>
         <TrafficHistory :server="s" class="section-tight" />
         <CloudInstanceCard v-if="!isViewer" :server="s" class="section-tight" />

@@ -983,6 +983,16 @@ var migrations = []string{
 		fetched_at INTEGER NOT NULL,
 		error      TEXT NOT NULL DEFAULT ''
 	);`,
+	// 迁移 55：解锁检测（设计 50，修订第 192 条）。request 为最近一次请求号，done_request 为已收到结果的请求号；
+	// items 为 JSON 数组（protocol.UnlockItem）
+	`CREATE TABLE server_unlock (
+		server_id    INTEGER PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+		request      TEXT NOT NULL DEFAULT '',
+		requested_at INTEGER NOT NULL DEFAULT 0,
+		done_request TEXT NOT NULL DEFAULT '',
+		checked_at   INTEGER NOT NULL DEFAULT 0,
+		items        TEXT NOT NULL DEFAULT '[]'
+	);`,
 }
 
 func (s *Store) migrate() error {

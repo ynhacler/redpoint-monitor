@@ -34,6 +34,8 @@ type Report struct {
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
 	Probes []ProbeResult `json:"probes,omitempty"`
+	// 可选：流媒体与网站解锁检测的结果（设计 50），面板请求后只随一份上报带回一次
+	Unlock *UnlockResult `json:"unlock,omitempty"`
 	// 可选：本轮失败的采集项及原因；对应字段留空，其余照常上报（设计 43.5）
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
 	// 可选：扩展指标（设计 4.10）。面板保存在实时状态中、随接口返回，暂不入库也不展示

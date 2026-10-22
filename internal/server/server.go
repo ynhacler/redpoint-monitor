@@ -61,6 +61,7 @@ type Server struct {
 	alertsOn    alertsSwitch   // 告警总开关（修订第 175 条）
 	ipinfoBase  string         // ipinfo.io 地址（测试中替换，设计 49）
 	ipinfoHTTP  *http.Client
+	unlock      unlockSupport // 各节点 Agent 是否支持解锁检测（设计 50）
 
 	// 官方版本同步（设计 29.1）：发布地址与验签公钥默认为官方值，测试中替换
 	releaseBase   string
@@ -376,7 +377,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/servers", accessAdmin, s.handleCreateServer)
 	handle("POST /api/v1/servers/batch", accessAdmin, s.handleBatchCreate)
 	handle("GET /api/v1/servers/{id}", accessRead, s.handleGetServer)
-	handle("PUT /api/v1/servers/order", accessAdmin, s.handleServerOrder) // 自定义顺序（修订第 150 条）
+	handle("POST /api/v1/servers/{id}/unlock-check", accessAdmin, s.handleUnlockCheck) // 解锁检测（设计 50）
+	handle("PUT /api/v1/servers/order", accessAdmin, s.handleServerOrder)              // 自定义顺序（修订第 150 条）
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
 	handle("POST /api/v1/servers/{id}/revoke-agent-token", accessAdmin, s.handleRevokeAgentToken)
@@ -443,7 +445,8 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Encoding", "gzip")
 	conf, confOK := s.nodeConfOf(sid)
 	s.setIntervalHeader(w, sid, conf, confOK)
-	s.syncProbe(w, r, sid, conf.probe) // 三网延迟目标（设计 42.3.2）
+	s.syncProbe(w, r, sid, conf.probe)  // 三网延迟目标（设计 42.3.2）
+	s.syncUnlock(w, r, sid, time.Now()) // 解锁检测请求（设计 50）
 	body, err := reportBody(w, r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -460,6 +463,10 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	if rep.Unlock != nil {
+		s.saveUnlock(sid, rep.Unlock, now) // 解锁检测结果（设计 50）
+		rep.Unlock = nil
+	}
 	at, _, old := pointTime(rep, now)
 	s.ingest(sid, rep, at, now, old, conf.loc)
 	// 时钟偏差由告警引擎按“Agent 时钟偏差”规则评估（设计 16.1），这里只记录测量值
@@ -868,6 +875,7 @@ type serverView struct {
 	// 最近一次公网可达检测（修订第 171 条）：只在管理员的节点详情中返回
 	PortExposure *portExposure `json:"port_exposure,omitempty"`
 	IPInfo       *IPInfo       `json:"ip_info,omitempty"` // ASN 与位置（设计 49），只在节点详情中
+	Unlock       *unlockView   `json:"unlock,omitempty"`  // 解锁检测（设计 50），只在节点详情中
 }
 
 // handleListServers：GET /api/v1/servers，admin 认证。实时状态取自内存，不读指标表（设计 3.5）。
