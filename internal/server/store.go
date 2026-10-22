@@ -945,6 +945,30 @@ var migrations = []string{
 	`ALTER TABLE cloud_accounts ADD COLUMN cost_warning TEXT NOT NULL DEFAULT '';`,
 	// 迁移 52：阿里云 ECS 公网按流量计费（走 CDT）时所属的免费额度池 cdt_cn / cdt_intl，空表示不走 CDT（修订第 186 条）
 	`ALTER TABLE cloud_instances ADD COLUMN cdt_pool TEXT NOT NULL DEFAULT '';`,
+	// 迁移 53：订阅（设计 47，修订第 189 条）。价格为每期金额（分）；日期为 YYYY-MM-DD（面板本地时区），end_date 空表示仍在订阅
+	`CREATE TABLE subscriptions (
+		id          INTEGER PRIMARY KEY,
+		name        TEXT NOT NULL,
+		brand       TEXT NOT NULL DEFAULT '',
+		category    TEXT NOT NULL,
+		price_cents INTEGER NOT NULL,
+		currency    TEXT NOT NULL,
+		cycle       TEXT NOT NULL,
+		trial_days  INTEGER NOT NULL DEFAULT 0,
+		start_date  TEXT NOT NULL,
+		end_date    TEXT NOT NULL DEFAULT '',
+		remind_days INTEGER NOT NULL DEFAULT 0,
+		note        TEXT NOT NULL DEFAULT '',
+		phones      TEXT NOT NULL DEFAULT '[]', -- SIM 电话卡的号码：JSON 数组 [{"cc":"+1","number":"6505551234"}]
+		created_at  INTEGER NOT NULL,
+		updated_at  INTEGER NOT NULL
+	);
+	-- 上传的图标：面板重新编码后的 PNG（不保存原文件）
+	CREATE TABLE subscription_logos (
+		subscription_id INTEGER PRIMARY KEY REFERENCES subscriptions(id) ON DELETE CASCADE,
+		png             BLOB NOT NULL,
+		updated_at      INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {

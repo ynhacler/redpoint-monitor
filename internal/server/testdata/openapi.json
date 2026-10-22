@@ -45,6 +45,10 @@
       "description": "实时事件（WebSocket，设计 20）"
     },
     {
+      "name": "subscriptions",
+      "description": "订阅：个人订阅服务的费用、扣费日与提醒（设计 47）"
+    },
+    {
       "name": "cloud",
       "description": "云厂商账户：费用、流量与实例（设计 44）"
     },
@@ -3761,6 +3765,251 @@
         "responses": {
           "204": {
             "description": "已删除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/subscriptions": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "订阅列表（设计 47），按下次扣费日排序，已结束的在后",
+        "responses": {
+          "200": {
+            "description": "列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "next_cursor",
+                    "items"
+                  ],
+                  "properties": {
+                    "next_cursor": {
+                      "type": "string",
+                      "description": "空表示没有更多"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Subscription"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "添加订阅（最多 500 个）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已添加",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "put": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "修改订阅（整体替换）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "删除订阅",
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/logo": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "上传的图标（PNG）",
+        "responses": {
+          "200": {
+            "description": "图标",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "上传图标（替换）",
+        "description": "请求体为 PNG（不超过 256 KB，边长 16～512 像素；Web 先在浏览器中裁剪缩放为 128×128）。面板解码后重新编码保存，不保存原文件；不接受 SVG。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已上传",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "删除上传的图标（恢复内置标志或首字母）",
+        "responses": {
+          "200": {
+            "description": "已删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -9195,6 +9444,231 @@
             ]
           },
           "created_at": {
+            "type": "integer"
+          }
+        }
+      },
+      "SubscriptionInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "category",
+          "price_cents",
+          "currency",
+          "cycle",
+          "start_date"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "常用服务目录中的键（决定图标颜色与首字母），自定义时为空"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "video",
+              "tools",
+              "reading",
+              "social",
+              "health",
+              "game",
+              "cloud",
+              "sim",
+              "other"
+            ],
+            "description": "影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他"
+          },
+          "price_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000,
+            "description": "每期价格（分）"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "如 CNY、USD"
+          },
+          "cycle": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "semiannually",
+              "annually",
+              "once"
+            ],
+            "description": "扣费周期；once 为一次性"
+          },
+          "trial_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 366,
+            "description": "免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "开始订阅的日期（YYYY-MM-DD）"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "结束订阅的日期（YYYY-MM-DD），空表示仍在订阅；这一天及之后不再扣费"
+          },
+          "remind_days": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              7
+            ],
+            "description": "扣费前几天提醒；0 为不提醒（经通知渠道发送，告警关闭时不发送）"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "phones": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPhone"
+            },
+            "description": "SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空"
+          }
+        }
+      },
+      "SubscriptionPhone": {
+        "type": "object",
+        "required": [
+          "cc",
+          "number"
+        ],
+        "properties": {
+          "cc": {
+            "type": "string",
+            "pattern": "^[+][0-9]{1,4}$",
+            "description": "国家 / 地区区号，如 +1、+86、+852"
+          },
+          "number": {
+            "type": "string",
+            "description": "号码（只保留数字，4～15 位）"
+          }
+        }
+      },
+      "Subscription": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "brand",
+          "category",
+          "price_cents",
+          "currency",
+          "cycle",
+          "trial_days",
+          "start_date",
+          "end_date",
+          "remind_days",
+          "note",
+          "phones",
+          "next_charge",
+          "ended",
+          "logo_version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "brand": {
+            "type": "string",
+            "description": "常用服务目录中的键；自定义时为空"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "video",
+              "tools",
+              "reading",
+              "social",
+              "health",
+              "game",
+              "cloud",
+              "sim",
+              "other"
+            ]
+          },
+          "price_cents": {
+            "type": "integer",
+            "description": "每期价格（分）"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "cycle": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "semiannually",
+              "annually",
+              "once"
+            ]
+          },
+          "trial_days": {
+            "type": "integer"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD；空表示仍在订阅"
+          },
+          "remind_days": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPhone"
+            }
+          },
+          "next_charge": {
+            "type": "string",
+            "description": "下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空"
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "已过结束日期"
+          },
+          "logo_version": {
+            "type": "integer",
+            "description": "上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
             "type": "integer"
           }
         }

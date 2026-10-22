@@ -786,6 +786,66 @@ export interface ServiceMonitor {
   created_at: number
 }
 
+export interface SubscriptionInput {
+  name: string
+  /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
+  brand?: string
+  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他 */
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
+  /** 每期价格（分） */
+  price_cents: number
+  /** 如 CNY、USD */
+  currency: string
+  /** 扣费周期；once 为一次性 */
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  /** 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 */
+  trial_days?: number
+  /** 开始订阅的日期（YYYY-MM-DD） */
+  start_date: string
+  /** 结束订阅的日期（YYYY-MM-DD），空表示仍在订阅；这一天及之后不再扣费 */
+  end_date?: string
+  /** 扣费前几天提醒；0 为不提醒（经通知渠道发送，告警关闭时不发送） */
+  remind_days?: 0 | 1 | 2 | 3 | 7
+  note?: string
+  /** SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空 */
+  phones?: SubscriptionPhone[]
+}
+
+export interface SubscriptionPhone {
+  /** 国家 / 地区区号，如 +1、+86、+852 */
+  cc: string
+  /** 号码（只保留数字，4～15 位） */
+  number: string
+}
+
+export interface Subscription {
+  id: number
+  name: string
+  /** 常用服务目录中的键；自定义时为空 */
+  brand: string
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
+  /** 每期价格（分） */
+  price_cents: number
+  currency: string
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  trial_days: number
+  /** YYYY-MM-DD */
+  start_date: string
+  /** YYYY-MM-DD；空表示仍在订阅 */
+  end_date: string
+  remind_days: number
+  note: string
+  phones: SubscriptionPhone[]
+  /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
+  next_charge: string
+  /** 已过结束日期 */
+  ended: boolean
+  /** 上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version */
+  logo_version: number
+  created_at: number
+  updated_at: number
+}
+
 export interface SSLMonitor {
   id: number
   host: string
@@ -2293,6 +2353,61 @@ export interface Paths {
         id: number
       }
       response: void
+    }
+  }
+  '/subscriptions': {
+    /** 订阅列表（设计 47），按下次扣费日排序，已结束的在后 */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: Subscription[]
+      }
+    }
+    /** 添加订阅（最多 500 个） */
+    post: {
+      body: SubscriptionInput
+      response: Subscription
+    }
+  }
+  '/subscriptions/{id}': {
+    /** 修改订阅（整体替换） */
+    put: {
+      params: {
+        id: number
+      }
+      body: SubscriptionInput
+      response: Subscription
+    }
+    /** 删除订阅 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/subscriptions/{id}/logo': {
+    /** 上传的图标（PNG） */
+    get: {
+      params: {
+        id: number
+      }
+      response: unknown
+    }
+    /** 上传图标（替换） */
+    put: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+    /** 删除上传的图标（恢复内置标志或首字母） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: Subscription
     }
   }
   '/silences': {

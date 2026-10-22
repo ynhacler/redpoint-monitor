@@ -338,6 +338,13 @@ func (s *Server) routes() http.Handler {
 	handle("DELETE /api/v1/notification-channels/{id}", accessAdmin, s.handleDeleteChannel)
 	handle("POST /api/v1/notification-channels/{id}/test", accessAdmin, s.handleTestChannel)
 	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
+	handle("GET /api/v1/subscriptions", accessAdmin, s.handleSubscriptions) // 订阅（设计 47）
+	handle("POST /api/v1/subscriptions", accessAdmin, s.handleCreateSubscription)
+	handle("PUT /api/v1/subscriptions/{id}", accessAdmin, s.handleUpdateSubscription)
+	handle("DELETE /api/v1/subscriptions/{id}", accessAdmin, s.handleDeleteSubscription)
+	handle("GET /api/v1/subscriptions/{id}/logo", accessAdmin, s.handleSubscriptionLogo)
+	handle("PUT /api/v1/subscriptions/{id}/logo", accessAdmin, s.handlePutSubscriptionLogo)
+	handle("DELETE /api/v1/subscriptions/{id}/logo", accessAdmin, s.handleDeleteSubscriptionLogo)
 	handle("GET /api/v1/ssl-monitors", accessAdmin, s.handleSSLMonitors)
 	handle("POST /api/v1/ssl-monitors", accessAdmin, s.handleCreateSSLMonitor)
 	handle("POST /api/v1/ssl-monitors/{id}/check", accessAdmin, s.handleCheckSSLMonitor)

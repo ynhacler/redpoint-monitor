@@ -57,8 +57,8 @@ type cloudAccountView struct {
 	TrafficPools []CloudPool `json:"traffic_pools"`
 	PoolWarning  string      `json:"pool_warning"`
 	CostWarning  string      `json:"cost_warning"` // 费用因权限不足未读取时的提示（修订第 184 条）
-	CreatedAt         int64      `json:"created_at"`
-	UpdatedAt         int64      `json:"updated_at"`
+	CreatedAt    int64       `json:"created_at"`
+	UpdatedAt    int64       `json:"updated_at"`
 }
 
 func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, error) {

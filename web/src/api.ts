@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -156,16 +156,18 @@ export async function request<P extends keyof Paths, M extends Method & keyof Pa
   const o = (opts ?? {}) as { params?: Record<string, string | number>; query?: object; body?: unknown }
   const url = (path as string).replace(/\{(\w+)\}/g, (_, k: string) => encodeURIComponent(String(o.params?.[k] ?? ''))) + queryString(o.query)
   const m = method.toUpperCase()
+  // 二进制请求体（如上传的图标 PNG）原样发送，其余按 JSON 发送
+  const raw = o.body instanceof Blob
   let res: Response
   try {
     res = await fetch('/api/v1' + url, {
       method: m,
       headers: {
         ...(m === 'GET' ? {} : { 'X-CSRF-Token': csrfToken }),
-        ...(o.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(o.body === undefined ? {} : { 'Content-Type': raw ? (o.body as Blob).type || 'application/octet-stream' : 'application/json' }),
       },
       credentials: 'same-origin',
-      body: o.body === undefined ? undefined : JSON.stringify(o.body),
+      body: o.body === undefined ? undefined : raw ? (o.body as Blob) : JSON.stringify(o.body),
     })
   } catch {
     throw new ApiError(0, 'network', '无法连接面板，请检查网络')
@@ -569,6 +571,42 @@ export async function listAppDevices() {
 /** 吊销 App 设备，设备立即失去访问权限 */
 export function revokeAppDevice(id: number) {
   return request('post', '/app-devices/{id}/revoke', { params: { id } })
+}
+
+// ---- 订阅（设计 47） ----
+
+/** 订阅列表（下次扣费日在前） */
+export async function listSubscriptions() {
+  return (await request('get', '/subscriptions')).items
+}
+
+/** 添加订阅 */
+export function createSubscription(body: G.SubscriptionInput) {
+  return request('post', '/subscriptions', { body })
+}
+
+/** 修改订阅（整体替换） */
+export function updateSubscription(id: number, body: G.SubscriptionInput) {
+  return request('put', '/subscriptions/{id}', { params: { id }, body })
+}
+
+/** 上传订阅图标（PNG；调用方先在浏览器中裁剪缩放） */
+export function uploadSubscriptionLogo(id: number, png: Blob) {
+  // 契约中请求体为 image/png，生成的类型只描述 JSON 请求体，这里按原样传入 Blob
+  return request('put', '/subscriptions/{id}/logo', { params: { id }, body: png } as never)
+}
+
+/** 删除上传的图标 */
+export function deleteSubscriptionLogo(id: number) {
+  return request('delete', '/subscriptions/{id}/logo', { params: { id } })
+}
+
+/** 上传图标的地址（带版本号，可长期缓存） */
+export const subscriptionLogoURL = (s: { id: number; logo_version: number }) => `/api/v1/subscriptions/${s.id}/logo?v=${s.logo_version}`
+
+/** 删除订阅 */
+export function deleteSubscription(id: number) {
+  return request('delete', '/subscriptions/{id}', { params: { id } })
 }
 
 // ---- SSL 证书到期监控（设计 33.3） ----

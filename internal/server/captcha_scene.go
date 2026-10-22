@@ -108,10 +108,10 @@ type sceneTheme struct {
 }
 
 var sceneThemes = []sceneTheme{
-	{skyTop: rgb(0x7ec8f5), skyBottom: rgb(0xd8f1ff), hills: []color.RGBA{rgb(0x9fd88a), rgb(0x6cc070), rgb(0x4aa65a)}, sun: rgb(0xffd34e)},  // 白天草地
-	{skyTop: rgb(0xff9a6b), skyBottom: rgb(0xffe0a3), hills: []color.RGBA{rgb(0xc98bb0), rgb(0x9c6fa6), rgb(0x6f5a96)}, sun: rgb(0xfff1a8)},  // 夕阳
+	{skyTop: rgb(0x7ec8f5), skyBottom: rgb(0xd8f1ff), hills: []color.RGBA{rgb(0x9fd88a), rgb(0x6cc070), rgb(0x4aa65a)}, sun: rgb(0xffd34e)},              // 白天草地
+	{skyTop: rgb(0xff9a6b), skyBottom: rgb(0xffe0a3), hills: []color.RGBA{rgb(0xc98bb0), rgb(0x9c6fa6), rgb(0x6f5a96)}, sun: rgb(0xfff1a8)},              // 夕阳
 	{skyTop: rgb(0x1d2557), skyBottom: rgb(0x4a4b8f), hills: []color.RGBA{rgb(0x3b5f7a), rgb(0x2e4d66), rgb(0x223b52)}, night: true, sun: rgb(0xfff4c4)}, // 夜晚
-	{skyTop: rgb(0xa9d6f2), skyBottom: rgb(0xeef7ff), hills: []color.RGBA{rgb(0xe3eef7), rgb(0xf4f9fd), rgb(0xffffff)}, snow: true, sun: rgb(0xffe27a)}, // 雪天
+	{skyTop: rgb(0xa9d6f2), skyBottom: rgb(0xeef7ff), hills: []color.RGBA{rgb(0xe3eef7), rgb(0xf4f9fd), rgb(0xffffff)}, snow: true, sun: rgb(0xffe27a)},  // 雪天
 }
 
 // drawScene 在 img 上绘制一幅随机卡通场景。
@@ -138,7 +138,7 @@ func drawScene(img *image.RGBA) {
 	paint(img, circle(sx, sy, sr+5), sceneBox{sx - sr - 6, sy - sr - 6, sx + sr + 6, sy + sr + 6}, mix(th.skyBottom, th.sun, 0.35), 0)
 	paint(img, circle(sx, sy, sr), sceneBox{sx - sr, sy - sr, sx + sr, sy + sr}, th.sun, 1.4)
 	if th.night { // 月牙：用天空色挖掉一部分
-		paint(img, circle(sx+sr*0.45, sy-sr*0.25, sr*0.85), sceneBox{sx - sr, sy - sr * 1.2, sx + sr * 1.4, sy + sr}, mix(th.skyTop, th.skyBottom, sy/h), 0)
+		paint(img, circle(sx+sr*0.45, sy-sr*0.25, sr*0.85), sceneBox{sx - sr, sy - sr*1.2, sx + sr*1.4, sy + sr}, mix(th.skyTop, th.skyBottom, sy/h), 0)
 	}
 	// 云
 	for range 1 + mrand.IntN(3) {
