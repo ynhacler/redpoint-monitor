@@ -65,9 +65,8 @@ async function save() {
       <h3>国内探针</h3>
       <span class="small muted">判断国内能否访问各节点（疑似被墙、端口被封、线路不稳定）</span>
     </div>
-    <p class="small muted intro">
-      把一台位于国内的节点设为探针，它每轮探测其他全部节点注册时的公网 IPv4 / IPv6：Ping（Agent 需要 CAP_NET_RAW）与最多 3 个 TCP 端口。
-      连续 3 轮失败才判定，结论显示在节点详情的“国内可达性”中，并触发“国内不可达（疑似被墙）”告警。不同运营商各设一台时可分别判断。
+    <p class="small muted intro" title="探测其他全部节点注册时的公网 IPv4 / IPv6：Ping（Agent 需要 CAP_NET_RAW）与最多 3 个 TCP 端口；不同运营商各设一台时可分别判断">
+      把一台国内节点设为探针，它每轮探测其他节点；连续 3 轮失败才判定，结果在节点详情的“国内可达性”中。
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <div v-if="rows.length" class="rows">

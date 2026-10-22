@@ -123,20 +123,22 @@ async function remove(t: ProbeTarget) {
 
 <template>
   <div>
-    <p class="muted small intro">
-      各节点的 Agent 按下面的频率测一轮到这些地址的延迟与丢包（TCP 连接，不发送数据；或 ICMP），结果在节点详情的“测速”中查看，保留 7 天。
-      这是从 VPS 出发的方向，反映回程质量。目标是公网 IPv4 / IPv6 或域名（域名由 Agent 每轮解析，只连接公网地址）；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测。
+    <!-- 说明精简为一句（修订第 185 条）；细节放在 title 中 -->
+    <p class="muted small intro" title="TCP 连接（不发送数据）或 ICMP；目标为公网 IPv4 / IPv6 或域名，域名由 Agent 每轮解析、只连接公网地址；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测">
+      各节点定时测到这些地址的延迟与丢包（从 VPS 出发，反映回程质量），结果在节点详情的“网络”页，保留 7 天。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-if="deadCount" class="banner warn small">{{ deadCount }} 个目标最近 24 小时几乎全部失败，疑似失效（地址变更或被拦截），建议在下方更换或删除。</p>
     <div class="toolbar">
-      <label class="freq small">测试频率
+      <!-- 频率等设置在有目标后才显示；超时与样本间隔收进“高级”（修订第 185 条） -->
+      <label v-if="items.length" class="freq small">测试频率
         <select v-model.number="interval" :disabled="savingInterval" @change="saveInterval">
           <option v-for="s in intervals" :key="s" :value="s">每 {{ s / 60 }} 分钟{{ s === 300 ? '（默认）' : '' }}</option>
         </select>
         <span class="muted">每个节点每天 {{ roundsPerDay }} 轮 × 已启用 {{ enabledCount }} 个目标</span>
       </label>
-      <div class="freq small">
+      <details v-if="items.length" class="freq small adv">
+        <summary class="muted">高级</summary>
         <label>超时
           <select v-model.number="timeout" :disabled="savingInterval" @change="saveInterval">
             <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : '默认 4 秒' }}</option>
@@ -148,8 +150,8 @@ async function remove(t: ProbeTarget) {
           </select>
         </label>
         <span class="muted">每个目标每轮 5 个样本：超时为每个样本最多等多久，超过算丢包；样本间隔为两个样本之间等多久</span>
-      </div>
-      <span class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
+      </details>
+      <span v-if="items.length" class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
       <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加目标' }}</button>
     </div>
 
@@ -177,7 +179,7 @@ async function remove(t: ProbeTarget) {
     </form>
 
     <p v-if="!items.length && !adding" class="panel empty small">
-      还没有测试目标。点击“添加目标”，填写电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。
+      还没有测试目标。添加电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。
     </p>
     <ProbeTargetHint v-if="!items.length || adding" class="hint-line" />
     <section v-if="items.length" class="panel block">
@@ -197,6 +199,8 @@ async function remove(t: ProbeTarget) {
 
 <style scoped>
 .intro { margin: 0 0 var(--space-3); max-width: 80ch; }
+.adv summary { cursor: pointer; }
+.adv[open] { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .freq { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; flex-basis: 100%; }
 .freq select { width: auto; }
