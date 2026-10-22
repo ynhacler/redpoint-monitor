@@ -1165,7 +1165,25 @@ export interface CloudAccount {
   instance_count: number
   /** 本月费用；尚未同步时为 null */
   current_cost: CloudCost | null
+  /** 账户级流量池（修订第 181 条）：阿里云 CDT 公网流量免费额度，本月有 CDT 流量时才有；只返回本月的 */
+  traffic_pools: CloudTrafficPool[]
+  /** 最近一次读取流量池失败的原因（如缺少 CDT 只读权限）；空表示正常 */
+  pool_warning: string
   created_at: number
+  updated_at: number
+}
+
+export interface CloudTrafficPool {
+  /** cdt_cn：中国内地（20 GB / 月）；cdt_intl：非中国内地（含中国香港，200 GB / 月） */
+  key: 'cdt_cn' | 'cdt_intl'
+  /** 显示名称 */
+  name: string
+  /** 本月已用（只计按流量计费的 BGP 多线流量；精品线路不享受免费额度，不计入） */
+  used_bytes: number
+  /** 免费额度（1024 进制） */
+  limit_bytes: number
+  /** YYYY-MM-DD，自然月（北京时间）第一天 */
+  period_start: string
   updated_at: number
 }
 

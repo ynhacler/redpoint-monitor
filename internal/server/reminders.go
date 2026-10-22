@@ -176,6 +176,27 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 			s.remind(fmt.Sprintf("cloud_sync:%d:%d", a.ID, a.ErrorSince), notifyMessage{ServerName: label, Type: "cloud_sync",
 				Severity: SeverityWarning, Message: why + "：" + a.LastError, Link: link}, now)
 		}
+		// CDT 免费额度（修订第 181 条）：用到 90% 警告、95% 严重，每个周期各一次；超出部分按量收费
+		if pools, _, err := s.store.CloudPools(a.ID); err == nil {
+			for _, p := range currentPools(pools, a.Provider, now) {
+				if p.LimitBytes <= 0 {
+					continue
+				}
+				pct := float64(p.UsedBytes) / float64(p.LimitBytes) * 100
+				for _, step := range []struct {
+					at  float64
+					sev string
+				}{{95, SeverityCritical}, {90, SeverityWarning}} {
+					if pct >= step.at {
+						s.remind(fmt.Sprintf("cloud_pool:%d:%s:%s:%.0f", a.ID, p.Key, p.PeriodStart, step.at), notifyMessage{
+							ServerName: label, Type: "cloud_traffic", Severity: step.sev, Link: link,
+							Message: fmt.Sprintf("%s 免费额度已用 %.0f%%（%s / %s），超出部分按量收费", p.Name, pct,
+								fmtGiB(p.UsedBytes), fmtGiB(p.LimitBytes))}, now)
+						break
+					}
+				}
+			}
+		}
 		costs, err := s.store.CloudCosts(a.ID, 1)
 		current := err == nil && len(costs) > 0 && costs[0].Period == cloud.BillingMonth(a.Provider, now)
 		// 余额不足：最近一次同步的余额低于阈值，每月一次（充值后下月仍不足会再提醒）
@@ -254,4 +275,13 @@ func fmtBytesSI(n int64) string {
 		return fmt.Sprintf("%.1f %s", v, units[i])
 	}
 	return fmt.Sprintf("%.0f %s", v, units[i])
+}
+
+// fmtGiB 按 1024 进制格式化（阿里云 CDT 的额度与用量口径，修订第 181 条），如 “20 GiB”“3.2 GiB”。
+func fmtGiB(n int64) string {
+	v := float64(n) / (1 << 30)
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%d GiB", int64(v))
+	}
+	return fmt.Sprintf("%.1f GiB", v)
 }

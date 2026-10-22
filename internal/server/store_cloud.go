@@ -335,3 +335,62 @@ func (s *Store) cloudInstanceCounts() (map[int64]int, error) {
 	}
 	return out, rows.Err()
 }
+
+// ---- 账户级流量池（修订第 181 条） ----
+
+// CloudPool 是一行 cloud_traffic_pools（api/openapi.yaml CloudTrafficPool）。
+type CloudPool struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	UsedBytes   int64  `json:"used_bytes"`
+	LimitBytes  int64  `json:"limit_bytes"`
+	PeriodStart string `json:"period_start"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// SaveCloudPools 保存一次流量池同步：warning 为空时整体替换为 pools；不为空（读取失败）时保留上次的数据，只记录原因。
+func (s *Store) SaveCloudPools(accountID int64, pools []cloud.TrafficPool, warning string, now time.Time) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if warning == "" {
+		if _, err := tx.Exec(`DELETE FROM cloud_traffic_pools WHERE account_id = ?`, accountID); err != nil {
+			return err
+		}
+		for _, p := range pools {
+			if _, err := tx.Exec(`INSERT INTO cloud_traffic_pools (account_id, pool, name, used_bytes, limit_bytes, period_start, updated_at)
+				VALUES (?,?,?,?,?,?,?)`, accountID, p.Key, p.Name, int64(p.UsedBytes), int64(p.LimitBytes), p.PeriodStart, now.Unix()); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := tx.Exec(`UPDATE cloud_accounts SET pool_warning = ? WHERE id = ?`, warning, accountID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// CloudPools 返回账户的流量池（按 pool 排序）与最近一次读取失败的原因。
+func (s *Store) CloudPools(accountID int64) ([]CloudPool, string, error) {
+	var warning string
+	if err := s.DB.QueryRow(`SELECT pool_warning FROM cloud_accounts WHERE id = ?`, accountID).Scan(&warning); err != nil {
+		return nil, "", err
+	}
+	rows, err := s.DB.Query(`SELECT pool, name, used_bytes, limit_bytes, period_start, updated_at
+		FROM cloud_traffic_pools WHERE account_id = ? ORDER BY pool`, accountID)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	out := []CloudPool{}
+	for rows.Next() {
+		var p CloudPool
+		if err := rows.Scan(&p.Key, &p.Name, &p.UsedBytes, &p.LimitBytes, &p.PeriodStart, &p.UpdatedAt); err != nil {
+			return nil, "", err
+		}
+		out = append(out, p)
+	}
+	return out, warning, rows.Err()
+}

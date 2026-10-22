@@ -50,6 +50,21 @@ type Instance struct {
 	TrafficPeriodStart string // YYYY-MM-DD
 }
 
+// TrafficPool 是账户级的流量额度池（修订第 181 条）：阿里云 CDT 的公网流量免费额度按账号计算，
+// 分中国内地与非中国内地两个池子，不属于某一台实例。字节；周期为自然月。
+type TrafficPool struct {
+	Key         string // cdt_cn / cdt_intl
+	Name        string // 界面显示的名称
+	UsedBytes   uint64 // 本月已用（只计入享受免费额度的流量）
+	LimitBytes  uint64 // 免费额度
+	PeriodStart string // YYYY-MM-DD
+}
+
+// PoolTrafficer 由提供账户级流量池的客户端实现（目前只有阿里云 CDT），只调用只读接口。
+type PoolTrafficer interface {
+	TrafficPools(ctx context.Context, now time.Time) ([]TrafficPool, error)
+}
+
 // Client 读取一个账户的数据；每个方法都只调用只读接口。
 type Client interface {
 	Costs(ctx context.Context, now time.Time) (*Costs, error)

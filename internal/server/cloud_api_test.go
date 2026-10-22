@@ -663,3 +663,77 @@ func TestCloudRegionRecheck(t *testing.T) {
 		t.Errorf("未开通：recheck=%d warning=%q", a.InstancesRecheckAt, a.LastWarning)
 	}
 }
+
+// 阿里云 CDT 流量（修订第 181 条）：两个免费额度池随流量同步保存；没有 CDT 权限时只记为提示、保留上次数据，不当作凭证失效
+func TestCloudAliyunCDT(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var deny atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("x-acs-action") {
+		case "DescribeRegions":
+			io.WriteString(w, `{"Regions":{"Region":[{"RegionId":"cn-hongkong"}]}}`)
+		case "DescribeInstances":
+			io.WriteString(w, `{"Instances":{"Instance":[{"InstanceId":"i-1","Status":"Running","InstanceChargeType":"PostPaid"}]}}`)
+		case "ListRegions":
+			io.WriteString(w, `{"Regions":[]}`)
+		case "ListCdtInternetTraffic":
+			if deny.Load() {
+				w.WriteHeader(403)
+				io.WriteString(w, `{"Code":"Forbidden.RAM","Message":"User not authorized to operate on the specified resource."}`)
+				return
+			}
+			io.WriteString(w, `{"TrafficDetails":[{"BusinessRegionId":"cn-hongkong","ISPType":"BGP","Traffic":193273528320},
+				{"BusinessRegionId":"cn-shanghai","ISPType":"BGP","Traffic":1073741824}]}`)
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer srv.Close()
+	s.cloud.opts = cloud.Options{Endpoint: func(service, region string) string { return srv.URL + "/" }}
+	code, v, e := createCloudAccount(t, h, admin, `{"provider":"aliyun_cn","name":"cdt","credential":{"access_key_id":"LTAI5tExampleExample","access_key_secret":"secretsecretsecretsecret"}}`)
+	if code != http.StatusCreated {
+		t.Fatalf("添加 %d %+v", code, e)
+	}
+	view := func() cloudAccountView {
+		t.Helper()
+		var out struct{ Items []cloudAccountView }
+		json.Unmarshal(do(h, "GET", "/api/v1/cloud-accounts", admin, nil).Body.Bytes(), &out)
+		for _, x := range out.Items {
+			if x.ID == v.ID {
+				return x
+			}
+		}
+		t.Fatal("没有账户")
+		return cloudAccountView{}
+	}
+	sync := func() {
+		a, _ := s.store.GetCloudAccount(v.ID)
+		s.syncCloudAccount(context.Background(), a, cloudKinds{instances: true, traffic: true}, time.Now())
+	}
+
+	sync()
+	x := view()
+	if x.LastError != "" || x.PoolWarning != "" || len(x.TrafficPools) != 2 {
+		t.Fatalf("同步后 %+v", x)
+	}
+	cn, intl := x.TrafficPools[0], x.TrafficPools[1]
+	if cn.Key != "cdt_cn" || cn.UsedBytes != 1<<30 || cn.LimitBytes != 20<<30 || intl.Key != "cdt_intl" || intl.UsedBytes != 180<<30 {
+		t.Fatalf("流量池 %+v", x.TrafficPools)
+	}
+	// 非中国内地已用 90%：提醒一次
+	s.checkReminders(time.Now())
+	var n int
+	s.store.DB.QueryRow(`SELECT COUNT(*) FROM reminders_sent WHERE key LIKE 'cloud_pool:%'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("应提醒 1 次，实际 %d", n)
+	}
+
+	deny.Store(true)
+	sync()
+	x = view()
+	a, _ := s.store.GetCloudAccount(v.ID)
+	if a.AuthFailed || x.LastError != "" || !strings.Contains(x.PoolWarning, "CDT 只读权限") || len(x.TrafficPools) != 2 {
+		t.Fatalf("缺少权限时 %+v（auth_failed %v）", x, a.AuthFailed)
+	}
+}

@@ -5,12 +5,12 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, setCloudAutoCalibrate, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
-  updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudInstance,
+  updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudInstance, type CloudTrafficPool,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
 import UsageBar from '../components/UsageBar.vue'
-import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime } from '../format'
+import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime, fmtTraffic } from '../format'
 import { state } from '../store'
 
 const accounts = ref<CloudAccount[]>([])
@@ -75,13 +75,13 @@ const providers: Record<Provider, ProviderInfo> = {
     keyURL: 'https://console.aws.amazon.com/iam/home#/users' },
   aliyun_cn: { label: '阿里云', currency: 'CNY', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
     idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'cn-hongkong, cn-hangzhou', paidCostApi: false, hasBalance: true,
-    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
-    keySteps: 'RAM 访问控制 → 用户 → 创建用户（勾选“使用永久 AccessKey 访问”）→ 添加权限（三个只读策略）→ 保存 AccessKey',
+    trafficName: '轻量应用服务器与 CDT', billingTZ: '按北京时间自然月',
+    keySteps: 'RAM 访问控制 → 用户 → 创建用户（勾选“使用永久 AccessKey 访问”）→ 添加权限（四个只读策略）→ 保存 AccessKey',
     keyURL: 'https://ram.console.aliyun.com/users' },
   aliyun_intl: { label: '阿里云国际', currency: 'USD', idLabel: 'AccessKey ID', idPlaceholder: 'LTAI…', secretLabel: 'AccessKey Secret',
     idField: 'access_key_id', secretField: 'access_key_secret', regionExample: 'ap-southeast-1, ap-northeast-1', paidCostApi: false, hasBalance: true,
-    trafficName: '轻量应用服务器', billingTZ: '按北京时间自然月',
-    keySteps: 'RAM 控制台 → Users → Create User（勾选 Using permanent AccessKey）→ Add Permissions（三个只读策略）→ 保存 AccessKey',
+    trafficName: '轻量应用服务器与 CDT', billingTZ: '按北京时间自然月',
+    keySteps: 'RAM 控制台 → Users → Create User（勾选 Using permanent AccessKey）→ Add Permissions（四个只读策略）→ 保存 AccessKey',
     keyURL: 'https://ram.console.alibabacloud.com/users' },
   tencent_cn: { label: '腾讯云', currency: 'CNY', idLabel: 'SecretId', idPlaceholder: 'AKID…', secretLabel: 'SecretKey',
     idField: 'secret_id', secretField: 'secret_key', regionExample: 'ap-hongkong, ap-guangzhou', paidCostApi: false, hasBalance: true,
@@ -265,10 +265,15 @@ const awsPolicy = JSON.stringify({
   }],
 }, null, 2)
 
+// CDT 免费额度池（修订第 181 条）
+const poolPct = (p: CloudTrafficPool) => (p.limit_bytes ? (p.used_bytes / p.limit_bytes) * 100 : 0)
+const poolTip = (p: CloudTrafficPool) =>
+  `${p.period_start.slice(0, 7)} 自然月（北京时间）；只计按流量计费的 BGP（多线）流量，超出免费额度的部分按量收费`
+
 const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: '约 0.6' }
 
-// 阿里云：在 RAM 中创建用户，只授予这三个系统只读策略
-const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess'
+// 阿里云：在 RAM 中创建用户，只授予这四个系统只读策略；CDT 只读用于读取 CDT 公网流量（修订第 181 条），没有时只是不显示
+const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess\nAliyunCDTReadOnlyAccess'
 
 // 腾讯云：自定义策略，只列出用到的只读接口（修订第 147 条）。也可改用预设策略 QcloudCVMReadOnlyAccess、
 // QcloudLighthouseReadOnlyAccess，但费用与余额仍需下面两条 billing 接口，所以推荐直接用这条自定义策略。
@@ -381,7 +386,8 @@ function expireTone(i: CloudInstance): string {
       </div>
       <p v-else-if="form.provider.startsWith('aliyun')" class="muted small">
         在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
-        只授予三个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
+        只授予四个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
+        CDT 只读用于读取 ECS 按流量计费的公网流量与免费额度（中国内地 20 GiB、非中国内地 200 GiB / 月），不需要时可以不授予。
         <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '查看策略名称' }}</button>
       </p>
       <p v-else-if="form.provider === 'oci'" class="muted small">
@@ -546,6 +552,15 @@ function expireTone(i: CloudInstance): string {
             {{ a.current_cost?.forecast_cents != null ? '预估' : '已产生' }}占预算 {{ Math.round(budgetPct(a)!) }}%
           </span>
         </div>
+        <!-- CDT 公网流量免费额度（修订第 181 条）：按账号计算，中国内地与非中国内地各一个池子 -->
+        <div v-for="p in a.traffic_pools" :key="p.key" class="budget pool" :title="poolTip(p)">
+          <span class="small pool-name">{{ p.name }}</span>
+          <UsageBar :pct="poolPct(p)" />
+          <span class="small num" :class="poolPct(p) >= 95 ? 'bad' : poolPct(p) >= 80 ? 'warn' : 'muted'">
+            {{ fmtTraffic(p.used_bytes, 'binary') }} / {{ fmtTraffic(p.limit_bytes, 'binary') }}
+          </span>
+        </div>
+        <p v-if="a.pool_warning" class="small warn">{{ a.pool_warning }}</p>
         <p class="muted small">
           {{ a.regions.length ? `区域：${a.regions.join('、')}` : '全部已启用的区域' }} ·
           费用每 {{ a.cost_interval_h }} 小时{{ a.sync_cost ? '' : '（已关闭）' }} ·
@@ -608,7 +623,7 @@ function expireTone(i: CloudInstance): string {
       </ul>
       <p v-if="linkError" class="small err">{{ linkError }}</p>
       <p class="muted small">
-        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量。
+        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量；阿里云 ECS 的公网流量见账户卡片中的 CDT 免费额度（按账号计算，不分实例）。
         关联节点后，节点详情显示云厂商口径的状态、流量包与到期时间，可一键写入节点的到期日。
       </p>
     </section>
@@ -645,6 +660,9 @@ function expireTone(i: CloudInstance): string {
 .big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); }
 .budget { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 .budget > :first-child { flex: 1; }
+.pool > :first-child { flex: none; }
+.pool > :nth-child(2) { flex: 1; }
+.pool-name { min-width: 8em; }
 .confirm { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-3);
   padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .confirm input { width: 200px; }

@@ -362,6 +362,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 181 | 阿里云 CDT 流量：随流量同步调用 CDT ListCdtInternetTraffic（只读），按地域汇总为“中国内地”（20 GiB / 月）与“非中国内地”（含香港，200 GiB / 月）两个账户级免费额度池，只计按流量计费的 BGP 多线流量；云平台账户卡片显示用量条，用到 90% / 95% 各提醒一次；子用户没有 AliyunCDTReadOnlyAccess 时只提示、不当作凭证失效。ECS 启停等写操作不做（44.2 只读凭证） | 44 |
 | 180 | Web 修复：在同一页面切换标签或筛选（只改地址中的查询参数）时不再跳回页面顶端；前进 / 后退回到原来的位置；打开其他页面仍从顶端开始 | 41.6 |
 | 179 | Web 继续精简：节点详情“流量”“网络”两页合并为“网络”（本周期流量 → 测速 → 国内可达性 → 流量记录 → 云实例，旧地址 ?tab=network 照常打开）；账号页标题为“账号”，修改密码表单默认收起；日志页筛选条件收进“筛选”按钮（有筛选时展开并显示条件数）；界面中“监测 → 测速设置”的说法改为“系统 → 监测” | 11、17.4、24.8、41.6 |
 | 178 | Web 化繁为简：仪表板只留“新建节点”一个按钮（批量新建入口移到新建页）；舰队卡片只显示有内容的（没有流量额度、价格或近期到期时不占位置）；离线、需要关注、流量≥80% 为 0 时不显示筛选块；排序改为下拉；节点卡片标签改为中文；节点概况不再逐个显示未填的资产字段，合成一条“补充资产信息”链接 | 1.5.6、11.1、41.6 |
@@ -10672,7 +10673,7 @@ Web：模拟各类错误响应，确认界面表现符合 43.6
 
 ```text
 费用      本月已产生费用、本月预估、账户余额；超预算、余额不足时告警
-流量      云厂商口径的流量用量与额度（Lightsail / 轻量应用服务器的流量包、OCI 每月免费出站额度），
+流量      云厂商口径的流量用量与额度（Lightsail / 轻量应用服务器的流量包、阿里云 CDT 公网流量免费额度、OCI 每月免费出站额度），
           与 Agent 统计对照，可选用来自动校准节点流量（见 5.7）
 实例      实例列表、公网 IP、规格、到期时间与续费价格；与节点关联后自动填写资产信息、到期提醒（1.2.5）
 ```
@@ -10700,10 +10701,25 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 | 服务商 | 凭证与签名 | 费用 | 流量 | 实例与到期 | 最小只读权限 |
 |---|---|---|---|---|---|
 | AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get*；推荐加 Condition aws:SourceIp 只允许面板服务器的公网 IP |
-| 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量 | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess |
+| 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量；CDT（cdt.aliyuncs.com 2021-08-13）ListCdtInternetTraffic：本月按地域的公网流量，汇总为中国内地 / 非中国内地两个免费额度池（修订第 181 条） | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；CDT 流量另需 AliyunCDTReadOnlyAccess（可选，没有时只是不显示） |
 | 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上；区域列表等不分区域的调用走新加坡接入点（ecs / swas.ap-southeast-1），国内站走杭州 | 同上（国际站控制台中的同名策略） |
 | 腾讯云国内站 / 国际站 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、DescribeBillSummaryByProduct；国内站 <产品>.tencentcloudapi.com、人民币，国际站 <产品>.intl.tencentcloudapi.com、美元（两种账户类型，修订第 76 条） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
 | Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … in tenancy：read usage-reports、inspect compartments、read instance-family、read virtual-network-family |
+
+### 44.3.1 阿里云 CDT 流量（修订第 181 条）
+
+```text
+口径      ECS / EIP 按流量计费时公网流量走 CDT（云数据传输）计费。自 2025-06-01 起每个阿里云账号每自然月（北京时间）
+          免费 220 GB：中国内地地域 20 GB、非中国内地地域 200 GB，两个池子分开、不结转；只有 BGP（多线）流量享受，
+          BGP（多线）_精品不享受；固定带宽计费不走 CDT
+接口      ListCdtInternetTraffic（无参数）返回本月按地域（BusinessRegionId）与线路类型（ISPType）的流量（字节）
+归类      cn- 开头且不是 cn-hongkong 为中国内地，其余（含香港）为非中国内地；ISPType 为 BGP 或空时计入用量
+保存      cloud_traffic_pools（账户 × 池子），随流量同步（每小时）整体替换；本月没有任何 CDT 流量时不显示
+          额度按 1024 进制（20 GiB / 200 GiB），以阿里云控制台为准
+失败      子用户没有 CDT 权限或接口出错：记入 pool_warning 并保留上次数据；不当作凭证失效，不影响费用与实例的同步
+提醒      用到 90% 警告、95% 严重，每个池子每个周期各一次（与流量包相同，44.6）
+不做      按流量自动停机 / 开机（参考 CDT-Monitor）需要 ECS 写权限，与 44.2“只读凭证、不修改任何云资源”冲突，不做
+```
 
 ## 44.4 同步频率与费用
 
