@@ -5,6 +5,7 @@
 import { nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorText, UnauthorizedError, type CaptchaAnswer } from '../api'
+import Icon from '../components/Icon.vue'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
 import { login, loginTotp, state } from '../store'
 
@@ -13,6 +14,7 @@ const router = useRouter()
 const username = ref('admin')
 const password = ref('')
 const remember = ref(false)
+const showPassword = ref(false) // 密码明文显示开关（修订第 188 条）
 const error = ref('')
 const busy = ref(false)
 // 滑动验证码（设计 17.4）：完成后才能登录；每次登录尝试后重新获取（一次性）
@@ -101,29 +103,41 @@ async function submit() {
 </script>
 
 <template>
-  <main class="page">
-    <form v-if="challenge" class="panel login" novalidate @submit.prevent="submitCode">
-      <h1>两步验证</h1>
-      <p class="small muted hint">打开手机上的认证器 App（如 Google Authenticator、1Password），输入 VPS Monitor 当前显示的 6 位数字。</p>
+  <!-- 登录页（修订第 188 条）：居中卡片，顶部为面板标志、标题与一句说明；配色与组件沿用设计令牌，与面板一致 -->
+  <main class="page login-page">
+    <form v-if="challenge" class="login" novalidate @submit.prevent="submitCode">
+      <header class="head">
+        <img class="logo" src="/favicon.svg" alt="" width="44" height="44" />
+        <h1>两步验证</h1>
+        <p class="small muted">打开认证器 App（如 Google Authenticator、1Password），输入 VPS Monitor 当前显示的 6 位数字</p>
+      </header>
       <label class="field">
-        <span class="small muted">验证码</span>
+        <span class="label">验证码</span>
         <input ref="codeInput" v-model="code" class="num code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off"
           spellcheck="false" maxlength="11" placeholder="123456" />
       </label>
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
-      <button type="submit" :disabled="busy">{{ busy ? '验证中…' : '验证并登录' }}</button>
+      <button type="submit" class="submit" :disabled="busy">{{ busy ? '验证中…' : '验证并登录' }}</button>
       <p class="small muted hint">手机不在身边：输入开启时保存的恢复码（如 k7m2-x9qp），每个只能用一次。</p>
       <button type="button" class="text back" @click="backToPassword">← 返回重新输入密码</button>
     </form>
-    <form v-else class="panel login" novalidate @submit.prevent="submit">
-      <h1>登录</h1>
+    <form v-else class="login" novalidate @submit.prevent="submit">
+      <header class="head">
+        <img class="logo" src="/favicon.svg" alt="" width="44" height="44" />
+        <h1>登录 VPS Monitor</h1>
+        <p class="small muted">输入账号与密码以继续</p>
+      </header>
       <label class="field">
-        <span class="small muted">用户名</span>
+        <span class="label">用户名</span>
         <input v-model="username" autocomplete="username" autocapitalize="off" spellcheck="false" />
       </label>
       <label class="field">
-        <span class="small muted">密码</span>
-        <input v-model="password" type="password" autocomplete="current-password" autofocus />
+        <span class="label">密码</span>
+        <span class="pw">
+          <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus />
+          <button type="button" class="text eye" :aria-label="showPassword ? '隐藏密码' : '显示密码'" :aria-pressed="showPassword"
+            @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" :size="16" /></button>
+        </span>
       </label>
       <label class="remember small">
         <input v-model="remember" type="checkbox" />
@@ -131,7 +145,7 @@ async function submit() {
       </label>
       <SliderCaptcha v-if="captchaOn" ref="captchaRef" @done="(a) => (answer = a)" @disabled="captchaOn = false" />
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
-      <button type="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
+      <button type="submit" class="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
       <!-- 恢复命令不展示给未登录的访客（修订第 173 条）：见文档与 vpsmon-server --help -->
       <p class="small muted hint">忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。</p>
     </form>
@@ -139,13 +153,28 @@ async function submit() {
 </template>
 
 <style scoped>
-.login { max-width: 380px; margin: var(--space-8) auto 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.login-page { display: flex; justify-content: center; }
+.login { width: 100%; max-width: 400px; margin: var(--space-8) auto 0; display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 8%, transparent); }
+.head { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; margin-bottom: var(--space-2); }
+.head h1 { margin: var(--space-1) 0 0; font-size: var(--font-xl); line-height: var(--line-xl); }
+.head p { margin: 0; }
+.logo { display: block; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
+.label { font-size: var(--font-sm); font-weight: var(--weight-strong); color: var(--text); }
+.pw { position: relative; display: block; }
+.pw input { width: 100%; padding-right: 40px; }
+.eye { position: absolute; right: var(--space-1); top: 50%; transform: translateY(-50%); padding: var(--space-1) var(--space-2); }
 .remember { display: flex; align-items: center; gap: var(--space-2); color: var(--text-muted); }
 .remember input { width: auto; }
-.login button { justify-content: center; }
+.submit { justify-content: center; width: 100%; padding-top: var(--space-3); padding-bottom: var(--space-3); font-weight: var(--weight-strong); }
 .login .banner { margin: 0; }
-.hint { margin: 0; }
-.code { font-size: var(--font-lg); letter-spacing: .2em; }
-.back { align-self: flex-start; color: var(--text-muted); padding: 0; }
+.login :deep(.captcha) { align-self: center; }
+.hint { margin: 0; text-align: center; }
+.code { font-size: var(--font-lg); letter-spacing: .2em; text-align: center; }
+.back { align-self: center; color: var(--text-muted); padding: 0; }
+@media (max-width: 480px) {
+  .login { margin-top: var(--space-4); padding: var(--space-5) var(--space-4); box-shadow: none; }
+}
 </style>
