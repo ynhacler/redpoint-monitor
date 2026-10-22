@@ -16,6 +16,7 @@ import LatencyCard from '../components/LatencyCard.vue'
 import ReachCard from '../components/ReachCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
+import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
@@ -72,7 +73,7 @@ const tab = computed<TabKey>(() => {
 })
 const setTab = (t: TabKey) => router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
 
-// ---- 实时采样：网络块中的实时网速曲线 ----
+// ---- 实时采样：速览卡片的迷你折线与实时网速图 ----
 // 保留最近 10 分钟；打开页面时用 1 小时历史中最近 10 分钟的点预填，避免图表从空白开始。
 // 相邻两点间隔超过 30 秒（Agent 停报）插入空点，折线在此断开。
 const SAMPLE_WINDOW = 600
@@ -272,8 +273,12 @@ const charts = computed(() => [
       <!-- 监控：速览 → CPU → 内存 → 磁盘 → 网络 → 历史；离线时不显示旧数值（设计 43.6） -->
       <template v-if="tab === 'monitor'">
         <template v-if="live && liveServer?.latest">
+          <!-- 速览：CPU、磁盘、内存、连接与进程，以及最近 10 分钟实时网速（修订第 182 条恢复）；端口、磁盘详情在其下 -->
           <section class="section">
-            <LivePanels :server="liveServer" :samples="samples" />
+            <QuickTiles :server="liveServer" :samples="samples" />
+          </section>
+          <section class="section">
+            <LivePanels :server="liveServer" />
           </section>
           <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
           <section v-if="collectErrors.length" class="section collect-errors small">
