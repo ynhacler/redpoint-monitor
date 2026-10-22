@@ -245,6 +245,22 @@ func (s *Server) doCloudSync(ctx context.Context, a CloudAccount, k cloudKinds, 
 				return err
 			}
 		}
+		// 账户级流量池（阿里云 CDT，修订第 181 条）：读取失败（多为子用户没有 CDT 只读权限）只记为提示，
+		// 不当作凭证失效、不影响其他数据的同步
+		if pc, ok := c.(cloud.PoolTrafficer); ok {
+			pools, err := pc.TrafficPools(ctx, now)
+			warning := ""
+			if err != nil {
+				warning = "CDT 流量未读取：" + err.Error()
+				if cloud.IsAuthError(err) {
+					warning = "CDT 流量未读取：子用户缺少 CDT 只读权限（AliyunCDTReadOnlyAccess）"
+				}
+				s.log.Warn("cloud pool traffic failed", "component", "cloud", "account_id", a.ID, "provider", a.Provider, "err", err)
+			}
+			if err := s.store.SaveCloudPools(a.ID, pools, warning, now); err != nil {
+				return err
+			}
+		}
 		res.TrafficSynced = true
 	}
 	if k.cost {

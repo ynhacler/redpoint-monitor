@@ -76,6 +76,13 @@ func (f *fakeAliyun) handler(t *testing.T) http.HandlerFunc {
 		case "ListInstancesTrafficPackages":
 			io.WriteString(w, `{"InstanceTrafficPackageUsages":[{"InstanceId":"swas-1","TrafficUsed":123456789,"TrafficPackageTotal":1099511627776,
 "TrafficPackageRemaining":1099388171,"TrafficOverflow":0}]}`)
+		case "ListCdtInternetTraffic":
+			// 杭州 BGP 5 GiB + 精品 1 GiB（不计入免费额度）；香港属于非中国内地；东京 BGP 7 GiB
+			io.WriteString(w, `{"RequestId":"x","TrafficDetails":[
+{"BusinessRegionId":"cn-hangzhou","ISPType":"BGP","Traffic":5368709120},
+{"BusinessRegionId":"cn-hangzhou","ISPType":"BGP_PRO","Traffic":1073741824},
+{"BusinessRegionId":"cn-hongkong","ISPType":"BGP","Traffic":3221225472},
+{"BusinessRegionId":"ap-northeast-1","ISPType":"BGP","Traffic":7516192768}]}`)
 		default:
 			t.Errorf("未预期的调用 %s %s %s", service, region, action)
 			w.WriteHeader(400)
@@ -111,6 +118,8 @@ func TestAliyunEndpoints(t *testing.T) {
 		// 国际站：区域列表等不分区域的调用走新加坡接入点
 		{intl.host("ecs", ""), "https://ecs.ap-southeast-1.aliyuncs.com/"},
 		{intl.host("swas", ""), "https://swas.ap-southeast-1.aliyuncs.com/"},
+		{cn.host("cdt", ""), "https://cdt.aliyuncs.com/"},
+		{intl.host("cdt", ""), "https://cdt.aliyuncs.com/"},
 	} {
 		if c.got != c.want {
 			t.Errorf("接入点 %s，期望 %s", c.got, c.want)
@@ -208,5 +217,38 @@ func TestBillingMonth(t *testing.T) {
 	now := time.Date(2026, 10, 31, 17, 0, 0, 0, time.UTC) // 北京时间 11 月 1 日 01:00
 	if BillingMonth(ProviderAWS, now) != "2026-10" || BillingMonth(ProviderAliyunCN, now) != "2026-11" || BillingMonth(ProviderAliyunIntl, now) != "2026-11" {
 		t.Fatal("账单月份时区不对")
+	}
+}
+
+// CDT 流量（修订第 181 条）：按地域分到中国内地 / 非中国内地两个免费额度池（香港属于非中国内地），精品线路不计入
+func TestAliyunCDTPools(t *testing.T) {
+	f, c := newFakeAliyun(t, ProviderAliyunCN, nil)
+	// 北京时间已是 11 月 1 日：周期从 11 月 1 日开始
+	pools, err := c.(PoolTrafficer).TrafficPools(context.Background(), time.Date(2026, 10, 31, 17, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []TrafficPool{
+		{Key: "cdt_cn", Name: "CDT 中国内地", UsedBytes: 5 << 30, LimitBytes: 20 << 30, PeriodStart: "2026-11-01"},
+		{Key: "cdt_intl", Name: "CDT 非中国内地", UsedBytes: 10 << 30, LimitBytes: 200 << 30, PeriodStart: "2026-11-01"},
+	}
+	if len(pools) != len(want) {
+		t.Fatalf("池子 %+v", pools)
+	}
+	for i := range want {
+		if pools[i] != want[i] {
+			t.Errorf("第 %d 个池子 %+v，期望 %+v", i, pools[i], want[i])
+		}
+	}
+	if len(f.calls) != 1 || f.calls[0] != "cdt  ListCdtInternetTraffic" {
+		t.Fatalf("调用 %v", f.calls)
+	}
+}
+
+func TestCDTMainland(t *testing.T) {
+	for region, want := range map[string]bool{"cn-hangzhou": true, "cn-beijing": true, "cn-hongkong": false, "ap-southeast-1": false, "us-west-1": false} {
+		if cdtMainland(region) != want {
+			t.Errorf("%s 应为 %v", region, want)
+		}
 	}
 }

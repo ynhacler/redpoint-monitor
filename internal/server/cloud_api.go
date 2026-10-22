@@ -53,6 +53,9 @@ type cloudAccountView struct {
 	Syncing           bool       `json:"syncing"`
 	InstanceCount     int        `json:"instance_count"`
 	CurrentCost       *CloudCost `json:"current_cost"`
+	// 账户级流量池（阿里云 CDT，修订第 181 条）：只返回本月的；PoolWarning 为最近一次读取失败的原因
+	TrafficPools []CloudPool `json:"traffic_pools"`
+	PoolWarning  string      `json:"pool_warning"`
 	CreatedAt         int64      `json:"created_at"`
 	UpdatedAt         int64      `json:"updated_at"`
 }
@@ -77,6 +80,11 @@ func (s *Server) cloudAccountView(a CloudAccount, count int) (cloudAccountView, 
 	if len(costs) > 0 && costs[0].Period == cloud.BillingMonth(a.Provider, time.Now()) {
 		v.CurrentCost = &costs[0]
 	}
+	pools, warning, err := s.store.CloudPools(a.ID)
+	if err != nil {
+		return v, err
+	}
+	v.TrafficPools, v.PoolWarning = currentPools(pools, a.Provider, time.Now()), warning
 	return v, nil
 }
 
@@ -414,4 +422,16 @@ func cloudPathID(r *http.Request) (int64, error) {
 		return 0, errorf(CodeBadRequest, "账户编号格式不正确")
 	}
 	return id, nil
+}
+
+// currentPools 只保留本月（按服务商的账单时区）的流量池：上月的用量不能当作本月。
+func currentPools(pools []CloudPool, provider string, now time.Time) []CloudPool {
+	month := cloud.BillingMonth(provider, now)
+	out := []CloudPool{}
+	for _, p := range pools {
+		if strings.HasPrefix(p.PeriodStart, month) {
+			out = append(out, p)
+		}
+	}
+	return out
 }

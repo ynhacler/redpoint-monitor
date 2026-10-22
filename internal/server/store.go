@@ -927,6 +927,19 @@ var migrations = []string{
 		severity, repeat_interval_s, enabled, created_at, updated_at) VALUES
 		('port_new', 'port_new', '>=', 1, 1, 60, 0, 'warning', 0, 1, unixepoch(), unixepoch()),
 		('port_gone', 'port_gone', '>=', 1, 1, 120, 0, 'warning', 0, 1, unixepoch(), unixepoch());`,
+	// 迁移 50：账户级流量池（修订第 181 条），目前为阿里云 CDT 公网流量免费额度（中国内地 / 非中国内地）。
+	// 每次同步整体替换；pool_warning 为最近一次读取失败的原因（如缺少 CDT 只读权限），失败时保留上次的数据
+	`CREATE TABLE cloud_traffic_pools (
+		account_id   INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+		pool         TEXT NOT NULL,
+		name         TEXT NOT NULL,
+		used_bytes   INTEGER NOT NULL,
+		limit_bytes  INTEGER NOT NULL,
+		period_start TEXT NOT NULL,
+		updated_at   INTEGER NOT NULL,
+		PRIMARY KEY (account_id, pool)
+	);
+	ALTER TABLE cloud_accounts ADD COLUMN pool_warning TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

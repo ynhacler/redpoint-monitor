@@ -6,8 +6,10 @@ package cloud
 //	费用中心 BSS 2017-12-14   QueryAccountBalance、QueryBillOverview
 //	ECS 2014-05-26            DescribeRegions、DescribeInstances（ExpiredTime 为包年包月到期时间）
 //	轻量应用服务器 2020-06-01  ListRegions、ListInstances、ListInstancesTrafficPackages
+//	云数据传输 CDT 2021-08-13 ListCdtInternetTraffic（本月公网流量，按地域，修订第 181 条）
 //
-// 最小权限：AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess。
+// 最小权限：AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；
+// CDT 流量另需 AliyunCDTReadOnlyAccess（或 cdt:ListCdtInternetTraffic），没有时只是不显示 CDT 流量。
 // 账单月份按北京时间（UTC+8）划分。
 
 import (
@@ -52,6 +54,8 @@ func (c *aliyunClient) host(service, region string) string {
 			region = c.homeRegion()
 		}
 		return "https://ecs." + region + ".aliyuncs.com/"
+	case "cdt":
+		return "https://cdt.aliyuncs.com/"
 	default: // swas
 		if region == "" {
 			region = c.homeRegion()
@@ -69,7 +73,7 @@ func (c *aliyunClient) homeRegion() string {
 	return "cn-hangzhou"
 }
 
-var aliyunVersions = map[string]string{"business": "2017-12-14", "ecs": "2014-05-26", "swas": "2020-06-01"}
+var aliyunVersions = map[string]string{"business": "2017-12-14", "ecs": "2014-05-26", "swas": "2020-06-01", "cdt": "2021-08-13"}
 
 // call 调用 RPC 风格接口：POST，参数在查询串中，响应为 JSON。
 func (c *aliyunClient) call(ctx context.Context, service, region, action string, params url.Values, out any) error {
@@ -376,4 +380,60 @@ func (c *aliyunClient) Traffic(ctx context.Context, insts []Instance, now time.T
 		}
 	}
 	return nil
+}
+
+// ---- CDT 流量（修订第 181 条） ----
+
+// CDT 公网流量免费额度（自 2025-06-01 起，按阿里云账号每自然月计算，不结转）：中国内地 20 GB、非中国内地 200 GB。
+// 只有按流量计费的 BGP（多线）流量享受，BGP（多线）_精品不享受。
+const (
+	cdtFreeCN   uint64 = 20 << 30
+	cdtFreeIntl uint64 = 200 << 30
+)
+
+// cdtMainland 判断地域是否属于中国内地：cn- 开头且不是中国香港（CDT 口径中香港属于非中国内地）。
+func cdtMainland(region string) bool {
+	return strings.HasPrefix(region, "cn-") && region != "cn-hongkong"
+}
+
+// TrafficPools 读取本月 CDT 公网流量（ListCdtInternetTraffic，按地域与线路类型），汇总为中国内地与非中国内地两个免费额度池。
+// 本月没有任何 CDT 流量（未开通 CDT 或实例为固定带宽计费）时返回空。
+func (c *aliyunClient) TrafficPools(ctx context.Context, now time.Time) ([]TrafficPool, error) {
+	var out struct {
+		TrafficDetails []struct {
+			Region  string `json:"BusinessRegionId"`
+			ISPType string `json:"ISPType"`
+			Traffic uint64 `json:"Traffic"`
+		} `json:"TrafficDetails"`
+	}
+	if err := c.call(ctx, "cdt", "", "ListCdtInternetTraffic", nil, &out); err != nil {
+		return nil, err
+	}
+	if len(out.TrafficDetails) == 0 {
+		return nil, nil
+	}
+	start := now.In(aliyunTZ)
+	period := time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, aliyunTZ).Format("2006-01-02")
+	cn := TrafficPool{Key: "cdt_cn", Name: "CDT 中国内地", LimitBytes: cdtFreeCN, PeriodStart: period}
+	intl := TrafficPool{Key: "cdt_intl", Name: "CDT 非中国内地", LimitBytes: cdtFreeIntl, PeriodStart: period}
+	var hasCN, hasIntl bool
+	for _, d := range out.TrafficDetails {
+		p, has := &intl, &hasIntl
+		if cdtMainland(d.Region) {
+			p, has = &cn, &hasCN
+		}
+		*has = true
+		// BGP_PRO（精品线路）不享受免费额度，不计入用量；线路类型为空时按 BGP 计
+		if d.ISPType == "" || strings.EqualFold(d.ISPType, "BGP") {
+			p.UsedBytes += d.Traffic
+		}
+	}
+	var pools []TrafficPool
+	if hasCN {
+		pools = append(pools, cn)
+	}
+	if hasIntl {
+		pools = append(pools, intl)
+	}
+	return pools, nil
 }
