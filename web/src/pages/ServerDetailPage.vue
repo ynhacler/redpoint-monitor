@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 节点详情（设计 11）。顶部：提示、静音与维护、概况、健康摘要；其下分页（修订第 172 条）：监控（速览 → CPU → 内存 → 磁盘 →
-// 网络 → 历史，指标顺序与 App 一致，设计 41.6）、流量、网络、容器与代理、安全（管理员）、告警。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
+// 网络 → 历史，指标顺序与 App 一致，设计 41.6）、流量、网络（流量与测速）、容器与代理、安全（管理员）、告警。实时数据由本页每 3 秒轮询本节点；历史曲线按所选范围单独请求（设计 19.7、21）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorText, getHistory, getServer, type HistoryRange, type HistoryView, type ServerView } from '../api'
@@ -25,7 +25,7 @@ import { isLive, issues, type LiveSample } from '../metrics'
 import { alertsOn, isViewer, serverById, state } from '../store'
 
 // ---- 分页（修订第 172 条） ----
-type TabKey = 'monitor' | 'traffic' | 'network' | 'apps' | 'security' | 'alerts'
+type TabKey = 'monitor' | 'traffic' | 'apps' | 'security' | 'alerts'
 interface Tab { key: TabKey; name: string; badge?: number; badgeLevel?: string; dot?: boolean }
 
 const props = defineProps<{
@@ -47,8 +47,8 @@ const tabs = computed<Tab[]>(() => {
   if (!v) return []
   const d = liveServer.value ?? v
   const pending = v.status === 'pending'
-  const out: Tab[] = [{ key: 'monitor', name: '监控' }, { key: 'traffic', name: '流量' }]
-  if (!pending) out.push({ key: 'network', name: '网络' })
+  // 测速与国内可达性并入“网络”页（原“流量”，修订第 179 条）
+  const out: Tab[] = [{ key: 'monitor', name: '监控' }, { key: 'traffic', name: '网络' }]
   const stopped = (d.containers_missing?.length ?? 0) + (d.proxies_missing?.length ?? 0)
   if (d.latest?.containers?.length || d.latest?.proxies?.length || stopped) {
     out.push({ key: 'apps', name: '容器与代理', dot: stopped > 0 })
@@ -65,7 +65,11 @@ const tabs = computed<Tab[]>(() => {
   return out
 })
 // 地址中的页不存在（如节点没有容器）时回到监控
-const tab = computed<TabKey>(() => tabs.value.find((t) => t.key === route.query.tab)?.key ?? 'monitor')
+// 旧地址 ?tab=network 并入“网络”页（修订第 179 条）
+const tab = computed<TabKey>(() => {
+  const q = route.query.tab === 'network' ? 'traffic' : route.query.tab
+  return tabs.value.find((t) => t.key === q)?.key ?? 'monitor'
+})
 const setTab = (t: TabKey) => router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
 
 // ---- 实时采样：网络块中的实时网速曲线 ----
@@ -297,18 +301,16 @@ const charts = computed(() => [
         </section>
       </template>
 
-      <!-- 流量 -->
+      <!-- 网络：本周期流量 → 测速（设计 42.3.2）与国内可达性（设计 42.2）→ 流量记录 → 云实例；原“流量”“网络”两页合并（修订第 179 条） -->
       <section v-else-if="tab === 'traffic'" class="section">
-        <TrafficCard :server="s" />
+        <TrafficCard :server="s" class="section-tight" />
+        <template v-if="s.status !== 'pending'">
+          <LatencyCard :server-id="s.id" class="section-tight" />
+          <ReachCard :server-id="s.id" class="section-tight" />
+        </template>
         <TrafficHistory :server="s" class="section-tight" />
         <CloudInstanceCard v-if="!isViewer" :server="s" class="section-tight" />
       </section>
-
-      <!-- 网络：测速（设计 42.3.2）与国内可达性（设计 42.2，修订第 155 条） -->
-      <template v-else-if="tab === 'network'">
-        <LatencyCard :server-id="s.id" class="section" />
-        <ReachCard :server-id="s.id" class="section" />
-      </template>
 
       <!-- 容器与代理（设计 33.4、4.9.3）：代理只给管理员 -->
       <template v-else-if="tab === 'apps' && liveServer">

@@ -50,7 +50,7 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
 </script>
 
 <template>
-  <!-- 没有国内探针时不显示（修订第 173 条）：设置入口与说明只在“监测 → 测速设置”中 -->
+  <!-- 没有国内探针时不显示（修订第 173 条）：设置入口与说明只在“系统 → 监测”中 -->
   <section v-if="error || view?.configured" class="panel reach">
     <div class="head">
       <h3>国内可达性</h3>

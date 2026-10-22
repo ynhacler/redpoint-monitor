@@ -114,7 +114,7 @@ defineExpose({ save })
     <p v-if="!loaded && !error" class="small muted">加载中…</p>
     <template v-if="loaded">
       <div class="modes" role="radiogroup" aria-label="这台节点的测速">
-        <label><input v-model="mode" type="radio" value="default" />跟随全局<small class="muted">“监测 → 测速设置”中启用的目标与频率</small></label>
+        <label><input v-model="mode" type="radio" value="default" />跟随全局<small class="muted">“系统 → 监测”中启用的目标与频率</small></label>
         <label><input v-model="mode" type="radio" value="custom" />自定义<small class="muted">这台节点自己选择目标与频率</small></label>
         <label><input v-model="mode" type="radio" value="off" />关闭<small class="muted">这台节点不测</small></label>
       </div>

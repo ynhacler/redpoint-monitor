@@ -5,10 +5,12 @@ import AccountSettings from '../components/AccountSettings.vue'
 
 <template>
   <main class="page account-page">
+    <div class="page-head"><h1>账号</h1></div>
     <AccountSettings />
   </main>
 </template>
 
 <style scoped>
-.account-page :deep(.account-wrap) { margin: var(--space-6) auto 0; }
+.account-page :deep(.account-wrap) { margin: 0 auto; }
+.account-page .page-head { max-width: 420px; margin-left: auto; margin-right: auto; }
 </style>

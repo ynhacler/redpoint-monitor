@@ -37,6 +37,9 @@ const query = computed<AuditQuery>(() => ({
 }))
 const exportURL = computed(() => auditExportURL(query.value))
 const filtered = computed(() => !!(result.value || actorQ.value || actionQ.value || fromQ.value || toQ.value))
+// 筛选条件默认收起，有筛选时展开（修订第 179 条）
+const filterCount = computed(() => [result.value, actorQ.value, actionQ.value, fromQ.value || toQ.value].filter(Boolean).length)
+const showFilters = ref(filtered.value)
 
 const items = ref<AuditLog[]>([])
 const cursor = ref('')
@@ -123,9 +126,12 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
         <button type="button" :class="{ active: tab === 'login' }" @click="setQuery({ tab: 'login' })">登录日志</button>
         <button type="button" :class="{ active: tab === 'operation' }" @click="setQuery({ tab: 'operation' })">操作日志</button>
       </div>
+      <button type="button" class="btn secondary" :aria-expanded="showFilters" @click="showFilters = !showFilters">
+        筛选<template v-if="filterCount">（{{ filterCount }}）</template>
+      </button>
       <a class="btn secondary" :href="exportURL" download title="按当前筛选导出，最多 10000 条">导出 CSV</a>
     </div>
-    <div class="filters">
+    <div v-if="showFilters" class="filters">
       <select :value="result" aria-label="结果" @change="setQuery({ result: ($event.target as HTMLSelectElement).value })">
         <option value="">全部结果</option>
         <option value="success">成功</option>
