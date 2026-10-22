@@ -737,3 +737,60 @@ func TestCloudAliyunCDT(t *testing.T) {
 		t.Fatalf("缺少权限时 %+v（auth_failed %v）", x, a.AuthFailed)
 	}
 }
+
+// 只授予 ECS + CDT 只读的子用户（CDT 用户的常见配置，修订第 184 条）：轻量应用服务器与费用中心被拒绝时只跳过并提示，
+// ECS 实例与 CDT 流量照常同步，账户不能被判为凭证失效
+func TestCloudAliyunECSOnlyPermissions(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	denied := `{"Code":"Forbidden.RAM","Message":"User not authorized to operate on the specified resource."}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("x-acs-action") {
+		case "DescribeRegions":
+			io.WriteString(w, `{"Regions":{"Region":[{"RegionId":"cn-hongkong"}]}}`)
+		case "DescribeInstances":
+			io.WriteString(w, `{"Instances":{"Instance":[{"InstanceId":"i-cdt","InstanceName":"hk-cdt","Status":"Running","InstanceChargeType":"PostPaid",
+				"PublicIpAddress":{"IpAddress":["47.0.0.9"]}}]}}`)
+		case "ListCdtInternetTraffic":
+			io.WriteString(w, `{"TrafficDetails":[{"BusinessRegionId":"cn-hongkong","ISPType":"BGP","Traffic":10737418240}]}`)
+		case "ListRegions", "QueryBillOverview", "QueryAccountBalance":
+			w.WriteHeader(403)
+			io.WriteString(w, denied)
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer srv.Close()
+	s.cloud.opts = cloud.Options{Endpoint: func(service, region string) string { return srv.URL + "/" }}
+	code, v, e := createCloudAccount(t, h, admin, `{"provider":"aliyun_cn","name":"ecs-only","credential":{"access_key_id":"LTAI5tExampleExample","access_key_secret":"secretsecretsecretsecret"}}`)
+	if code != http.StatusCreated {
+		t.Fatalf("添加 %d %+v", code, e)
+	}
+	a, _ := s.store.GetCloudAccount(v.ID)
+	s.syncCloudAccount(context.Background(), a, cloudKinds{cost: true, instances: true, traffic: true}, time.Now())
+
+	a, _ = s.store.GetCloudAccount(v.ID)
+	if a.AuthFailed || a.LastError != "" {
+		t.Fatalf("不应判为失败：auth_failed %v，错误 %q", a.AuthFailed, a.LastError)
+	}
+	if !strings.Contains(a.LastWarning, "轻量应用服务器：子用户没有只读权限") {
+		t.Fatalf("应提示轻量应用服务器没有权限：%q", a.LastWarning)
+	}
+	insts, _ := s.store.CloudInstances(v.ID)
+	if len(insts) != 1 || insts[0].InstanceID != "i-cdt" || insts[0].PublicIPv4 != "47.0.0.9" {
+		t.Fatalf("ECS 实例 %+v", insts)
+	}
+	var out struct{ Items []cloudAccountView }
+	json.Unmarshal(do(h, "GET", "/api/v1/cloud-accounts", admin, nil).Body.Bytes(), &out)
+	x := out.Items[0]
+	if !strings.Contains(x.CostWarning, "AliyunBSSReadOnlyAccess") || x.CurrentCost != nil {
+		t.Fatalf("费用应跳过并提示：%+v", x)
+	}
+	if len(x.TrafficPools) != 1 || x.TrafficPools[0].Key != "cdt_intl" || x.TrafficPools[0].UsedBytes != 10<<30 {
+		t.Fatalf("CDT %+v", x.TrafficPools)
+	}
+	// 费用同步时间已更新：不会每分钟重试被拒绝的接口
+	if dueKinds(a, time.Now()).cost {
+		t.Fatal("费用被拒绝后不应立即重试")
+	}
+}

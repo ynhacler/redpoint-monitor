@@ -15,6 +15,7 @@ package cloud
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -163,14 +164,26 @@ func (c *aliyunClient) Costs(ctx context.Context, now time.Time) (*Costs, error)
 // ---- 实例 ----
 
 // Instances 列出各区域的 ECS 与轻量应用服务器实例，区域并发查询（最多 4 个同时进行）。
+// 子用户只授予了其中一项服务的只读权限时（如只用 ECS + CDT、没有轻量应用服务器权限），另一项整体跳过并给出提示，
+// 不当作凭证失效（修订第 184 条）；两项都没有权限时才是账户级错误。
 func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
-	ecsRegions, err := c.ecsRegions(ctx)
-	if err != nil {
-		return nil, err
+	ecsRegions, ecsErr := c.ecsRegions(ctx)
+	if ecsErr != nil && !permissionDenied(ecsErr) {
+		return nil, ecsErr
 	}
-	swasRegions, err := c.swasRegions(ctx)
-	if err != nil {
-		return nil, err
+	swasRegions, swasErr := c.swasRegions(ctx)
+	if swasErr != nil && !permissionDenied(swasErr) {
+		return nil, swasErr
+	}
+	if ecsErr != nil && swasErr != nil {
+		return nil, ecsErr
+	}
+	var denied []RegionError
+	if ecsErr != nil {
+		denied = append(denied, RegionError{Kind: "ecs", Label: "ECS", Err: ecsErr})
+	}
+	if swasErr != nil {
+		denied = append(denied, RegionError{Kind: "swas", Label: "轻量应用服务器", Err: swasErr})
 	}
 	var jobs []regionJob
 	for _, r := range ecsRegions {
@@ -182,6 +195,15 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 	// 单个区域失败只跳过该区域（修订第 141 条）
 	all, err := runRegionJobs(ctx, jobs)
 	sortInstances(all)
+	if len(denied) > 0 {
+		var pe *PartialError
+		switch {
+		case err == nil:
+			err = &PartialError{Skipped: denied}
+		case errors.As(err, &pe):
+			pe.Skipped = append(denied, pe.Skipped...)
+		}
+	}
 	return partialOrFail(all, err)
 }
 

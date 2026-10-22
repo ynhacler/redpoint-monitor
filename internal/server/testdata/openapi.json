@@ -10304,6 +10304,7 @@
           "current_cost",
           "traffic_pools",
           "pool_warning",
+          "cost_warning",
           "created_at",
           "updated_at"
         ],
@@ -10416,6 +10417,10 @@
           "pool_warning": {
             "type": "string",
             "description": "最近一次读取流量池失败的原因（如缺少 CDT 只读权限）；空表示正常"
+          },
+          "cost_warning": {
+            "type": "string",
+            "description": "费用因子用户没有费用 / 账单只读权限而未读取时的提示（修订第 184 条）；空表示正常。权限不足不会停止整个账户的同步"
           },
           "created_at": {
             "type": "integer"

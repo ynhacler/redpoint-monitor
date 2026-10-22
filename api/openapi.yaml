@@ -3362,7 +3362,7 @@ components:
       type: object
       required: [id, provider, name, regions, credential_hint, budget_cents, balance_alert_cents, cost_interval_h, enabled, sync_cost, sync_traffic,
                  cost_synced_at, instances_synced_at, traffic_synced_at, last_error, last_warning, instances_recheck_at, error_since, auth_failed, next_try_at,
-                 instance_count, current_cost, traffic_pools, pool_warning, created_at, updated_at]
+                 instance_count, current_cost, traffic_pools, pool_warning, cost_warning, created_at, updated_at]
       properties:
         id: { type: integer }
         provider: { type: string, enum: [aws, aliyun_cn, aliyun_intl, tencent_cn, tencent_intl, oci] }
@@ -3394,6 +3394,7 @@ components:
           items: { $ref: '#/components/schemas/CloudTrafficPool' }
           description: 账户级流量池（修订第 181 条）：阿里云 CDT 公网流量免费额度，本月有 CDT 流量时才有；只返回本月的
         pool_warning: { type: string, description: 最近一次读取流量池失败的原因（如缺少 CDT 只读权限）；空表示正常 }
+        cost_warning: { type: string, description: '费用因子用户没有费用 / 账单只读权限而未读取时的提示（修订第 184 条）；空表示正常。权限不足不会停止整个账户的同步' }
         created_at: { type: integer }
         updated_at: { type: integer }
 
