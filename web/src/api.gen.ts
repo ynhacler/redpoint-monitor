@@ -786,6 +786,54 @@ export interface ServiceMonitor {
   created_at: number
 }
 
+export interface SubscriptionInput {
+  name: string
+  /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
+  brand?: string
+  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / 其他 */
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'other'
+  /** 每期价格（分） */
+  price_cents: number
+  /** 如 CNY、USD */
+  currency: string
+  /** 扣费周期；once 为一次性 */
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  /** 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 */
+  trial_days?: number
+  /** 开始订阅的日期（YYYY-MM-DD） */
+  start_date: string
+  /** 结束订阅的日期（YYYY-MM-DD），空表示仍在订阅；这一天及之后不再扣费 */
+  end_date?: string
+  /** 扣费前几天提醒；0 为不提醒（经通知渠道发送，告警关闭时不发送） */
+  remind_days?: 0 | 1 | 2 | 3 | 7
+  note?: string
+}
+
+export interface Subscription {
+  id: number
+  name: string
+  /** 常用服务目录中的键；自定义时为空 */
+  brand: string
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'other'
+  /** 每期价格（分） */
+  price_cents: number
+  currency: string
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  trial_days: number
+  /** YYYY-MM-DD */
+  start_date: string
+  /** YYYY-MM-DD；空表示仍在订阅 */
+  end_date: string
+  remind_days: number
+  note: string
+  /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
+  next_charge: string
+  /** 已过结束日期 */
+  ended: boolean
+  created_at: number
+  updated_at: number
+}
+
 export interface SSLMonitor {
   id: number
   host: string
@@ -2288,6 +2336,38 @@ export interface Paths {
   }
   '/ssl-monitors/{id}': {
     /** 删除证书监控 */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/subscriptions': {
+    /** 订阅列表（设计 47），按下次扣费日排序，已结束的在后 */
+    get: {
+      response: {
+        /** 空表示没有更多 */
+        next_cursor: string
+        items: Subscription[]
+      }
+    }
+    /** 添加订阅（最多 500 个） */
+    post: {
+      body: SubscriptionInput
+      response: Subscription
+    }
+  }
+  '/subscriptions/{id}': {
+    /** 修改订阅（整体替换） */
+    put: {
+      params: {
+        id: number
+      }
+      body: SubscriptionInput
+      response: Subscription
+    }
+    /** 删除订阅 */
     delete: {
       params: {
         id: number

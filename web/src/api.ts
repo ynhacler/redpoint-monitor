@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, SSLMonitor, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -569,6 +569,28 @@ export async function listAppDevices() {
 /** 吊销 App 设备，设备立即失去访问权限 */
 export function revokeAppDevice(id: number) {
   return request('post', '/app-devices/{id}/revoke', { params: { id } })
+}
+
+// ---- 订阅（设计 47） ----
+
+/** 订阅列表（下次扣费日在前） */
+export async function listSubscriptions() {
+  return (await request('get', '/subscriptions')).items
+}
+
+/** 添加订阅 */
+export function createSubscription(body: G.SubscriptionInput) {
+  return request('post', '/subscriptions', { body })
+}
+
+/** 修改订阅（整体替换） */
+export function updateSubscription(id: number, body: G.SubscriptionInput) {
+  return request('put', '/subscriptions/{id}', { params: { id }, body })
+}
+
+/** 删除订阅 */
+export function deleteSubscription(id: number) {
+  return request('delete', '/subscriptions/{id}', { params: { id } })
 }
 
 // ---- SSL 证书到期监控（设计 33.3） ----

@@ -74,7 +74,7 @@ const actionNames: Record<string, string> = {
   'release.sync': '同步官方版本', 'upgrade_task.create': '创建升级任务', 'upgrade_task.cancel': '取消升级任务',
   'upgrade_task.result': 'Agent 升级结果', 'auth.session_revoke': '踢出登录会话', 'audit.export': '导出日志',
   'admin.reset_password': '命令行重置密码', 'alert_rule.create': '新增告警规则', 'alert_rule.update': '修改告警规则',
-  'alert_rule.delete': '删除告警规则', 'silence.create': '静音 / 维护', 'silence.end': '结束静音 / 维护',
+  'alert_rule.delete': '删除告警规则', 'subscription.create': '添加订阅', 'subscription.update': '修改订阅', 'subscription.delete': '删除订阅', 'silence.create': '静音 / 维护', 'silence.end': '结束静音 / 维护',
   'notification_channel.create': '新增通知渠道', 'notification_channel.update': '修改通知渠道',
   'notification_channel.delete': '删除通知渠道', 'notification_channel.test': '测试通知渠道', 'setting.update': '修改系统设置',
   'api_key.create': '创建 API Key', 'api_key.revoke': '吊销 API Key', 'api_key.first_use': 'API Key 首次使用',

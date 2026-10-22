@@ -141,6 +141,7 @@ func (s *Server) checkReminders(now time.Time) {
 	}
 	s.checkCloudReminders(now, nodeExpire)
 	s.sslReminders(now)
+	s.subscriptionReminders(now) // 订阅扣费提醒（设计 47）
 	if err := s.store.PruneReminders(now); err != nil {
 		s.log.Warn("prune reminders failed", "component", "reminder", "err", err)
 	}

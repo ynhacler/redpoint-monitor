@@ -1,4 +1,4 @@
-// Web 导航分组（设计 41.6，修订第 158、176 条）：顶栏只放 3 个分组，分组内的页面在顶栏下方的二级导航中切换。
+// Web 导航分组（设计 41.6，修订第 158、176 条）：顶栏只放 4 个分组（订阅为修订第 189 条），分组内的页面在顶栏下方的二级导航中切换。
 // 分组与页面集中写在这里，顶栏、二级导航与路由守卫都用这一份，新增页面时只改这里。
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import { alertsOn } from './store'
@@ -20,10 +20,11 @@ export interface NavGroup {
   extra?: string[]
 }
 
-/** 顶栏分组：仪表板、云平台、系统（修订第 176 条）；告警与监测是“系统”下的页面，测速对比与费用统计不再显示 */
+/** 顶栏分组：仪表板、云平台、订阅（修订第 189 条）、系统（修订第 176 条）；告警与监测是“系统”下的页面，测速对比与费用统计不再显示 */
 export const navGroups: NavGroup[] = [
   { key: 'dashboard', name: '仪表板', items: [{ name: '节点', to: '/', viewer: true }], extra: ['/servers'] },
   { key: 'cloud', name: '云平台', items: [{ name: '云平台', to: '/cloud' }] },
+  { key: 'subscriptions', name: '订阅', items: [{ name: '订阅', to: '/subscriptions' }] }, // 设计 47
   {
     key: 'system', name: '系统', items: [
       { name: '监测', to: '/monitor' },
