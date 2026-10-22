@@ -25,7 +25,7 @@ const s = computed(() => props.server)
 const r = computed(() => s.value.latest)
 const sys = computed(() => r.value?.system)
 const diskTotal = computed(() => r.value?.disk.reduce((a, d) => a + d.total, 0))
-// 系统与资产：系统信息只列出有值的项；资产字段固定显示，未填写时为“—”，一眼看出哪些还没填
+// 系统与资产：只列出有值的项；资产字段没填的不再逐个显示“—”，合成一条“补充资产信息”链接（修订第 178 条）
 const expireDays = computed(() => {
   if (!s.value.expire_date) return null
   return Math.ceil((new Date(s.value.expire_date + 'T00:00:00').getTime() - Date.now()) / 86400000)
@@ -45,7 +45,7 @@ const facts = computed<Fact[]>(() => {
   const x = s.value
   const out: Fact[] = []
   const add = (f: Fact) => f.v && out.push(f) // 系统信息：有值才显示
-  const asset = (f: Fact) => out.push(f.v ? f : { ...f, v: DASH, copy: false, tone: 'empty' }) // 资产：始终显示
+  const asset = add
   add({ k: '主机名', v: sys.value?.hostname || x.hostname || '' })
   add({ k: 'IPv4', v: x.ipv4 || x.expected_ipv4 || '', copy: true, mono: true })
   add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
@@ -77,6 +77,12 @@ async function copy(v: string) {
     /* 剪贴板不可用（非 HTTPS 等）时忽略 */
   }
 }
+
+// 没填的资产字段数（供应商、套餐、带宽、地区、机房、分组、续费、到期、备注）
+const missingAssets = computed(() => {
+  const x = s.value
+  return [x.provider, x.plan, x.bandwidth_mbps, x.country, x.region, x.group, x.price_cents, x.expire_date, x.note].filter((v) => !v).length
+})
 
 // 信息块（图标见 Icon.vue，设计 41.4.3）
 const tiles = computed<{ icon: IconName, label: string, value: string, extra?: string, tone?: string }[]>(() => [
@@ -142,6 +148,10 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
         </dd>
       </div>
     </dl>
+    <p v-if="missingAssets && !isViewer" class="more small">
+      <RouterLink :to="`/servers/${s.id}/edit`">补充资产信息</RouterLink>
+      <span class="muted">（{{ missingAssets }} 项未填：供应商、价格、到期等用于费用与到期提醒）</span>
+    </p>
   </section>
 </template>
 
@@ -184,6 +194,7 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 .fact dd.warn { color: var(--warn); }
 .fact dd.bad { color: var(--bad); }
 .fact dd.empty { color: var(--text-muted); }
+.more { margin: var(--space-3) 0 0; }
 .flag { margin-right: var(--space-1); }
 .copy { all: unset; cursor: pointer; position: relative; overflow-wrap: anywhere; }
 .copy:hover { color: var(--accent); }

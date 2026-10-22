@@ -46,7 +46,11 @@ function deleted() {
 
 <template>
   <main class="page">
-    <RouterLink :to="id ? `/servers/${id}` : '/'" class="back muted small"><Icon name="arrow-left" :size="14" />返回</RouterLink>
+    <div class="top">
+      <RouterLink :to="id ? `/servers/${id}` : '/'" class="back muted small"><Icon name="arrow-left" :size="14" />返回</RouterLink>
+      <!-- 批量新建的入口（仪表板只留一个“新建节点”按钮，修订第 178 条） -->
+      <RouterLink v-if="!id" to="/servers/batch" class="small">一次新建多个节点 →</RouterLink>
+    </div>
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="banner">{{ error }}</p>
     <ServerForm
@@ -56,11 +60,11 @@ function deleted() {
       @done="done"
       @deleted="deleted"
       @cancel="router.back()"
-     
     />
   </main>
 </template>
 
 <style scoped>
-.back { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-3); }
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.back { display: inline-flex; align-items: center; gap: var(--space-1); }
 </style>
