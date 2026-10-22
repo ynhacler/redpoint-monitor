@@ -945,7 +945,7 @@ var migrations = []string{
 	`ALTER TABLE cloud_accounts ADD COLUMN cost_warning TEXT NOT NULL DEFAULT '';`,
 	// 迁移 52：阿里云 ECS 公网按流量计费（走 CDT）时所属的免费额度池 cdt_cn / cdt_intl，空表示不走 CDT（修订第 186 条）
 	`ALTER TABLE cloud_instances ADD COLUMN cdt_pool TEXT NOT NULL DEFAULT '';`,
-	// 迁移 52：订阅（设计 47，修订第 189 条）。价格为每期金额（分）；日期为 YYYY-MM-DD（面板本地时区），end_date 空表示仍在订阅
+	// 迁移 53：订阅（设计 47，修订第 189 条）。价格为每期金额（分）；日期为 YYYY-MM-DD（面板本地时区），end_date 空表示仍在订阅
 	`CREATE TABLE subscriptions (
 		id          INTEGER PRIMARY KEY,
 		name        TEXT NOT NULL,
