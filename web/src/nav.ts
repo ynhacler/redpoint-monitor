@@ -31,6 +31,7 @@ export const navGroups: NavGroup[] = [
   { key: 'connectivity', name: '连通性测试', short: '连通性', icon: 'globe', items: [{ name: '连通性测试', to: '/connectivity', viewer: true }] }, // 设计 48
   {
     key: 'system', name: '系统', short: '系统', icon: 'settings', items: [
+      { name: '网站配置', to: '/site' }, // 应用名称、语言、验证码、监听端口（设计 52）
       { name: '监测', to: '/monitor' },
       { name: '告警', to: '/alerts', viewer: true },
       { name: '账号', to: '/account', viewer: true },

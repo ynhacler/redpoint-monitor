@@ -1,8 +1,10 @@
 // 页面路由（设计 3.3、8.1、10、11）。地址可刷新、可分享；服务端对未知路径返回 index.html（SPA 回退）。
 // 未登录访问任何页面都先到 /login，登录后回到原页面；使用初始密码时只能停留在 /account（设计 17.4）。
 // 页面按 nav.ts 的分组组织（修订第 158、176 条）；旧地址（/settings、/probes、/services、/costs、/latency）照常跳转。
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { locale, t } from './i18n'
+import { site } from './site'
 import { alertsOn, checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
 
 // 原“设置”页各标签的新地址（修订第 158 条）；修订第 126 条前这些标签在告警页，/alerts?tab=… 同样转过去
@@ -16,6 +18,7 @@ export const router = createRouter({
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { viewer: true, title: '账号' } },
     { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '告警' } },
     // 测速设置与服务合并为“监测”（修订第 176 条）
+    { path: '/site', name: 'site', component: () => import('./pages/SiteSettingsPage.vue'), meta: { title: '网站配置' } }, // 设计 52
     { path: '/monitor', name: 'monitor', component: () => import('./pages/MonitorSettingsPage.vue'), meta: { title: '监测' } },
     { path: '/probes', redirect: (to) => ({ path: '/monitor', hash: to.hash }) },
     // 证书到期并入“告警 → 规则”（修订第 173 条）：旧地址照常可用
@@ -88,9 +91,12 @@ router.beforeEach(async (to) => {
   return true
 })
 
-router.afterEach((to) => {
-  document.title = `${to.meta.title ?? ''} · VPS Monitor`
-})
+// 浏览器标签：页面标题 · 应用名称；修改应用名称或语言后立即更新（设计 52）
+const setTitle = () => {
+  document.title = `${t(String(router.currentRoute.value.meta.title ?? ''))} · ${site.app_name}`
+}
+router.afterEach(setTitle)
+watch([() => site.app_name, locale], setTitle)
 
 // ---- 加载状态与预取（修订第 173 条） ----
 // 页面按需加载：首次打开某页要先下载它的代码（节点详情还要下载图表库），网络慢时会有数秒没有反应，

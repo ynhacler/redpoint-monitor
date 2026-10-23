@@ -7,9 +7,11 @@ import { useRoute } from 'vue-router'
 import { getPanelVersion } from './api'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
+import { t } from './i18n'
 import { activeAlertCount } from './metrics'
 import { activeGroup, groupsFor, itemActive } from './nav'
 import { navigating, prefetchPages } from './router'
+import { site } from './site'
 import { isViewer, logout, state, stopPolling } from './store'
 import { applyTheme, cycleTheme, themeMode } from './theme'
 
@@ -43,31 +45,31 @@ onUnmounted(stopPolling)
 <template>
   <header class="topbar">
     <div class="inner">
-      <RouterLink to="/" class="brand">VPS Monitor</RouterLink>
+      <RouterLink to="/" class="brand">{{ site.app_name }}</RouterLink>
       <nav v-if="signedIn" class="groups">
         <!-- 仪表板即首页（统计 + 节点列表）；节点详情、编辑、安装命令也属于“仪表板” -->
         <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key, 'with-badge': g.key === 'alerts' }">
-          {{ g.name }}<span v-if="g.key === 'alerts' && alertCount" class="badge num">{{ alertCount }}</span>
+          {{ t(g.name) }}<span v-if="g.key === 'alerts' && alertCount" class="badge num">{{ alertCount }}</span>
         </RouterLink>
       </nav>
       <div class="tools">
-        <button class="text" type="button" :title="`主题：${themeLabels[themeMode]}（点击切换）`" @click="cycleTheme">
+        <button class="text" type="button" :title="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })" @click="cycleTheme">
           <Icon :name="themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor'" />
         </button>
         <template v-if="state.me">
-          <RouterLink to="/account" class="user small" title="账号与密码">
+          <RouterLink to="/account" class="user small" :title="t('账号与密码')">
             <Icon name="user" /><span class="username">{{ state.me.username }}</span>
           </RouterLink>
-          <button class="text" type="button" title="退出登录" @click="logout">
+          <button class="text" type="button" :title="t('退出登录')" @click="logout">
             <Icon name="logout" />
           </button>
         </template>
       </div>
     </div>
     <!-- 二级导航：当前分组有多个页面时显示 -->
-    <nav v-if="signedIn && group && group.items.length > 1" class="subnav" :aria-label="group.name">
+    <nav v-if="signedIn && group && group.items.length > 1" class="subnav" :aria-label="t(group.name)">
       <div class="sub-inner">
-        <RouterLink v-for="x in group.items" :key="x.to" :to="x.to" :class="{ active: itemActive(x, route, group) }">{{ x.name }}</RouterLink>
+        <RouterLink v-for="x in group.items" :key="x.to" :to="x.to" :class="{ active: itemActive(x, route, group) }">{{ t(x.name) }}</RouterLink>
       </div>
     </nav>
   </header>
@@ -76,19 +78,19 @@ onUnmounted(stopPolling)
     <div class="banner">{{ state.error }}</div>
   </div>
   <!-- 页面加载中：顶部细进度条；首次确认登录状态时显示占位，不再只剩顶栏（修订第 173 条） -->
-  <div v-if="navigating || !state.authChecked" class="progress" role="progressbar" aria-label="加载中" />
+  <div v-if="navigating || !state.authChecked" class="progress" role="progressbar" :aria-label="t('加载中')" />
   <ErrorBoundary>
     <RouterView v-if="state.authChecked" />
-    <main v-else class="page loading muted small">加载中…</main>
+    <main v-else class="page loading muted small">{{ t('加载中…') }}</main>
   </ErrorBoundary>
   <footer v-if="signedIn && panelVersion" class="footer small">
-    VPS Monitor 面板 <span class="num" title="面板版本（Agent 版本见“Agent 升级”页）">{{ panelVersion }}</span>
+    {{ site.app_name }} {{ t('面板') }} <span class="num" :title="t('面板版本（Agent 版本见“Agent 升级”页）')">{{ panelVersion }}</span>
   </footer>
   <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
-  <nav v-if="signedIn" class="tabbar" aria-label="分组">
+  <nav v-if="signedIn" class="tabbar" :aria-label="t('分组')">
     <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key }">
       <Icon :name="g.icon" :size="22" />
-      <span>{{ g.short }}</span>
+      <span>{{ t(g.short) }}</span>
     </RouterLink>
   </nav>
 </template>

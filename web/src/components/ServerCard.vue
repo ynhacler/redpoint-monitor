@@ -7,6 +7,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtExpiry, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
+import { t } from '../i18n'
 import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
@@ -25,7 +26,7 @@ const disk = computed(() => diskSummary(s.value))
 const traffic = computed(() => trafficPct(s.value))
 const problems = computed(() => issues(s.value))
 const offlineFor = computed(() =>
-  s.value.last_seen_at ? `离线 ${fmtDuration(Date.now() / 1000 - s.value.last_seen_at)}` : '尚未上报',
+  s.value.last_seen_at ? t('离线 {d}', { d: fmtDuration(Date.now() / 1000 - s.value.last_seen_at) }) : t('尚未上报'),
 )
 const os = computed(() => [r.value?.system.os, r.value?.system.os_version].filter(Boolean).join(' '))
 // 开机时间：不足 1 天按小时，1～999 天按天，更长按年（见 fmtUptimeShort）
@@ -59,7 +60,7 @@ const tlv = computed(() => (traffic.value == null ? 'ok' : traffic.value >= 95 ?
 const diskTip = computed(() => {
   const d = disk.value
   if (!d) return ''
-  const head = `合计 ${fmtPct(d.usage)}  ${fmtBytes(d.used)} / ${fmtBytes(d.total)}（${d.count} 块）`
+  const head = t('合计 {pct}  {used} / {total}（{n} 块）', { pct: fmtPct(d.usage), used: fmtBytes(d.used), total: fmtBytes(d.total), n: d.count })
   return [head, ...(r.value?.disk ?? []).map((x) => `${x.mount}  ${fmtPct(x.usage)}  ${fmtBytes(x.used)} / ${fmtBytes(x.total)}`)].join('\n')
 })
 </script>
@@ -71,14 +72,14 @@ const diskTip = computed(() => {
         <Flag :code="s.country" />
         <h2 class="name" :title="[s.name, os, s.provider, s.region].filter(Boolean).join(' · ')">{{ s.name }}</h2>
         <StatusDot :status="displayStatus(s)" dot-only />
-        <span v-if="s.maintenance" class="tag muted small">维护中</span>
-        <span v-else-if="s.muted" class="tag muted small" title="告警已静音">已静音</span>
+        <span v-if="s.maintenance" class="tag muted small">{{ t('维护中') }}</span>
+        <span v-else-if="s.muted" class="tag muted small" :title="t('告警已静音')">{{ t('已静音') }}</span>
       </div>
       <div v-if="live && r" class="meta num">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
-        <span v-if="r.cpu.temp_c" :class="tempLv" title="CPU 温度"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
-        <span title="开机时间"><Icon name="power" :size="15" />{{ uptime }}</span>
-        <span title="1 分钟负载" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" />{{ load1 }}</span>
+        <span v-if="r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
+        <span :title="t('开机时间')"><Icon name="power" :size="15" />{{ uptime }}</span>
+        <span :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" />{{ load1 }}</span>
       </div>
       <div v-else class="meta">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
@@ -91,20 +92,20 @@ const diskTip = computed(() => {
       <div class="col">
         <span class="label">CPU</span>
         <Ring :pct="cpu(s)" :level="gaugeLevel(cpu(s), 'cpu')" :size="52" tinted label="CPU" />
-        <span class="cap">{{ r.cpu.cores }} 核</span>
+        <span class="cap">{{ t('{n} 核', { n: r.cpu.cores }) }}</span>
       </div>
       <div class="col">
-        <span class="label">内存</span>
-        <Ring :pct="mem(s)" :level="gaugeLevel(mem(s), 'mem')" :size="52" tinted label="内存" />
+        <span class="label">{{ t('内存') }}</span>
+        <Ring :pct="mem(s)" :level="gaugeLevel(mem(s), 'mem')" :size="52" tinted :label="t('内存')" />
         <span class="cap">{{ fmtBytesShort(r.memory.total) }}</span>
       </div>
       <div class="col" :title="diskTip">
-        <span class="label">磁盘</span>
-        <Ring :pct="disk?.usage" :level="disk?.level ?? 'ok'" :size="52" tinted label="磁盘" />
+        <span class="label">{{ t('磁盘') }}</span>
+        <Ring :pct="disk?.usage" :level="disk?.level ?? 'ok'" :size="52" tinted :label="t('磁盘')" />
         <span class="cap">{{ fmtBytesShort(disk?.total) }}</span>
       </div>
-      <div class="col" :title="`上行 ${fmtBytes(tx(s), true)}，开机以来 ${fmtBytes(netTotal.tx)}\n下行 ${fmtBytes(rx(s), true)}，开机以来 ${fmtBytes(netTotal.rx)}`">
-        <span class="label">网络</span>
+      <div class="col" :title="t('上行 {up}，开机以来 {upTotal}\n下行 {down}，开机以来 {downTotal}', { up: fmtBytes(tx(s), true), upTotal: fmtBytes(netTotal.tx), down: fmtBytes(rx(s), true), downTotal: fmtBytes(netTotal.rx) })">
+        <span class="label">{{ t('网络') }}</span>
         <div class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(tx(s)) }}</span>
           <span class="t">{{ fmtBytesShort(netTotal.tx) }}</span>
@@ -112,7 +113,7 @@ const diskTip = computed(() => {
           <span class="t">{{ fmtBytesShort(netTotal.rx) }}</span>
         </div>
       </div>
-      <div class="col" :title="io ? `写 ${fmtBytes(io.write, true)}，开机以来 ${fmtBytes(io.writeTotal)}\n读 ${fmtBytes(io.read, true)}，开机以来 ${fmtBytes(io.readTotal)}` : '旧版 Agent 未上报磁盘 IO'">
+      <div class="col" :title="io ? t('写 {w}，开机以来 {wTotal}\n读 {r}，开机以来 {rTotal}', { w: fmtBytes(io.write, true), wTotal: fmtBytes(io.writeTotal), r: fmtBytes(io.read, true), rTotal: fmtBytes(io.readTotal) }) : t('旧版 Agent 未上报磁盘 IO')">
         <span class="label">IO</span>
         <div v-if="io" class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(io.write) }}</span>
@@ -126,20 +127,20 @@ const diskTip = computed(() => {
 
     <!-- 手机宽度的紧凑指标（修订第 199 条）：环换成细条，CPU / 内存 / 磁盘一行，网络速率并入下一行，卡片高度约为宽屏版的一半 -->
     <div v-if="live && r" class="compact num">
-      <div v-for="m in [{ k: 'CPU', v: cpu(s), lv: gaugeLevel(cpu(s), 'cpu') }, { k: '内存', v: mem(s), lv: gaugeLevel(mem(s), 'mem') },
-                        { k: '磁盘', v: disk?.usage, lv: disk?.level ?? 'ok' }]" :key="m.k" class="m">
+      <div v-for="m in [{ k: 'CPU', v: cpu(s), lv: gaugeLevel(cpu(s), 'cpu') }, { k: t('内存'), v: mem(s), lv: gaugeLevel(mem(s), 'mem') },
+                        { k: t('磁盘'), v: disk?.usage, lv: disk?.level ?? 'ok' }]" :key="m.k" class="m">
         <span class="mk">{{ m.k }}<b :class="m.lv === 'ok' ? '' : m.lv">{{ m.v == null ? DASH : fmtPct(m.v) }}</b></span>
         <span class="mbar"><span :class="m.lv" :style="{ width: `${Math.min(100, Math.max(2, m.v ?? 0))}%` }" /></span>
       </div>
-      <div class="net" :title="`上行 ${fmtBytes(tx(s), true)}，下行 ${fmtBytes(rx(s), true)}`">
+      <div class="net" :title="t('上行 {up}，下行 {down}', { up: fmtBytes(tx(s), true), down: fmtBytes(rx(s), true) })">
         <span><Icon name="arrow-up" :size="11" />{{ fmtBytesShort(tx(s)) }}</span>
         <span><Icon name="arrow-down" :size="11" />{{ fmtBytesShort(rx(s)) }}</span>
       </div>
     </div>
 
-    <div class="traffic num" :title="`本计费周期 ${s.traffic.cycle_start} 起`">
-      <span class="muted">流量</span>
-      <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限' }}</span></span>
+    <div class="traffic num" :title="t('本计费周期 {start} 起', { start: s.traffic.cycle_start })">
+      <span class="muted">{{ t('流量') }}</span>
+      <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : t('不限') }}</span></span>
       <span v-if="traffic != null" class="tbar"><span :class="tlv" :style="{ width: `${Math.min(100, traffic)}%` }" /></span>
       <span v-if="traffic != null" :class="tlv">{{ fmtPct(traffic) }}</span>
     </div>

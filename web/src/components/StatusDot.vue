@@ -2,6 +2,7 @@
 // 状态点（设计 41.3 StatusDot）：8px 圆点 + 文字。
 // 【无障碍】状态必须同时有文字，不能只靠颜色区分（设计 41.2.1）。
 import { computed } from 'vue'
+import { t } from '../i18n'
 
 const props = defineProps<{
   /** 节点状态 */
@@ -11,7 +12,7 @@ const props = defineProps<{
 }>()
 
 const labels = { online: '在线', unknown: '未知', offline: '离线', pending: '待安装', maintenance: '维护中' } as const
-const label = computed(() => labels[props.status])
+const label = computed(() => t(labels[props.status]))
 </script>
 
 <template>

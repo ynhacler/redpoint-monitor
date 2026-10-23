@@ -337,7 +337,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(body.Username)
 	// 先校验验证码再核对密码：未通过验证码的请求不会触发密码比对（设计 17.4）
-	if s.captcha != nil && !s.captcha.verify(body.CaptchaID, body.CaptchaX, body.CaptchaMs, time.Now()) {
+	if s.captchaOn() && !s.captcha.verify(body.CaptchaID, body.CaptchaX, body.CaptchaMs, time.Now()) {
 		s.loginLimit.fail(ip)
 		s.audit(r, AuditEntry{ActorType: "admin", ActorID: name, Action: "auth.login", Success: false,
 			Details: map[string]any{"reason": "captcha"}})

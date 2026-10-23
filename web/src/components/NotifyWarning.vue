@@ -16,6 +16,7 @@ export function setNotifyChannels(n: number) {
 // 只给管理员（查看者不能管理渠道）。
 import { onMounted } from 'vue'
 import { listChannels } from '../api'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 
 onMounted(async () => {
@@ -30,8 +31,8 @@ onMounted(async () => {
 
 <template>
   <p v-if="!isViewer && enabledCount === 0" class="banner warn notify-warning" role="alert">
-    还没有启用的通知渠道：告警触发后只显示在面板里，不会通知任何人（已配对并开启推送的 App 仍会收到）。
-    <RouterLink to="/alerts?tab=notify">添加通知渠道</RouterLink>
+    {{ t('还没有启用的通知渠道：告警触发后只显示在面板里，不会通知任何人（已配对并开启推送的 App 仍会收到）。') }}
+    <RouterLink to="/alerts?tab=notify">{{ t('添加通知渠道') }}</RouterLink>
   </p>
 </template>
 

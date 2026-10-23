@@ -51,6 +51,20 @@ export interface SystemEvent {
   created_at: number
 }
 
+export interface SiteSetting {
+  /** 顶栏、登录页与浏览器标签中显示的名称；默认 VPS Monitor */
+  app_name: string
+  /** 界面语言：zh 简体中文（默认）、en English */
+  language: 'zh' | 'en'
+  /** 登录时是否需要滑动验证码（默认打开） */
+  captcha: boolean
+}
+
+export type SiteView = SiteSetting & {
+  /** 启动参数 --no-login-captcha 关闭了验证码，网页中不能打开 */
+  captcha_forced_off: boolean
+}
+
 export interface ListenSettingInput {
   /** Web 监听地址（host:port，或只写端口）；反向代理模式只写端口时为 127.0.0.1:端口 */
   web: string
@@ -2233,6 +2247,19 @@ export interface Paths {
     put: {
       body: HeartbeatInput
       response: HeartbeatView
+    }
+  }
+  '/site': {
+    /** 网站配置中显示用的部分（设计 52）：应用名称、界面语言、登录是否需要验证码；无需登录（登录页使用） */
+    get: {
+      response: SiteView
+    }
+  }
+  '/settings/site': {
+    /** 修改网站配置（应用名称、语言、登录验证码；记入操作日志 setting.update） */
+    put: {
+      body: SiteSetting
+      response: SiteView
     }
   }
   '/settings/listen': {

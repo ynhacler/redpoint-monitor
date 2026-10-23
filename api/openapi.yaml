@@ -1044,6 +1044,25 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /site:
+    get:
+      tags: [system]
+      summary: 网站配置中显示用的部分（设计 52）：应用名称、界面语言、登录是否需要验证码；无需登录（登录页使用）
+      security: []
+      responses:
+        '200': { description: 网站配置, content: { application/json: { schema: { $ref: '#/components/schemas/SiteView' } } } }
+
+  /settings/site:
+    put:
+      tags: [system]
+      summary: 修改网站配置（应用名称、语言、登录验证码；记入操作日志 setting.update）
+      description: '启动参数 --no-login-captcha 关闭了验证码时，captcha 总是保存为 false。关闭验证码不影响登录限速。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SiteSetting' } } } }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/SiteView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /settings/listen:
     get:
       tags: [system]
@@ -2415,6 +2434,22 @@ components:
         title: { type: string, description: 一行摘要，与通知标题相同 }
         message: { type: string, description: 说明，可为空 }
         created_at: { type: integer }
+
+    SiteSetting:
+      type: object
+      required: [app_name, language, captcha]
+      properties:
+        app_name: { type: string, minLength: 1, maxLength: 32, description: 顶栏、登录页与浏览器标签中显示的名称；默认 VPS Monitor }
+        language: { type: string, enum: [zh, en], description: 界面语言：zh 简体中文（默认）、en English }
+        captcha: { type: boolean, description: 登录时是否需要滑动验证码（默认打开） }
+
+    SiteView:
+      allOf:
+        - $ref: '#/components/schemas/SiteSetting'
+        - type: object
+          required: [captcha_forced_off]
+          properties:
+            captcha_forced_off: { type: boolean, description: 启动参数 --no-login-captcha 关闭了验证码，网页中不能打开 }
 
     ListenSettingInput:
       type: object

@@ -3,6 +3,7 @@
 // 这里只上报拼图块位置与拖动用时，由服务端判断是否通过。支持鼠标与触摸（Pointer Events）。
 import { onMounted, ref } from 'vue'
 import { ApiError, errorText, getCaptcha, type Captcha, type CaptchaAnswer } from '../api'
+import { t } from '../i18n'
 
 const emit = defineEmits<{
   /** 拖动完成，交给父组件随登录一起提交 */
@@ -28,7 +29,7 @@ async function reload() {
     cap.value = await getCaptcha()
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) emit('disabled')
-    else error.value = errorText(e, '验证码加载失败')
+    else error.value = errorText(e, t('验证码加载失败'))
   }
 }
 defineExpose({ reload })
@@ -62,13 +63,13 @@ function up() {
       <img :src="cap.background" alt="" draggable="false" />
       <img class="piece" :src="cap.piece" alt="" draggable="false"
         :style="{ left: `${x}px`, top: `${cap.piece_y}px`, width: `${cap.piece_size}px` }" />
-      <button type="button" class="text refresh" title="换一张" @click="reload">↻</button>
+      <button type="button" class="text refresh" :title="t('换一张')" @click="reload">↻</button>
     </div>
-    <div v-else class="stage placeholder small muted">{{ error || '加载中…' }}</div>
+    <div v-else class="stage placeholder small muted">{{ error || t('加载中…') }}</div>
     <div class="track" :style="{ width: cap ? `${cap.width}px` : undefined }">
-      <span class="hint small">{{ finished ? '已完成，请点击登录' : '向右拖动滑块完成拼图' }}</span>
+      <span class="hint small">{{ finished ? t('已完成，请点击登录') : t('向右拖动滑块完成拼图') }}</span>
       <div class="fill" :style="{ width: `${x + 20}px` }" />
-      <div class="handle" role="slider" aria-label="拖动完成拼图" :aria-valuenow="Math.round(x)"
+      <div class="handle" role="slider" :aria-label="t('拖动完成拼图')" :aria-valuenow="Math.round(x)"
         :class="{ done: finished }" :style="{ left: `${x}px` }"
         @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up">→</div>
     </div>
