@@ -495,7 +495,7 @@ function expireTone(i: CloudInstance): string {
           <small v-else-if="fieldErrors.credential" class="err">{{ fieldErrors.credential }}</small>
         </label>
         <label class="wide">{{ t('区域') }}
-          <input v-model="form.regions" spellcheck="false" :placeholder="t('留空表示全部区域；如 {example}', { example: info.regionExample })" />
+          <input v-model="form.regions" spellcheck="false" :placeholder="t('留空表示全部区域；填区域 ID（不是实例名称），如 {example}', { example: info.regionExample })" />
           <small v-if="fieldErrors.regions" class="err">{{ fieldErrors.regions }}</small>
         </label>
         <label>{{ t('月度预算（{cur}）', { cur: info.currency }) }}

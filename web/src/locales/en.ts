@@ -737,7 +737,7 @@ export const en: Record<string, string> = {
   '主区域（home region）': 'Home region',
   '如 ap-tokyo-1': 'e.g. ap-tokyo-1',
   '区域': 'Regions',
-  '留空表示全部区域；如 {example}': 'Empty means all regions; e.g. {example}',
+  '留空表示全部区域；填区域 ID（不是实例名称），如 {example}': 'Empty means all regions; enter region IDs (not instance names), e.g. {example}',
   '月度预算（{cur}）': 'Monthly budget ({cur})',
   '不设': 'None',
   '余额低于（{cur}）时提醒': 'Alert when balance is below ({cur})',

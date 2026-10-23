@@ -78,10 +78,14 @@ func (c *aliyunClient) checkInstances(ctx context.Context, name, policy, kind st
 		return item
 	}
 	item.OK = true
-
 	scope := fmt.Sprintf("查询了 %d 个区域", len(rs))
 	if len(c.regions) > 0 {
 		scope = fmt.Sprintf("账户设置只查询 %s，其中可用 %d 个", strings.Join(c.regions, "、"), len(rs))
+	}
+	// 账户设置中不存在的区域（如误填了实例名称，修订第 209 条）：写在最前面，并标为未通过，提醒去修改
+	if bad := c.unknownRegions(); len(bad) > 0 {
+		item.OK = false
+		scope = unknownRegionError(bad, "cn-hongkong").describe() + " " + scope
 	}
 	count, cdt := map[string]int{}, map[string]int{}
 	for _, in := range all {

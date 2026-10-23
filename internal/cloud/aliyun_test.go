@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -290,5 +291,34 @@ func TestAliyunCheck(t *testing.T) {
 	got = c2.(Checker).Check(context.Background(), now)
 	if d := got[1].Detail; d != "账户设置只查询 cn-hangzhou，其中可用 1 个，没有找到实例" {
 		t.Errorf("限定区域时 %q", d)
+	}
+}
+
+// 账户“区域”误填了实例名称（修订第 209 条）：同步给出说明，检查权限中 ECS 一项标为未通过
+func TestAliyunUnknownRegion(t *testing.T) {
+	_, c := newFakeAliyun(t, ProviderAliyunIntl, []string{"hk-server-cdt", "cn-hongkong"})
+	insts, err := c.Instances(context.Background())
+	var pe *PartialError
+	if !errors.As(err, &pe) || !strings.Contains(err.Error(), "账户设置的区域 hk-server-cdt 不存在") ||
+		!strings.Contains(err.Error(), "不是实例名称") {
+		t.Fatalf("应说明区域不存在：%v", err)
+	}
+	if len(insts) == 0 {
+		t.Fatal("有效的区域（cn-hongkong）照常同步")
+	}
+	if pe.Temporary() {
+		t.Fatal("填错的区域不会自行恢复，不应提前重新检查")
+	}
+
+	_, c2 := newFakeAliyun(t, ProviderAliyunIntl, []string{"hk-server-cdt"})
+	got := c2.(Checker).Check(context.Background(), time.Now())
+	if got[1].OK || !strings.HasPrefix(got[1].Detail, "账户设置的区域 hk-server-cdt 不存在") {
+		t.Fatalf("ECS 检查项 %+v", got[1])
+	}
+
+	// 区域都正确时没有这条说明
+	_, c3 := newFakeAliyun(t, ProviderAliyunIntl, []string{"cn-hongkong"})
+	if _, err := c3.Instances(context.Background()); err != nil {
+		t.Fatalf("区域正确时不应有警告：%v", err)
 	}
 }
