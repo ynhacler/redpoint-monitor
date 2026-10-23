@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 节点详情的详细指标块（设计 11.1、41.6）：关注的进程 → 监听端口 → 磁盘（每个挂载点一块）。
+// 节点详情的详细指标块（设计 11.1、41.6）：关注的进程 → 监听端口 → 磁盘（所有挂载点合为一块，修订第 195 条）。
 // CPU、内存、网络与连接在上方的速览卡片中（修订第 182 条：恢复速览卡片，这里不再重复这三项）。
 // 版式规则：标签用中文、次要色、小号；数值用等宽字体，单位缩小一档并用次要色（Qty）。
 // IOPS、IO 等待等为可选字段（设计 4.7），旧版 Agent 不上报时对应部分不显示。
@@ -17,22 +17,22 @@ const props = defineProps<{
 
 const r = computed(() => props.server.latest!)
 
-// 磁盘：竖向容量条 + 所在磁盘的 IO。IO 按整块磁盘统计，同一块盘的多个分区只在第一个分区显示 IO 表，
-// 其余分区注明与哪个挂载点共用，避免同样的数字重复出现
+// 磁盘（修订第 195 条）：所有挂载点合为一块——每个挂载点一行容量条；IO 按整块磁盘统计，在下方每块盘一行，
+// 并注明这块盘上的挂载点，同一块盘的多个分区不再各占一张卡片、重复说明
 const io = (d: DiskInfo) => ioForDisk(d, r.value.disk_io)
-const ioOwner = computed(() => {
-  const owner = new Map<string, string>()
+const ioRows = computed(() => {
+  const rows = new Map<string, { io: NonNullable<ReturnType<typeof io>>; mounts: string[] }>()
   for (const d of r.value.disk) {
     const x = io(d)
-    if (x && !owner.has(x.device)) owner.set(x.device, d.mount)
+    if (!x) continue
+    const row = rows.get(x.device)
+    if (row) row.mounts.push(d.mount)
+    else rows.set(x.device, { io: x, mounts: [d.mount] })
   }
-  return owner
+  return [...rows.values()]
 })
-const sharedWith = (d: DiskInfo) => {
-  const x = io(d)
-  const o = x ? ioOwner.value.get(x.device) : undefined
-  return o && o !== d.mount ? o : ''
-}
+const hasAwait = computed(() => ioRows.value.some((x) => x.io.await_ms != null))
+const hasUtil = computed(() => ioRows.value.some((x) => x.io.util != null))
 
 // 监听端口（设计 4.9.1）：高风险与公网开放的排在前面
 const ports = computed(() => (r.value.ports ? sortPorts(r.value.ports) : null))
@@ -94,46 +94,51 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       </ul>
     </section>
 
-    <!-- 磁盘（设计 4.6、4.7）：每个挂载点一块 -->
-    <section v-for="d in r.disk" :key="d.mount" class="block disk">
-      <h3 class="title">磁盘</h3>
-      <div class="disk-head">
-        <div class="disk-name">
-          <div class="mount">{{ d.mount }}</div>
-          <div class="muted dev">{{ d.device || DASH }}</div>
-        </div>
-        <div class="disk-cap">
-          <div class="muted dev">{{ d.fstype }}</div>
-          <div class="cap"><Qty :text="fmtBytesShort(d.used)" /><span class="slash">/</span><Qty :text="fmtBytesShort(d.total)" /></div>
-        </div>
-        <span class="pill" :title="fmtPct(d.usage)"><span :class="gaugeLevel(d.usage, 'disk')" :style="{ height: `${Math.max(4, d.usage)}%` }" /></span>
+    <!-- 磁盘（设计 4.6、4.7）：所有挂载点一块（修订第 195 条） -->
+    <section v-if="r.disk.length" class="block disk">
+      <h3 class="title">
+        磁盘
+        <span v-if="r.disk.length > 1" class="title-extra">挂载点 <b>{{ r.disk.length }}</b></span>
+      </h3>
+      <ul class="mounts">
+        <li v-for="d in r.disk" :key="d.mount">
+          <div class="m-name">
+            <span class="mount" :title="d.mount">{{ d.mount }}</span>
+            <span class="muted dev">{{ [d.device, d.fstype].filter(Boolean).join(' · ') || DASH }}</span>
+          </div>
+          <span class="bar" :title="fmtPct(d.usage)"><span :class="gaugeLevel(d.usage, 'disk')" :style="{ width: `${Math.max(2, d.usage)}%` }" /></span>
+          <span class="cap"><Qty :text="fmtBytesShort(d.used)" /><span class="slash">/</span><Qty :text="fmtBytesShort(d.total)" /></span>
+          <span class="pct" :class="gaugeLevel(d.usage, 'disk')">{{ fmtPct(d.usage) }}</span>
+        </li>
+      </ul>
+      <div v-if="ioRows.length" class="io-wrap">
+        <table class="io">
+          <thead>
+            <tr>
+              <th>磁盘 IO</th><th>读</th><th>写</th><th>IOPS 读 / 写</th>
+              <th v-if="hasAwait" title="每次 IO 的平均耗时（含排队）">延迟</th><th v-if="hasUtil">繁忙</th>
+              <th class="total">累计读 / 写</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="x in ioRows" :key="x.io.device">
+              <th><span class="mono">{{ x.io.device }}</span><small class="muted" :title="x.mounts.join('、')">{{ x.mounts.join(' ') }}</small></th>
+              <td><Qty :text="fmtBytesShort(x.io.read_speed, true)" /></td>
+              <td><Qty :text="fmtBytesShort(x.io.write_speed, true)" /></td>
+              <td>{{ iops(x.io.read_iops) }}<span class="slash">/</span>{{ iops(x.io.write_iops) }}</td>
+              <td v-if="hasAwait"><Qty :v="x.io.await_ms != null ? x.io.await_ms.toFixed(1) : DASH" :u="x.io.await_ms != null ? 'ms' : ''" /></td>
+              <td v-if="hasUtil">{{ x.io.util != null ? fmtPct(x.io.util) : DASH }}</td>
+              <td class="total"><Qty :text="fmtBytesShort(x.io.read_bytes)" /><span class="slash">/</span><Qty :text="fmtBytesShort(x.io.write_bytes)" /></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <p v-if="sharedWith(d)" class="muted shared">与 <span class="mono">{{ sharedWith(d) }}</span> 同在 {{ io(d)!.device }}，IO 见该分区</p>
-      <table v-else-if="io(d)" class="io">
-        <thead><tr><th /><th>速度</th><th>累计</th><th>IOPS</th><th title="每次 IO 的平均耗时（含排队）">延迟</th></tr></thead>
-        <tbody>
-          <tr>
-            <th>读</th>
-            <td><Qty :text="fmtBytesShort(io(d)!.read_speed, true)" /></td>
-            <td><Qty :text="fmtBytesShort(io(d)!.read_bytes)" /></td>
-            <td><Qty :v="iops(io(d)!.read_iops)" /></td>
-            <td rowspan="2" class="wait"><Qty :v="io(d)!.await_ms != null ? io(d)!.await_ms!.toFixed(1) : DASH" :u="io(d)!.await_ms != null ? 'ms' : ''" /></td>
-          </tr>
-          <tr>
-            <th>写</th>
-            <td><Qty :text="fmtBytesShort(io(d)!.write_speed, true)" /></td>
-            <td><Qty :text="fmtBytesShort(io(d)!.write_bytes)" /></td>
-            <td><Qty :v="iops(io(d)!.write_iops)" /></td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="io(d)?.util != null && !sharedWith(d)" class="muted util">{{ io(d)!.device }} · 繁忙 {{ fmtPct(io(d)!.util) }}</p>
     </section>
   </div>
 </template>
 
 <style scoped>
-/* 宽屏两列：进程、端口占整行，各磁盘两两并排 */
+/* 宽屏两列：进程、端口、磁盘占整行 */
 .live { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-items: start; }
 .block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 0;
   font-variant-numeric: tabular-nums; }
@@ -154,29 +159,32 @@ dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 .title-extra b { color: var(--text); font-family: var(--font-mono); font-weight: var(--weight-regular); }
 
 
-/* 磁盘 */
-.disk-head { display: flex; align-items: center; gap: var(--space-4); }
-.disk-name { flex: 1; min-width: 0; }
-.mount { font-family: var(--font-mono); font-size: 22px; line-height: 28px; }
-.cap, .io td { font-family: var(--font-mono); }
-.dev { font-size: var(--font-md); line-height: var(--line-md); }
-.disk-cap { text-align: right; }
-.cap { font-size: var(--font-lg); line-height: var(--line-lg); }
+/* 磁盘：整行宽度；每个挂载点一行，IO 每块盘一行（修订第 195 条） */
+.disk { grid-column: 1 / -1; }
+.mounts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.mounts li { display: grid; grid-template-columns: minmax(120px, 1.2fr) minmax(80px, 2fr) auto 52px; align-items: center; gap: var(--space-4);
+  padding: var(--space-2) 0; }
+.mounts li + li { border-top: 1px solid var(--border); }
+.m-name { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.mount { font-family: var(--font-mono); font-size: var(--font-lg); line-height: var(--line-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev { font-size: var(--font-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { height: 8px; border-radius: 99px; background: var(--track); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 99px; background: var(--ok); }
+.bar span.warn { background: var(--warn); }
+.bar span.bad { background: var(--bad); }
+.cap { font-family: var(--font-mono); font-size: var(--font-md); white-space: nowrap; text-align: right; }
+.pct { font-family: var(--font-mono); font-size: var(--font-md); text-align: right; color: var(--text-muted); }
+.pct.warn { color: var(--warn); }
+.pct.bad { color: var(--bad); }
 .slash { color: var(--text-muted); margin: 0 2px; }
-.pill { width: 26px; height: 46px; border-radius: 7px; background: var(--track); display: flex; align-items: flex-end; overflow: hidden; flex: none;
-  box-shadow: inset 0 0 0 2px var(--surface-2); }
-.pill span { width: 100%; background: var(--ok); }
-.pill span.warn { background: var(--warn); }
-.pill span.bad { background: var(--bad); }
-.io { width: 100%; border-collapse: collapse; margin-top: var(--space-4); border-top: 1px solid var(--border); }
-.io th, .io td { padding: 4px 0 4px var(--space-3); text-align: right; font-weight: var(--weight-regular); white-space: nowrap; }
+.io-wrap { overflow-x: auto; margin-top: var(--space-3); border-top: 1px solid var(--border); }
+.io { width: 100%; border-collapse: collapse; }
+.io th, .io td { padding: 4px 0 4px var(--space-4); text-align: right; font-weight: var(--weight-regular); white-space: nowrap; }
 .io thead th { color: var(--text-muted); font-size: var(--font-sm); letter-spacing: .04em; padding-top: var(--space-3); }
-.io tbody th { color: var(--text-muted); text-align: left; padding-left: 0; width: 24px; font-size: var(--font-md); }
-.io td { font-size: var(--font-lg); line-height: var(--line-lg); }
-.io .wait { vertical-align: middle; }
-.util { margin: var(--space-2) 0 0; text-align: right; font-size: var(--font-sm); }
-
-.shared { margin: var(--space-4) 0 0; padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--font-sm); }
+.io thead th:first-child, .io tbody th { text-align: left; padding-left: 0; }
+.io tbody th { display: flex; align-items: baseline; gap: var(--space-2); }
+.io tbody th small { font-size: var(--font-sm); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.io td { font-family: var(--font-mono); font-size: var(--font-md); line-height: var(--line-md); }
 .mono { font-family: var(--font-mono); color: var(--text); }
 
 /* 端口：整行宽度，端口以小块排列 */
@@ -207,8 +215,11 @@ dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
   .block { padding: var(--space-4); }
   dt { font-size: var(--font-xs); letter-spacing: .02em; gap: 4px; }
   dd { font-size: 20px; line-height: 26px; }
-  .io th, .io td { padding-left: var(--space-2); }
-  .io td { font-size: var(--font-md); }
+  .mounts li { grid-template-columns: minmax(0, 1fr) auto 44px; row-gap: var(--space-1); column-gap: var(--space-3); }
+  .mounts .bar { grid-column: 1 / -1; grid-row: 2; }
+  .io th, .io td { padding-left: var(--space-3); }
+  .io .total { display: none; }
+  .io tbody th small { display: none; }
   .port-list { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
