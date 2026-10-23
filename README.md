@@ -118,7 +118,7 @@ grep ' vpsmon-install.sh$' SHA256SUMS | sha256sum -c - && sudo sh vpsmon-install
   Alpine（OpenRC）；amd64、arm64。
 - **云服务器**：在安全组中放行 TCP 80 与 443。
 - 再次运行即**升级**（数据、配置与密码保留）；`sudo sh vpsmon-install.sh reset-password` 重置管理员密码；
-  `sudo sh vpsmon-install.sh uninstall` 卸载（加 `--purge` 同时删除数据）；`--help` 查看全部选项（镜像下载、离线安装等）。
+  `sudo sh vpsmon-install.sh uninstall` 卸载（加 `--purge` 同时删除数据），详见 [卸载](#卸载)；`--help` 查看全部选项（镜像下载、离线安装等）。
 - 装有 [minisign](https://jedisct1.github.io/minisign/) 时，脚本还会验证官方签名；也可以先手工验签 SHA256SUMS（见 1.2）。
 
 一键安装后可以直接跳到 [第 3 节添加节点](#3-添加节点安装-agent)。下面是手工安装的步骤。
@@ -272,6 +272,8 @@ sudo vpsmon-agent upgrade            # 升级到最新的官方签名版本（�
 sudo vpsmon-agent uninstall          # 停止、删除并通知面板
 ```
 
+完整的卸载说明（含删除节点、卸载面板）见第 5 节 [卸载](#卸载)。
+
 也可以在 Web 的 **仪表板 → Agent 升级** 页面批量远程升级：面板只能选择官方签名的版本，主机上的 updater 用内置公钥复验并拒绝降级。
 已安装的节点需要先在主机上执行一次 `sudo vpsmon-agent enable-remote-upgrade`（新安装默认启用）。Alpine（OpenRC）由 crond 每 15 分钟
 检查一次升级请求，该命令会启动 crond。远程升级失败并提示暂存目录不可写时，同样执行这条命令修复；`sudo vpsmon-agent doctor` 会检查这些问题。
@@ -332,16 +334,46 @@ sudo -u vpsmon vpsmon-server audit --data /var/lib/vpsmon       # 审计日志�
 sudo -u vpsmon vpsmon-server diag --data /var/lib/vpsmon        # 生成本地诊断包（不会上传到任何地方）
 ```
 
-### 卸载面板
+### 卸载
+
+卸载前建议先按上一节做一次备份（`vpsmon-server backup`），并把备份文件复制到其他机器。
+
+**卸载 Agent**（在每台被监控的主机上执行）：
+
+```bash
+sudo vpsmon-agent uninstall
+```
+
+这条命令会停止并删除服务、远程升级用的 updater、程序、配置（含 Token）、状态目录和 `vpsmon-agent` 用户，并通知面板吊销该节点的 Token，节点回到“待安装”。
+面板连不上时本地照样卸载完成，节点需要在面板中手动处理。用户模式（非 root）安装的 Agent 去掉 `sudo` 执行即可，同时会移除保活（systemd 用户服务或 crontab 项）。
+
+节点的历史数据仍保留在面板中。不再需要这个节点时，在 Web 中打开节点 → **编辑** → 页面底部 **删除节点**（需输入密码确认）。
+历史指标和流量统计会一起删除，无法恢复。
+
+**卸载面板**——用一键安装脚本安装的：
+
+```bash
+sudo sh vpsmon-install.sh uninstall           # 停止并删除服务与程序，保留数据和配置（重新安装后可继续使用）
+sudo sh vpsmon-install.sh uninstall --purge   # 同时删除数据库、配置和 vpsmon 用户（不可恢复）
+```
+
+找不到原来的 `vpsmon-install.sh` 时，按“一键安装”一节重新下载并校验同一个脚本即可，卸载不依赖版本。
+
+按第 1.3 节手动安装的：
 
 ```bash
 sudo systemctl disable --now vpsmon-server
 sudo rm -f /etc/systemd/system/vpsmon-server.service /usr/local/bin/vpsmon-server
 sudo rm -rf /etc/systemd/system/vpsmon-server.service.d
-sudo rm -rf /var/lib/vpsmon      # 会删除全部数据，请先确认已备份
+sudo systemctl daemon-reload
+# 以下会删除全部数据，请先确认已备份
+sudo rm -rf /var/lib/vpsmon /etc/vpsmon
 sudo userdel vpsmon
 ```
 
+使用 Caddy 反向代理的，再从 Caddyfile 中删除面板的站点并 `sudo systemctl reload caddy`。
+
+先卸载面板、后卸载 Agent 时，Agent 无法通知面板，但本地卸载照常完成。
 ---
 
 ## 6. 安全说明
