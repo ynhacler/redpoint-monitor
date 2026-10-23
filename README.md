@@ -87,6 +87,42 @@ Agent 主动连接面板（出站 HTTPS），主机上不需要开放任何端�
 
 ## 1. 部署面板
 
+### 一键安装（推荐）
+
+在一台 Linux 服务器上（root 或 sudo）执行下面三行：下载安装脚本 → 按发布的 SHA256SUMS 校验 → 执行。
+
+```bash
+curl -fsSLO https://github.com/ynhacler/redpoint-monitor/releases/latest/download/vpsmon-install.sh
+curl -fsSLO https://github.com/ynhacler/redpoint-monitor/releases/latest/download/SHA256SUMS
+grep ' vpsmon-install.sh$' SHA256SUMS | sha256sum -c - && sudo sh vpsmon-install.sh
+```
+
+脚本会：识别系统与架构 → 下载面板并校验 SHA256 → 创建专用用户 `vpsmon` → 配置 HTTPS → 安装为系统服务（崩溃自动重启、
+开机自启）→ 放行本机防火墙的 80 / 443 → 等待面板就绪，最后显示：
+
+```text
+============================================================
+ VPS Monitor 面板安装完成 v0.8.0
+============================================================
+ 访问地址：https://203-0-113-7.sslip.io
+ 账号：    admin
+ 密码：    k7mXq2…（只显示这一次，请立即保存；首次登录后需要修改）
+============================================================
+```
+
+- **不需要域名**：没有域名时自动使用免费域名 `<本机 IP>.sslip.io`，证书由 Let's Encrypt 签发。有自己的域名时先解析到本机，
+  运行时输入域名，或 `sudo sh vpsmon-install.sh --domain monitor.example.com`。
+- **已有 Nginx / Caddy**（80 / 443 被占用）：自动改为反向代理方式，面板只监听本机端口，并给出代理配置；也可以指定
+  `--proxy --port 8080 --public-url https://monitor.example.com`。
+- **支持的系统**：Debian、Ubuntu、CentOS / RHEL / Rocky / Alma、Fedora、Amazon Linux、openSUSE、Arch（systemd），
+  Alpine（OpenRC）；amd64、arm64。
+- **云服务器**：在安全组中放行 TCP 80 与 443。
+- 再次运行即**升级**（数据、配置与密码保留）；`sudo sh vpsmon-install.sh reset-password` 重置管理员密码；
+  `sudo sh vpsmon-install.sh uninstall` 卸载（加 `--purge` 同时删除数据）；`--help` 查看全部选项（镜像下载、离线安装等）。
+- 装有 [minisign](https://jedisct1.github.io/minisign/) 时，脚本还会验证官方签名；也可以先手工验签 SHA256SUMS（见 1.2）。
+
+一键安装后可以直接跳到 [第 3 节添加节点](#3-添加节点安装-agent)。下面是手工安装的步骤。
+
 ### 1.1 准备
 
 | 项目 | 要求 |

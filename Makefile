@@ -16,7 +16,7 @@ VM      ?= vpsmon-dev
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 .PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-comments check-design api-types web build build-linux build-relay ios-push-check \
-        vm-create vm-agent app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
+        vm-create vm-agent panel-install-check app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
@@ -165,6 +165,11 @@ build-relay: ## Cross-compile the push relay (design 30.2) for linux amd64/arm64
 	  echo "→ push-relay linux/$$arch"; \
 	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GOBUILD) -ldflags "$(LDFLAGS)" -o dist/push-relay-linux-$$arch ./cmd/push-relay || exit 1; \
 	done
+
+panel-install-check: ## On a Linux host with systemd (e.g. CI): end-to-end check of the one-click panel installer (design 25.1)
+	$(MAKE) build-linux VERSION=v0.0.0-check
+	go run ./cmd/vpsmon-release prepare --version 0.0.0 --dist dist
+	scripts/panel-install-check.sh dist
 
 install-server: ## On the VPS, after `make build`: install/upgrade the server (custom port: make install-server PORT=9090)
 	sudo PORT=$(PORT) scripts/install.sh server

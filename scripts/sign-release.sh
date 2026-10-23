@@ -3,7 +3,8 @@
 #
 #   scripts/sign-release.sh v0.2.0 [私钥文件，默认 ~/.minisign/vpsmon.key]
 #
-# 步骤：下载草稿中的 manifest.json、SHA256SUMS、agent-x.y.z.sh → 核对三者一致 → minisign 签名（需要输入私钥密码）
+# 步骤：下载草稿中的 manifest.json、SHA256SUMS、agent-x.y.z.sh（以及面板一键安装脚本 vpsmon-install.sh，设计 25.1）
+#       → 核对互相一致 → minisign 签名（需要输入私钥密码）
 #       → 上传 .minisig → 确认后把草稿改为公开发布。
 # 【安全】私钥只在本机使用；本脚本不会上传、复制或打印私钥。依赖 gh、minisign、shasum / sha256sum。
 set -eu
@@ -25,6 +26,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
 gh release download "$TAG" -p manifest.json -p SHA256SUMS -p "agent-$VERSION.sh"
+# 面板一键安装脚本（修订第 208 条起才有）：旧版本的草稿中没有时跳过
+gh release download "$TAG" -p vpsmon-install.sh 2>/dev/null || true
 
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
 # 草稿中的三份文件必须互相一致：安装脚本的哈希同时出现在 SHA256SUMS 与 manifest.json 中
@@ -32,6 +35,13 @@ SCRIPT_SHA="$(sha "agent-$VERSION.sh")"
 grep -q "^$SCRIPT_SHA  agent-$VERSION.sh\$" SHA256SUMS || { echo "✗ SHA256SUMS 与安装脚本不一致，停止" >&2; exit 1; }
 grep -q "\"$SCRIPT_SHA\"" manifest.json || { echo "✗ manifest.json 与安装脚本不一致，停止" >&2; exit 1; }
 grep -q "\"version\": \"$VERSION\"" manifest.json || { echo "✗ manifest.json 的版本不是 ${VERSION}，停止" >&2; exit 1; }
+PANEL=""
+if [ -f vpsmon-install.sh ]; then
+  PANEL_SHA="$(sha vpsmon-install.sh)"
+  grep -q "^$PANEL_SHA  vpsmon-install.sh\$" SHA256SUMS || { echo "✗ SHA256SUMS 与面板安装脚本不一致，停止" >&2; exit 1; }
+  grep -q "^VERSION=\"$VERSION\"\$" vpsmon-install.sh || { echo "✗ 面板安装脚本的版本不是 ${VERSION}，停止" >&2; exit 1; }
+  PANEL=vpsmon-install.sh
+fi
 
 echo "即将签名 ${TAG}："
 sed -n '1,8p' manifest.json
@@ -42,6 +52,10 @@ minisign -S -s "$KEY" -m manifest.json -t "vpsmon-agent $VERSION manifest"
 minisign -S -s "$KEY" -m SHA256SUMS -t "vpsmon $VERSION SHA256SUMS"
 minisign -S -s "$KEY" -m "agent-$VERSION.sh" -t "vpsmon-agent $VERSION installer"
 gh release upload "$TAG" manifest.json.minisig SHA256SUMS.minisig "agent-$VERSION.sh.minisig" --clobber
+if [ -n "$PANEL" ]; then
+  minisign -S -s "$KEY" -m "$PANEL" -t "vpsmon $VERSION panel installer"
+  gh release upload "$TAG" "$PANEL.minisig" --clobber
+fi
 echo "✓ 签名已上传"
 
 printf '公开发布 %s？[y/N] ' "$TAG"

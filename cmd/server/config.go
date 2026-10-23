@@ -5,8 +5,12 @@ package main
 //     命令行优先于环境变量，环境变量优先于默认值。systemd / OpenRC 通过 /etc/vpsmon/server.env 传入，升级不会覆盖。
 //   - 监听地址可以只写端口：--listen 9090 等同于 127.0.0.1:9090（默认只监听本机，由反向代理对外）；
 //     --https-listen / --http-listen 只写端口时监听所有地址（内置 HTTPS 需要对外）。
+//   - --env-file 指定的 KEY=VALUE 文件也可以提供这些变量（OpenRC 使用，修订第 208 条）：由程序解析，不经 shell source，
+//     文件中的值不会被当作命令执行；进程的环境变量优先于文件。
 
 import (
+	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -60,3 +64,47 @@ func normalizeListen(v, defaultHost string) (string, error) {
 
 // lookupEnv 便于测试替换
 var lookupEnv = os.Getenv
+
+// readEnvFile 读取 --env-file（KEY=VALUE，每行一项）：空行与 # 开头的行忽略，值两侧成对的引号去掉。
+// 文件不存在时返回空（与 systemd 的 EnvironmentFile=- 一致）；其他读取错误返回错误。
+func readEnvFile(path string) (map[string]string, error) {
+	out := map[string]string{}
+	if path == "" {
+		return out, nil
+	}
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+			v = v[1 : len(v)-1]
+		}
+		out[strings.TrimSpace(k)] = v
+	}
+	return out, sc.Err()
+}
+
+// envLookup 先查进程的环境变量，没有时再查 --env-file 中的值。
+func envLookup(getenv func(string) string, file map[string]string) func(string) string {
+	return func(k string) string {
+		if v := getenv(k); v != "" {
+			return v
+		}
+		return file[k]
+	}
+}

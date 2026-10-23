@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -48,5 +50,44 @@ func TestApplyEnv(t *testing.T) {
 	_ = fs2.Parse(nil)
 	if err := applyEnv(fs2, func(k string) string { return env[k] }); err == nil {
 		t.Fatal("不合法的环境变量应报错，而不是忽略")
+	}
+}
+
+func TestReadEnvFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "server.env")
+	body := "# 注释\n\nVPSMON_DOMAIN=monitor.example.com\nVPSMON_LISTEN = 127.0.0.1:9090\nVPSMON_ACME_EMAIL=\"a@example.com\"\n" +
+		"VPSMON_PUBLIC_URL='https://x.example.com'\nnot a pair\nVPSMON_EVIL=$(touch /tmp/pwned)\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := readEnvFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"VPSMON_DOMAIN": "monitor.example.com", "VPSMON_LISTEN": "127.0.0.1:9090", "VPSMON_ACME_EMAIL": "a@example.com",
+		"VPSMON_PUBLIC_URL": "https://x.example.com", "VPSMON_EVIL": "$(touch /tmp/pwned)"}
+	if len(m) != len(want) {
+		t.Fatalf("解析结果 %v", m)
+	}
+	for k, v := range want {
+		if m[k] != v {
+			t.Errorf("%s = %q，期望 %q（值原样保留，不经 shell 展开）", k, m[k], v)
+		}
+	}
+	if m, err := readEnvFile(filepath.Join(t.TempDir(), "missing.env")); err != nil || len(m) != 0 {
+		t.Fatalf("文件不存在时应返回空：%v %v", m, err)
+	}
+
+	// 进程环境变量优先于文件
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	listen := fs.String("listen", "127.0.0.1:8080", "")
+	domain := fs.String("domain", "", "")
+	_ = fs.Parse(nil)
+	proc := map[string]string{"VPSMON_LISTEN": "7070"}
+	if err := applyEnv(fs, envLookup(func(k string) string { return proc[k] }, m)); err != nil {
+		t.Fatal(err)
+	}
+	if *listen != "7070" || *domain != "monitor.example.com" {
+		t.Fatalf("listen %q domain %q", *listen, *domain)
 	}
 }
