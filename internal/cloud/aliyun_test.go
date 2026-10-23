@@ -17,6 +17,7 @@ type fakeAliyun struct {
 	calls   []string
 	queries map[string]map[string]string
 	deny    bool
+	forbid  map[string]bool // 返回“没有权限”的接口（权限检查测试，修订第 204 条）
 }
 
 func (f *fakeAliyun) handler(t *testing.T) http.HandlerFunc {
@@ -40,8 +41,13 @@ func (f *fakeAliyun) handler(t *testing.T) http.HandlerFunc {
 			f.queries = map[string]map[string]string{}
 		}
 		f.queries[action+" "+region] = q
-		deny := f.deny
+		deny, forbid := f.deny, f.forbid[action]
 		f.mu.Unlock()
+		if forbid {
+			w.WriteHeader(403)
+			io.WriteString(w, `{"RequestId":"x","Code":"Forbidden.RAM","Message":"User not authorized to operate on the specified resource."}`)
+			return
+		}
 		if deny {
 			w.WriteHeader(404)
 			io.WriteString(w, `{"RequestId":"x","Code":"InvalidAccessKeyId.NotFound","Message":"Specified access key is not found."}`)
@@ -250,5 +256,39 @@ func TestCDTMainland(t *testing.T) {
 		if cdtMainland(region) != want {
 			t.Errorf("%s 应为 %v", region, want)
 		}
+	}
+}
+
+func TestAliyunCheck(t *testing.T) {
+	f, c := newFakeAliyun(t, ProviderAliyunIntl, nil)
+	now := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
+	got := c.(Checker).Check(context.Background(), now)
+	if len(got) != 4 {
+		t.Fatalf("检查项 %+v", got)
+	}
+	for _, it := range got {
+		if !it.OK || it.Policy == "" {
+			t.Errorf("检查项应通过：%+v", it)
+		}
+	}
+	if d := got[1].Detail; !strings.Contains(d, "查询了 2 个区域") || !strings.Contains(d, "共 2 台：cn-hongkong 2 台") {
+		t.Errorf("ECS 摘要 %q", d)
+	}
+	if d := got[3].Detail; !strings.Contains(d, "CDT 中国内地 5.00 GiB") || !strings.Contains(d, "CDT 非中国内地 10.00 GiB") {
+		t.Errorf("CDT 摘要 %q", d)
+	}
+
+	// 只给了 CDT 与费用权限：ECS 与轻量显示“没有权限”，CDT 照常
+	f.forbid = map[string]bool{"DescribeRegions": true, "ListRegions": true}
+	got = c.(Checker).Check(context.Background(), now)
+	if got[1].OK || !strings.HasPrefix(got[1].Detail, "没有权限：Forbidden.RAM") || got[2].OK || !got[3].OK {
+		t.Errorf("缺 ECS 权限时 %+v", got)
+	}
+
+	// 账户只查询部分区域、区域里没有实例时写明范围
+	_, c2 := newFakeAliyun(t, ProviderAliyunIntl, []string{"cn-hangzhou"})
+	got = c2.(Checker).Check(context.Background(), now)
+	if d := got[1].Detail; d != "账户设置只查询 cn-hangzhou，其中可用 1 个，没有找到实例" {
+		t.Errorf("限定区域时 %q", d)
 	}
 }

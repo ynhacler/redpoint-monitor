@@ -40,11 +40,12 @@ type cloudState struct {
 	mu         sync.Mutex
 	sealer     *cloud.Sealer
 	lastManual map[int64]time.Time
+	lastCheck  map[int64]time.Time // 权限检查（修订第 204 条）
 	running    map[int64]bool
 }
 
 func newCloudState() *cloudState {
-	return &cloudState{trigger: make(chan int64, 16), lastManual: map[int64]time.Time{}, running: map[int64]bool{}}
+	return &cloudState{trigger: make(chan int64, 16), lastManual: map[int64]time.Time{}, lastCheck: map[int64]time.Time{}, running: map[int64]bool{}}
 }
 
 // cloudSealer 加载凭证密钥；create 为真时（添加 / 修改凭证）不存在则生成。

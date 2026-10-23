@@ -1660,6 +1660,26 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /cloud-accounts/{id}/check:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [cloud]
+      summary: 权限检查——逐项调用一次只读接口，返回每项是否可用与结果摘要（设计 44.2，修订第 204 条）；目前只支持阿里云；同一账户 10 秒内只允许一次
+      responses:
+        '200':
+          description: 检查结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CloudCheckItem' } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /cloud-accounts/{id}/costs:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     get:
@@ -3663,6 +3683,15 @@ components:
         sync_cost: { type: boolean }
         sync_traffic: { type: boolean }
 
+    CloudCheckItem:
+      type: object
+      description: 权限检查的一项（修订第 204 条）
+      required: [name, policy, ok, detail]
+      properties:
+        name: { type: string, description: 检查项，如 “ECS 实例” }
+        policy: { type: string, description: 所需的系统只读策略，如 AliyunECSReadOnlyAccess }
+        ok: { type: boolean }
+        detail: { type: string, description: 成功时为结果摘要（如各区域的实例数），失败时为服务商返回的错误 }
     CloudAccount:
       type: object
       required: [id, provider, name, regions, credential_hint, budget_cents, balance_alert_cents, cost_interval_h, enabled, sync_cost, sync_traffic,

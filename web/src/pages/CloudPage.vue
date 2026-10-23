@@ -4,8 +4,8 @@
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, setCloudAutoCalibrate, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount,
-  updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudInstance, type CloudTrafficPool,
+  createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, setCloudAutoCalibrate, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount, checkCloudAccount,
+  updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudCheckItem, type CloudInstance, type CloudTrafficPool,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -134,6 +134,25 @@ async function syncNow(a: CloudAccount) {
   } catch (e) {
     syncMsg.value[a.id] = errorText(e)
   }
+}
+
+// 权限检查（修订第 204 条）：阿里云逐项列出能否读取、各区域的实例数（含走 CDT 的台数），排查“看不到某台实例”
+const isAliyun = (a: CloudAccount) => a.provider === 'aliyun_cn' || a.provider === 'aliyun_intl'
+const checks = ref<Record<number, { busy: boolean; items: CloudCheckItem[]; error: string }>>({})
+async function checkNow(a: CloudAccount) {
+  checks.value[a.id] = { busy: true, items: [], error: '' }
+  const c = checks.value[a.id] // 经响应式代理修改，界面才会更新
+  try {
+    c.items = await checkCloudAccount(a.id)
+  } catch (e) {
+    c.error = errorText(e)
+  } finally {
+    c.busy = false
+  }
+}
+
+function closeCheck(a: CloudAccount) {
+  delete checks.value[a.id]
 }
 
 async function toggle(a: CloudAccount) {
@@ -531,6 +550,9 @@ function expireTone(i: CloudInstance): string {
           </div>
           <div class="acts">
             <button type="button" class="secondary" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">立即同步</button>
+            <button v-if="isAliyun(a)" type="button" class="text" :disabled="checks[a.id]?.busy" @click="checkNow(a)">
+              {{ checks[a.id]?.busy ? '检查中…' : '检查权限' }}
+            </button>
             <button type="button" class="text" @click="toggle(a)">{{ a.enabled ? '停用' : '启用' }}</button>
             <button type="button" class="text" @click="openEdit(a)">编辑</button>
             <button type="button" class="text danger-text" @click="deleting = deleting === a.id ? null : a.id; deleteError = ''">删除</button>
@@ -538,6 +560,23 @@ function expireTone(i: CloudInstance): string {
         </div>
         <p class="small status" :class="status(a).tone">{{ status(a).text }}</p>
         <p v-if="syncMsg[a.id]" class="small err">{{ syncMsg[a.id] }}</p>
+        <div v-if="checks[a.id] && (checks[a.id].items.length || checks[a.id].error)" class="check">
+          <div class="check-head">
+            <b class="small">权限检查</b>
+            <button type="button" class="text small" @click="closeCheck(a)">收起</button>
+          </div>
+          <p v-if="checks[a.id].error" class="small err">{{ checks[a.id].error }}</p>
+          <ul v-if="checks[a.id].items.length">
+            <li v-for="it in checks[a.id].items" :key="it.name">
+              <span class="mark" :class="it.ok ? 'ok' : 'bad'">{{ it.ok ? '✓' : '✗' }}</span>
+              <div>
+                <div class="small"><b>{{ it.name }}</b> <code class="muted">{{ it.policy }}</code></div>
+                <div class="small muted detail">{{ it.detail }}</div>
+              </div>
+            </li>
+          </ul>
+          <p v-if="checks[a.id].items.length" class="small muted">✗ 的一项：在 RAM 控制台给这个子用户授予后面的系统策略，再点“立即同步”。要找的实例不在 ECS 的台数里：它在别的阿里云账号下，或不在查询的区域中（编辑账户，检查“区域”）。</p>
+        </div>
 
         <div class="stats">
           <div>
@@ -685,6 +724,15 @@ function expireTone(i: CloudInstance): string {
 .type { font-size: var(--font-xs); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--space-1); color: var(--text-muted); }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .status { margin: var(--space-2) 0; word-break: break-word; }
+.check { margin: var(--space-2) 0 var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+.check-head { display: flex; justify-content: space-between; align-items: center; }
+.check ul { list-style: none; margin: var(--space-2) 0; padding: 0; display: grid; gap: var(--space-2); }
+.check li { display: flex; gap: var(--space-2); align-items: flex-start; }
+.check .mark { font-weight: var(--weight-strong); width: 1em; flex: none; }
+.check .mark.ok { color: var(--ok); }
+.check .mark.bad { color: var(--bad); }
+.check .detail { word-break: break-word; }
+.check > p { margin: 0; }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
 .big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); }
 .budget { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
