@@ -16,6 +16,7 @@ import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
+import { t } from '../i18n'
 import { alertsOn, installed, isViewer, pending, refresh, state, statusRank } from '../store'
 
 const route = useRoute()
@@ -115,7 +116,7 @@ async function saveArrange() {
     arranging.value = null
     sortBy.value = 'custom'
   } catch (e) {
-    arrangeError.value = errorText(e, '保存失败')
+    arrangeError.value = errorText(e, t('保存失败'))
   } finally {
     saving.value = false
   }
@@ -157,10 +158,10 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>节点</h1>
-      <span v-if="state.updatedAt" class="muted small updated">更新于 {{ state.updatedAt.toLocaleTimeString() }}</span>
+      <h1>{{ t('节点') }}</h1>
+      <span v-if="state.updatedAt" class="muted small updated">{{ t('更新于 {time}', { time: state.updatedAt.toLocaleTimeString() }) }}</span>
       <!-- 批量新建的入口在新建节点页（修订第 178 条） -->
-      <RouterLink v-if="!isViewer" to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
+      <RouterLink v-if="!isViewer" to="/servers/new" class="btn"><Icon name="plus" />{{ t('新建节点') }}</RouterLink>
     </div>
 
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
@@ -172,34 +173,34 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <div v-if="state.servers.length" class="filters">
       <!-- 统计即筛选（修订第 187 条：由一排大方块改为搜索框前的小标签）：数字为该状态的节点数，点击只看这些节点；
            离线、需要关注等为 0 时不显示 -->
-      <div v-if="installed.length" class="chips" role="tablist" aria-label="按状态筛选">
+      <div v-if="installed.length" class="chips" role="tablist" :aria-label="t('按状态筛选')">
         <button v-for="x in filters.filter((f) => f.v === 'all' || f.v === 'online' || counts[f.v] || statusFilter === f.v)" :key="x.v"
           type="button" role="tab" class="chip" :aria-selected="statusFilter === x.v" :class="{ active: statusFilter === x.v }" @click="setFilter(x.v)">
-          {{ x.t }}<b class="num" :class="counts[x.v] && x.level && x.v !== 'all' ? x.level : ''">{{ counts[x.v] }}</b>
+          {{ t(x.t) }}<b class="num" :class="counts[x.v] && x.level && x.v !== 'all' ? x.level : ''">{{ counts[x.v] }}</b>
         </button>
-        <a v-if="pending.length" href="#pending" class="chip">待安装<b class="num muted">{{ pending.length }}</b></a>
+        <a v-if="pending.length" href="#pending" class="chip">{{ t('待安装') }}<b class="num muted">{{ pending.length }}</b></a>
       </div>
       <label class="search">
         <Icon name="search" />
-        <input v-model="query" type="search" placeholder="搜索名称、IP、分组、供应商" />
+        <input v-model="query" type="search" :placeholder="t('搜索名称、IP、分组、供应商')" />
       </label>
-      <select v-if="groups.length" v-model="group" aria-label="分组">
-        <option value="">全部分组</option>
+      <select v-if="groups.length" v-model="group" :aria-label="t('分组')">
+        <option value="">{{ t('全部分组') }}</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
       </select>
-      <select v-model="sortBy" aria-label="排序">
-        <option v-for="o in sorts" :key="o.v" :value="o.v">排序：{{ o.t }}</option>
+      <select v-model="sortBy" :aria-label="t('排序')">
+        <option v-for="o in sorts" :key="o.v" :value="o.v">{{ t('排序：{name}', { name: t(o.t) }) }}</option>
       </select>
       <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
-        <Icon name="grip" />调整顺序
+        <Icon name="grip" />{{ t('调整顺序') }}
       </button>
     </div>
 
     <!-- 排列模式：按住把手拖动或用上下按钮；保存到面板，所有浏览器共用 -->
-    <section v-if="arranging" class="panel arrange" aria-label="调整顺序">
+    <section v-if="arranging" class="panel arrange" :aria-label="t('调整顺序')">
       <div class="arrange-head">
-        <strong>调整顺序</strong>
-        <span class="muted small">按住左侧把手拖动，或用右侧按钮排列；保存后所有浏览器与 App（本机没有自己的顺序时）按此顺序显示。</span>
+        <strong>{{ t('调整顺序') }}</strong>
+        <span class="muted small">{{ t('按住左侧把手拖动，或用右侧按钮排列；保存后所有浏览器与 App（本机没有自己的顺序时）按此顺序显示。') }}</span>
       </div>
       <ol ref="listEl" class="arrange-list">
         <li v-for="(s, i) in arranging" :key="s.id" :class="{ dragging: dragFrom === i }">
@@ -209,45 +210,45 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
           <span class="nm"><Flag :code="s.country" /> {{ s.name }}</span>
           <span v-if="s.group" class="muted small grp">{{ s.group }}</span>
           <span class="mv">
-            <button type="button" class="btn text icon" :disabled="i === 0" :aria-label="`${s.name} 上移`" @click="move(i, i - 1)"><Icon name="arrow-up" /></button>
-            <button type="button" class="btn text icon" :disabled="i === arranging.length - 1" :aria-label="`${s.name} 下移`" @click="move(i, i + 1)"><Icon name="arrow-down" /></button>
+            <button type="button" class="btn text icon" :disabled="i === 0" :aria-label="t('{name} 上移', { name: s.name })" @click="move(i, i - 1)"><Icon name="arrow-up" /></button>
+            <button type="button" class="btn text icon" :disabled="i === arranging.length - 1" :aria-label="t('{name} 下移', { name: s.name })" @click="move(i, i + 1)"><Icon name="arrow-down" /></button>
           </span>
         </li>
       </ol>
       <p v-if="arrangeError" class="small err">{{ arrangeError }}</p>
       <div class="arrange-actions">
-        <button type="button" class="btn" :disabled="saving" @click="saveArrange">{{ saving ? '保存中…' : '保存顺序' }}</button>
-        <button type="button" class="btn secondary" :disabled="saving" @click="arranging = null">取消</button>
-        <button type="button" class="btn text" :disabled="saving" @click="arranging!.sort((a, b) => a.name.localeCompare(b.name))">按名称排列</button>
+        <button type="button" class="btn" :disabled="saving" @click="saveArrange">{{ saving ? t('保存中…') : t('保存顺序') }}</button>
+        <button type="button" class="btn secondary" :disabled="saving" @click="arranging = null">{{ t('取消') }}</button>
+        <button type="button" class="btn text" :disabled="saving" @click="arranging!.sort((a, b) => a.name.localeCompare(b.name))">{{ t('按名称排列') }}</button>
       </div>
     </section>
 
-    <p v-if="!state.loaded" class="muted">加载中…</p>
-    <EmptyState v-else-if="!state.servers.length" text="还没有节点。新建一个节点，按页面上的命令在主机上安装 Agent。">
-      <RouterLink to="/servers/new" class="btn"><Icon name="plus" />新建节点</RouterLink>
+    <p v-if="!state.loaded" class="muted">{{ t('加载中…') }}</p>
+    <EmptyState v-else-if="!state.servers.length" :text="t('还没有节点。新建一个节点，按页面上的命令在主机上安装 Agent。')">
+      <RouterLink to="/servers/new" class="btn"><Icon name="plus" />{{ t('新建节点') }}</RouterLink>
     </EmptyState>
     <template v-else>
       <div v-if="sorted.length" class="grid server-grid">
         <ServerCard v-for="s in sorted" :key="s.id" :server="s" />
       </div>
       <p v-else-if="installed.length" class="muted empty-filter">
-        {{ statusFilter === 'all' ? '没有匹配的节点。' : `没有“${filters.find((x) => x.v === statusFilter)!.t}”的节点。` }}
-        <button v-if="statusFilter !== 'all'" type="button" class="text" @click="setFilter('all')">查看全部</button>
+        {{ statusFilter === 'all' ? t('没有匹配的节点。') : t('没有“{name}”的节点。', { name: t(filters.find((x) => x.v === statusFilter)!.t) }) }}
+        <button v-if="statusFilter !== 'all'" type="button" class="text" @click="setFilter('all')">{{ t('查看全部') }}</button>
       </p>
 
       <!-- 待安装：不参与排序与异常统计，提供安装命令入口（设计 27.7） -->
       <section v-if="pendingFiltered.length" id="pending" class="section">
-        <h3 class="muted">待安装</h3>
+        <h3 class="muted">{{ t('待安装') }}</h3>
         <div class="grid">
           <div v-for="s in pendingFiltered" :key="s.id" class="pending-card">
             <div class="row">
               <strong class="name"><Flag :code="s.country" /> {{ s.name }}</strong>
               <StatusDot status="pending" />
             </div>
-            <div class="muted small">{{ [s.region, s.provider, s.group].filter(Boolean).join(' · ') || '尚未在主机上安装 Agent' }}</div>
+            <div class="muted small">{{ [s.region, s.provider, s.group].filter(Boolean).join(' · ') || t('尚未在主机上安装 Agent') }}</div>
             <div v-if="!isViewer" class="row actions">
-              <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />安装命令</RouterLink>
-              <RouterLink :to="`/servers/${s.id}/edit`" class="btn text"><Icon name="edit" />编辑</RouterLink>
+              <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />{{ t('安装命令') }}</RouterLink>
+              <RouterLink :to="`/servers/${s.id}/edit`" class="btn text"><Icon name="edit" />{{ t('编辑') }}</RouterLink>
             </div>
           </div>
         </div>

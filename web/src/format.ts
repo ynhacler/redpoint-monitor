@@ -1,4 +1,5 @@
 // 数字、单位与时间的展示格式（设计 41.4.1）。所有页面统一使用这里的函数，保证 Web 与 App 口径一致。
+import { t } from './i18n'
 
 /** 未知数据显示 “—”，不显示 0（设计 41.4.1） */
 export const DASH = '—'
@@ -114,10 +115,10 @@ export function fmtDate(unix: number | null | undefined): string {
 /** 时长：如“4 分钟”“2 小时”“3 天” */
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return DASH
-  if (seconds < 60) return `${Math.floor(seconds)} 秒`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`
-  return `${Math.floor(seconds / 86400)} 天`
+  if (seconds < 60) return t('{n} 秒', { n: Math.floor(seconds) })
+  if (seconds < 3600) return t('{n} 分钟', { n: Math.floor(seconds / 60) })
+  if (seconds < 86400) return t('{n} 小时', { n: Math.floor(seconds / 3600) })
+  return t('{n} 天', { n: Math.floor(seconds / 86400) })
 }
 
 /**
@@ -129,10 +130,10 @@ export function fmtUptimeShort(seconds: number | null | undefined): string {
   const days = seconds / 86400
   if (days < 1) {
     const h = Math.floor(seconds / 3600)
-    return h < 1 ? '<1小时' : `${h}小时`
+    return h < 1 ? t('<1小时') : t('{n}小时', { n: h })
   }
-  if (days <= 999) return `${Math.floor(days)}天`
-  return `${(days / 365).toFixed(1)}年`
+  if (days <= 999) return t('{n}天', { n: Math.floor(days) })
+  return t('{n}年', { n: (days / 365).toFixed(1) })
 }
 
 /** 开机时间拆成数值与单位（规则同 fmtUptimeShort），用于“数值大、单位小”的展示 */
@@ -141,10 +142,10 @@ export function uptimeParts(seconds: number | null | undefined): { v: string; u:
   const days = seconds / 86400
   if (days < 1) {
     const h = Math.floor(seconds / 3600)
-    return h < 1 ? { v: '<1', u: '小时' } : { v: String(h), u: '小时' }
+    return h < 1 ? { v: '<1', u: t('小时') } : { v: String(h), u: t('小时') }
   }
-  if (days <= 999) return { v: String(Math.floor(days)), u: '天' }
-  return { v: (days / 365).toFixed(1), u: '年' }
+  if (days <= 999) return { v: String(Math.floor(days)), u: t('天') }
+  return { v: (days / 365).toFixed(1), u: t('年') }
 }
 
 /** 运行时间：取两级单位，“37 天 7 小时”“5 小时 12 分”“12 分”，用于详情页（列表用 fmtDuration） */
@@ -153,9 +154,9 @@ export function fmtUptime(seconds: number | null | undefined): string {
   const d = Math.floor(seconds / 86400)
   const h = Math.floor((seconds % 86400) / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return h ? `${d} 天 ${h} 小时` : `${d} 天`
-  if (h > 0) return m ? `${h} 小时 ${m} 分` : `${h} 小时`
-  return m > 0 ? `${m} 分` : `${Math.floor(seconds)} 秒`
+  if (d > 0) return h ? t('{d} 天 {h} 小时', { d, h }) : t('{n} 天', { n: d })
+  if (h > 0) return m ? t('{h} 小时 {m} 分', { h, m }) : t('{n} 小时', { n: h })
+  return m > 0 ? t('{n} 分', { n: m }) : t('{n} 秒', { n: Math.floor(seconds) })
 }
 
 /** 带宽：Mbps 数值，≥1000 时换算为 Gbps（“1 Gbps”“200 Mbps”）；0 表示未填 */
@@ -204,14 +205,14 @@ export function uaSummary(ua: string): string {
  */
 export function fmtExpiry(expireDate: string, billingPeriod: string, now = new Date()): { text: string; title: string; level: string } | null {
   if (!expireDate) {
-    return billingPeriod === 'one_time' ? { text: '永久', title: '一次性付款，没有到期日', level: '' } : null
+    return billingPeriod === 'one_time' ? { text: t('永久'), title: t('一次性付款，没有到期日'), level: '' } : null
   }
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const days = Math.round((new Date(expireDate + 'T00:00:00').getTime() - today) / 86400000)
   if (Number.isNaN(days)) return null
-  const title = `到期日 ${expireDate}`
-  if (days < 0) return { text: '已过期', title: `${title}，已过期 ${-days} 天`, level: 'bad' }
+  const title = t('到期日 {date}', { date: expireDate })
+  if (days < 0) return { text: t('已过期'), title: `${title}，${t('已过期 {n} 天', { n: -days })}`, level: 'bad' }
   const level = days <= 7 ? 'bad' : days <= 30 ? 'warn' : ''
-  if (days === 0) return { text: '今天到期', title, level }
-  return { text: days < 100 ? `剩${days}天` : expireDate, title, level }
+  if (days === 0) return { text: t('今天到期'), title, level }
+  return { text: days < 100 ? t('剩{n}天', { n: days }) : expireDate, title, level }
 }

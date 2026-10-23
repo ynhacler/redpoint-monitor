@@ -1,5 +1,6 @@
 // 从节点数据派生展示用的指标与健康判断，总览、列表、详情共用，保证同一节点在各处的结论一致。
 import type { AlertBrief, DiskInfo, DiskIO, ServerView } from './api'
+import { t } from './i18n'
 
 /** 环形图配色用的阈值，与告警默认值一致（设计 16.1）；“需要关注”以服务端告警为准（见 issues） */
 export const thresholds = { cpu: 90, mem: 90, disk: 85, diskBad: 95, traffic: 80, trafficBad: 95 }
@@ -88,16 +89,16 @@ function alertLabel(a: AlertBrief): string {
   const pct = `${Math.round(a.value)}%`
   switch (a.type) {
     case 'cpu': return `CPU ${pct}`
-    case 'memory': return `内存 ${pct}`
-    case 'disk': return `磁盘 ${pct}`
+    case 'memory': return `${t('内存')} ${pct}`
+    case 'disk': return `${t('磁盘')} ${pct}`
     case 'swap': return `Swap ${pct}`
-    case 'load': return `负载 ${a.value.toFixed(1)}×`
-    case 'traffic': return `流量 ${pct}`
-    case 'traffic_forecast': return '流量预计超额'
-    case 'agent_clock': return `时钟偏差 ${Math.round(a.value)} 秒`
-    case 'probe_latency': return `测速延迟 ${Math.round(a.value)} ms`
-    case 'probe_loss': return `测速丢包 ${pct}`
-    case 'reach': return a.value >= 3 ? '疑似被墙' : '国内部分不可达'
+    case 'load': return `${t('负载')} ${a.value.toFixed(1)}×`
+    case 'traffic': return `${t('流量')} ${pct}`
+    case 'traffic_forecast': return t('流量预计超额')
+    case 'agent_clock': return t('时钟偏差 {n} 秒', { n: Math.round(a.value) })
+    case 'probe_latency': return t('测速延迟 {n} ms', { n: Math.round(a.value) })
+    case 'probe_loss': return `${t('测速丢包')} ${pct}`
+    case 'reach': return a.value >= 3 ? t('疑似被墙') : t('国内部分不可达')
     default: return a.message
   }
 }
@@ -110,8 +111,8 @@ function alertLabel(a: AlertBrief): string {
 export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[] {
   const out: { level: 'bad' | 'warn'; text: string }[] = []
   if (s.maintenance) return out // 维护中：不产生告警，也不算需要关注（设计 1.5.15）
-  if (s.status === 'offline') out.push({ level: 'bad', text: s.last_seen_at ? '离线' : '尚未上报' })
-  if (s.status === 'unknown') out.push({ level: 'warn', text: '上报延迟' })
+  if (s.status === 'offline') out.push({ level: 'bad', text: s.last_seen_at ? t('离线') : t('尚未上报') })
+  if (s.status === 'unknown') out.push({ level: 'warn', text: t('上报延迟') })
   for (const a of s.alerts ?? []) {
     if (a.type === 'offline' || a.silenced) continue // 离线已由在线状态表示；已静音的不计入
     out.push({ level: a.severity === 'critical' ? 'bad' : 'warn', text: alertLabel(a) })

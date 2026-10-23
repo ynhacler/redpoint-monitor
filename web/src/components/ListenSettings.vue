@@ -4,6 +4,7 @@
 // 反向代理模式下两个地址都只能是本机地址，对外的 HTTPS 由反向代理（如 Caddy）负责，所以要同时修改反向代理的配置。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, closeOldListen, errorText, getListenSetting, putListenSetting, type ListenSetting } from '../api'
+import { t } from '../i18n'
 
 const cur = ref<ListenSetting | null>(null)
 const form = reactive({ web: '', agent: '', agent_url: '' })
@@ -20,7 +21,7 @@ onMounted(async () => {
   try {
     fill(await getListenSetting())
   } catch (e) {
-    error.value = errorText(e, '加载失败')
+    error.value = errorText(e, t('加载失败'))
   }
 })
 
@@ -38,7 +39,7 @@ async function save() {
     saved.value = true
   } catch (e) {
     if (e instanceof ApiError && e.details.length) fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-    error.value = errorText(e, '保存失败')
+    error.value = errorText(e, t('保存失败'))
   } finally {
     saving.value = false
   }
@@ -48,7 +49,7 @@ async function closeOld() {
   try {
     fill(await closeOldListen())
   } catch (e) {
-    error.value = errorText(e, '操作失败')
+    error.value = errorText(e, t('操作失败'))
   } finally {
     saving.value = false
   }
@@ -59,58 +60,58 @@ async function closeOld() {
   <section class="panel listen">
     <template v-if="cur">
       <p class="small muted intro">
-        <template v-if="proxy">面板在反向代理后面（只监听本机地址），对外的 HTTPS 由反向代理负责：修改端口后，要同时修改反向代理转发的端口。</template>
-        <template v-else>面板使用内置 HTTPS，端口直接对外：修改后记得在防火墙中放行新端口。</template>
-        保存后立即生效，不需要重启面板。
+        <template v-if="proxy">{{ t('面板在反向代理后面（只监听本机地址），对外的 HTTPS 由反向代理负责：修改端口后，要同时修改反向代理转发的端口。') }}</template>
+        <template v-else>{{ t('面板使用内置 HTTPS，端口直接对外：修改后记得在防火墙中放行新端口。') }}</template>
+        {{ t('保存后立即生效，不需要重启面板。') }}
       </p>
 
       <!-- 修改 Web 端口后：旧端口仍在监听，确认新地址可以访问后关闭 -->
       <div v-if="cur.old_web" class="old banner small">
-        旧地址 <b class="mono">{{ cur.old_web }}</b> 仍在监听。<template v-if="proxy">把反向代理改为转发到 <b class="mono">{{ cur.web }}</b>，</template>
-        确认新地址可以打开面板后，再关闭旧端口（面板重启后也不再监听旧端口）。
-        <button type="button" class="secondary small" :disabled="saving" @click="closeOld">关闭旧端口 {{ port(cur.old_web) }}</button>
+        {{ t('旧地址 {addr} 仍在监听。', { addr: cur.old_web }) }}<template v-if="proxy">{{ t('把反向代理改为转发到 {addr}，', { addr: cur.web }) }}</template>
+        {{ t('确认新地址可以打开面板后，再关闭旧端口（面板重启后也不再监听旧端口）。') }}
+        <button type="button" class="secondary small" :disabled="saving" @click="closeOld">{{ t('关闭旧端口 {port}', { port: port(cur.old_web) }) }}</button>
       </div>
 
       <form class="grid" novalidate @submit.prevent="save">
-        <label>Web 端口
+        <label>{{ t('Web 端口') }}
           <input v-model="form.web" class="mono" autocomplete="off" spellcheck="false" :placeholder="cur.web_default" />
           <small v-if="fieldErrors.web" class="bad">{{ fieldErrors.web }}</small>
-          <small v-else class="muted">启动参数：<span class="mono">{{ cur.web_default }}</span>；可只写端口</small>
+          <small v-else class="muted">{{ t('启动参数：{addr}；可只写端口', { addr: cur.web_default }) }}</small>
         </label>
-        <label>Agent 专用端口
-          <input v-model="form.agent" class="mono" autocomplete="off" spellcheck="false" placeholder="留空：Agent 走 Web 端口" />
+        <label>{{ t('Agent 专用端口') }}
+          <input v-model="form.agent" class="mono" autocomplete="off" spellcheck="false" :placeholder="t('留空：Agent 走 Web 端口')" />
           <small v-if="fieldErrors.agent" class="bad">{{ fieldErrors.agent }}</small>
-          <small v-else class="muted">只接收 Agent 上报；Web 端口仍接收已安装的 Agent</small>
+          <small v-else class="muted">{{ t('只接收 Agent 上报；Web 端口仍接收已安装的 Agent') }}</small>
         </label>
-        <label v-if="form.agent.trim()" class="wide">Agent 连接地址
+        <label v-if="form.agent.trim()" class="wide">{{ t('Agent 连接地址') }}
           <input v-model="form.agent_url" class="mono" autocomplete="off" spellcheck="false"
-            :placeholder="proxy ? 'https://agent.example.com' : '留空：https://面板域名:Agent 端口'" />
+            :placeholder="proxy ? 'https://agent.example.com' : t('留空：https://面板域名:Agent 端口')" />
           <small v-if="fieldErrors.agent_url" class="bad">{{ fieldErrors.agent_url }}</small>
-          <small v-else class="muted">写进新节点的安装命令。<template v-if="proxy">填反向代理转发到 Agent 端口的 https 地址。</template></small>
+          <small v-else class="muted">{{ t('写进新节点的安装命令。') }}<template v-if="proxy">{{ t('填反向代理转发到 Agent 端口的 https 地址。') }}</template></small>
         </label>
         <div class="wide actions">
-          <button type="submit" :disabled="saving || !dirty">{{ saving ? '保存中…' : '保存并生效' }}</button>
-          <span v-if="saved && !dirty" class="small ok">已生效</span>
+          <button type="submit" :disabled="saving || !dirty">{{ saving ? t('保存中…') : t('保存并生效') }}</button>
+          <span v-if="saved && !dirty" class="small ok">{{ t('已生效') }}</span>
           <span v-if="error" class="small bad">{{ error }}</span>
         </div>
       </form>
 
       <!-- 反向代理示例：Agent 端口单独用一个域名时 -->
       <details v-if="proxy && form.agent.trim()" class="small caddy">
-        <summary>Caddy 配置示例</summary>
+        <summary>{{ t('Caddy 配置示例') }}</summary>
         <pre class="mono">{{ (form.agent_url ? form.agent_url.replace(/^https:\/\//, '').replace(/\/$/, '') : 'agent.example.com') }} {
   reverse_proxy {{ form.agent.includes(':') ? form.agent : `127.0.0.1:${form.agent}` }}
 }</pre>
       </details>
 
       <p class="small muted note">
-        已安装的节点保存的是安装时的地址，会继续通过 Web 端口上报；要改用 Agent 端口，在节点上重新安装或运行
-        <span class="mono">sudo vpsmon-agent re-enroll --server 新地址 --enroll 注册码</span>。
-        改错连不上时，在面板主机上运行 <span class="mono">vpsmon-server admin reset-listen --data 数据目录</span> 并重启面板。
+        {{ t('已安装的节点保存的是安装时的地址，会继续通过 Web 端口上报；要改用 Agent 端口，在节点上重新安装或运行') }}
+        <span class="mono">sudo vpsmon-agent re-enroll --server {{ t('新地址') }} --enroll {{ t('注册码') }}</span>。
+        {{ t('改错连不上时，在面板主机上运行') }} <span class="mono">vpsmon-server admin reset-listen --data {{ t('数据目录') }}</span> {{ t('并重启面板。') }}
       </p>
     </template>
     <p v-else-if="error" class="small bad">{{ error }}</p>
-    <p v-else class="small muted">加载中…</p>
+    <p v-else class="small muted">{{ t('加载中…') }}</p>
   </section>
 </template>
 

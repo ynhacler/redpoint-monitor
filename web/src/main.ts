@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { installAutofillSync } from './autofill'
 import { router } from './router'
+import { loadSite } from './site'
 import './style.css'
 
 // 面板升级后，仍打开着的旧页面按需加载的分块已不存在（面板返回 404）：重新加载一次页面以取得新版本。
@@ -26,4 +27,5 @@ router.onError((err) => {
 })
 
 installAutofillSync() // 自动填充的值同步到页面状态（修订第 173 条）
-createApp(App).use(router).mount('#app')
+// 先读取网站配置（应用名称、语言），再挂载页面，避免先显示中文再切换（设计 52）
+loadSite().finally(() => createApp(App).use(router).mount('#app'))

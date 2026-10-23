@@ -54,7 +54,8 @@ type Server struct {
 	version string
 
 	publicURL   string
-	lis         *listens // Web 与 Agent 监听，可在运行中修改（设计 51）
+	lis         *listens  // Web 与 Agent 监听，可在运行中修改（设计 51）
+	site        siteCache // 网站配置：应用名称、语言、登录验证码（设计 52）
 	enrollLimit *enrollLimiter
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
@@ -252,6 +253,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /releases/{version}/{file}", accessPublic, s.handleMirror)
 
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
+	handle("GET /api/v1/site", accessPublic, s.handleGetSite) // 应用名称与语言：登录页也要用（设计 52）
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
 	handle("POST /api/v1/auth/login/totp", accessPublic, s.handleLoginTOTP)
@@ -336,6 +338,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/settings/listen", accessAdmin, s.handleGetListen)
 	handle("PUT /api/v1/settings/listen", accessAdmin, s.handlePutListen)
 	handle("POST /api/v1/settings/listen/close-old", accessAdmin, s.handleCloseOldListen)
+	handle("PUT /api/v1/settings/site", accessAdmin, s.handlePutSite)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)
 	handle("PUT /api/v1/settings/heartbeat", accessAdmin, s.handlePutHeartbeat)

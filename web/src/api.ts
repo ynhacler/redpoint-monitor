@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -703,6 +703,18 @@ export function getNodeProbe(id: number) {
 /** 保存节点自己的测速设置，随下一份上报下发 */
 export function putNodeProbe(id: number, body: G.NodeProbe) {
   return request('put', '/servers/{id}/probe', { params: { id }, body })
+}
+
+// ---- 网站配置（设计 52） ----
+
+/** 应用名称、语言与登录是否需要验证码（无需登录） */
+export function getSite() {
+  return request('get', '/site')
+}
+
+/** 修改网站配置 */
+export function putSite(body: G.SiteSetting) {
+  return request('put', '/settings/site', { body })
 }
 
 // ---- 监听端口（设计 51） ----

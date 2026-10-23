@@ -174,7 +174,7 @@ func mix(a, b color.RGBA, t float64) color.RGBA {
 // 与登录共用 IP 限流，防止被用来消耗面板 CPU。
 // 面板以 --no-login-captcha 启动时返回 404，页面据此不显示滑块。
 func (s *Server) handleCaptcha(w http.ResponseWriter, r *http.Request) {
-	if s.captcha == nil {
+	if !s.captchaOn() {
 		s.writeError(w, r, errorf(CodeNotFound, "未启用登录验证码"))
 		return
 	}

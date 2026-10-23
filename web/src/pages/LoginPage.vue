@@ -7,6 +7,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { errorText, UnauthorizedError, type CaptchaAnswer } from '../api'
 import Icon from '../components/Icon.vue'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
+import { t } from '../i18n'
+import { site } from '../site'
 import { login, loginTotp, state } from '../store'
 
 const route = useRoute()
@@ -51,7 +53,7 @@ function backToPassword() {
 
 async function submitCode() {
   if (!code.value.trim()) {
-    error.value = '请输入验证码'
+    error.value = t('请输入验证码')
     return
   }
   busy.value = true
@@ -60,7 +62,7 @@ async function submitCode() {
     await loginTotp(challenge.value, code.value.trim())
     done()
   } catch (e) {
-    error.value = failText(e, '验证失败')
+    error.value = failText(e, t('验证失败'))
     code.value = ''
     // challenge 过期或尝试次数用完：回到第一步重新输入密码
     if (e instanceof UnauthorizedError && e.code === 'token_expired') backToPassword()
@@ -72,11 +74,11 @@ async function submitCode() {
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
-    error.value = '请输入用户名和密码'
+    error.value = t('请输入用户名和密码')
     return
   }
   if (captchaOn.value && !answer.value) {
-    error.value = '请先拖动滑块完成验证'
+    error.value = t('请先拖动滑块完成验证')
     return
   }
   busy.value = true
@@ -92,7 +94,7 @@ async function submit() {
     }
     done()
   } catch (e) {
-    error.value = failText(e, '登录失败')
+    error.value = failText(e, t('登录失败'))
     password.value = ''
     answer.value = undefined
     captchaRef.value?.reload()
@@ -108,46 +110,46 @@ async function submit() {
     <form v-if="challenge" class="login" novalidate @submit.prevent="submitCode">
       <header class="head">
         <img class="logo" src="/favicon.svg" alt="" width="44" height="44" />
-        <h1>两步验证</h1>
-        <p class="small muted">打开认证器 App（如 Google Authenticator、1Password），输入 VPS Monitor 当前显示的 6 位数字</p>
+        <h1>{{ t('两步验证') }}</h1>
+        <p class="small muted">{{ t('打开认证器 App（如 Google Authenticator、1Password），输入 {name} 当前显示的 6 位数字', { name: site.app_name }) }}</p>
       </header>
       <label class="field">
-        <span class="label">验证码</span>
+        <span class="label">{{ t('验证码') }}</span>
         <input ref="codeInput" v-model="code" class="num code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off"
           spellcheck="false" maxlength="11" placeholder="123456" />
       </label>
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
-      <button type="submit" class="submit" :disabled="busy">{{ busy ? '验证中…' : '验证并登录' }}</button>
-      <p class="small muted hint">手机不在身边：输入开启时保存的恢复码（如 k7m2-x9qp），每个只能用一次。</p>
-      <button type="button" class="text back" @click="backToPassword">← 返回重新输入密码</button>
+      <button type="submit" class="submit" :disabled="busy">{{ busy ? t('验证中…') : t('验证并登录') }}</button>
+      <p class="small muted hint">{{ t('手机不在身边：输入开启时保存的恢复码（如 k7m2-x9qp），每个只能用一次。') }}</p>
+      <button type="button" class="text back" @click="backToPassword">← {{ t('返回重新输入密码') }}</button>
     </form>
     <form v-else class="login" novalidate @submit.prevent="submit">
       <header class="head">
         <img class="logo" src="/favicon.svg" alt="" width="44" height="44" />
-        <h1>登录 VPS Monitor</h1>
-        <p class="small muted">输入账号与密码以继续</p>
+        <h1>{{ t('登录 {name}', { name: site.app_name }) }}</h1>
+        <p class="small muted">{{ t('输入账号与密码以继续') }}</p>
       </header>
       <label class="field">
-        <span class="label">用户名</span>
+        <span class="label">{{ t('用户名') }}</span>
         <input v-model="username" autocomplete="username" autocapitalize="off" spellcheck="false" />
       </label>
       <label class="field">
-        <span class="label">密码</span>
+        <span class="label">{{ t('密码') }}</span>
         <span class="pw">
           <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus />
-          <button type="button" class="text eye" :aria-label="showPassword ? '隐藏密码' : '显示密码'" :aria-pressed="showPassword"
+          <button type="button" class="text eye" :aria-label="showPassword ? t('隐藏密码') : t('显示密码')" :aria-pressed="showPassword"
             @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" :size="16" /></button>
         </span>
       </label>
       <label class="remember small">
         <input v-model="remember" type="checkbox" />
-        记住登录（7 天）
+        {{ t('记住登录（7 天）') }}
       </label>
       <SliderCaptcha v-if="captchaOn" ref="captchaRef" @done="(a) => (answer = a)" @disabled="captchaOn = false" />
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
-      <button type="submit" class="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
+      <button type="submit" class="submit" :disabled="busy">{{ busy ? t('登录中…') : t('登录') }}</button>
       <!-- 恢复命令不展示给未登录的访客（修订第 173 条）：见文档与 vpsmon-server --help -->
-      <p class="small muted hint">忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。</p>
+      <p class="small muted hint">{{ t('忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。') }}</p>
     </form>
   </main>
 </template>
