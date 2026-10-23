@@ -6,12 +6,14 @@
 //   - 401 token_revoked / unauthorized：设备已被吊销或授权失效，清除本地凭证并回到配对页（设计 12.7）
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
 import 'push_crypto.dart';
 import 'session.dart';
+import 'subscriptions.dart';
 import 'version.dart';
 
 /// 面板返回的错误（设计 43.4）；message 是中文，可直接展示。
@@ -198,6 +200,21 @@ class ApiClient {
 
   /// 云账户只读摘要（设计 44.8）：授权范围不是“全部节点”时 limited 为 true。旧版面板没有该接口时抛出 ApiException（404）。
   Future<CloudSummary> cloud() async => CloudSummary.fromJson(await getJson('/app/cloud') as Map<String, dynamic>);
+
+  /// 订阅只读列表（修订第 213 条）：返回（是否受限, 订阅）。授权范围不是“全部节点”时受限、列表为空；旧版面板抛出 ApiException（404）。
+  Future<(bool, List<Subscription>)> subscriptions() async {
+    final body = await getJson('/app/subscriptions') as Map<String, dynamic>;
+    return (
+      body['limited'] as bool? ?? false,
+      [for (final e in (body['items'] as List<dynamic>? ?? const [])) Subscription.fromJson(e as Map<String, dynamic>)],
+    );
+  }
+
+  /// 订阅上传的图标（PNG）；没有时返回 null。
+  Future<Uint8List?> subscriptionLogo(int id) async {
+    final res = await _send('GET', '/app/subscriptions/$id/logo');
+    return res.statusCode == 200 ? res.bodyBytes : null;
+  }
 
   /// 历史曲线：range 为 1h / 6h / 24h / 7d / 30d（设计 19.7）。返回原始 JSON 列表，便于离线缓存。
   Future<List<dynamic>> historyRaw(int id, String range) async {

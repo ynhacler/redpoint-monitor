@@ -16,7 +16,7 @@ VM      ?= vpsmon-dev
 VM_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 .PHONY: help setup deps dev dev-init dev-server dev-agent dev-web test lint check-comments check-design api-types web build build-linux build-relay ios-push-check \
-        vm-create vm-agent panel-install-check app-setup app-run deploy deploy-agent install-server install-agent remote-add-server clean
+        vm-create vm-agent panel-install-check app-setup app-run app-catalog deploy deploy-agent install-server install-agent remote-add-server clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
@@ -148,6 +148,9 @@ ios-push-check: ## macOS: iOS push decryption (CryptoKit HPKE) against the panel
 
 app-run: ## Run the app (pick a simulator/emulator when prompted)
 	cd app && flutter run
+
+app-catalog: ## Regenerate app/lib/catalog.gen.dart (subscription catalog, connectivity targets, logos) from web/src
+	node scripts/gen-app-catalog.mjs
 
 # ---------- remote VPS ----------
 

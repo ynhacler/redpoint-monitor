@@ -481,6 +481,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"POST /api/v1/app/token/refresh":                  accessPair,
 		"GET /api/v1/app/me":                              accessApp,
 		"GET /api/v1/app/cloud":                           accessApp,
+		"GET /api/v1/app/subscriptions":                   accessApp,
+		"GET /api/v1/app/subscriptions/{id}/logo":         accessApp,
 		"PUT /api/v1/app/push":                            accessApp,
 		"DELETE /api/v1/app/push":                         accessApp,
 		"POST /api/v1/app/unpair":                         accessApp,

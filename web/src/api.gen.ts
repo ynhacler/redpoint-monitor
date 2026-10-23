@@ -1525,6 +1525,12 @@ export interface AppScope {
   allow_low_risk_ops: boolean
 }
 
+export interface AppSubscriptions {
+  /** 授权范围不是“全部节点”：不返回订阅 */
+  limited: boolean
+  items: Subscription[]
+}
+
 export interface AppCloud {
   /** 设备的授权范围不是“全部节点”，不返回云账户 */
   limited: boolean
@@ -1942,6 +1948,21 @@ export interface Paths {
     /** 云账户与实例的只读摘要（设计 44.8） */
     get: {
       response: AppCloud
+    }
+  }
+  '/app/subscriptions': {
+    /** 订阅的只读列表（设计 47，修订第 213 条） */
+    get: {
+      response: AppSubscriptions
+    }
+  }
+  '/app/subscriptions/{id}/logo': {
+    /** 订阅上传的图标（PNG，修订第 213 条） */
+    get: {
+      params: {
+        id: number
+      }
+      response: unknown
     }
   }
   '/app/push': {

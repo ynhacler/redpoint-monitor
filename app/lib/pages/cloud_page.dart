@@ -61,7 +61,7 @@ class _CloudPageState extends State<CloudPage> {
     final muted = TextStyle(fontSize: 13, color: c.textMuted);
     final d = _data;
     return Scaffold(
-      appBar: AppBar(title: const Text('云账户')),
+      appBar: AppBar(title: const Text('云平台')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 24), children: [
@@ -76,14 +76,14 @@ class _CloudPageState extends State<CloudPage> {
           else if (d != null && d.accounts.isEmpty)
             Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('还没有云账户。在 Web 的“云账户”中添加只读凭证后，这里显示费用与实例。', style: muted, textAlign: TextAlign.center),
+              child: Text('还没有云账户。在 Web 的“云平台”中添加只读凭证后，这里显示费用与实例。', style: muted, textAlign: TextAlign.center),
             )
           else if (d != null)
             for (final a in d.accounts) _AccountCard(a, [for (final i in d.instances) if (i.accountId == a.id) i], widget.serverNames, widget.onOpenServer),
           if (d != null && !d.limited && d.accounts.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text('只读：添加、修改凭证与立即同步请在 Web 的“云账户”中操作。', style: muted.copyWith(fontSize: 12), textAlign: TextAlign.center),
+              child: Text('只读：添加、修改凭证与立即同步请在 Web 的“云平台”中操作。', style: muted.copyWith(fontSize: 12), textAlign: TextAlign.center),
             ),
         ]),
       ),

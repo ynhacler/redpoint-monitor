@@ -298,7 +298,9 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/app/pair", accessPair, s.handlePair)
 	handle("POST /api/v1/app/token/refresh", accessPair, s.handleRefresh)
 	handle("GET /api/v1/app/me", accessApp, s.handleAppMe)
-	handle("GET /api/v1/app/cloud", accessApp, s.handleAppCloud) // 云账户只读摘要（修订第 144 条）
+	handle("GET /api/v1/app/cloud", accessApp, s.handleAppCloud)                 // 云账户只读摘要（修订第 144 条）
+	handle("GET /api/v1/app/subscriptions", accessApp, s.handleAppSubscriptions) // 订阅只读列表（修订第 213 条）
+	handle("GET /api/v1/app/subscriptions/{id}/logo", accessApp, s.handleAppSubscriptionLogo)
 	handle("PUT /api/v1/app/push", accessApp, s.handleAppPushPut)
 	handle("DELETE /api/v1/app/push", accessApp, s.handleAppPushDelete)
 	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）
