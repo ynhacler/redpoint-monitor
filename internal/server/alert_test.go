@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,5 +206,26 @@ func TestClockSkewIngest(t *testing.T) {
 	do(h, "POST", "/api/v1/agent/report", tok, []byte(body))
 	if sk := s.snapshots()[1].ClockSkew; sk == nil {
 		t.Error("测不到时应沿用上次的偏差")
+	}
+}
+
+// 没有注册时间、从未上报的节点（add-server 创建）：离线时长从创建时间算起（修订第 212 条）。
+func TestOfflineForWithoutEnrollTime(t *testing.T) {
+	s, _, _ := testServer(t)
+	id, _, err := s.store.CreateServer("never", 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, _ := s.store.GetServer(id)
+	if row.EnrolledAt != 0 || row.LastSeenAt != 0 {
+		t.Fatalf("前提：注册时间与最后上报应为 0（%d、%d）", row.EnrolledAt, row.LastSeenAt)
+	}
+	now := time.Unix(row.CreatedAt, 0).Add(10 * time.Minute)
+	in := s.alertInputFor(*row, map[int64]snapshot{}, now)
+	if in.OfflineFor != 10*time.Minute {
+		t.Errorf("离线时长应从创建时间算起：%v", in.OfflineFor)
+	}
+	if m := alertMessage(AlertRule{Type: AlertOffline}, in.OfflineFor.Seconds(), ""); !strings.Contains(m, "10 分钟") {
+		t.Errorf("告警消息：%s", m)
 	}
 }
