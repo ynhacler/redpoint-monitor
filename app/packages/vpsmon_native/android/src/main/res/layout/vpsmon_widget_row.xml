@@ -1,21 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 一行一台服务器（修订第 215 条）：字号加大、行高 30dp，最多 4 行 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="22dp"
+    android:layout_height="30dp"
     android:orientation="horizontal"
     android:gravity="center_vertical">
-    <TextView android:id="@+id/vpsmon_row_dot" android:layout_width="14dp" android:layout_height="wrap_content"
-        android:text="●" android:textSize="@dimen/vpsmon_font_xs" />
+    <TextView android:id="@+id/vpsmon_row_dot" android:layout_width="16dp" android:layout_height="wrap_content"
+        android:text="●" android:textSize="@dimen/vpsmon_font_sm" />
     <TextView android:id="@+id/vpsmon_row_name" android:layout_width="0dp" android:layout_height="wrap_content"
         android:layout_weight="1" android:maxLines="1" android:ellipsize="end"
-        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_sm" />
-    <TextView android:id="@+id/vpsmon_row_cpu" android:layout_width="40dp" android:layout_height="wrap_content"
+        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_md" android:textStyle="bold" />
+    <TextView android:id="@+id/vpsmon_row_cpu" android:layout_width="46dp" android:layout_height="wrap_content"
         android:gravity="end" android:maxLines="1" android:fontFeatureSettings="tnum"
-        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_xs" />
-    <TextView android:id="@+id/vpsmon_row_mem" android:layout_width="40dp" android:layout_height="wrap_content"
+        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_md" />
+    <TextView android:id="@+id/vpsmon_row_mem" android:layout_width="46dp" android:layout_height="wrap_content"
         android:gravity="end" android:maxLines="1" android:fontFeatureSettings="tnum"
-        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_xs" />
-    <TextView android:id="@+id/vpsmon_row_rx" android:layout_width="76dp" android:layout_height="wrap_content"
+        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_md" />
+    <TextView android:id="@+id/vpsmon_row_rx" android:layout_width="82dp" android:layout_height="wrap_content"
         android:gravity="end" android:maxLines="1" android:fontFeatureSettings="tnum"
-        android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_xs" />
+        android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_sm" />
 </LinearLayout>
