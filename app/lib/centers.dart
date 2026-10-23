@@ -15,6 +15,9 @@ import 'session.dart';
 /// 中心的稳定标识：面板主机 + 设备编号（同一面板重新配对得到新设备，视为新的中心项）
 String centerKey(Session s) => '${s.server.host}_${s.server.port}_${s.deviceId}'.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
 
+/// 中心的显示名：面板主机名，非默认端口时带上端口（同一主机上的两套面板可以区分，修订第 211 条）
+String centerLabel(Uri u) => u.port == (u.scheme == 'https' ? 443 : 80) ? u.host : '${u.host}:${u.port}';
+
 /// 已配对的监控中心与当前选中的一个（设计 1.5.2）
 class Centers {
   Centers({List<Session>? sessions, this.active = 0}) : sessions = sessions ?? [];

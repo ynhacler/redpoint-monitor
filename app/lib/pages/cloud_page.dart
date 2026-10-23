@@ -2,6 +2,8 @@
 // 只读：添加、修改、立即同步都在 Web 中进行（约束 5）。状态说明与 Web 云账户页一致。
 import 'package:flutter/material.dart';
 
+import '../widgets/stale_banner.dart';
+import '../errors.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
@@ -49,7 +51,7 @@ class _CloudPageState extends State<CloudPage> {
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.status == 404 ? '面板版本较旧，升级面板后可用' : e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = describeError(e));
     }
   }
 
@@ -64,7 +66,7 @@ class _CloudPageState extends State<CloudPage> {
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 24), children: [
           if (_error != null)
-            Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text(_error!))),
+            StaleBanner(error: _error!, note: '下拉可重新加载'),
           if (d == null && _error == null) const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
           if (d != null && d.limited)
             Padding(

@@ -1,9 +1,10 @@
-// 添加监控平台（设计 12.2～12.4）：扫描 Web 生成的二维码，或手工填写面板地址与 AK。
+// 添加监控中心（设计 12.2～12.4）：扫描 Web 生成的二维码，或手工填写面板地址与 AK。
 // 扫码后先显示目标面板地址，用户确认后才发送配对请求（防止误扫恶意二维码，设计 12.4）。
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../errors.dart';
 import '../api.dart';
 import '../pair_link.dart';
 import '../session.dart';
@@ -53,7 +54,7 @@ class _PairPageState extends State<PairPage> {
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = '无法连接面板：$e');
+      setState(() => _error = describeError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -99,7 +100,7 @@ class _PairPageState extends State<PairPage> {
   Widget build(BuildContext context) {
     final muted = TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13);
     return Scaffold(
-      appBar: AppBar(title: const Text('添加监控平台')),
+      appBar: AppBar(title: const Text('添加监控中心')),
       body: AbsorbPointer(
         absorbing: _busy,
         child: ListView(padding: const EdgeInsets.all(16), children: [
@@ -123,7 +124,7 @@ class _PairPageState extends State<PairPage> {
           ])),
           TextField(
             controller: _server,
-            decoration: const InputDecoration(labelText: '监控服务器地址', hintText: 'https://monitor.example.com'),
+            decoration: const InputDecoration(labelText: '面板地址', hintText: 'https://monitor.example.com'),
             keyboardType: TextInputType.url,
             autocorrect: false,
           ),
@@ -137,7 +138,7 @@ class _PairPageState extends State<PairPage> {
           const SizedBox(height: 12),
           TextField(controller: _name, decoration: const InputDecoration(labelText: '设备名称', helperText: '显示在 Web“已连接设备”中')),
           const SizedBox(height: 20),
-          FilledButton(onPressed: _manual, child: Text(_busy ? '连接中…' : '连接监控平台')),
+          FilledButton(onPressed: _manual, child: Text(_busy ? '连接中…' : '连接')),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),

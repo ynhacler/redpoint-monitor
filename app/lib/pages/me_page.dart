@@ -1,6 +1,9 @@
 // 我的（设计 1.5.18）：监控中心（添加与切换，1.5.2）、授权范围、云账户（44.8）、推送状态、生物识别锁（1.5.11）、隐私模式（1.5.12）、解除配对。
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../centers.dart';
 import '../api.dart';
 import '../app_lock.dart';
 import '../push.dart';
@@ -29,7 +32,7 @@ class MePage extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('解除配对？'),
-        content: Text('本机将退出 ${api.session.server.host}，之后需要在 Web 管理端重新生成 AK 才能再次连接。'),
+        content: Text('本机将退出 ${centerLabel(api.session.server)}，之后需要在 Web 管理端重新生成 AK 才能再次连接。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('解除')),
@@ -56,7 +59,7 @@ class MePage extends StatelessWidget {
       SwitchListTile(
         secondary: const Icon(Icons.fingerprint),
         title: const Text('打开 App 时验证'),
-        subtitle: const Text('Face ID / 指纹 / 设备密码；离开超过 1 分钟后回来也要验证'),
+        subtitle: Text('${Platform.isIOS ? 'Face ID / Touch ID' : '指纹 / 人脸'} / 锁屏密码；离开超过 1 分钟后回来也要验证'),
         value: lock.settings.onOpen,
         onChanged: (v) => change(onOpen: v),
       ),
@@ -75,8 +78,8 @@ class MePage extends StatelessWidget {
     return ListTile(
       leading: Icon(current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
           color: current ? Theme.of(context).colorScheme.primary : null),
-      title: Text(u.host),
-      subtitle: Text(current ? '当前 · ${u.toString()}' : u.toString()),
+      title: Text(centerLabel(u)),
+      subtitle: Text(current ? '当前 · $u' : '$u'),
       onTap: current || onSwitch == null ? null : () => onSwitch!(i),
     );
   }

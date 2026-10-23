@@ -3,6 +3,8 @@
 // “系统”标签：Agent 升级结果、到期提醒、面板自身告警（GET /system-events，修订第 163 条），只看当前中心。
 import 'package:flutter/material.dart';
 
+import '../widgets/stale_banner.dart';
+import '../errors.dart';
 import '../api.dart';
 import '../centers.dart';
 import '../format.dart';
@@ -87,7 +89,7 @@ class _EventsPageState extends State<EventsPage> {
           } on DeviceRevoked {
             widget.onCentersChanged?.call();
           } catch (e) {
-            errors.add('${c.server.host}：$e');
+            errors.add('${centerLabel(c.server)}：${describeError(e)}');
           }
         }(),
     ]);
@@ -125,11 +127,11 @@ class _EventsPageState extends State<EventsPage> {
           _sysUnsupported = true;
           _sysDone = true;
         } else {
-          _error = '$e';
+          _error = describeError(e);
         }
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = describeError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -151,7 +153,7 @@ class _EventsPageState extends State<EventsPage> {
     } on DeviceRevoked {
       widget.onRevoked();
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = describeError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -187,10 +189,7 @@ class _EventsPageState extends State<EventsPage> {
           },
           child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
             if (_error != null)
-              Card(
-                color: Theme.of(context).colorScheme.errorContainer,
-                child: Padding(padding: const EdgeInsets.all(12), child: Text('加载失败：$_error')),
-              ),
+              StaleBanner(error: _error!, note: '下拉可重新加载'),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: SegmentedButton<bool>(
@@ -241,9 +240,9 @@ class _EventsPageState extends State<EventsPage> {
                 ),
               for (final (i, e) in _items.indexed)
                 if (_allCenters && i < _centerOf.length && !identical(widget.centers[_centerOf[i]].api, widget.api))
-                  _EventTile(e, center: widget.centers[_centerOf[i]].server.host, onTap: () => widget.onSwitch?.call(_centerOf[i]))
+                  _EventTile(e, center: centerLabel(widget.centers[_centerOf[i]].server), onTap: () => widget.onSwitch?.call(_centerOf[i]))
                 else
-                  _EventTile(e, center: _allCenters ? widget.api.session.server.host : null, onTap: () => widget.onOpenServer(e.serverId)),
+                  _EventTile(e, center: _allCenters ? centerLabel(widget.api.session.server) : null, onTap: () => widget.onOpenServer(e.serverId)),
             ],
             if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
           ]),

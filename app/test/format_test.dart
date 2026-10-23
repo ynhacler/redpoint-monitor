@@ -35,6 +35,12 @@ void main() {
     expect(fmtTime(0), dash);
   });
 
+  test('fmtStamp：今天到秒，更早带日期', () {
+    final now = DateTime(2026, 10, 23, 20, 0);
+    expect(fmtStamp(DateTime(2026, 10, 23, 8, 5, 9), now: now), '08:05:09');
+    expect(fmtStamp(DateTime(2026, 10, 6, 22, 42, 54), now: now), '10-06 22:42');
+  });
+
   test('fmtDuration 与国旗', () {
     expect(fmtDuration(30), '30 秒');
     expect(fmtDuration(240), '4 分钟');
