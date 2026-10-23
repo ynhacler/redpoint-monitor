@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -84,5 +85,18 @@ func TestRegionErrorTemporary(t *testing.T) {
 	p.Skipped = append(p.Skipped, RegionError{Err: &ProviderError{Status: 500, Code: "InternalError"}})
 	if !p.Temporary() {
 		t.Error("有暂时失败的区域时应提前重新检查")
+	}
+}
+
+// 整个服务没有权限时，提示中写明要授予的策略（修订第 202 条）
+func TestDeniedHint(t *testing.T) {
+	denied := &ProviderError{Code: "Forbidden.RAM", Message: "no permission"}
+	r := RegionError{Kind: "ecs", Label: "ECS", Err: denied, Hint: "授予 AliyunECSReadOnlyAccess 后才能列出 ECS 实例，包括按流量计费、走 CDT 的实例"}
+	if got := r.describe(); !strings.Contains(got, "ECS：子用户没有只读权限，已跳过。授予 AliyunECSReadOnlyAccess") || !strings.Contains(got, "CDT") {
+		t.Fatalf("提示：%s", got)
+	}
+	r.Hint = ""
+	if got := r.describe(); !strings.Contains(got, "不用这项服务时可以忽略") {
+		t.Fatalf("没有补充说明时：%s", got)
 	}
 }

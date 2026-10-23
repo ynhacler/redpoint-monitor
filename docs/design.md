@@ -377,8 +377,9 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
-| 200 | 新增第 51 章“监听端口”：Web 端口与 Agent 专用端口可在网页中修改、立即生效；Web 旧端口保留到确认；Agent 端口只放行 Agent 接口，安装命令改用 Agent 地址；admin reset-listen 恢复 | 51 |
+| 202 | 阿里云权限说明：添加账户时逐条列出四个只读策略的用途与没有它的影响，写明查看 CDT 实例至少需要 ECS 与 CDT 两条；同步缺少 ECS / 轻量只读权限时，提示中写明要授予的策略 | 44 |
 | 201 | 新增第 52 章“网站配置与界面语言”：系统 → 网站配置（应用名称、语言、登录验证码开关、监听端口）；界面翻译框架与第一批英文翻译 | 52 |
+| 200 | 新增第 51 章“监听端口”：Web 端口与 Agent 专用端口可在网页中修改、立即生效；Web 旧端口保留到确认；Agent 端口只放行 Agent 接口，安装命令改用 Agent 地址；admin reset-listen 恢复 | 51 |
 | 199 | 手机 Web 以查看为主：底部标签栏代替顶栏分组；节点卡片改为细条紧凑版（高度约减半），仪表板与节点详情去掉设置类按钮，概况合成一行摘要、详细信息默认收起 | 41.6 |
 | 198 | 订阅增加类别“VPS”：常用 VPS 厂商目录（带标志），每台记录多个 IP、配置（CPU / 内存 / 硬盘 / 带宽 / 流量）、机房与购买日期；列表每台一行，与已接入节点地址相同时链接到节点；迁移 56 | 47.1 |
 | 197 | 连通性测试：所有网站都用真实标志——Simple Icons 没有收录的 10 个改用网站自己的图标或公有领域 SVG（内置）；单色标志放在品牌色浅底方块中，与图片标志同样大小 | 48.1 |
@@ -10749,7 +10750,7 @@ DMIT 等没有公开 API 的服务商不接入，继续用 Agent 统计与手动
 | 服务商 | 凭证与签名 | 费用 | 流量 | 实例与到期 | 最小只读权限 |
 |---|---|---|---|---|---|
 | AWS | Access Key（IAM 用户），SigV4 | Cost Explorer：GetCostAndUsage、GetCostForecast（us-east-1，**每次调用收费 0.01 美元**） | Lightsail：GetInstanceMetricData（NetworkOut / NetworkIn）与套餐月流量 | EC2 DescribeInstances、Lightsail GetInstances（按需付费，无到期） | ce:GetCostAndUsage、ce:GetCostForecast、ec2:DescribeInstances、ec2:DescribeRegions、lightsail:Get*；推荐加 Condition aws:SourceIp 只允许面板服务器的公网 IP |
-| 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量；CDT（cdt.aliyuncs.com 2021-08-13）ListCdtInternetTraffic：本月按地域的公网流量，汇总为中国内地 / 非中国内地两个免费额度池（修订第 181 条） | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；CDT 流量另需 AliyunCDTReadOnlyAccess（可选，没有时只是不显示） |
+| 阿里云国内站 | AccessKey（RAM 用户），ACS3-HMAC-SHA256 | 费用中心 BSS（business.aliyuncs.com）：QueryAccountBalance、QueryBillOverview；人民币 | 轻量应用服务器：流量包用量；CDT（cdt.aliyuncs.com 2021-08-13）ListCdtInternetTraffic：本月按地域的公网流量，汇总为中国内地 / 非中国内地两个免费额度池（修订第 181 条） | BSS QueryAvailableInstances（到期时间、续费状态）、ECS DescribeInstances | AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；CDT 流量另需 AliyunCDTReadOnlyAccess（可选，没有时只是不显示）。走 CDT 的实例本身是 ECS 实例，没有 ECS 只读时列不出来；添加账户时逐条说明每个策略的用途与没有它的影响，缺少 ECS 只读时同步提示写明要授予的策略（修订第 202 条） |
 | 阿里云国际站 | 同上（国际站 RAM 用户），签名相同 | 国际站 BSS 接入点（与国内不同）；多为美元 | 同上 | 同上；区域列表等不分区域的调用走新加坡接入点（ecs / swas.ap-southeast-1），国内站走杭州 | 同上（国际站控制台中的同名策略） |
 | 腾讯云国内站 / 国际站 | SecretId / SecretKey（CAM 子用户），TC3-HMAC-SHA256（API 3.0） | 计费：DescribeAccountBalance、DescribeBillSummaryByProduct；国内站 <产品>.tencentcloudapi.com、人民币，国际站 <产品>.intl.tencentcloudapi.com、美元（两种账户类型，修订第 76 条） | 轻量应用服务器：DescribeInstancesTrafficPackages | CVM DescribeInstances（ExpiredTime、续费标记）、轻量 DescribeInstances | QcloudFinanceReadOnlyAccess（或账单只读）、QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess |
 | Oracle Cloud | API 签名密钥（RSA，租户 / 用户 OCID、指纹），HTTP 签名 RSA-SHA256 | Usage API：RequestSummarizedUsages（按月费用） | Usage API 中的出站数据量（每月 10 TB 免费额度） | Compute ListInstances（按需，无到期） | Allow group … in tenancy：read usage-reports、inspect compartments、read instance-family、read virtual-network-family |
