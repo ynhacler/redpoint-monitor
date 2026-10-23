@@ -62,6 +62,9 @@ var (
 // Temporary 表示该区域的失败可能很快自行恢复：正在初始化、服务端错误、限流、网络错误（修订第 151 条）。
 // 面板据此提前重新检查实例，而不是等到下一个 6 小时；未开通、无权限等不会自行恢复的不算。
 func (r RegionError) Temporary() bool {
+	if errors.Is(r.Err, errUnknownRegion) {
+		return false // 填错的区域要用户修改，不会自行恢复
+	}
 	var pe *ProviderError
 	if errors.As(r.Err, &pe) && settingUpCodes[pe.Code] {
 		return true
@@ -79,11 +82,22 @@ func (e *PartialError) Temporary() bool {
 	return false
 }
 
+// errUnknownRegion 表示账户设置的区域不在服务商的区域列表中（修订第 209 条）。
+var errUnknownRegion = errors.New("不是有效的区域 ID")
+
+// unknownRegionError 说明账户设置中不存在的区域：常见于把实例名称填进了“区域”。example 为该服务商的区域 ID 示例。
+func unknownRegionError(regions []string, example string) RegionError {
+	return RegionError{Kind: "config", Label: "区域设置", Region: strings.Join(regions, "、"), Err: errUnknownRegion,
+		Hint: "“区域”要填区域 ID（如 " + example + "），不是实例名称；留空表示查询全部区域"}
+}
+
 // describe 按原因说明一个被跳过的区域。
 func (r RegionError) describe() string {
 	var pe *ProviderError
 	errors.As(r.Err, &pe)
 	switch {
+	case errors.Is(r.Err, errUnknownRegion):
+		return fmt.Sprintf("账户设置的区域 %s 不存在，已忽略。%s", r.Region, r.Hint)
 	case pe != nil && settingUpCodes[pe.Code]:
 		return fmt.Sprintf("区域 %s 的 %s 正在为账户初始化，本轮跳过，下一轮再试", r.Region, r.Label)
 	case pe != nil && notOpenedCodes[pe.Code]:

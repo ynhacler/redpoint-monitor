@@ -37,6 +37,7 @@ type aliyunClient struct {
 	cred    AliyunCredentials
 	intl    bool
 	regions []string
+	known   map[string]bool // 本轮区域列表中出现过的区域 ID：找出账户设置中不存在的区域（修订第 209 条）
 	o       Options
 }
 
@@ -180,6 +181,9 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 		return nil, ecsErr
 	}
 	var denied []RegionError
+	if bad := c.unknownRegions(); len(bad) > 0 {
+		denied = append(denied, unknownRegionError(bad, "cn-hongkong"))
+	}
 	if ecsErr != nil {
 		denied = append(denied, RegionError{Kind: "ecs", Label: "ECS", Err: ecsErr,
 			Hint: "授予 AliyunECSReadOnlyAccess 后才能列出 ECS 实例，包括按流量计费、走 CDT 的实例"})
@@ -211,6 +215,10 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 }
 
 func (c *aliyunClient) wanted(region string) bool {
+	if c.known == nil {
+		c.known = map[string]bool{}
+	}
+	c.known[region] = true
 	if len(c.regions) == 0 {
 		return true
 	}
@@ -240,6 +248,20 @@ func (c *aliyunClient) ecsRegions(ctx context.Context) ([]string, error) {
 		}
 	}
 	return rs, nil
+}
+
+// unknownRegions 返回账户设置的区域中，本轮区域列表里没有的（如误填了实例名称）；没有取得区域列表时返回空。
+func (c *aliyunClient) unknownRegions() []string {
+	if len(c.known) == 0 {
+		return nil
+	}
+	var bad []string
+	for _, r := range c.regions {
+		if !c.known[r] {
+			bad = append(bad, r)
+		}
+	}
+	return bad
 }
 
 // parseCloudTime 解析云厂商的时间（阿里云、腾讯云）：ECS 为 “2017-12-10T04:04Z”，轻量应用服务器为 ISO 8601（可能带毫秒、时区不带冒号）。
