@@ -36,6 +36,13 @@ code {
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)); gap: var(--space-3); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
+/* 状态标签：圆角胶囊（账号等设置页，修订第 207 条） */
+.pill { display: inline-block; font-size: var(--font-xs); line-height: 18px; font-weight: var(--weight-regular); padding: 0 var(--space-2);
+  border-radius: var(--radius-full); background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
+.pill.on { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.pill.accent { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.pill.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.pill.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 .section { margin-top: var(--space-6); }
 .section > h3 { margin-bottom: var(--space-3); }
 .row { display: flex; gap: var(--space-2); align-items: center; }

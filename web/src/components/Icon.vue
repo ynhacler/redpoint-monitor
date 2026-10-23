@@ -4,7 +4,7 @@
 import {
   Activity, AlignLeft, Cloud, CreditCard, Globe, LayoutDashboard, Settings, ArrowDown, ArrowDownUp, ArrowLeft, ArrowUp, CalendarClock, ChartLine, Clock, Cpu, Eye, EyeOff, GripVertical, HardDrive,
   Layers, LogOut, MemoryStick, Monitor, Moon, Pencil, Plug, Plus, Power, Radio, Search, SquareActivity,
-  Sun, Terminal, Thermometer, User,
+  Sun, Terminal, Thermometer, User, KeyRound, LockKeyhole, ShieldCheck, Smartphone, Users,
 } from '@lucide/vue'
 
 const icons = {
@@ -15,6 +15,8 @@ const icons = {
   radio: Radio, list: AlignLeft, chart: ChartLine, clock: Clock, grip: GripVertical, eye: Eye, 'eye-off': EyeOff,
   // 手机底部标签栏（修订第 199 条）
   dashboard: LayoutDashboard, cloud: Cloud, card: CreditCard, globe: Globe, settings: Settings,
+  // 账号页（修订第 207 条）
+  key: KeyRound, lock: LockKeyhole, shield: ShieldCheck, smartphone: Smartphone, users: Users,
 }
 
 export type IconName = keyof typeof icons
