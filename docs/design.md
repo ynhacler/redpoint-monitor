@@ -372,6 +372,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 194 | 连通性测试：京东（带参数时跳转到 http）与 Claude（响应带 CORP same-origin）被浏览器拦截而显示超时；去掉随机参数，Claude、ChatGPT、npm 改测 API 地址，Takealot 换为 News24；区分“超时”与“无法连接” | 48.1 |
 | 193 | 节点详情：没有 ASN 时管理员在概况中看到“ASN”行与“查询”按钮，开关关闭时链接到“系统 → 监测”；解锁检测移到“网络”页流量之后、测速之前 | 49.1, 50.1 |
 | 192 | 新增第 50 章“流媒体与网站解锁检测”：节点详情“网络”页手动检测 Netflix、Disney+、YouTube Premium、Prime Video、TikTok、ChatGPT、Claude、Google 搜索、Reddit、Steam；检测项内置在 Agent 中，面板经上报响应头只能请求检测一次（约束 1）；迁移 55 server_unlock | 50 |
 | 191 | 新增第 49 章“节点 IP 信息”：用 ipinfo.io 查询节点公网 IP 的 ASN、运营方与位置，每周一次、地址变化立即查询，显示在节点概况；默认关闭（1.8），在“系统 → 监测”中打开；迁移 54 server_ipinfo | 49 |
@@ -11123,10 +11124,12 @@ SIM 卡    “SIM 电话卡”类别，用于记录保号与月租。目录按�
 
 ```text
 入口      顶栏“连通性测试”（查看者也可用）
-目标      固定在 web/src/connectivity.ts：中国 12 个、美国 20 个、全球 12 个常用网站；请求各站的小文件（多为 /favicon.ico）
-计时      no-cors 的 fetch，不读取内容；每个目标先请求一次（含 DNS 与 TLS），再请求一次取较小值；5 秒没有响应或连接失败为超时；
-          同时最多 6 个请求
-等级      优 < 150 ms、良 < 400 ms、慢 ≥ 400 ms、超时；每个网站显示本次延迟与最近 8 次结果（圆点，只存在本机浏览器）
+目标      固定在 web/src/connectivity.ts：中国 12 个、美国 20 个、全球 12 个常用网站；请求各站的小文件（多为 /favicon.ico）。
+          地址须为 https、不跳转到 http、响应不带 Cross-Origin-Resource-Policy: same-origin / same-site（浏览器会拒收）；
+          整站如此的服务改测同一服务的 API 地址（Claude → api.anthropic.com，ChatGPT → api.openai.com，npm → registry.npmjs.org，修订第 194 条）
+计时      no-cors 的 fetch，不读取内容，不加随机参数（cache: no-store 已绕过缓存）；每个目标先请求一次（含 DNS 与 TLS），
+          再请求一次取较小值；5 秒没有响应为“超时”，连接失败或被浏览器拒收为“无法连接”；同时最多 6 个请求
+等级      优 < 150 ms、良 < 400 ms、慢 ≥ 400 ms、超时 / 无法连接；每个网站显示本次延迟与最近 8 次结果（圆点，只存在本机浏览器）
 隔离      面板页面的 CSP 只允许连接面板，不为这个功能放宽。测试在探测页 /probe.html 中进行：以 sandbox iframe 加载、不带
           allow-same-origin（不透明来源，取不到面板的 Cookie、存储与页面）；它有单独的 CSP：只允许本面板的脚本与 HTTPS 请求、
           只能被本面板嵌入。目标由面板页面经 postMessage 下发（只接受 https 地址），结果经 postMessage 交回，双方都核对消息来源
