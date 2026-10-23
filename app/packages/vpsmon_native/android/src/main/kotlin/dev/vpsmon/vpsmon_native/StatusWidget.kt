@@ -13,7 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// 桌面小组件（设计 1.5.4）：窄时显示计数与状态句，宽时显示服务器列表（行数随高度变化，最多 8 行）。
+// 桌面小组件（设计 1.5.4）：窄时显示计数与状态句，宽时显示服务器列表（行数随高度变化，最多 4 行，修订第 215 条）。
 // 数据只来自 App 写入的快照；系统按 updatePeriodMillis（30 分钟）重绘，用于“可能已过期”提示。点按打开 App。
 class StatusWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
@@ -26,6 +26,7 @@ class StatusWidget : AppWidgetProvider() {
 
     companion object {
         private const val STALE_SECONDS = 2 * 3600
+        private const val MAX_ROWS = 4
         private val hhmm = SimpleDateFormat("HH:mm", Locale.ROOT)
 
         fun refreshAll(context: Context) {
@@ -79,8 +80,11 @@ class StatusWidget : AppWidgetProvider() {
                 v.setTextViewText(R.id.vpsmon_summary, if (snap.attention == 0) "服务器状态正常" else "${snap.attention} 台需要关注")
                 v.setTextColor(R.id.vpsmon_summary, context.getColor(if (snap.attention == 0) R.color.vpsmon_text else R.color.vpsmon_bad))
             } else {
-                // 标题与表头约 64dp，每行约 22dp，底部告警约 20dp
-                val rows = ((height - 84) / 22).coerceIn(1, 8)
+                // 最多 4 台（修订第 215 条）：字号加大后每行 30dp；标题与表头约 60dp，底部告警约 20dp
+                val rows = ((height - 80) / 30).coerceIn(1, MAX_ROWS)
+                // 窄于 300dp 时不显示下载速率，把宽度留给名称
+                val showRx = width >= 300
+                v.setViewVisibility(R.id.vpsmon_head_rx, if (showRx) View.VISIBLE else View.GONE)
                 v.removeAllViews(R.id.vpsmon_rows)
                 for (r in snap.rows.take(rows)) {
                     val row = RemoteViews(context.packageName, R.layout.vpsmon_widget_row)
@@ -89,6 +93,7 @@ class StatusWidget : AppWidgetProvider() {
                     row.setTextViewText(R.id.vpsmon_row_cpu, r.cpu)
                     row.setTextViewText(R.id.vpsmon_row_mem, r.mem)
                     row.setTextViewText(R.id.vpsmon_row_rx, if (r.rx == "—") r.rx else "↓${r.rx}")
+                    row.setViewVisibility(R.id.vpsmon_row_rx, if (showRx) View.VISIBLE else View.GONE)
                     v.addView(R.id.vpsmon_rows, row)
                 }
                 // 最近 24 小时内的告警（推送处理器写入）

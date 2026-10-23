@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 中 / 大尺寸：计数、更新时间、服务器列表（异常优先）与最近告警（设计 1.5.4） -->
+<!-- 中 / 大尺寸：计数、更新时间、服务器列表（异常优先，最多 4 台，修订第 215 条）与最近告警（设计 1.5.4） -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/vpsmon_root"
     android:layout_width="match_parent"
@@ -27,30 +27,30 @@
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:gravity="center_vertical">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="● "
-                android:textColor="@color/vpsmon_ok" android:textSize="@dimen/vpsmon_font_xs" />
+                android:textColor="@color/vpsmon_ok" android:textSize="@dimen/vpsmon_font_sm" />
             <TextView android:id="@+id/vpsmon_online" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_sm" android:textStyle="bold" />
+                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_lg" android:textStyle="bold" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="   ● "
-                android:textColor="@color/vpsmon_bad" android:textSize="@dimen/vpsmon_font_xs" />
+                android:textColor="@color/vpsmon_bad" android:textSize="@dimen/vpsmon_font_sm" />
             <TextView android:id="@+id/vpsmon_offline" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_sm" android:textStyle="bold" />
+                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_lg" android:textStyle="bold" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="   ● "
-                android:textColor="@color/vpsmon_warn" android:textSize="@dimen/vpsmon_font_xs" />
+                android:textColor="@color/vpsmon_warn" android:textSize="@dimen/vpsmon_font_sm" />
             <TextView android:id="@+id/vpsmon_attention" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_sm" android:textStyle="bold" />
+                android:textColor="@color/vpsmon_text" android:textSize="@dimen/vpsmon_font_lg" android:textStyle="bold" />
             <TextView android:id="@+id/vpsmon_updated" android:layout_width="0dp" android:layout_height="wrap_content"
-                android:layout_weight="1" android:gravity="end" android:maxLines="1" android:textSize="@dimen/vpsmon_font_xs" />
+                android:layout_weight="1" android:gravity="end" android:maxLines="1" android:textSize="@dimen/vpsmon_font_sm" />
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:paddingTop="@dimen/vpsmon_space_2">
             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                android:paddingStart="14dp" android:text="服务器" android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_xs" />
-            <TextView android:layout_width="40dp" android:layout_height="wrap_content" android:gravity="end"
+                android:paddingStart="16dp" android:text="服务器" android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_xs" />
+            <TextView android:layout_width="46dp" android:layout_height="wrap_content" android:gravity="end"
                 android:text="CPU" android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_xs" />
-            <TextView android:layout_width="40dp" android:layout_height="wrap_content" android:gravity="end"
+            <TextView android:layout_width="46dp" android:layout_height="wrap_content" android:gravity="end"
                 android:text="内存" android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_xs" />
-            <TextView android:layout_width="76dp" android:layout_height="wrap_content" android:gravity="end"
+            <TextView android:id="@+id/vpsmon_head_rx" android:layout_width="82dp" android:layout_height="wrap_content" android:gravity="end"
                 android:text="下载" android:textColor="@color/vpsmon_text_muted" android:textSize="@dimen/vpsmon_font_xs" />
         </LinearLayout>
 
@@ -61,6 +61,6 @@
         <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
 
         <TextView android:id="@+id/vpsmon_alert" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:maxLines="1" android:ellipsize="end" android:textSize="@dimen/vpsmon_font_xs" android:visibility="gone" />
+            android:maxLines="1" android:ellipsize="end" android:textSize="@dimen/vpsmon_font_sm" android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
