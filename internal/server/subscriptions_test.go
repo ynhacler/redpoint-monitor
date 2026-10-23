@@ -3,8 +3,10 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -223,5 +225,49 @@ func TestSubscriptionPhones(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &x)
 	if rec.Code != 201 || x.Phones == nil || len(x.Phones) != 0 {
 		t.Fatalf("没有号码时应为空数组：%s", rec.Body)
+	}
+}
+
+// VPS（修订第 198 条）：地址去空行、去重并规范化，配置随订阅保存；其他类别不保存 VPS 字段
+func TestSubscriptionVPS(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	body := `{"name":"DMIT 东京","brand":"vps-dmit","category":"vps","price_cents":3699,"currency":"USD","cycle":"annually","start_date":"2026-03-01",
+		"vps":{"ips":["203.0.113.7"," ","2001:DB8::1","203.0.113.7","::ffff:198.51.100.2"],"cpu":2,"memory_gb":0.5,"disk_gb":20,
+		"bandwidth_mbps":500,"traffic_gb":1024,"location":" 东京 "}}`
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	want := SubVPS{IPs: []string{"203.0.113.7", "2001:db8::1", "198.51.100.2"}, CPU: 2, MemoryGB: 0.5, DiskGB: 20, BandwidthMbps: 500,
+		TrafficGB: 1024, Location: "东京"}
+	if rec.Code != 201 || !reflect.DeepEqual(x.VPS, want) {
+		t.Fatalf("VPS：%d %s", rec.Code, rec.Body)
+	}
+	if got, _ := s.store.GetSubscription(x.ID); !reflect.DeepEqual(got.VPS, want) {
+		t.Fatalf("应保存 VPS：%+v", got.VPS)
+	}
+	for name, vps := range map[string]string{
+		"地址":  `{"ips":["203.0.113.300"]}`,
+		"带区域": `{"ips":["fe80::1%eth0"]}`,
+		"负数":  `{"cpu":-1}`,
+		"太多": `{"ips":[` + strings.Join(func() []string {
+			var a []string
+			for i := 0; i < 17; i++ {
+				a = append(a, fmt.Sprintf(`"10.0.0.%d"`, i+1))
+			}
+			return a
+		}(), ",") + `]}`,
+	} {
+		b := body[:strings.Index(body, `"vps":`)] + `"vps":` + vps + `}`
+		if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(b)); rec.Code != 422 {
+			t.Errorf("%s 应被拒绝：%d %s", name, rec.Code, rec.Body)
+		}
+	}
+	// 其他类别：VPS 字段清空
+	b := strings.Replace(body, `"category":"vps"`, `"category":"cloud"`, 1)
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(b))
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || len(x.VPS.IPs) != 0 || x.VPS.CPU != 0 {
+		t.Fatalf("其他类别不应保存 VPS：%s", rec.Body)
 	}
 }

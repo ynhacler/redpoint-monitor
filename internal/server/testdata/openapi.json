@@ -9756,9 +9756,10 @@
               "game",
               "cloud",
               "sim",
+              "vps",
               "other"
             ],
-            "description": "影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他"
+            "description": "影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他"
           },
           "price_cents": {
             "type": "integer",
@@ -9820,6 +9821,67 @@
               "$ref": "#/components/schemas/SubscriptionPhone"
             },
             "description": "SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空"
+          },
+          "vps": {
+            "$ref": "#/components/schemas/SubscriptionVPS"
+          }
+        }
+      },
+      "SubscriptionVPS": {
+        "type": "object",
+        "description": "VPS 的地址与配置（类别为 vps 时，修订第 198 条）；其他类别忽略。数值为 0 表示没有填写",
+        "required": [
+          "ips",
+          "cpu",
+          "memory_gb",
+          "disk_gb",
+          "bandwidth_mbps",
+          "traffic_gb",
+          "location"
+        ],
+        "properties": {
+          "ips": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "string"
+            },
+            "description": "IPv4 / IPv6 地址（最多 16 个，空行忽略）"
+          },
+          "cpu": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1024,
+            "description": "CPU 核数"
+          },
+          "memory_gb": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 16384,
+            "description": "内存（GB，可为小数，如 0.5）"
+          },
+          "disk_gb": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "硬盘（GB）"
+          },
+          "bandwidth_mbps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "带宽（Mbps）"
+          },
+          "traffic_gb": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000,
+            "description": "每月流量（GB）；0 为没有填写"
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "机房 / 地区，如 东京、Los Angeles"
           }
         }
       },
@@ -9857,6 +9919,7 @@
           "remind_days",
           "note",
           "phones",
+          "vps",
           "next_charge",
           "ended",
           "logo_version",
@@ -9885,6 +9948,7 @@
               "game",
               "cloud",
               "sim",
+              "vps",
               "other"
             ]
           },
@@ -9928,6 +9992,9 @@
             "items": {
               "$ref": "#/components/schemas/SubscriptionPhone"
             }
+          },
+          "vps": {
+            "$ref": "#/components/schemas/SubscriptionVPS"
           },
           "next_charge": {
             "type": "string",

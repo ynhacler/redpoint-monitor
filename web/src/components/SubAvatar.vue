@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 订阅图标（设计 47.2）：上传了图标的显示上传的图片；有标志的服务显示品牌色方块上的单色标志（brandIcons.ts，取自 Simple Icons），
-// 其他显示色块加首字母。品牌色很浅时标志用深色，避免看不清。
+// 或内置的图片标志（brandLogos.ts，修订第 198 条）；其他显示色块加首字母。品牌色很浅时标志用深色，避免看不清。
 import { computed } from 'vue'
 import { brandIcons } from '../brandIcons'
+import { brandLogos } from '../brandLogos'
 import { avatarOf, catalogItem } from '../subscriptions'
 
 const props = withDefaults(defineProps<{
@@ -17,6 +18,7 @@ const props = withDefaults(defineProps<{
 }>(), { brand: '', size: 40, src: '' })
 
 const icon = computed(() => (props.brand ? brandIcons[catalogItem(props.brand)?.icon ?? props.brand] : undefined))
+const logo = computed(() => (props.brand && !props.src ? brandLogos[props.brand] : undefined))
 const fallback = computed(() => avatarOf({ brand: props.brand, name: props.name }))
 const bg = computed(() => (icon.value ? `#${icon.value.hex}` : fallback.value.color))
 // 相对亮度高于 0.6 时（如白色、浅黄的品牌色）用深色标志
@@ -29,6 +31,10 @@ const light = computed(() => {
 
 <template>
   <img v-if="src" class="sub-avatar img" :src="src" alt="" :width="size" :height="size" :style="{ borderRadius: `${Math.round(size / 4)}px` }" />
+  <span v-else-if="logo" class="sub-avatar logo" :class="logo.fit"
+    :style="{ width: `${size}px`, height: `${size}px`, borderRadius: `${Math.round(size / 4)}px` }">
+    <img :src="logo.src" alt="" />
+  </span>
   <span v-else class="sub-avatar" :class="{ light }" :style="{ width: `${size}px`, height: `${size}px`, background: bg, borderRadius: `${Math.round(size / 4)}px` }">
     <svg v-if="icon" viewBox="0 0 24 24" :width="Math.round(size * 0.56)" :height="Math.round(size * 0.56)" aria-hidden="true">
       <path :d="icon.path" />
@@ -43,4 +49,8 @@ const light = computed(() => {
 .sub-avatar svg { fill: currentColor; }
 .sub-avatar.light { color: var(--text); }
 .sub-avatar.img { display: block; object-fit: cover; background: var(--surface-2); }
+.sub-avatar.logo { overflow: hidden; background: #FFFFFF; }
+.sub-avatar.logo img { display: block; }
+.sub-avatar.fill img { width: 100%; height: 100%; object-fit: cover; }
+.sub-avatar.contain img { width: 74%; height: 74%; object-fit: contain; }
 </style>

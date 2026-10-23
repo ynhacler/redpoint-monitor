@@ -840,8 +840,8 @@ export interface SubscriptionInput {
   name: string
   /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
   brand?: string
-  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / 其他 */
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
+  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他 */
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
   /** 每期价格（分） */
   price_cents: number
   /** 如 CNY、USD */
@@ -859,6 +859,25 @@ export interface SubscriptionInput {
   note?: string
   /** SIM 电话卡的号码（最多 10 个，空行忽略）；其他类别通常为空 */
   phones?: SubscriptionPhone[]
+  vps?: SubscriptionVPS
+}
+
+/** VPS 的地址与配置（类别为 vps 时，修订第 198 条）；其他类别忽略。数值为 0 表示没有填写 */
+export interface SubscriptionVPS {
+  /** IPv4 / IPv6 地址（最多 16 个，空行忽略） */
+  ips: string[]
+  /** CPU 核数 */
+  cpu: number
+  /** 内存（GB，可为小数，如 0.5） */
+  memory_gb: number
+  /** 硬盘（GB） */
+  disk_gb: number
+  /** 带宽（Mbps） */
+  bandwidth_mbps: number
+  /** 每月流量（GB）；0 为没有填写 */
+  traffic_gb: number
+  /** 机房 / 地区，如 东京、Los Angeles */
+  location: string
 }
 
 export interface SubscriptionPhone {
@@ -873,7 +892,7 @@ export interface Subscription {
   name: string
   /** 常用服务目录中的键；自定义时为空 */
   brand: string
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'other'
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
   /** 每期价格（分） */
   price_cents: number
   currency: string
@@ -886,6 +905,7 @@ export interface Subscription {
   remind_days: number
   note: string
   phones: SubscriptionPhone[]
+  vps: SubscriptionVPS
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
   next_charge: string
   /** 已过结束日期 */

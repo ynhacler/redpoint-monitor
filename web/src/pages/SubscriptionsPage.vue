@@ -3,10 +3,12 @@
 // “列表”按下次扣费日排列，已结束的置灰；“统计”按本月 / 本年 / 全部显示各类别占比（环形图）与前后几个月的扣费（柱状）。
 // 添加时先从常用服务目录中选择（按类别、可搜索），也可自定义；图标为内置的标志（SubAvatar），不加载外部图片。
 // 金额按币种分别统计，不换算；主币种为折算月费最大的币种。
+// VPS（修订第 198 条）：每台 VPS 一条订阅，记录厂商、地址（可多个）、配置与机房；列表中显示地址与配置，
+// 地址与已接入的节点相同时链接到该节点。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, listSubscriptions, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, listServers, listSubscriptions, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type Subscription, type SubscriptionInput,
 } from '../api'
@@ -28,6 +30,21 @@ const setView = (v: string) => router.replace({ query: { tab: v === 'list' ? und
 const list = ref<Subscription[]>([])
 const loaded = ref(false)
 const error = ref('')
+// 已接入的节点：按公网地址查找，VPS 的地址与节点相同时在列表中链接到节点
+const nodeByIP = ref(new Map<string, { id: number; name: string }>())
+async function loadNodes() {
+  try {
+    const m = new Map<string, { id: number; name: string }>()
+    for (const n of await listServers()) {
+      for (const ip of [n.ipv4, n.ipv6, n.expected_ipv4, n.expected_ipv6]) if (ip) m.set(ip.toLowerCase(), { id: n.id, name: n.name })
+    }
+    nodeByIP.value = m
+  } catch {
+    /* 节点列表只用于链接，读取失败时不显示链接 */
+  }
+}
+const nodeOf = (s: Subscription) => s.vps.ips.map((ip) => nodeByIP.value.get(ip.toLowerCase())).find(Boolean)
+
 async function load() {
   try {
     list.value = await listSubscriptions()
@@ -38,7 +55,7 @@ async function load() {
     loaded.value = true
   }
 }
-onMounted(load)
+onMounted(() => { load(); loadNodes() })
 
 // ---- 概览 ----
 const now = new Date()
@@ -110,10 +127,15 @@ const pickTabs = computed(() => [{ k: 'all', t: '全部' }, { k: 'hot', t: '热�
   ...(Object.keys(categoryNames) as SubCategory[]).filter((c) => c !== 'other' && catalog.some((x) => x.category === c)).map((c) => ({ k: c, t: categoryNames[c] }))])
 
 type FormPhone = { cc: string; number: string }
-const blank = (): SubscriptionInput & { price: string; phones: FormPhone[] } => ({
+// VPS 配置在表单中为字符串（空表示没有填写），保存时转为数字
+type FormVPS = { ips: string[]; cpu: string; memory_gb: string; disk_gb: string; bandwidth_mbps: string; traffic_gb: string; location: string }
+const blankVPS = (): FormVPS => ({ ips: [''], cpu: '', memory_gb: '', disk_gb: '', bandwidth_mbps: '', traffic_gb: '', location: '' })
+const blank = (): Omit<SubscriptionInput, 'vps'> & { price: string; phones: FormPhone[]; vps: FormVPS } => ({
   name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: cur.value, cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [],
+  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(),
 })
+const vpsNum = (v: string) => (v.trim() === '' ? 0 : Number(v))
+const vpsStr = (n: number) => (n ? String(n) : '')
 const form = reactive(blank())
 const fieldErrors = ref<Record<string, string>>({})
 // 图标：待上传的 PNG 与预览地址；removeLogo 表示保存时删除已上传的图标
@@ -187,7 +209,13 @@ function choose(item: CatalogItem | null) {
 }
 function openEdit(s: Subscription) {
   editing.value = s
-  Object.assign(form, { ...s, price: (s.price_cents / 100).toFixed(2), phones: s.phones.map((p) => ({ ...p })) })
+  Object.assign(form, {
+    ...s, price: (s.price_cents / 100).toFixed(2), phones: s.phones.map((p) => ({ ...p })),
+    vps: {
+      ips: s.vps.ips.length ? [...s.vps.ips] : [''], cpu: vpsStr(s.vps.cpu), memory_gb: vpsStr(s.vps.memory_gb), disk_gb: vpsStr(s.vps.disk_gb),
+      bandwidth_mbps: vpsStr(s.vps.bandwidth_mbps), traffic_gb: vpsStr(s.vps.traffic_gb), location: s.vps.location,
+    },
+  })
   if (s.category === 'sim' && !form.phones.length) form.phones = [{ cc: countryOf(catalog.find((c) => c.key === s.brand)?.country)?.dial ?? '+86', number: '' }]
   fieldErrors.value = {}
   resetLogo()
@@ -207,6 +235,13 @@ async function save() {
     name: form.name, brand: form.brand, category: form.category, price_cents: Math.round(price * 100), currency: form.currency,
     cycle: form.cycle, trial_days: form.trial_days, start_date: form.start_date, end_date: form.end_date ?? '', remind_days: form.remind_days, note: form.note,
     phones: form.category === 'sim' ? form.phones.filter((p) => p.number.trim()) : [],
+    vps: form.category === 'vps'
+      ? {
+          ips: form.vps.ips.map((ip) => ip.trim()).filter(Boolean), cpu: vpsNum(form.vps.cpu), memory_gb: vpsNum(form.vps.memory_gb),
+          disk_gb: vpsNum(form.vps.disk_gb), bandwidth_mbps: vpsNum(form.vps.bandwidth_mbps), traffic_gb: vpsNum(form.vps.traffic_gb),
+          location: form.vps.location,
+        }
+      : undefined,
   }
   saving.value = true
   try {
@@ -237,7 +272,16 @@ async function remove() {
     saving.value = false
   }
 }
-const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} 开始订阅`
+const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} ${s.category === 'vps' ? '购买' : '开始订阅'}`
+// VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
+function vpsSpec(v: Subscription['vps']) {
+  const gb = (n: number) => (n >= 1024 && n % 1024 === 0 ? `${n / 1024} TB` : `${n} GB`)
+  return [
+    v.cpu ? `${v.cpu} 核` : '', v.memory_gb ? `${v.memory_gb} GB` : '', v.disk_gb ? gb(v.disk_gb) : '',
+    v.traffic_gb ? `${gb(v.traffic_gb)}/月` : '', v.bandwidth_mbps ? `${v.bandwidth_mbps} Mbps` : '',
+  ].filter(Boolean).join(' · ')
+}
+const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
 // 号码显示：区号 + 按当地习惯分组的号码（+1 650 555 0123、+86 138 0013 8000），其他按每 4 位分组
 function fmtPhone(p: { cc: string; number: string }) {
   const n = p.number
@@ -321,7 +365,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <label>到期提醒
           <select v-model.number="form.remind_days"><option v-for="o in remindOptions" :key="o.v" :value="o.v">{{ o.t }}</option></select>
           <small v-if="fieldErrors.remind_days" class="bad">{{ fieldErrors.remind_days }}</small></label>
-        <label>开始订阅<input v-model="form.start_date" type="date" />
+        <label>{{ form.category === 'vps' ? '购买日期' : '开始订阅' }}<input v-model="form.start_date" type="date" />
           <small v-if="fieldErrors.start_date" class="bad">{{ fieldErrors.start_date }}</small></label>
         <label>结束订阅<input v-model="form.end_date" type="date" />
           <small v-if="fieldErrors.end_date" class="bad">{{ fieldErrors.end_date }}</small>
@@ -341,6 +385,33 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           <button v-if="form.phones.length < 10" type="button" class="text add-phone" @click="addPhone"><Icon name="plus" :size="14" />添加号码</button>
           <small v-if="fieldErrors.phones" class="bad">{{ fieldErrors.phones }}</small>
         </div>
+        <!-- VPS（修订第 198 条）：地址可增减（最多 16 个，空行不保存），配置都可不填 -->
+        <template v-if="form.category === 'vps'">
+          <div class="wide phones">
+            <span class="phones-label">IP 地址</span>
+            <div v-for="(_, i) in form.vps.ips" :key="i" class="ip-row">
+              <input v-model="form.vps.ips[i]" class="mono" inputmode="url" autocomplete="off" spellcheck="false" placeholder="IPv4 或 IPv6"
+                :aria-label="`第 ${i + 1} 个地址`" />
+              <button type="button" class="text" :aria-label="`删除第 ${i + 1} 个地址`" @click="form.vps.ips.splice(i, 1)">删除</button>
+              <small v-if="ipError(i)" class="bad">{{ ipError(i) }}</small>
+            </div>
+            <button v-if="form.vps.ips.length < 16" type="button" class="text add-phone" @click="form.vps.ips.push('')">
+              <Icon name="plus" :size="14" />添加地址</button>
+            <small v-if="fieldErrors['vps.ips']" class="bad">{{ fieldErrors['vps.ips'] }}</small>
+          </div>
+          <label>CPU（核）<input v-model="form.vps.cpu" inputmode="numeric" placeholder="如 2" />
+            <small v-if="fieldErrors['vps.cpu']" class="bad">{{ fieldErrors['vps.cpu'] }}</small></label>
+          <label>内存（GB）<input v-model="form.vps.memory_gb" inputmode="decimal" placeholder="如 1 或 0.5" />
+            <small v-if="fieldErrors['vps.memory_gb']" class="bad">{{ fieldErrors['vps.memory_gb'] }}</small></label>
+          <label>硬盘（GB）<input v-model="form.vps.disk_gb" inputmode="numeric" placeholder="如 20" />
+            <small v-if="fieldErrors['vps.disk_gb']" class="bad">{{ fieldErrors['vps.disk_gb'] }}</small></label>
+          <label>每月流量（GB）<input v-model="form.vps.traffic_gb" inputmode="numeric" placeholder="如 1024" />
+            <small v-if="fieldErrors['vps.traffic_gb']" class="bad">{{ fieldErrors['vps.traffic_gb'] }}</small></label>
+          <label>带宽（Mbps）<input v-model="form.vps.bandwidth_mbps" inputmode="numeric" placeholder="如 500" />
+            <small v-if="fieldErrors['vps.bandwidth_mbps']" class="bad">{{ fieldErrors['vps.bandwidth_mbps'] }}</small></label>
+          <label>机房<input v-model="form.vps.location" maxlength="40" placeholder="如 东京、Los Angeles" />
+            <small v-if="fieldErrors['vps.location']" class="bad">{{ fieldErrors['vps.location'] }}</small></label>
+        </template>
         <label class="wide">描述<input v-model="form.note" maxlength="200" placeholder="可选，如 家庭版、和朋友合租" /></label>
       </div>
       <p v-if="fieldErrors._" class="small bad">{{ fieldErrors._ }}</p>
@@ -397,8 +468,14 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <span class="sub-main">
                 <b class="ellipsis">{{ s.name }}</b>
                 <span v-if="s.phones.length" class="small num phone-line">{{ fmtPhone(s.phones[0]) }}<span v-if="s.phones.length > 1" class="muted"> 等 {{ s.phones.length }} 个号码</span></span>
+                <template v-if="s.category === 'vps'">
+                  <span v-if="s.vps.ips.length" class="small mono phone-line ellipsis">{{ s.vps.ips[0] }}<span v-if="s.vps.ips.length > 1" class="muted"> +{{ s.vps.ips.length - 1 }}</span></span>
+                  <span v-if="vpsSpec(s.vps) || s.vps.location" class="small muted ellipsis">{{ [s.vps.location, vpsSpec(s.vps)].filter(Boolean).join(' · ') }}</span>
+                </template>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
               </span>
+              <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="`已接入监控：${nodeOf(s)!.name}`"
+                @click.stop>监控中</RouterLink>
               <span class="sub-price">
                 <b class="num">{{ fmtMoney(s.price_cents, s.currency) }}</b>
                 <span class="small muted">{{ chargeText(s, today) }}</span>
@@ -541,6 +618,11 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .phone-row small { grid-column: 1 / -1; }
 .add-phone { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .phone-line { color: var(--text); }
+.ip-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+.ip-row small { grid-column: 1 / -1; }
+.mono { font-family: var(--font-mono); }
+.node-link { flex: none; padding: 1px var(--space-2); border-radius: var(--radius-full); color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent); text-decoration: none; }
 .del { margin-left: auto; }
 @media (max-width: 600px) {
   .item { flex-basis: 40%; padding: var(--space-1) var(--space-3); }

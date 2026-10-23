@@ -1,7 +1,7 @@
 // 订阅（设计 47，修订第 189 条）：常用服务目录、类别、扣费日计算与统计。全部是纯函数，界面只负责展示。
 // 扣费日规则与面板（internal/server/subscriptions.go）一致：首次扣费 = 开始日期 + 试用天数，之后按周期递推，
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
-// 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts），没有标志的用品牌色方块加首字母；不从外部加载。
+// 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts、brandLogos.ts），没有标志的用品牌色方块加首字母；不从外部加载。
 import type { Subscription } from './api'
 import { simCatalog } from './simCatalog'
 
@@ -13,13 +13,13 @@ export type SubCycle = Subscription['cycle']
 /** 类别名称 */
 export const categoryNames: Record<SubCategory, string> = {
   video: '影音娱乐', tools: '效率&工具', reading: '阅读&学习', social: '社交', health: '健康&运动', game: '游戏', cloud: '云与开发',
-  sim: 'SIM 电话卡', other: '其他',
+  sim: 'SIM 电话卡', vps: 'VPS', other: '其他',
 }
 /** 类别在图表中的颜色（设计令牌中的系列色与状态色） */
 export const categoryColors: Record<SubCategory, string> = {
   video: 'var(--accent)', tools: 'var(--ok)', reading: 'color-mix(in srgb, var(--ok) 50%, var(--series-3))', social: 'var(--series-2)',
   health: 'var(--warn)', game: 'var(--bad)', cloud: 'var(--series-3)', sim: 'color-mix(in srgb, var(--accent) 50%, var(--series-2))',
-  other: 'var(--muted-state)',
+  vps: 'color-mix(in srgb, var(--series-3) 55%, var(--accent))', other: 'var(--muted-state)',
 }
 /** 周期名称 */
 export const cycleNames: Record<SubCycle, string> = {
@@ -98,6 +98,31 @@ export const catalog: CatalogItem[] = [
   { key: 'psplus', name: 'PlayStation Plus', category: 'game', color: '#0070D1' },
   { key: 'gamepass', name: 'Xbox Game Pass', category: 'game', color: '#107C10' },
   ...simCatalog, // SIM 电话卡，按国家 / 地区（simCatalog.ts）
+  // VPS 厂商（修订第 198 条）：标志见 brandIcons.ts（Simple Icons）与 brandLogos.ts（厂商网站的图标）
+  { key: 'vps-bwg', name: '搬瓦工 BandwagonHost', category: 'vps', color: '#1A3D6D', hot: true, currency: 'USD', letter: '瓦' },
+  { key: 'vps-dmit', name: 'DMIT', category: 'vps', color: '#1E88E5', hot: true, currency: 'USD' },
+  { key: 'vps-racknerd', name: 'RackNerd', category: 'vps', color: '#0D47A1', hot: true, currency: 'USD' },
+  { key: 'vps-vultr', name: 'Vultr', category: 'vps', color: '#007BFC', hot: true, currency: 'USD' },
+  { key: 'vps-digitalocean', name: 'DigitalOcean', category: 'vps', color: '#0080FF', currency: 'USD' },
+  { key: 'vps-linode', name: 'Linode (Akamai)', category: 'vps', color: '#0096D6', currency: 'USD' },
+  { key: 'vps-hetzner', name: 'Hetzner', category: 'vps', color: '#D50C2D', currency: 'EUR' },
+  { key: 'vps-ovh', name: 'OVHcloud', category: 'vps', color: '#123F6D', currency: 'EUR' },
+  { key: 'vps-contabo', name: 'Contabo', category: 'vps', color: '#00AAEB', currency: 'EUR' },
+  { key: 'vps-netcup', name: 'netcup', category: 'vps', color: '#056473', currency: 'EUR' },
+  { key: 'vps-scaleway', name: 'Scaleway', category: 'vps', color: '#4F0599', currency: 'EUR' },
+  { key: 'vps-upcloud', name: 'UpCloud', category: 'vps', color: '#7B00FF', currency: 'USD' },
+  { key: 'vps-cloudcone', name: 'CloudCone', category: 'vps', color: '#3A9B35', currency: 'USD' },
+  { key: 'vps-greencloud', name: 'GreenCloud', category: 'vps', color: '#2E7D32', currency: 'USD', letter: 'G' },
+  { key: 'vps-buyvm', name: 'BuyVM', category: 'vps', color: '#1F2937', currency: 'USD', letter: 'B' },
+  { key: 'vps-ionos', name: 'IONOS', category: 'vps', color: '#003D8F', currency: 'USD' },
+  { key: 'vps-hostinger', name: 'Hostinger', category: 'vps', color: '#673DE6', currency: 'USD' },
+  { key: 'vps-aliyun', name: '阿里云', category: 'vps', color: '#FF6A00', hot: true },
+  { key: 'vps-tencent', name: '腾讯云', category: 'vps', color: '#006EFF', hot: true },
+  { key: 'vps-huawei', name: '华为云', category: 'vps', color: '#C7000B' },
+  { key: 'vps-aws', name: 'AWS（EC2 / Lightsail）', category: 'vps', color: '#232F3E', currency: 'USD' },
+  { key: 'vps-gcp', name: 'Google Cloud', category: 'vps', color: '#4285F4', currency: 'USD' },
+  { key: 'vps-azure', name: 'Microsoft Azure', category: 'vps', color: '#0078D4', currency: 'USD' },
+  { key: 'vps-oracle', name: 'Oracle Cloud', category: 'vps', color: '#C74634', currency: 'USD' },
 ]
 const byKey = new Map(catalog.map((c) => [c.key, c]))
 /** 按键查目录项 */
