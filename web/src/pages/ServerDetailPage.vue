@@ -244,8 +244,8 @@ const charts = computed(() => [
     <div class="nav-row">
       <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />仪表板</RouterLink>
       <div v-if="s && !isViewer" class="actions-row">
-        <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
-        <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary"><Icon name="edit" />编辑</RouterLink>
+        <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary setup-only"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
+        <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary" title="编辑"><Icon name="edit" /><span class="btn-text">编辑</span></RouterLink>
       </div>
     </div>
 
@@ -385,6 +385,10 @@ const charts = computed(() => [
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); display: inline-block; }
 @media (max-width: 600px) {
   .tabs button { padding: var(--space-2); }
+  /* 手机主要用来查看（修订第 199 条）：重新安装在电脑上进行，编辑只留图标 */
+  .setup-only { display: none; }
+  .btn-text { display: none; }
+  .tabs { margin-top: var(--space-3); }
 }
 .collect-errors { padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); }
 .collect-errors ul { margin: var(--space-2) 0 0; padding-left: var(--space-4); }

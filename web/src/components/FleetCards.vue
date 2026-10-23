@@ -95,8 +95,10 @@ function dueText(days: number) {
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
 .muted { color: var(--text-muted); }
+/* 手机（修订第 199 条）：各项仍在一行（最多三项），数字缩小一档 */
 @media (max-width: 600px) {
-  .item { flex-basis: 40%; padding: var(--space-1) var(--space-3); }
-  .item + .item { border-left: 0; }
+  .fleet { flex-wrap: nowrap; padding: var(--space-2) 0; margin-bottom: var(--space-2); }
+  .item { flex: 1 1 0; padding: 0 var(--space-3); }
+  .big { font-size: var(--font-md); line-height: var(--line-md); }
 }
 </style>

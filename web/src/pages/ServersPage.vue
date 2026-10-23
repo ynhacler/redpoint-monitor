@@ -269,10 +269,20 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 .chip b.bad { color: var(--bad); }
 .chip b.warn { color: var(--warn); }
 .empty-filter { display: flex; align-items: center; gap: var(--space-2); }
-/* 手机：去掉“更新于”腾出标题行空间 */
+/* 手机：去掉“更新于”腾出标题行空间。手机主要用来查看（修订第 199 条）：新建节点在电脑上进行，按钮不显示；
+   状态标签一行横向滚动，搜索与排序同一行 */
 @media (max-width: 600px) {
   .updated { display: none; }
-  .page-head h1 { margin-right: auto; }
+  .page-head { margin-bottom: var(--space-2); }
+  .page-head h1 { margin-right: auto; font-size: var(--font-xl); }
+  .page-head .btn { display: none; }
+  .filters { gap: var(--space-2); margin-bottom: var(--space-3); }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; flex-basis: 100%; }
+  .chip { flex: none; padding: 3px var(--space-3); }
+  .filters .search { flex: 1 1 0; max-width: none; min-width: 0; }
+  .filters select { flex: none; width: auto; max-width: 132px; }
+  .filters .btn.secondary { display: none; }
+  .grid.server-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
 /* 节点卡片一行五列，最窄需要约 320px（见 ServerCard） */
 .server-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 应用外壳：顶部导航（5 个分组）与二级导航（nav.ts，修订第 158 条）、深浅色切换、账号与退出，以及各页面的容器。
+// 手机宽度（≤ 600px，修订第 199 条）：分组导航移到底部标签栏（图标 + 短名称），顶栏只留品牌名与工具区，页面内容更多。
 // 登录状态与节点数据由 store 统一管理，各页面共用（设计 41.6）；未登录时由路由守卫带到 /login。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -43,7 +44,7 @@ onUnmounted(stopPolling)
   <header class="topbar">
     <div class="inner">
       <RouterLink to="/" class="brand">VPS Monitor</RouterLink>
-      <nav v-if="signedIn">
+      <nav v-if="signedIn" class="groups">
         <!-- 仪表板即首页（统计 + 节点列表）；节点详情、编辑、安装命令也属于“仪表板” -->
         <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key, 'with-badge': g.key === 'alerts' }">
           {{ g.name }}<span v-if="g.key === 'alerts' && alertCount" class="badge num">{{ alertCount }}</span>
@@ -83,6 +84,13 @@ onUnmounted(stopPolling)
   <footer v-if="signedIn && panelVersion" class="footer small">
     VPS Monitor 面板 <span class="num" title="面板版本（Agent 版本见“Agent 升级”页）">{{ panelVersion }}</span>
   </footer>
+  <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
+  <nav v-if="signedIn" class="tabbar" aria-label="分组">
+    <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key }">
+      <Icon :name="g.icon" :size="22" />
+      <span>{{ g.short }}</span>
+    </RouterLink>
+  </nav>
 </template>
 
 <style scoped>
@@ -97,10 +105,10 @@ onUnmounted(stopPolling)
 .inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); height: 52px; display: flex; align-items: center; gap: var(--space-6); }
 .brand { white-space: nowrap; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }
 /* 导航可收缩并横向滚动，任何宽度都不把右侧工具区挤出屏幕（修订第 152 条） */
-nav:not(.subnav) { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; }
-nav:not(.subnav) a { white-space: nowrap; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
-nav:not(.subnav) a:hover { color: var(--text); text-decoration: none; }
-nav:not(.subnav) a.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
+nav.groups { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+nav.groups a { white-space: nowrap; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); text-decoration: none; }
+nav.groups a:hover { color: var(--text); text-decoration: none; }
+nav.groups a.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
 /* 二级导航：下划线标出当前页，窄屏横向滚动 */
 .subnav { border-top: 1px solid var(--border); }
 .sub-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); display: flex; gap: var(--space-5); overflow-x: auto;
@@ -122,17 +130,22 @@ nav:not(.subnav) a.active { color: var(--text); background: var(--surface-2); fo
 @media (max-width: 900px) {
   .inner { gap: var(--space-3); }
   .username { display: none; }
-  nav:not(.subnav) a { padding: var(--space-1) var(--space-2); }
+  nav.groups a { padding: var(--space-1) var(--space-2); }
   .sub-inner { gap: var(--space-4); }
 }
+/* 底部标签栏（修订第 199 条）：只在手机宽度显示；固定在底部，避开 iPhone 的主屏幕指示条 */
+.tabbar { display: none; }
 @media (max-width: 600px) {
-  .inner { gap: var(--space-2); }
+  .inner { gap: var(--space-2); height: 46px; }
   .brand { font-size: var(--font-md); }
   .tools { gap: var(--space-1); }
-}
-/* 很窄的屏幕（≤ 420px）不显示品牌名：“仪表板”同样回到首页，留出空间给导航 */
-@media (max-width: 420px) {
-  .brand { display: none; }
-  nav:not(.subnav) a { padding: var(--space-1); }
+  nav.groups { display: none; }
+  .tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; color: var(--text-muted);
+    font-size: 10px; line-height: 12px; text-decoration: none; }
+  .tabbar a.active { color: var(--accent); font-weight: var(--weight-strong); }
+  .footer { margin: var(--space-5) auto var(--space-3); }
 }
 </style>

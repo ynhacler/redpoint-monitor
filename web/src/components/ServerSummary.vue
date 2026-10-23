@@ -95,6 +95,13 @@ async function lookupASN() {
   }
 }
 
+// 手机宽度（修订第 199 条）：信息块合成一行摘要，系统与资产默认收起，点“详细信息”展开
+const specLine = computed(() => [
+  [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' '), sys.value?.arch,
+  r.value ? `${r.value.cpu.cores} 核` : '', r.value ? fmtBytesShort(r.value.memory.total) : '', diskTotal.value ? fmtBytesShort(diskTotal.value) : '',
+].filter(Boolean).join(' · '))
+const showFacts = ref(false)
+
 const copied = ref('')
 async function copy(v: string) {
   try {
@@ -158,8 +165,12 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
       </div>
     </div>
 
+    <p v-if="specLine" class="spec-line num">{{ specLine }}</p>
+    <button type="button" class="text facts-toggle small" :aria-expanded="showFacts" @click="showFacts = !showFacts">
+      {{ showFacts ? '收起详细信息' : '详细信息' }}
+    </button>
     <!-- 系统与资产 -->
-    <dl class="facts">
+    <dl class="facts" :class="{ open: showFacts }">
       <div v-if="s.status !== 'pending'" class="fact">
         <dt>Agent</dt>
         <!-- 查看者（修订第 161 条）只显示版本号：升级是管理操作 -->
@@ -186,7 +197,7 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
         </dd>
       </div>
     </dl>
-    <p v-if="missingAssets && !isViewer" class="more small">
+    <p v-if="missingAssets && !isViewer" class="more small" :class="{ open: showFacts }">
       <RouterLink :to="`/servers/${s.id}/edit`">补充资产信息</RouterLink>
       <span class="muted">（{{ missingAssets }} 项未填：供应商、价格、到期等用于费用与到期提醒）</span>
     </p>
@@ -243,8 +254,16 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 .copied { display: none; margin-left: var(--space-2); font-family: var(--font-family); font-size: var(--font-xs); color: var(--ok); }
 .copied.on { display: inline; }
 /* 手机两列较窄：次要信息（Swap、挂载数）换到数值下方，避免把数值挤成省略号 */
+/* 一行摘要与展开按钮只在手机宽度显示 */
+.spec-line, .facts-toggle { display: none; }
 @media (max-width: 600px) {
-  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .summary { padding: var(--space-3) var(--space-4); }
+  .head { margin-bottom: var(--space-2); }
+  .grid { display: none; }
+  .spec-line { display: block; margin: 0; color: var(--text-muted); font-size: var(--font-sm); line-height: var(--line-sm); }
+  .facts-toggle { display: inline-block; margin-top: var(--space-2); padding: 0; color: var(--accent); }
+  .facts:not(.open), .more:not(.open) { display: none; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
   .fact { flex-direction: column; gap: 0; }
   .fact dt { width: auto; line-height: var(--line-xs); }
   .tile { padding: var(--space-2) var(--space-3); gap: var(--space-2); }

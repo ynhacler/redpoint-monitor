@@ -15,6 +15,9 @@ export interface NavItem {
 export interface NavGroup {
   key: string
   name: string
+  /** 手机底部标签栏的短名称与图标（修订第 199 条） */
+  short: string
+  icon: 'dashboard' | 'cloud' | 'card' | 'globe' | 'settings'
   items: NavItem[]
   /** 属于本分组但不出现在二级导航中的地址前缀（如节点详情、新建节点） */
   extra?: string[]
@@ -22,12 +25,12 @@ export interface NavGroup {
 
 /** 顶栏分组：仪表板、云平台、订阅（修订第 189 条）、系统（修订第 176 条）；告警与监测是“系统”下的页面，测速对比与费用统计不再显示 */
 export const navGroups: NavGroup[] = [
-  { key: 'dashboard', name: '仪表板', items: [{ name: '节点', to: '/', viewer: true }], extra: ['/servers'] },
-  { key: 'cloud', name: '云平台', items: [{ name: '云平台', to: '/cloud' }] },
-  { key: 'subscriptions', name: '订阅', items: [{ name: '订阅', to: '/subscriptions' }] }, // 设计 47
-  { key: 'connectivity', name: '连通性测试', items: [{ name: '连通性测试', to: '/connectivity', viewer: true }] }, // 设计 48
+  { key: 'dashboard', name: '仪表板', short: '节点', icon: 'dashboard', items: [{ name: '节点', to: '/', viewer: true }], extra: ['/servers'] },
+  { key: 'cloud', name: '云平台', short: '云平台', icon: 'cloud', items: [{ name: '云平台', to: '/cloud' }] },
+  { key: 'subscriptions', name: '订阅', short: '订阅', icon: 'card', items: [{ name: '订阅', to: '/subscriptions' }] }, // 设计 47
+  { key: 'connectivity', name: '连通性测试', short: '连通性', icon: 'globe', items: [{ name: '连通性测试', to: '/connectivity', viewer: true }] }, // 设计 48
   {
-    key: 'system', name: '系统', items: [
+    key: 'system', name: '系统', short: '系统', icon: 'settings', items: [
       { name: '监测', to: '/monitor' },
       { name: '告警', to: '/alerts', viewer: true },
       { name: '账号', to: '/account', viewer: true },
