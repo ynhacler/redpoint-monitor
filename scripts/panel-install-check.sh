@@ -54,14 +54,14 @@ echo "✓ 升级"
 echo "== 4. 重置密码"
 out=$($SUDO sh "$inst" reset-password 2>&1) || { echo "$out"; fail "重置密码失败"; }
 pw2=$(echo "$out" | sed 's/\x1b\[[0-9;]*m//g' | sed -n 's/^  密码：\([A-Za-z0-9]\{8,\}\)$/\1/p')
-[ -n "$pw2" ] && [ "$pw2" != "$pw" ] || fail "没有得到新的密码"
+if [ -z "$pw2" ] || [ "$pw2" = "$pw" ]; then fail "没有得到新的密码"; fi
 [ -z "$($SUDO find /var/lib/vpsmon -maxdepth 1 -user root)" ] || fail "数据目录中有 root 所有的文件"
 echo "✓ 重置密码"
 
 echo "== 5. 卸载"
 $SUDO sh "$inst" uninstall --purge >/dev/null
 ! systemctl is-active --quiet vpsmon-server || fail "卸载后服务仍在运行"
-[ ! -e /usr/local/bin/vpsmon-server ] && [ ! -e /var/lib/vpsmon ] || fail "卸载后有残留"
+if [ -e /usr/local/bin/vpsmon-server ] || [ -e /var/lib/vpsmon ]; then fail "卸载后有残留"; fi
 ! id vpsmon >/dev/null 2>&1 || fail "卸载后 vpsmon 用户仍在"
 trap - EXIT
 echo "✓ 面板一键安装检查全部通过"

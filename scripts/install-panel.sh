@@ -55,7 +55,7 @@ die() { printf '%s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 # ---- 参数 ----
 ACTION=install
 DOMAIN=""; EMAIL=""; PROXY=0; PORT=""; PUBLIC_URL=""; MIRROR=""; LOCAL=""; YES=0; PURGE=0
-need_arg() { [ $# -ge 2 ] && [ -n "$2" ] || die "$1 需要一个值"; }
+need_arg() { if [ $# -lt 2 ] || [ -z "$2" ]; then die "$1 需要一个值"; fi; }
 while [ $# -gt 0 ]; do
   case "$1" in
     install|uninstall|reset-password) ACTION="$1"; shift ;;
@@ -119,7 +119,7 @@ env_del() {
   [ -f "$ENV_FILE" ] || return 0
   tmp="$(mktemp)"; awk -v k="$1" 'index($0, k"=") != 1' "$ENV_FILE" > "$tmp"; cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
 }
-env_get() { [ -f "$ENV_FILE" ] && awk -F= -v k="$1" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$ENV_FILE" || true; }
+env_get() { if [ -f "$ENV_FILE" ]; then awk -F= -v k="$1" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$ENV_FILE"; fi; }
 port_busy() { # 端口是否被其他程序监听（本面板自己占用的不算）
   out=""
   if command -v ss >/dev/null 2>&1; then out="$(ss -Hltnp 2>/dev/null | awk -v p=":$1" '$4 ~ p"$"')"
@@ -165,7 +165,7 @@ fi
 
 # ================= 重置密码 =================
 if [ "$ACTION" = reset-password ]; then
-  [ -x "$BIN" ] && [ -f "$DATA/monitor.db" ] || die "没有找到已安装的面板（$BIN、$DATA）"
+  if [ ! -x "$BIN" ] || [ ! -f "$DATA/monitor.db" ]; then die "没有找到已安装的面板（$BIN、$DATA）"; fi
   ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT INT TERM
   OUT="$(as_vpsmon "$BIN" admin reset-password --data "$DATA" 2>"$ERR")" || die "重置失败：$(cat "$ERR")"
   PW="$(printf '%s\n' "$OUT" | tail -n 1)"
@@ -263,7 +263,7 @@ else
   [ -n "$PORT" ] || PORT="$(env_get VPSMON_LISTEN | sed 's/.*://')"
   [ -n "$PORT" ] || PORT=8080
   case "$PORT" in *[!0-9]*|'') die "--port 必须是数字" ;; esac
-  [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || die "--port 必须在 1-65535 之间"
+  if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then die "--port 必须在 1-65535 之间"; fi
   case "$PUBLIC_URL" in ''|https://*) ;; *) die "--public-url 必须以 https:// 开头" ;; esac
   if [ "$UPGRADE" -eq 0 ] && port_busy "$PORT"; then die "本机端口 $PORT 已被占用，换一个：--port 8090"; fi
 fi
@@ -306,7 +306,7 @@ if ! id vpsmon >/dev/null 2>&1; then
 fi
 install -d -o vpsmon -g vpsmon -m 0750 "$DATA"
 install -d -m 0755 "$ENV_DIR"
-[ "$UPGRADE" -eq 1 ] && svc active && svc stop || true
+if [ "$UPGRADE" -eq 1 ] && svc active; then svc stop || true; fi
 install -m 0755 "$TMP/vpsmon-server" "$BIN"
 ok "程序已安装到 $BIN"
 
