@@ -40,7 +40,7 @@ func (c *aliyunClient) Check(ctx context.Context, now time.Time) []CheckItem {
 	}
 
 	items = append(items, c.checkInstances(ctx, "ECS 实例", "AliyunECSReadOnlyAccess", "ecs", c.ecsRegions, c.ecsInstances))
-	items = append(items, c.checkInstances(ctx, "轻量应用服务器", "AliyunSWASReadOnlyAccess", "swas", c.swasRegions, c.swasInstances))
+	items = append(items, c.checkInstances(ctx, "轻量应用服务器", "AliyunSWASOpenReadOnlyAccess", "swas", c.swasRegions, c.swasInstances))
 
 	if pools, err := c.TrafficPools(ctx, now); err != nil {
 		fail("CDT 流量", "AliyunCDTReadOnlyAccess", err)

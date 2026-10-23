@@ -809,7 +809,7 @@ func TestCloudAliyunECSOnlyPermissions(t *testing.T) {
 	if it := chk.Items[1]; !it.OK || it.Detail != "查询了 1 个区域，共 2 台：cn-hongkong 2 台（走 CDT 1 台）" {
 		t.Errorf("ECS %+v", it)
 	}
-	if it := chk.Items[2]; it.OK || it.Policy != "AliyunSWASReadOnlyAccess" {
+	if it := chk.Items[2]; it.OK || it.Policy != "AliyunSWASOpenReadOnlyAccess" {
 		t.Errorf("轻量 %+v", it)
 	}
 	if it := chk.Items[3]; !it.OK || it.Detail != "本月已用：CDT 非中国内地 10.00 GiB" {
