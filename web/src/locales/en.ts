@@ -654,11 +654,12 @@ export const en: Record<string, string> = {
   '面板服务器公网IP/32': 'PANEL_PUBLIC_IP/32',
   '{month} 自然月（北京时间）；只计按流量计费的 BGP（多线）流量，超出免费额度的部分按量收费':
     '{month}, calendar month (Beijing time); only pay-by-traffic BGP traffic counts; usage beyond the free quota is billed',
-  '列出 ECS 实例与到期时间，包括按流量计费、走 CDT 的实例。没有它，实例列表中看不到任何 ECS / CDT 实例':
-    'Lists ECS instances and expiry, including pay-by-traffic instances that use CDT. Without it, no ECS / CDT instances appear',
+  '列出 ECS 实例与到期时间，包括按流量计费、走 CDT 的 ECS 实例。没有它，实例列表中看不到任何 ECS 实例':
+    'Lists ECS instances and expiry, including pay-by-traffic ECS instances that use CDT. Without it, no ECS instances appear',
   '读取 CDT 公网流量与免费额度用量（中国内地 20 GiB、非中国内地 200 GiB / 月）。没有它，CDT 实例显示“本月暂无数据”':
     'Reads CDT traffic and free-quota usage (20 GiB mainland China, 200 GiB elsewhere per month). Without it, CDT instances show “No data this month”',
-  '列出轻量应用服务器实例与流量包。不用轻量应用服务器时可以不授予': 'Lists Simple Application Server instances and traffic packages. Not needed if you do not use them',
+  '列出轻量应用服务器实例与流量包，包括走 CDT 的轻量实例。没有它，实例列表中看不到任何轻量实例':
+    'Lists Simple Application Server instances and traffic packages, including those that use CDT. Without it, no Simple Application Server instances appear',
   '读取本月费用与账户余额。没有它，只是不显示费用': 'Reads this month\'s cost and the account balance. Without it, costs are just not shown',
   '本月账单': 'This month\'s bill',
   '账户余额': 'Account balance',
@@ -699,9 +700,12 @@ export const en: Record<string, string> = {
   '阿里云（aliyun.com）': 'Alibaba Cloud China (aliyun.com)',
   '阿里云国际站（alibabacloud.com）': 'Alibaba Cloud (alibabacloud.com)',
   '要看 CDT 实例': 'To see CDT instances',
-  '：至少授予': ', grant at least',
-  '（列出实例）与': ' (lists instances) and',
-  '（流量用量）。给已添加的账户补授权后，点账户上的“立即同步”。': ' (traffic usage). After granting them to an existing account, click “Sync now” on it.',
+  '：CDT 实例可能是 ECS，也可能是轻量应用服务器，按实例类型授予':
+    ': a CDT instance may be ECS or Simple Application Server. Depending on the instance type, grant',
+  '或': 'or',
+  '（不确定就都授予），再加': ' (grant both if unsure), plus',
+  '（流量用量）。“区域”填实例所在的区域 ID（如 cn-hongkong）或留空，不要填实例名称。给已添加的账户补授权后，点账户上的“立即同步”。':
+    ' (traffic usage). Set “Regions” to the instance\'s region ID (e.g. cn-hongkong) or leave it empty — not the instance name. After granting them to an existing account, click “Sync now” on it.',
   '收起': 'Hide',
   '复制策略名称': 'Copy policy names',
   '建议创建一个专用用户并加入一个组，在根区间为该组添加下面的只读策略，再为该用户添加 API 密钥（不带密码的 RSA 私钥）。出站流量按租户统计，对照每月 10 TB 免费额度。':

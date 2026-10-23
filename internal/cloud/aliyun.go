@@ -8,9 +8,9 @@ package cloud
 //	轻量应用服务器 2020-06-01  ListRegions、ListInstances、ListInstancesTrafficPackages
 //	云数据传输 CDT 2021-08-13 ListCdtInternetTraffic（本月公网流量，按地域，修订第 181 条）
 //
-// 最小权限：AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；
+// 最小权限：AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASOpenReadOnlyAccess（接口前缀 swas-open）；
 // CDT 流量另需 AliyunCDTReadOnlyAccess（或 cdt:ListCdtInternetTraffic），没有时只是不显示 CDT 流量。
-// 走 CDT 的实例本身是 ECS 实例：没有 AliyunECSReadOnlyAccess 时列不出来（修订第 202 条）。
+// 走 CDT 的实例可能是 ECS，也可能是轻量应用服务器：没有对应服务的只读权限时列不出来（修订第 202、210 条）。
 // 账单月份按北京时间（UTC+8）划分。
 
 import (
@@ -186,11 +186,11 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 	}
 	if ecsErr != nil {
 		denied = append(denied, RegionError{Kind: "ecs", Label: "ECS", Err: ecsErr,
-			Hint: "授予 AliyunECSReadOnlyAccess 后才能列出 ECS 实例，包括按流量计费、走 CDT 的实例"})
+			Hint: "授予 AliyunECSReadOnlyAccess 后才能列出 ECS 实例，包括按流量计费、走 CDT 的 ECS 实例（不用 ECS 可以忽略）"})
 	}
 	if swasErr != nil {
 		denied = append(denied, RegionError{Kind: "swas", Label: "轻量应用服务器", Err: swasErr,
-			Hint: "需要时授予 AliyunSWASReadOnlyAccess（不用轻量应用服务器可以忽略）"})
+			Hint: "授予 AliyunSWASOpenReadOnlyAccess 后才能列出轻量应用服务器实例，包括走 CDT 的轻量实例（不用轻量应用服务器可以忽略）"})
 	}
 	var jobs []regionJob
 	for _, r := range ecsRegions {

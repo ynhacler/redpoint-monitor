@@ -296,12 +296,13 @@ const poolTip = (p: CloudTrafficPool) =>
 const intervalCost: Record<number, string> = { 6: '2.4', 12: '1.2', 24: '0.6' }
 
 // 阿里云：在 RAM 中创建用户，只授予这四个系统只读策略；CDT 只读用于读取 CDT 公网流量（修订第 181 条），没有时只是不显示
-const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess\nAliyunCDTReadOnlyAccess'
-// 每个策略的用途与没有它的影响（修订第 202 条）：走 CDT 的实例本身是 ECS 实例，要 ECS 只读才能列出来
+const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASOpenReadOnlyAccess\nAliyunCDTReadOnlyAccess'
+// 每个策略的用途与没有它的影响（修订第 202 条）：走 CDT 的实例可能是 ECS，也可能是轻量应用服务器，
+// 要对应服务的只读权限才能列出来（修订第 210 条）
 const aliyunPolicyUses: [string, string][] = [
-  ['AliyunECSReadOnlyAccess', '列出 ECS 实例与到期时间，包括按流量计费、走 CDT 的实例。没有它，实例列表中看不到任何 ECS / CDT 实例'],
+  ['AliyunECSReadOnlyAccess', '列出 ECS 实例与到期时间，包括按流量计费、走 CDT 的 ECS 实例。没有它，实例列表中看不到任何 ECS 实例'],
   ['AliyunCDTReadOnlyAccess', '读取 CDT 公网流量与免费额度用量（中国内地 20 GiB、非中国内地 200 GiB / 月）。没有它，CDT 实例显示“本月暂无数据”'],
-  ['AliyunSWASReadOnlyAccess', '列出轻量应用服务器实例与流量包。不用轻量应用服务器时可以不授予'],
+  ['AliyunSWASOpenReadOnlyAccess', '列出轻量应用服务器实例与流量包，包括走 CDT 的轻量实例。没有它，实例列表中看不到任何轻量实例'],
   ['AliyunBSSReadOnlyAccess', '读取本月费用与账户余额。没有它，只是不显示费用'],
 ]
 
@@ -422,7 +423,7 @@ function expireTone(i: CloudInstance): string {
         <ul>
           <li v-for="[p, use] in aliyunPolicyUses" :key="p"><code>{{ p }}</code>{{ t('：') }}{{ t(use) }}</li>
         </ul>
-        <p><b>{{ t('要看 CDT 实例') }}</b>{{ t('：至少授予') }} <code>AliyunECSReadOnlyAccess</code>{{ t('（列出实例）与') }} <code>AliyunCDTReadOnlyAccess</code>{{ t('（流量用量）。给已添加的账户补授权后，点账户上的“立即同步”。') }}
+        <p><b>{{ t('要看 CDT 实例') }}</b>{{ t('：CDT 实例可能是 ECS，也可能是轻量应用服务器，按实例类型授予') }} <code>AliyunECSReadOnlyAccess</code> {{ t('或') }} <code>AliyunSWASOpenReadOnlyAccess</code>{{ t('（不确定就都授予），再加') }} <code>AliyunCDTReadOnlyAccess</code>{{ t('（流量用量）。“区域”填实例所在的区域 ID（如 cn-hongkong）或留空，不要填实例名称。给已添加的账户补授权后，点账户上的“立即同步”。') }}
           <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? t('收起') : t('复制策略名称') }}</button></p>
       </div>
       <p v-else-if="form.provider === 'oci'" class="muted small">
