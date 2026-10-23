@@ -3,6 +3,7 @@
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
 // 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts、brandLogos.ts），没有标志的用品牌色方块加首字母；不从外部加载。
 import type { Subscription } from './api'
+import { t } from './i18n'
 import { simCatalog } from './simCatalog'
 
 /** 订阅类别 */
@@ -186,18 +187,22 @@ export function monthlyCents(s: Subscription): number {
   return s.price_cents / (months[s.cycle] ?? 1)
 }
 
+// 每周扣费：按星期几（周日为 0）
+const weeklyText = ['每周日扣费', '每周一扣费', '每周二扣费', '每周三扣费', '每周四扣费', '每周五扣费', '每周六扣费']
+
 /** 扣费说明：“每月 5 日扣费”“每年 10 月 26 日扣费”“每周三扣费”“已结束订阅”“试用中，11 月 8 日开始扣费” */
 export function chargeText(s: Subscription, today = new Date()): string {
-  if (s.ended) return '已结束订阅'
+  if (s.ended) return t('已结束订阅')
   const first = parse(s.start_date)
   first.setDate(first.getDate() + s.trial_days)
-  if (s.trial_days > 0 && first > today) return `试用中，${first.getMonth() + 1} 月 ${first.getDate()} 日开始扣费`
-  if (s.cycle === 'once') return s.next_charge ? `${s.next_charge.slice(5).replace('-', ' 月 ')} 日扣费` : '一次性，已扣费'
-  if (s.cycle === 'weekly') return `每周${'日一二三四五六'[first.getDay()]}扣费`
-  if (s.cycle === 'monthly') return `每月 ${first.getDate()} 日扣费`
-  if (s.cycle === 'annually') return `每年 ${first.getMonth() + 1} 月 ${first.getDate()} 日扣费`
+  const md = (d: Date) => ({ m: d.getMonth() + 1, d: d.getDate() })
+  if (s.trial_days > 0 && first > today) return t('试用中，{m} 月 {d} 日开始扣费', md(first))
+  if (s.cycle === 'once') return s.next_charge ? t('{m} 月 {d} 日扣费', md(parse(s.next_charge))) : t('一次性，已扣费')
+  if (s.cycle === 'weekly') return t(weeklyText[first.getDay()])
+  if (s.cycle === 'monthly') return t('每月 {d} 日扣费', md(first))
+  if (s.cycle === 'annually') return t('每年 {m} 月 {d} 日扣费', md(first))
   const next = s.next_charge ? parse(s.next_charge) : null
-  return next ? `${cycleNames[s.cycle]}，下次 ${next.getMonth() + 1} 月 ${next.getDate()} 日` : cycleNames[s.cycle]
+  return next ? t('{cycle}，下次 {m} 月 {d} 日', { cycle: t(cycleNames[s.cycle]), ...md(next) }) : t(cycleNames[s.cycle])
 }
 
 // ---- 统计 ----
