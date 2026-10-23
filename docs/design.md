@@ -372,6 +372,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 197 | 连通性测试：所有网站都用真实标志——Simple Icons 没有收录的 10 个改用网站自己的图标或公有领域 SVG（内置）；单色标志放在品牌色浅底方块中，与图片标志同样大小 | 48.1 |
 | 196 | 解锁检测增加 Yahoo、Truth Social、Telegram；Agent 按本机所在地区追加当地服务（日本、香港、澳门、台湾、韩国、美国、英国、东南亚，每地不超过 6 项），结果项带 local，面板单独列出 | 50.2 |
 | 195 | 节点详情：磁盘不再每个挂载点一张卡片，合为一块——每个挂载点一行横向用量条，IO 每块磁盘一行 | 11.1 |
 | 194 | 连通性测试：京东（带参数时跳转到 http）与 Claude（响应带 CORP same-origin）被浏览器拦截而显示超时；去掉随机参数，Claude、ChatGPT、npm 改测 API 地址，Takealot 换为 News24；区分“超时”与“无法连接” | 48.1 |
@@ -11136,7 +11137,9 @@ SIM 卡    “SIM 电话卡”类别，用于记录保号与月租。目录按�
 隔离      面板页面的 CSP 只允许连接面板，不为这个功能放宽。测试在探测页 /probe.html 中进行：以 sandbox iframe 加载、不带
           allow-same-origin（不透明来源，取不到面板的 Cookie、存储与页面）；它有单独的 CSP：只允许本面板的脚本与 HTTPS 请求、
           只能被本面板嵌入。目标由面板页面经 postMessage 下发（只接受 https 地址），结果经 postMessage 交回，双方都核对消息来源
-标志      图形取自 Simple Icons（CC0，web/src/siteIcons.ts），没有收录的用色块加首字母；不加载外部图片
+标志      都用真实标志（修订第 197 条）：单色图形取自 Simple Icons（CC0，web/src/siteIcons.ts），放在品牌色的浅底方块中；
+          Simple Icons 没有收录的（京东、网易、ChatGPT、Amazon、Bing、Oracle、LinkedIn、Noon、BBC、News24）取自各网站自己的
+          图标或 Wikimedia Commons 的公有领域 SVG，以 data: 地址内置（web/src/siteLogos.ts）；不加载外部图片
 ```
 
 # 49. 节点 IP 信息（ASN）

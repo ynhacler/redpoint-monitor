@@ -5,6 +5,7 @@
 // 每个网站显示本次延迟与最近 8 次的结果（圆点）；历史只保存在本机浏览器。
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { siteIcons } from '../siteIcons'
+import { siteLogos } from '../siteLogos'
 import { HISTORY, grade, grades, siteGroups, type Grade, type Site } from '../connectivity'
 
 const frame = ref<HTMLIFrameElement | null>(null)
@@ -84,10 +85,12 @@ const dots = (s: Site) => {
 }
 const legend: Grade[] = ['best', 'good', 'slow', 'timeout']
 const logo = (s: Site) => (s.icon ? siteIcons[s.icon] : undefined)
-// 标志颜色：品牌色很深（黑色系，如 X、TikTok、GitHub）时用正文色，深色模式下不会看不见
-function logoColor(hex: string) {
+// 单色标志（修订第 197 条）：品牌色图形放在同色的浅底方块中，与图片标志一样大小；
+// 品牌色很深（黑色系，如 X、TikTok、GitHub）时图形用正文色、底色用中性色，深色模式下不会看不见
+function tint(hex: string) {
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.15 ? 'var(--text)' : `#${hex}`
+  if (0.2126 * r + 0.7152 * g + 0.0722 * b < 0.15) return { color: 'var(--text)', background: 'var(--surface-2)' }
+  return { color: `#${hex}`, background: `color-mix(in srgb, #${hex} 14%, transparent)` }
 }
 </script>
 
@@ -120,8 +123,11 @@ function logoColor(hex: string) {
       </div>
       <ul class="sites">
         <li v-for="s in g.sites" :key="s.id" class="panel site">
-          <span class="logo" :style="logo(s) ? { color: logoColor(logo(s)!.hex) } : { background: s.color }" :class="{ tile: !logo(s) }">
-            <svg v-if="logo(s)" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path :d="logo(s)!.path" fill="currentColor" /></svg>
+          <span v-if="siteLogos[s.id]" class="logo img" :class="siteLogos[s.id].fit" :style="{ background: siteLogos[s.id].bg }">
+            <img :src="siteLogos[s.id].src" alt="" />
+          </span>
+          <span v-else class="logo" :style="logo(s) ? tint(logo(s)!.hex) : { background: s.color }" :class="{ tile: !logo(s) }">
+            <svg v-if="logo(s)" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path :d="logo(s)!.path" fill="currentColor" /></svg>
             <span v-else>{{ s.letter ?? s.name[0] }}</span>
           </span>
           <span class="site-main">
@@ -164,6 +170,10 @@ function logoColor(hex: string) {
 .site { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .logo { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 8px; }
 .logo.tile { color: var(--on-accent); font-weight: var(--weight-strong); font-size: var(--font-sm); }
+.logo.img { overflow: hidden; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent); }
+.logo.img img { display: block; }
+.logo.fill img { width: 100%; height: 100%; object-fit: cover; }
+.logo.contain img { width: 76%; height: 76%; object-fit: contain; }
 .site-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dots { display: flex; gap: 4px; }
