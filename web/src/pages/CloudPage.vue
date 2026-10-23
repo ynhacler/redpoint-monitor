@@ -277,6 +277,13 @@ const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: 
 
 // 阿里云：在 RAM 中创建用户，只授予这四个系统只读策略；CDT 只读用于读取 CDT 公网流量（修订第 181 条），没有时只是不显示
 const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess\nAliyunCDTReadOnlyAccess'
+// 每个策略的用途与没有它的影响（修订第 202 条）：走 CDT 的实例本身是 ECS 实例，要 ECS 只读才能列出来
+const aliyunPolicyUses: [string, string][] = [
+  ['AliyunECSReadOnlyAccess', '列出 ECS 实例与到期时间，包括按流量计费、走 CDT 的实例。没有它，实例列表中看不到任何 ECS / CDT 实例'],
+  ['AliyunCDTReadOnlyAccess', '读取 CDT 公网流量与免费额度用量（中国内地 20 GiB、非中国内地 200 GiB / 月）。没有它，CDT 实例显示“本月暂无数据”'],
+  ['AliyunSWASReadOnlyAccess', '列出轻量应用服务器实例与流量包。不用轻量应用服务器时可以不授予'],
+  ['AliyunBSSReadOnlyAccess', '读取本月费用与账户余额。没有它，只是不显示费用'],
+]
 
 // 腾讯云：自定义策略，只列出用到的只读接口（修订第 147 条）。也可改用预设策略 QcloudCVMReadOnlyAccess、
 // QcloudLighthouseReadOnlyAccess，但费用与余额仍需下面两条 billing 接口，所以推荐直接用这条自定义策略。
@@ -388,12 +395,20 @@ function expireTone(i: CloudInstance): string {
           面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。
         </p>
       </div>
-      <p v-else-if="form.provider.startsWith('aliyun')" class="muted small">
-        在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
-        只授予四个系统只读策略，再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。
-        CDT 只读用于读取 ECS 按流量计费的公网流量与免费额度（中国内地 20 GiB、非中国内地 200 GiB / 月），不需要时可以不授予。
-        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '查看策略名称' }}</button>
-      </p>
+      <!-- 阿里云（修订第 202 条）：逐条列出要授予的系统只读策略、用途与没有它的影响；查看 CDT 实例至少需要 ECS 与 CDT 两条 -->
+      <div v-else-if="form.provider.startsWith('aliyun')" class="muted small key-steps">
+        <p>
+          在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
+          在“权限管理 → 新增授权”中授予下面的系统策略（都是只读，不能开关机或修改资源），再为它创建 AccessKey。
+          国内站与国际站是两套账号，请按账号所在站点选择。
+        </p>
+        <ul>
+          <li v-for="[p, use] in aliyunPolicyUses" :key="p"><code>{{ p }}</code>：{{ use }}</li>
+        </ul>
+        <p><b>要看 CDT 实例</b>：至少授予 <code>AliyunECSReadOnlyAccess</code>（列出实例）与 <code>AliyunCDTReadOnlyAccess</code>（流量用量）。
+          给已添加的账户补授权后，点账户上的“立即同步”。
+          <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '复制策略名称' }}</button></p>
+      </div>
       <p v-else-if="form.provider === 'oci'" class="muted small">
         建议创建一个专用用户并加入一个组，在根区间为该组添加下面的只读策略，再为该用户添加 API 密钥（不带密码的 RSA 私钥）。
         出站流量按租户统计，对照每月 10 TB 免费额度。
@@ -608,7 +623,7 @@ function expireTone(i: CloudInstance): string {
               {{ cdtPool(i)!.name.replace('CDT ', '') }}（共用）{{ fmtTraffic(cdtPool(i)!.used_bytes, 'binary') }} / {{ fmtTraffic(cdtPool(i)!.limit_bytes, 'binary') }}
             </span>
           </div>
-          <span v-else-if="i.cdt_pool" class="traffic muted small" title="需要子用户有 AliyunCDTReadOnlyAccess；本月还没有 CDT 流量时也不显示">CDT：本月暂无数据</span>
+          <span v-else-if="i.cdt_pool" class="traffic muted small" title="需要子用户有 AliyunCDTReadOnlyAccess（RAM → 用户 → 新增授权）；已授权但本月还没有 CDT 流量时也显示这一句">CDT：本月暂无数据</span>
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
           <!-- 与节点关联：已关联 / 建议关联（公网 IP 唯一匹配）/ 手动选择 -->
           <div v-if="i.kind !== 'oci_egress'" class="link small">

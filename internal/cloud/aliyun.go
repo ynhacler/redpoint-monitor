@@ -10,6 +10,7 @@ package cloud
 //
 // 最小权限：AliyunBSSReadOnlyAccess、AliyunECSReadOnlyAccess、AliyunSWASReadOnlyAccess；
 // CDT 流量另需 AliyunCDTReadOnlyAccess（或 cdt:ListCdtInternetTraffic），没有时只是不显示 CDT 流量。
+// 走 CDT 的实例本身是 ECS 实例：没有 AliyunECSReadOnlyAccess 时列不出来（修订第 202 条）。
 // 账单月份按北京时间（UTC+8）划分。
 
 import (
@@ -180,10 +181,12 @@ func (c *aliyunClient) Instances(ctx context.Context) ([]Instance, error) {
 	}
 	var denied []RegionError
 	if ecsErr != nil {
-		denied = append(denied, RegionError{Kind: "ecs", Label: "ECS", Err: ecsErr})
+		denied = append(denied, RegionError{Kind: "ecs", Label: "ECS", Err: ecsErr,
+			Hint: "授予 AliyunECSReadOnlyAccess 后才能列出 ECS 实例，包括按流量计费、走 CDT 的实例"})
 	}
 	if swasErr != nil {
-		denied = append(denied, RegionError{Kind: "swas", Label: "轻量应用服务器", Err: swasErr})
+		denied = append(denied, RegionError{Kind: "swas", Label: "轻量应用服务器", Err: swasErr,
+			Hint: "需要时授予 AliyunSWASReadOnlyAccess（不用轻量应用服务器可以忽略）"})
 	}
 	var jobs []regionJob
 	for _, r := range ecsRegions {

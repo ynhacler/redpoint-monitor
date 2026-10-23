@@ -28,6 +28,7 @@ type RegionError struct {
 	Label  string // 显示名，如 “Lightsail”
 	Region string
 	Err    error
+	Hint   string // 整个服务没有权限时的补充说明：要授予的策略与没有它的影响（修订第 202 条）
 }
 
 // PartialError 表示部分区域被跳过：同时返回的实例列表是其他区域的完整结果。
@@ -88,6 +89,9 @@ func (r RegionError) describe() string {
 	case pe != nil && notOpenedCodes[pe.Code]:
 		return fmt.Sprintf("区域 %s 的 %s 不可用（可能未开通该区域），已跳过：%v", r.Region, r.Label, r.Err)
 	case r.Region == "" && permissionDenied(r.Err): // 整个服务没有只读权限（修订第 184 条）
+		if r.Hint != "" {
+			return fmt.Sprintf("%s：子用户没有只读权限，已跳过。%s", r.Label, r.Hint)
+		}
 		return fmt.Sprintf("%s：子用户没有只读权限，已跳过（不用这项服务时可以忽略）", r.Label)
 	}
 	return fmt.Sprintf("区域 %s 的 %s 调用失败，已跳过：%v", r.Region, r.Label, r.Err)
