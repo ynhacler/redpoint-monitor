@@ -1,5 +1,5 @@
-// App 主框架（设计 1.5.18，修订第 213 条）：底部导航 服务器 / 云平台 / 订阅 / 我的。
-// 原“首页”的概况并入“服务器”顶部；事件与连通性测试从“服务器”右上角进入。
+// App 主框架（设计 1.5.18，修订第 213、216 条）：底部导航 服务器 / 云平台 / 工具 / 我的。
+// 原“首页”的概况并入“服务器”顶部；事件从“服务器”右上角进入；“工具”中分页放订阅与连通性测试。
 // 节点数据在这里统一获取：每 10 秒刷新（1.5.9），先显示离线缓存，网络失败时保留最近数据并显示最后更新时间（1.5.10）。
 import 'dart:async';
 
@@ -21,13 +21,12 @@ import '../theme.dart';
 import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
 import 'cloud_page.dart';
-import 'connectivity_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
 import 'reorder_page.dart';
 import 'me_page.dart';
 import 'server_detail_page.dart';
-import 'subscriptions_page.dart';
+import 'tools_page.dart';
 
 /// App 主框架：底部导航与节点数据的统一刷新（设计 1.5.18）
 class AppShell extends StatefulWidget {
@@ -177,8 +176,6 @@ class _AppShellState extends State<AppShell> {
         }),
       ));
 
-  void _openConnectivity() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ConnectivityPage()));
-
   Future<void> _syncPush() async {
     try {
       final st = await syncPush(widget.api, widget.pushSource);
@@ -245,7 +242,7 @@ class _AppShellState extends State<AppShell> {
           onRefresh: () async {
             await Future.wait([_refresh(), _refreshOthers()]);
           },
-          card: _card, offline: _offlineBanner, onCompare: _openCompare, onEvents: _openEvents, onConnectivity: _openConnectivity,
+          card: _card, offline: _offlineBanner, onCompare: _openCompare, onEvents: _openEvents,
           attention: attention, onReorder: _reorder,
           centers: [
             if (widget.centers.length > 1)
@@ -263,7 +260,7 @@ class _AppShellState extends State<AppShell> {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);
       }),
-      SubscriptionsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy),
+      ToolsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy),
       MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
         _timer?.cancel();
         widget.onSwitch?.call(i);
@@ -288,7 +285,7 @@ class _AppShellState extends State<AppShell> {
             label: '服务器',
           ),
           const NavigationDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud), label: '云平台'),
-          const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: '订阅'),
+          const NavigationDestination(icon: Icon(Icons.handyman_outlined), selectedIcon: Icon(Icons.handyman), label: '工具'),
           const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],
       ),
@@ -301,7 +298,7 @@ class _AppShellState extends State<AppShell> {
 class _ServersTab extends StatefulWidget {
   const _ServersTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
       required this.onRefresh, required this.card, required this.offline, required this.onSort, required this.onCompare,
-      required this.onReorder, required this.onEvents, required this.onConnectivity, required this.attention,
+      required this.onReorder, required this.onEvents, required this.attention,
       this.centers = const [], this.onSwitch});
   final List<ServerView> items;
   final Prefs prefs;
@@ -315,7 +312,6 @@ class _ServersTab extends StatefulWidget {
   final VoidCallback onCompare;
   final VoidCallback onReorder;
   final VoidCallback onEvents;
-  final VoidCallback onConnectivity;
 
   /// 需要关注的节点数（铃铛上的角标）
   final int attention;
@@ -399,7 +395,6 @@ class _ServersTabState extends State<_ServersTab> {
             onPressed: widget.onEvents,
             icon: Badge(isLabelVisible: widget.attention > 0, label: Text('${widget.attention}'), child: const Icon(Icons.notifications_outlined)),
           ),
-          IconButton(icon: const Icon(Icons.network_check), tooltip: '连通性测试', onPressed: widget.onConnectivity),
           // 排序方式、“调整顺序…”（拖动排列，保存为自定义顺序）与测速对比
           PopupMenuButton<Object>(
             icon: const Icon(Icons.more_vert),

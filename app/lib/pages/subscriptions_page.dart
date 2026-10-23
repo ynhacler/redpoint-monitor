@@ -17,7 +17,10 @@ import '../widgets/stale_banner.dart';
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
   /// 创建订阅页
-  const SubscriptionsPage({super.key, required this.api, required this.onRevoked, this.privacy = false});
+  const SubscriptionsPage({super.key, required this.api, required this.onRevoked, this.privacy = false, this.embedded = false});
+
+  /// 嵌在“工具”页的分页中，不显示自己的标题栏（修订第 216 条）
+  final bool embedded;
 
   /// 当前监控中心
   final ApiClient api;
@@ -105,7 +108,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     final soon = active.where((s) => (daysUntilCharge(s) ?? 99) <= 7).length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('订阅')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('订阅')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [

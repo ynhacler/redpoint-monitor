@@ -40,8 +40,11 @@ final _latest = <String, ProbeResult>{};
 
 /// 连通性测试页
 class ConnectivityPage extends StatefulWidget {
-  /// 创建页面
-  const ConnectivityPage({super.key});
+  /// 创建页面；[embedded] 为 true 时放在“工具”页的分页中，不显示自己的标题栏（修订第 216 条）
+  const ConnectivityPage({super.key, this.embedded = false});
+
+  /// 嵌在“工具”页中
+  final bool embedded;
 
   @override
   State<ConnectivityPage> createState() => _ConnectivityPageState();
@@ -124,13 +127,7 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
     final any = _running.isNotEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text('连通性测试'), actions: [
-        IconButton(
-          tooltip: '重新测试',
-          onPressed: any ? null : () => _run(siteGroups.map((g) => g.key).toSet()),
-          icon: any ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh),
-        ),
-      ]),
+      appBar: widget.embedded ? null : AppBar(title: const Text('连通性测试')),
       body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
         Text('测试手机当前网络到各地常用网站的连通性与延迟，用来判断分流规则是否生效。测试在本机进行，不经过面板与 VPS。', style: muted),
         const SizedBox(height: 8),
@@ -141,6 +138,13 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
             Text(_gradeNames[g]!, style: muted),
             const SizedBox(width: 12),
           ],
+          const Spacer(),
+          FilledButton.tonalIcon(
+            onPressed: any ? null : () => _run(siteGroups.map((g) => g.key).toSet()),
+            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+            icon: any ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh, size: 18),
+            label: Text(any ? '测试中…' : '重新测试'),
+          ),
         ]),
         for (final g in siteGroups) _group(context, g),
       ]),
