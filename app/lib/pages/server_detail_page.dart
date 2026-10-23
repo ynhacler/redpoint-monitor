@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/stale_banner.dart';
+import '../errors.dart';
 import '../api.dart';
 import '../app_lock.dart';
 import '../cache.dart';
@@ -108,7 +110,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       }
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = describeError(e));
     }
   }
 
@@ -191,7 +193,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     } on DeviceRevoked {
       _revoked();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：${describeError(e)}')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -232,9 +234,11 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 32), children: [
           Row(children: [
-            Icon(Icons.circle, size: 10, color: colors.status(s.status)),
+            // 连不上面板时状态来自缓存，用灰色并注明“上次”，不把几天前的“在线”当成现在（修订第 211 条）
+            Icon(Icons.circle, size: 10, color: _error != null ? colors.muted : colors.status(s.status)),
             const SizedBox(width: 6),
-            Text(statusText[s.status] ?? s.status, style: TextStyle(color: colors.status(s.status), fontWeight: FontWeight.w600)),
+            Text('${_error != null ? '上次' : ''}${statusText[s.status] ?? s.status}',
+                style: TextStyle(color: _error != null ? colors.muted : colors.status(s.status), fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -245,14 +249,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             ),
             if (s.group.isNotEmpty) Text(s.group, style: muted),
           ]),
-          if (_error != null)
-            Card(
-              color: scheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text('当前离线，显示最近数据${_updated != null ? '（最后更新 ${fmtClock(_updated!)}）' : ''}\n$_error'),
-              ),
-            ),
+          if (_error != null) StaleBanner(error: _error!, updated: _updated, onRetry: _refresh),
           if (s.maintenance != null || s.muted != null)
             Card(
               child: Padding(
@@ -735,8 +732,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             Row(children: [
               Text(_ispNames[p.isp] ?? '探针', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
-              Flexible(child: Text(p.name, style: small, overflow: TextOverflow.ellipsis)),
-              const Spacer(),
+              Expanded(child: Text(p.name, style: small, overflow: TextOverflow.ellipsis)),
               Text('${_reachStatus[p.status] ?? p.status}${p.status == 'port' ? ' ${p.badPorts.join('、')}' : ''}',
                   style: TextStyle(fontSize: 13, color: tone(p.status))),
             ]),

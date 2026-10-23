@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/stale_banner.dart';
+import '../errors.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
@@ -54,7 +56,7 @@ class _LatencyComparePageState extends State<LatencyComparePage> {
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.status == 404 ? '面板版本较旧，升级面板后可用' : e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e'); // 保留上次的数据
+      if (mounted) setState(() => _error = describeError(e)); // 保留上次的数据
     }
   }
 
@@ -65,10 +67,7 @@ class _LatencyComparePageState extends State<LatencyComparePage> {
     final small = TextStyle(fontSize: 12, color: muted);
     final children = <Widget>[];
     if (_error != null) {
-      children.add(Card(
-        color: Theme.of(context).colorScheme.errorContainer,
-        child: Padding(padding: const EdgeInsets.all(12), child: Text(_error!)),
-      ));
+      children.add(StaleBanner(error: _error!, note: '下拉可重新加载'));
     }
     if (d == null) {
       if (_error == null) children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())));

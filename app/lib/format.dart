@@ -55,6 +55,13 @@ String fmtTime(int? unix, {DateTime? now}) {
 /// 时钟时间到秒，用于“最后更新 16:32:18”（设计 1.5.10）。
 String fmtClock(DateTime d) => '${_p(d.hour)}:${_p(d.minute)}:${_p(d.second)}';
 
+/// 数据的时间：今天只写时钟到秒，更早的带上日期（“10-06 22:42”），避免把几天前的缓存看成刚才的数据（修订第 211 条）。
+String fmtStamp(DateTime d, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  if (d.year == n.year && d.month == n.month && d.day == n.day) return fmtClock(d);
+  return fmtTime(d.millisecondsSinceEpoch ~/ 1000, now: n);
+}
+
 /// 时长：“4 分钟”“2 小时”“3 天”。
 String fmtDuration(num? seconds) {
   if (seconds == null || seconds < 0) return dash;

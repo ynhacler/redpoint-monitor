@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/stale_banner.dart';
+import '../errors.dart';
 import '../api.dart';
 import '../cache.dart';
 import '../centers.dart';
@@ -96,7 +98,7 @@ class _AppShellState extends State<AppShell> {
         widget.onCentersChanged?.call(); // 该中心已从列表移除
       } catch (e) {
         final last = _others[c.key] ?? const CenterSummary(total: 0, online: 0, offline: 0, attention: 0);
-        if (mounted) setState(() => _others[c.key] = last.withError('$e'));
+        if (mounted) setState(() => _others[c.key] = last.withError(describeError(e)));
       }
     }
     _publishWidget();
@@ -139,7 +141,7 @@ class _AppShellState extends State<AppShell> {
     } on DeviceRevoked {
       _revoked();
     } catch (e) {
-      if (mounted) setState(() => _error = '$e'); // 保留上次的数据
+      if (mounted) setState(() => _error = describeError(e)); // 保留上次的数据
     }
   }
 
@@ -216,20 +218,14 @@ class _AppShellState extends State<AppShell> {
       ));
 
   Widget _card(ServerView s) => ServerCard(s, onTap: () => _open(s), favorite: _prefs.favorites.contains(s.id),
-      onFavorite: () => _toggleFavorite(s), privacy: _prefs.privacy);
+      onFavorite: () => _toggleFavorite(s), privacy: _prefs.privacy, stale: _error != null);
 
-  Widget _offlineBanner() => Card(
-        color: Theme.of(context).colorScheme.errorContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text('当前离线${_updated != null ? '\n最后更新：${fmtClock(_updated!)}' : ''}\n$_error'),
-        ),
-      );
+  Widget _offlineBanner() => StaleBanner(error: _error!, updated: _updated, onRetry: _refresh);
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _OverviewTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: widget.api.session.server.host,
+      _OverviewTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: centerLabel(widget.api.session.server),
           onRefresh: () async {
             await Future.wait([_refresh(), _refreshOthers()]);
           },
@@ -355,7 +351,7 @@ class _OverviewTab extends StatelessWidget {
               dense: true,
               leading: Icon(current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                   color: current ? Theme.of(context).colorScheme.primary : null, size: 20),
-              title: Text(c.server.host, overflow: TextOverflow.ellipsis),
+              title: Text(centerLabel(c.server), overflow: TextOverflow.ellipsis),
               subtitle: Text(sum == null
                   ? '读取中…'
                   : '${sum.total} 台 · 在线 ${sum.online}${sum.error != null ? ' · 暂时无法连接' : ''}'),

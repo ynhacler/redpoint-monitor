@@ -16,12 +16,15 @@ import 'ring.dart';
 
 /// 节点卡片（设计 13、41.3）
 class ServerCard extends StatelessWidget {
-  const ServerCard(this.s, {super.key, required this.onTap, required this.favorite, required this.onFavorite, this.privacy = false});
+  const ServerCard(this.s, {super.key, required this.onTap, required this.favorite, required this.onFavorite, this.privacy = false, this.stale = false});
   final ServerView s;
   final VoidCallback onTap;
   final bool favorite;
   final VoidCallback onFavorite;
   final bool privacy;
+
+  /// 连不上面板、显示的是缓存数据：状态点改为灰色，不把旧的“在线”当成现在（修订第 211 条）
+  final bool stale;
 
   @override
   Widget build(BuildContext context) {
@@ -54,16 +57,22 @@ class ServerCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // ---- 头部 ----
+            // 名称部分放在 Expanded 中：名称（Flexible）与 Spacer 同在一行时会平分剩余宽度，收藏星标被挤到中间（修订第 211 条）
             Row(children: [
-              if (flagEmoji(s.country).isNotEmpty) Padding(padding: const EdgeInsets.only(right: 6), child: Text(flagEmoji(s.country))),
-              Flexible(
-                child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16), overflow: TextOverflow.ellipsis),
+              Expanded(
+                child: Row(children: [
+                  if (flagEmoji(s.country).isNotEmpty) Padding(padding: const EdgeInsets.only(right: 6), child: Text(flagEmoji(s.country))),
+                  Flexible(
+                    child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16), overflow: TextOverflow.ellipsis),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                      message: '${stale ? '上次' : ''}${statusText[s.status] ?? s.status}',
+                      child: Icon(Icons.circle, size: 9, color: stale ? colors.muted : colors.status(s.status))),
+                  if (s.maintenance != null) ...[const SizedBox(width: 6), _Pill('维护中', c.textMuted, c.border)]
+                  else if (s.muted != null) ...[const SizedBox(width: 6), _Pill('已静音', c.textMuted, c.border)],
+                ]),
               ),
-              const SizedBox(width: 6),
-              Tooltip(message: statusText[s.status] ?? s.status, child: Icon(Icons.circle, size: 9, color: colors.status(s.status))),
-              if (s.maintenance != null) ...[const SizedBox(width: 6), _Pill('维护中', c.textMuted, c.border)]
-              else if (s.muted != null) ...[const SizedBox(width: 6), _Pill('已静音', c.textMuted, c.border)],
-              const Spacer(),
               if (exp != null) ...[const SizedBox(width: 6), _Pill(exp.text, expColor ?? c.textMuted, expColor ?? c.border, icon: Icons.event)],
               SizedBox(
                 width: 32,
