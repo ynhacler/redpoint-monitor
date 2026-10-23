@@ -156,6 +156,7 @@
   - [24.9 保留与体积](#249-保留与体积)
   - [24.10 诊断包](#2410-诊断包)
 - [25. 服务部署](#25-服务部署)
+  - [25.1 一键安装（vpsmon-install.sh）](#251-一键安装vpsmon-installsh)
 - [26. Nginx / Caddy](#26-nginx--caddy)
   - [26.1 浏览器安全响应头与静态文件](#261-浏览器安全响应头与静态文件)
 - [27. Agent 安装](#27-agent-安装)
@@ -377,6 +378,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 208 | 面板一键安装脚本 vpsmon-install.sh：随版本发布、内置面板构建的 SHA256 与服务文件；自有域名 / 免费域名 sslip.io / 反向代理三种访问方式，systemd 与 OpenRC 保活开机自启，最后显示地址、账号与初始密码；面板增加 --env-file | 25.1 |
 | 207 | 系统 → 账号重新排版：宽屏两列（个人与安全 / 访问与共享），各卡片统一为 SettingsCard（图标、标题、状态标签、说明，操作在右上）；账号卡片显示头像、角色与两步验证状态，修改密码在卡片内展开；账号页界面英文翻译 | 41 |
 | 206 | 界面英文翻译第三批：云平台、订阅、连通性测试（含服务目录、运营商与网站名称） | 52 |
 | 205 | 界面英文翻译第二批：节点详情各卡片；国家名称跟随界面语言；make lint 增加翻译检查（t() 的每个原文都要有英文译文） | 52 |
@@ -6637,6 +6639,40 @@ monitor-server run  --data /var/lib/monitor-server --domain monitor.example.com
 ```
 
 `--domain` 启用内置自动 HTTPS（ACME）。已有反向代理时省略该参数，监听本地端口即可。
+
+## 25.1 一键安装（vpsmon-install.sh）
+
+面向“装上就能用”的用户（修订第 208 条）：一个脚本完成下载、校验、建用户、配置 HTTPS、保活与开机自启，最后显示访问地址、
+账号与初始密码。脚本随每个版本发布，内容固定；不使用 `curl | sh`（约束 9）。
+
+```text
+发布      cmd/vpsmon-release 由 scripts/install-panel.sh 渲染 dist/vpsmon-install.sh：写入版本号、面板各构建的 SHA256、
+          官方公钥，以及 deploy/ 下的 systemd 单元与 OpenRC 服务文件（与手工安装同一份）；残留 @…@ 占位符时发布失败。
+          文件名不带版本，releases/latest/download/vpsmon-install.sh 即最新版；它列在 SHA256SUMS 中，随离线签名一起签名
+入口      curl 下载脚本与 SHA256SUMS → sha256sum -c 校验脚本（装有 minisign 时先验签 SHA256SUMS）→ sudo sh 执行
+校验      面板二进制按脚本内置的 SHA256 校验；装有 minisign 时再下载 SHA256SUMS.minisig 验签；--mirror / --local 同样校验
+访问方式  ① --domain 自有域名：面板内置 HTTPS（第 25 章），先检查域名是否解析到本机
+          ② 默认：80 / 443 空闲时用 <公网 IPv4 以 - 连接>.sslip.io（公共 DNS 服务，把该名字解析到这个 IP），同样内置 HTTPS，
+             不需要自己的域名；公网 IP 取自 Cloudflare trace（只读 ip= 一行）
+          ③ --proxy：80 / 443 被占用或没有公网 IPv4 时，面板只监听 127.0.0.1:端口，给出 Caddy 配置示例，--public-url 写入对外地址
+          交互运行时只问一个问题（域名，回车用默认，proxy 用反向代理）；-y 不提问。都只走 HTTPS（约束 6），不提供明文对外
+系统      systemd：Debian / Ubuntu / CentOS / RHEL / Rocky / Alma / Fedora / Amazon Linux / openSUSE / Arch；
+          OpenRC：Alpine（supervise-daemon，capabilities 需要 OpenRC 0.45+，即 Alpine 3.17+）；架构 amd64、arm64；
+          POSIX sh，bash、dash、busybox ash 均可运行；只依赖 curl 或 wget、sha256sum / shasum / openssl
+运行身份  系统用户 vpsmon；内置 HTTPS 时只额外授予 CAP_NET_BIND_SERVICE（systemd drop-in / OpenRC capabilities）；
+          init、reset-password 以 vpsmon 执行，数据库与 WAL 文件不会归 root
+配置      /etc/vpsmon/server.env（VPSMON_DOMAIN、VPSMON_LISTEN、VPSMON_PUBLIC_URL 等）：只改脚本负责的几项，
+          其余（用户自己加的参数）保留。OpenRC 下由面板 --env-file 读取，不经 shell source
+保活      systemd Restart=always（5 秒后重启）+ enable；OpenRC respawn_max=0、respawn_delay=5 + rc-update add default
+防火墙    本机 ufw / firewalld 启用时放行 80、443；云厂商安全组需在控制台放行（结果中提示）
+就绪      反向代理方式请求 127.0.0.1:端口/api/v1/site；内置 HTTPS 用 curl --resolve 域名:443:127.0.0.1 请求，
+          首次握手触发证书申请，最多等 2 分钟；失败时给出日志命令与常见原因（安全组、解析）
+结果      访问地址、账号 admin、初始密码（只显示这一次，不写入任何文件；首次登录须修改）、管理 / 日志 / 配置 / 升级 / 卸载命令
+再次运行  升级：沿用原来的访问方式（含按 README 手工安装时 drop-in 中的 --domain）与密码，只替换程序并重启
+其他命令  reset-password（显示新密码）、uninstall（保留数据）、uninstall --purge（同时删除数据、配置与 vpsmon 用户）
+检查      scripts/panel-install-check.sh（make panel-install-check）：在装有 systemd 的 Linux 上用本地构建跑一遍
+          安装 → 保活（kill -9 后自动拉起）→ 升级 → 重置密码 → 卸载
+```
 
 内置 HTTPS 的实现：
 

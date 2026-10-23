@@ -4,6 +4,8 @@
 //
 // 生成：
 //   - dist/agent-0.2.0.sh   安装脚本（由 scripts/agent.sh.in 渲染，内置各构建的 SHA256 与官方公钥）
+//   - dist/vpsmon-install.sh 面板一键安装脚本（由 scripts/install-panel.sh 渲染，内置面板各构建的 SHA256、官方公钥与
+//     systemd / OpenRC 服务文件；文件名不带版本，便于 releases/latest/download 取得，设计 25.1）
 //   - dist/manifest.json    发布清单（版本、通道、可升级的最低版本、每个文件的大小与 SHA256）
 //   - dist/SHA256SUMS       所有二进制与安装脚本的 SHA256
 //
@@ -19,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +31,12 @@ import (
 
 // agentArchs 与 Makefile AGENT_ARCHS、安装脚本的架构识别一致（设计 27.5.4）。
 var agentArchs = []string{"amd64", "arm64", "armv7", "armv6", "386", "riscv64", "mips", "mipsle"}
+
+// serverArchs 与 Makefile 的面板构建、面板安装脚本的架构识别一致（设计 25.1）。
+var serverArchs = []string{"amd64", "arm64"}
+
+// panelInstaller 是面板一键安装脚本在发布中的文件名。
+const panelInstaller = "vpsmon-install.sh"
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "prepare" {
@@ -41,14 +50,15 @@ func main() {
 	dist := fs.String("dist", "dist", "directory with built binaries; outputs are written here")
 	tmpl := fs.String("template", "scripts/agent.sh.in", "installer template")
 	notes := fs.String("notes", "", "short release notes")
+	root := fs.String("root", ".", "repository root (panel installer template and service files)")
 	_ = fs.Parse(os.Args[2:])
-	if err := prepare(*version, *channel, *minFrom, *dist, *tmpl, *notes, time.Now().UTC()); err != nil {
+	if err := prepare(*version, *channel, *minFrom, *dist, *tmpl, *root, *notes, time.Now().UTC()); err != nil {
 		fmt.Fprintln(os.Stderr, "✗", err)
 		os.Exit(1)
 	}
 }
 
-func prepare(version, channel, minFrom, dist, tmplPath, notes string, now time.Time) error {
+func prepare(version, channel, minFrom, dist, tmplPath, root, notes string, now time.Time) error {
 	v, err := release.ParseVersion(version)
 	if err != nil {
 		return err
@@ -95,7 +105,11 @@ func prepare(version, channel, minFrom, dist, tmplPath, notes string, now time.T
 		return err
 	}
 
-	// SHA256SUMS：Agent 与面板的全部二进制 + 安装脚本，供人工核对与安装脚本的可选签名校验
+	if err := preparePanel(version, dist, root, pub); err != nil {
+		return err
+	}
+
+	// SHA256SUMS：Agent 与面板的全部二进制 + 安装脚本（含 vpsmon-install.sh），供人工核对与安装脚本的可选签名校验
 	sums := map[string]string{}
 	entries, _ := os.ReadDir(dist)
 	for _, e := range entries {
@@ -126,10 +140,57 @@ func prepare(version, channel, minFrom, dist, tmplPath, notes string, now time.T
 	if pub == "" {
 		fmt.Println("! 程序中还没有官方发布公钥（internal/release/keys.go），安装脚本不会做可选的签名校验")
 	}
-	fmt.Printf("✓ %s、manifest.json、SHA256SUMS 已生成（版本 %s，通道 %s）\n", scriptName, version, channel)
+	fmt.Printf("✓ %s、%s、manifest.json、SHA256SUMS 已生成（版本 %s，通道 %s）\n", scriptName, panelInstaller, version, channel)
 	fmt.Println("  下一步：在离线机器上运行 scripts/sign-release.sh v" + version + " 签名并发布")
 	return nil
 }
+
+// preparePanel 渲染面板一键安装脚本（设计 25.1）：内置面板各构建的 SHA256、官方公钥与服务文件。
+// 服务文件取自 deploy/（与手工安装同一份），渲染后不能残留 @…@ 占位符。
+func preparePanel(version, dist, root, pub string) error {
+	var hashes []string
+	for _, arch := range serverArchs {
+		name := "vpsmon-server-linux-" + arch
+		a, err := describe(filepath.Join(dist, name))
+		if err != nil {
+			return fmt.Errorf("缺少构建 %s：%w", name, err)
+		}
+		hashes = append(hashes, a.SHA256+"  "+name)
+	}
+	read := func(rel string) (string, error) {
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		return strings.TrimRight(string(b), "\n"), err
+	}
+	tmpl, err := read("scripts/install-panel.sh")
+	if err != nil {
+		return err
+	}
+	unit, err := read("deploy/systemd/vpsmon-server.service")
+	if err != nil {
+		return err
+	}
+	openrc, err := read("deploy/openrc/vpsmon-server")
+	if err != nil {
+		return err
+	}
+	// 服务文件放进 <<'UNIT' 的 here-document：不能含单独一行的 UNIT，否则提前结束
+	for _, f := range []string{unit, openrc} {
+		for _, line := range strings.Split(f, "\n") {
+			if line == "UNIT" {
+				return fmt.Errorf("服务文件中不能有单独一行的 UNIT")
+			}
+		}
+	}
+	script := strings.NewReplacer("@VERSION@", version, "@HASHES@", strings.Join(hashes, "\n"), "@PUBKEY@", pub,
+		"@SERVER_UNIT@", unit, "@SERVER_OPENRC@", openrc).Replace(tmpl)
+	if m := placeholder.FindString(script); m != "" {
+		return fmt.Errorf("面板安装脚本中还有未替换的占位符 %s", m)
+	}
+	return os.WriteFile(filepath.Join(dist, panelInstaller), []byte(script+"\n"), 0o755)
+}
+
+// placeholder 匹配模板中的 @NAME@ 占位符。
+var placeholder = regexp.MustCompile(`@[A-Z_]+@`)
 
 func describe(path string) (release.Artifact, error) {
 	f, err := os.Open(path)

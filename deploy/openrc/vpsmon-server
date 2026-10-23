@@ -1,0 +1,30 @@
+#!/sbin/openrc-run
+# VPS Monitor panel for OpenRC (Alpine etc., design 28, revision 208). Written by vpsmon-install.sh.
+#
+# supervise-daemon restarts the panel whenever it exits (keepalive); `rc-update add vpsmon-server default`
+# starts it at boot. Settings live in /etc/vpsmon/server.env (VPSMON_<FLAG>=value) and are read by the
+# panel itself (--env-file), never sourced by the shell. Runs as the unprivileged vpsmon user.
+name="vpsmon-server"
+description="VPS Monitor panel"
+supervisor=supervise-daemon
+command="/usr/local/bin/vpsmon-server"
+command_args="run --data /var/lib/vpsmon --env-file /etc/vpsmon/server.env --log-format text"
+command_user="vpsmon:vpsmon"
+respawn_delay=5
+respawn_max=0
+output_log="/var/log/vpsmon-server.log"
+error_log="/var/log/vpsmon-server.log"
+# Built-in HTTPS binds 80 / 443: grant only this capability (OpenRC >= 0.45, Alpine 3.17+); still non-root
+capabilities="^cap_net_bind_service"
+# Let in-flight requests and the batched database flush finish
+retry="TERM/10/KILL/2"
+
+depend() {
+	use net dns
+	after firewall
+}
+
+start_pre() {
+	checkpath -d -m 0750 -o vpsmon:vpsmon /var/lib/vpsmon
+	checkpath -f -m 0640 -o vpsmon:vpsmon /var/log/vpsmon-server.log
+}

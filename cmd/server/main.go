@@ -252,9 +252,14 @@ func main() {
 		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address; a bare port listens on all addresses")
 		httpListen := fsx.String("http-listen", ":80", "with --domain: HTTP listen address for ACME http-01 and redirects to HTTPS (empty = disabled)")
 		acmeDir := fsx.String("acme-directory", "", "with --domain: ACME directory URL (default: Let's Encrypt production)")
+		envFile := fsx.String("env-file", "", "also read VPSMON_* settings from this KEY=VALUE file (OpenRC; parsed by the panel, never sourced by a shell)")
 		_ = fsx.Parse(args)
-		// 参数也可以来自环境变量 VPSMON_*（/etc/vpsmon/server.env，设计 28.1）；监听地址可以只写端口
-		if err := applyEnv(fsx, lookupEnv); err != nil {
+		// 参数也可以来自环境变量 VPSMON_*（/etc/vpsmon/server.env，设计 28.1）或 --env-file（修订第 208 条）；监听地址可以只写端口
+		fileEnv, err := readEnvFile(*envFile)
+		if err != nil {
+			log.Fatal("read --env-file: ", err)
+		}
+		if err := applyEnv(fsx, envLookup(lookupEnv, fileEnv)); err != nil {
 			log.Fatal(err)
 		}
 		for _, l := range []struct {
