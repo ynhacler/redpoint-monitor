@@ -1,4 +1,5 @@
-// App 主框架（设计 1.5.18）：底部导航 首页 / 服务器 / 事件 / 我的。
+// App 主框架（设计 1.5.18，修订第 213 条）：底部导航 服务器 / 云平台 / 订阅 / 我的。
+// 原“首页”的概况并入“服务器”顶部；事件与连通性测试从“服务器”右上角进入。
 // 节点数据在这里统一获取：每 10 秒刷新（1.5.9），先显示离线缓存，网络失败时保留最近数据并显示最后更新时间（1.5.10）。
 import 'dart:async';
 
@@ -20,11 +21,13 @@ import '../theme.dart';
 import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
 import 'cloud_page.dart';
+import 'connectivity_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
 import 'reorder_page.dart';
 import 'me_page.dart';
 import 'server_detail_page.dart';
+import 'subscriptions_page.dart';
 
 /// App 主框架：底部导航与节点数据的统一刷新（设计 1.5.18）
 class AppShell extends StatefulWidget {
@@ -156,13 +159,25 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  void _openCloud() => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CloudPage(api: widget.api, onRevoked: _revoked, initial: _cloud,
-            serverNames: {for (final s in _items) s.id: s.name}, onOpenServer: (id) {
+  void _switchCenter(int i) {
+    _timer?.cancel();
+    _othersTimer?.cancel();
+    widget.onSwitch?.call(i);
+  }
+
+  // 事件（设计 1.5.17）：从“服务器”右上角的铃铛进入
+  void _openEvents() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => EventsPage(api: widget.api, onRevoked: _revoked, centers: widget.centers, onCentersChanged: widget.onCentersChanged,
+            onSwitch: (i) {
+          Navigator.of(context).popUntil((r) => r.isFirst);
+          _switchCenter(i);
+        }, onOpenServer: (id) {
           final s = _items.where((x) => x.id == id).firstOrNull;
           if (s != null) _open(s);
         }),
       ));
+
+  void _openConnectivity() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ConnectivityPage()));
 
   Future<void> _syncPush() async {
     try {
@@ -224,40 +239,32 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final attention = _items.where((s) => issues(s).isNotEmpty).length;
     final pages = [
-      _OverviewTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: centerLabel(widget.api.session.server),
+      _ServersTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: centerLabel(widget.api.session.server),
           onRefresh: () async {
             await Future.wait([_refresh(), _refreshOthers()]);
           },
-          card: _card, offline: _offlineBanner, open: _open, cloud: _cloud, onCloud: _openCloud,
+          card: _card, offline: _offlineBanner, onCompare: _openCompare, onEvents: _openEvents, onConnectivity: _openConnectivity,
+          attention: attention, onReorder: _reorder,
           centers: [
             if (widget.centers.length > 1)
               for (final (i, c) in widget.centers.indexed)
                 (c, identical(c.api, widget.api) ? CenterSummary.of(_items) : _others[c.key], identical(c.api, widget.api), i),
           ],
-          onSwitch: (i) {
-            _timer?.cancel();
-            _othersTimer?.cancel();
-            widget.onSwitch?.call(i);
-          }),
-      _ServersTab(items: _items, prefs: _prefs, error: _error, onRefresh: _refresh, card: _card, offline: _offlineBanner, onCompare: _openCompare,
-          onReorder: _reorder,
+          onSwitch: _switchCenter,
           onSort: (v) {
             // 第一次选“自定义顺序”且本机与面板都还没有顺序：直接打开调整页
             if (v == SortBy.custom && _prefs.order.isEmpty && !_items.any((s) => s.sortOrder > 0)) return _reorder();
             setState(() => _prefs.sortBy = v);
             _savePrefs();
           }),
-      EventsPage(api: widget.api, onRevoked: _revoked, centers: widget.centers, onCentersChanged: widget.onCentersChanged,
-          onSwitch: (i) {
-            _timer?.cancel();
-            _othersTimer?.cancel();
-            widget.onSwitch?.call(i);
-          }, onOpenServer: (id) {
+      CloudPage(api: widget.api, onRevoked: _revoked, initial: _cloud, serverNames: {for (final s in _items) s.id: s.name}, onOpenServer: (id) {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);
       }),
-      MePage(api: widget.api, push: _push, onCloud: _openCloud, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
+      SubscriptionsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy),
+      MePage(api: widget.api, push: _push, privacy: _prefs.privacy, centers: [for (final c in widget.centers) c.server], onSwitch: (i) {
         _timer?.cancel();
         widget.onSwitch?.call(i);
       }, onAdd: widget.onAdd, onPrivacy: (v) {
@@ -268,20 +275,20 @@ class _AppShellState extends State<AppShell> {
         await widget.onUnpair();
       }),
     ];
-    final attention = _items.where((s) => issues(s).isNotEmpty).length;
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
+        height: 64,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: [
           NavigationDestination(
-            icon: Badge(isLabelVisible: attention > 0, label: Text('$attention'), child: const Icon(Icons.dashboard_outlined)),
-            selectedIcon: const Icon(Icons.dashboard),
-            label: '首页',
+            icon: Badge(isLabelVisible: attention > 0, label: Text('$attention'), child: const Icon(Icons.dns_outlined)),
+            selectedIcon: Badge(isLabelVisible: attention > 0, label: Text('$attention'), child: const Icon(Icons.dns)),
+            label: '服务器',
           ),
-          const NavigationDestination(icon: Icon(Icons.dns_outlined), selectedIcon: Icon(Icons.dns), label: '服务器'),
-          const NavigationDestination(icon: Icon(Icons.notifications_outlined), selectedIcon: Icon(Icons.notifications), label: '事件'),
+          const NavigationDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud), label: '云平台'),
+          const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: '订阅'),
           const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],
       ),
@@ -289,12 +296,13 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-// ---- 首页：状态总览 + 需要关注 + 收藏（设计 1.5.18、13） ----
+// ---- 服务器：概况 + 全部节点 + 分组 + 搜索 + 排序（设计 1.5.6、1.5.16、1.5.18） ----
 
-class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
-      required this.onRefresh, required this.card, required this.offline, required this.open, this.centers = const [], this.onSwitch,
-      this.cloud, this.onCloud});
+class _ServersTab extends StatefulWidget {
+  const _ServersTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
+      required this.onRefresh, required this.card, required this.offline, required this.onSort, required this.onCompare,
+      required this.onReorder, required this.onEvents, required this.onConnectivity, required this.attention,
+      this.centers = const [], this.onSwitch});
   final List<ServerView> items;
   final Prefs prefs;
   final DateTime? updated;
@@ -303,65 +311,62 @@ class _OverviewTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Widget Function(ServerView) card;
   final Widget Function() offline;
-  final ValueChanged<ServerView> open;
-  final CloudSummary? cloud;
-  final VoidCallback? onCloud;
+  final ValueChanged<SortBy> onSort;
+  final VoidCallback onCompare;
+  final VoidCallback onReorder;
+  final VoidCallback onEvents;
+  final VoidCallback onConnectivity;
+
+  /// 需要关注的节点数（铃铛上的角标）
+  final int attention;
 
   /// 多个监控中心时的聚合视图：（中心，汇总，是否当前，下标）
   final List<(CenterHandle, CenterSummary?, bool, int)> centers;
   final ValueChanged<int>? onSwitch;
 
-  /// 云账户一行：账户数、实例数、本月已产生（按币种合计），有问题的账户数
-  Widget _cloudRow(BuildContext context, CloudSummary c) {
-    final colors = StatusColors.of(context);
-    final byCur = <String, int>{};
-    for (final a in c.accounts) {
-      if (a.cost != null) byCur[a.cost!.currency] = (byCur[a.cost!.currency] ?? 0) + a.cost!.amountCents;
-    }
-    final costs = [for (final e in byCur.entries) fmtMoney(e.value, e.key)].join(' + ');
-    final n = c.accounts.fold<int>(0, (a, x) => a + x.instanceCount);
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.cloud_outlined),
-        title: const Text('云账户'),
-        subtitle: Text('${c.accounts.length} 个账户 · $n 台实例${costs.isEmpty ? '' : ' · 本月 $costs'}'),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (c.attention > 0) Text('需要关注 ${c.attention}', style: TextStyle(fontSize: 12, color: colors.warn)),
-          const Icon(Icons.chevron_right),
-        ]),
-        onTap: onCloud,
-      ),
-    );
+  @override
+  State<_ServersTab> createState() => _ServersTabState();
+}
+
+class _ServersTabState extends State<_ServersTab> {
+  final _search = TextEditingController();
+  String _group = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Widget _aggregate(BuildContext context) {
     final colors = StatusColors.of(context);
     final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
-    final total = CenterSummary.sum(centers.map((c) => c.$2).whereType<CenterSummary>());
+    final total = CenterSummary.sum(widget.centers.map((c) => c.$2).whereType<CenterSummary>());
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('全部监控中心', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Text('总计 ${total.total} 台 · 在线 ${total.online} · 离线 ${total.offline} · 需要关注 ${total.attention}', style: muted),
-          for (final (c, sum, current, i) in centers)
+          Row(children: [
+            const Text('全部监控中心', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('${total.total} 台 · 在线 ${total.online} · 离线 ${total.offline}', style: muted),
+          ]),
+          for (final (c, sum, current, i) in widget.centers)
             ListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
+              visualDensity: VisualDensity.compact,
               leading: Icon(current ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                   color: current ? Theme.of(context).colorScheme.primary : null, size: 20),
               title: Text(centerLabel(c.server), overflow: TextOverflow.ellipsis),
-              subtitle: Text(sum == null
-                  ? '读取中…'
-                  : '${sum.total} 台 · 在线 ${sum.online}${sum.error != null ? ' · 暂时无法连接' : ''}'),
+              subtitle: Text(sum == null ? '读取中…' : '${sum.total} 台 · 在线 ${sum.online}${sum.error != null ? ' · 暂时无法连接' : ''}'),
               trailing: sum == null
                   ? null
                   : Row(mainAxisSize: MainAxisSize.min, children: [
                       if (sum.offline > 0) Text('离线 ${sum.offline}  ', style: TextStyle(color: colors.bad, fontSize: 12)),
                       if (sum.attention > 0) Text('关注 ${sum.attention}', style: TextStyle(color: colors.warn, fontSize: 12)),
                     ]),
-              onTap: current || onSwitch == null ? null : () => onSwitch!(i),
+              onTap: current || widget.onSwitch == null ? null : () => widget.onSwitch!(i),
             ),
         ]),
       ),
@@ -371,60 +376,109 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = StatusColors.of(context);
+    final c = appColors(context);
+    final items = widget.items;
+    final groups = {for (final s in items) if (s.group.isNotEmpty) s.group}.toList()..sort();
+    if (_group.isNotEmpty && !groups.contains(_group)) _group = '';
+    final shown = sortServers(
+      items.where((s) => (_group.isEmpty || s.group == _group) && matchesQuery(s, _search.text)).toList(),
+      widget.prefs.sortBy,
+      widget.prefs.favorites,
+      order: widget.prefs.order,
+    );
     final online = items.where((s) => s.status == 'online').length;
     final offlineN = items.where((s) => s.status == 'offline').length;
     final heavy = items.where((s) => (trafficPct(s) ?? 0) >= 80).length;
-    final attention = sortServers(items.where((s) => issues(s).isNotEmpty).toList(), SortBy.smart, prefs.favorites);
-    // 收藏与其余节点：选了自定义顺序时按自定义顺序，否则按名称
-    final listSort = prefs.sortBy == SortBy.custom ? SortBy.custom : SortBy.name;
-    final favs = sortServers(items.where((s) => prefs.favorites.contains(s.id) && issues(s).isEmpty).toList(), listSort, prefs.favorites,
-        order: prefs.order);
-    final expiring = expiringSoon(items);
-    final rest = sortServers(
-        items.where((s) => issues(s).isEmpty && !prefs.favorites.contains(s.id) && s.status != 'pending').toList(), listSort, prefs.favorites,
-        order: prefs.order);
-    final muted = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant);
-    Widget heading(String t) => Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w600)));
+    final muted = TextStyle(fontSize: 12, color: c.textMuted);
     return Scaffold(
-      appBar: AppBar(title: const Text('我的服务器')),
+      appBar: AppBar(
+        title: const Text('服务器'),
+        actions: [
+          IconButton(
+            tooltip: '事件',
+            onPressed: widget.onEvents,
+            icon: Badge(isLabelVisible: widget.attention > 0, label: Text('${widget.attention}'), child: const Icon(Icons.notifications_outlined)),
+          ),
+          IconButton(icon: const Icon(Icons.network_check), tooltip: '连通性测试', onPressed: widget.onConnectivity),
+          // 排序方式、“调整顺序…”（拖动排列，保存为自定义顺序）与测速对比
+          PopupMenuButton<Object>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: '更多',
+            onSelected: (v) => v is SortBy ? widget.onSort(v) : (v == 'compare' ? widget.onCompare() : widget.onReorder()),
+            itemBuilder: (_) => [
+              for (final v in SortBy.values)
+                CheckedPopupMenuItem(value: v, checked: widget.prefs.sortBy == v, child: Text('按${sortNames[v]!}')),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 'reorder', child: Row(children: [Icon(Icons.drag_handle, size: 18), SizedBox(width: 8), Text('调整顺序…')])),
+              const PopupMenuItem(value: 'compare', child: Row(children: [Icon(Icons.speed, size: 18), SizedBox(width: 8), Text('三网延迟对比')])),
+            ],
+          ),
+        ],
+      ),
       body: RefreshIndicator(
-        onRefresh: onRefresh,
+        onRefresh: widget.onRefresh,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
-          if (centers.length > 1) _aggregate(context),
-          // 与 Web 仪表板的统计一致：全部 / 在线 / 离线 / 需要关注，数字只在非零时着色
+          if (widget.centers.length > 1) _aggregate(context),
+          // 与 Web 仪表板的统计一致：全部 / 在线 / 离线 / 需要关注 / 流量≥80%，数字只在非零时着色
           Row(children: [
             _Count('全部', items.where((s) => s.status != 'pending').length, null),
             _Count('在线', online, online > 0 ? colors.ok : null),
             _Count('离线', offlineN, offlineN > 0 ? colors.bad : null),
-            _Count('需要关注', attention.length, attention.isNotEmpty ? colors.warn : null), // 与 Web“需要关注”同一规则（设计 9）
+            _Count('需关注', widget.attention, widget.attention > 0 ? colors.warn : null),
             _Count('流量≥80%', heavy, heavy > 0 ? colors.warn : null),
           ]),
-          if (error != null) offline(),
-          if (items.isEmpty && updated != null) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('授权范围内还没有节点'))),
-          if (items.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: FleetSummaryCard(items: items, allOk: attention.isEmpty)),
-          if (cloud != null && cloud!.accounts.isNotEmpty && onCloud != null) _cloudRow(context, cloud!),
-          if (attention.isNotEmpty) ...[heading('需要关注'), ...attention.map(card)],
-          if (expiring.isNotEmpty) ...[
-            heading('即将到期'),
-            MiniList(children: [
-              for (final (s, e) in expiring)
-                MiniServerRow(s, onTap: () => open(s), trailing: Text(e.text,
-                    style: TextStyle(fontSize: 12, color: e.level == 'bad' ? colors.bad : colors.warn, fontFeatures: const [FontFeature.tabularFigures()]))),
+          if (widget.error != null) widget.offline(),
+          if (items.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: FleetSummaryCard(items: items, allOk: widget.attention == 0)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _search,
+            decoration: InputDecoration(
+              hintText: '搜索名称、IP、供应商、地区、备注',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _search.text.isEmpty ? null : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_search.clear)),
+              isDense: true,
+              filled: true,
+              fillColor: c.surface,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.border)),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (groups.isNotEmpty)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                for (final g in ['', ...groups])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(g.isEmpty ? '全部' : g),
+                      selected: _group == g,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => setState(() => _group = g),
+                    ),
+                  ),
+              ]),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+            child: Row(children: [
+              Expanded(child: Text('${shown.length} 台 · 按${sortNames[widget.prefs.sortBy]}', style: muted)),
+              if (widget.prefs.sortBy == SortBy.custom)
+                TextButton.icon(
+                  onPressed: widget.onReorder,
+                  icon: const Icon(Icons.drag_handle, size: 16),
+                  label: const Text('调整顺序'),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12)),
+                ),
             ]),
-          ],
-          if (favs.isNotEmpty) ...[heading('收藏'), ...favs.map(card)],
-          // 其余节点：一行一台，点开看详情；首页不再在“全部正常”时空着
-          if (rest.isNotEmpty) ...[
-            heading(favs.isEmpty ? '全部节点' : '其他节点'),
-            MiniList(children: [for (final s in rest) MiniServerRow(s, onTap: () => open(s))]),
-            if (favs.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-                child: Text('在“服务器”页点节点卡片右上角的星标，可以把常看的服务器以完整卡片放到首页。', style: muted),
-              ),
-          ],
-          if (updated != null && error == null)
-            Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: Text('$host · 更新于 ${fmtClock(updated!)}', style: muted))),
+          ),
+          if (items.isEmpty && widget.updated != null) const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('授权范围内还没有节点'))),
+          ...shown.map(widget.card),
+          if (widget.updated != null && widget.error == null)
+            Padding(padding: const EdgeInsets.only(top: 8), child: Center(child: Text('${widget.host} · 更新于 ${fmtClock(widget.updated!)}', style: muted))),
         ]),
       ),
     );
@@ -443,8 +497,9 @@ class _Count extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(children: [
                 Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant), maxLines: 1),
                 Text('$value', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: color,
@@ -454,119 +509,4 @@ class _Count extends StatelessWidget {
           ),
         ),
       );
-}
-
-// ---- 服务器：全部节点 + 分组 + 搜索 + 排序（设计 1.5.6、1.5.16） ----
-
-class _ServersTab extends StatefulWidget {
-  const _ServersTab({required this.items, required this.prefs, required this.error, required this.onRefresh, required this.card,
-      required this.offline, required this.onSort, required this.onCompare, required this.onReorder});
-  final List<ServerView> items;
-  final Prefs prefs;
-  final String? error;
-  final Future<void> Function() onRefresh;
-  final Widget Function(ServerView) card;
-  final Widget Function() offline;
-  final ValueChanged<SortBy> onSort;
-  final VoidCallback onCompare;
-  final VoidCallback onReorder;
-
-  @override
-  State<_ServersTab> createState() => _ServersTabState();
-}
-
-class _ServersTabState extends State<_ServersTab> {
-  final _search = TextEditingController();
-  String _group = '';
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final groups = {for (final s in widget.items) if (s.group.isNotEmpty) s.group}.toList()..sort();
-    if (_group.isNotEmpty && !groups.contains(_group)) _group = '';
-    final shown = sortServers(
-      widget.items.where((s) => (_group.isEmpty || s.group == _group) && matchesQuery(s, _search.text)).toList(),
-      widget.prefs.sortBy,
-      widget.prefs.favorites,
-      order: widget.prefs.order,
-    );
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('服务器'),
-        actions: [
-          IconButton(icon: const Icon(Icons.speed), tooltip: '测速对比', onPressed: widget.onCompare),
-          // 排序方式 + “调整顺序…”（拖动排列，保存为自定义顺序）
-          PopupMenuButton<Object>(
-            icon: const Icon(Icons.sort),
-            tooltip: '排序',
-            initialValue: widget.prefs.sortBy,
-            onSelected: (v) => v is SortBy ? widget.onSort(v) : widget.onReorder(),
-            itemBuilder: (_) => [
-              for (final v in SortBy.values) PopupMenuItem(value: v, child: Text(sortNames[v]!)),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'reorder', child: Row(children: [Icon(Icons.drag_handle, size: 18), SizedBox(width: 8), Text('调整顺序…')])),
-            ],
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: widget.onRefresh,
-        child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
-          TextField(
-            controller: _search,
-            decoration: InputDecoration(
-              hintText: '搜索名称、IP、供应商、地区、备注',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_search.clear)),
-              isDense: true,
-              filled: true,
-              fillColor: appColors(context).surface,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: appColors(context).border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: appColors(context).border)),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (widget.error != null) widget.offline(),
-          if (groups.isNotEmpty)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(children: [
-                for (final g in ['', ...groups])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(label: Text(g.isEmpty ? '全部' : g), selected: _group == g, onSelected: (_) => setState(() => _group = g)),
-                  ),
-              ]),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-            child: Row(children: [
-              Expanded(
-                child: Text('${shown.length} 台 · 按${sortNames[widget.prefs.sortBy]}',
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-              ),
-              // 自定义顺序时就近给出入口
-              if (widget.prefs.sortBy == SortBy.custom)
-                TextButton.icon(
-                  onPressed: widget.onReorder,
-                  icon: const Icon(Icons.drag_handle, size: 16),
-                  label: const Text('调整顺序'),
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12)),
-                ),
-            ]),
-          ),
-          ...shown.map(widget.card),
-        ]),
-      ),
-    );
-  }
 }

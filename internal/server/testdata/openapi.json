@@ -1323,6 +1323,78 @@
         }
       }
     },
+    "/app/subscriptions": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "订阅的只读列表（设计 47，修订第 213 条）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "App 的“订阅”页：与 Web 相同的订阅列表（含计算得到的下次扣费日），按下次扣费日排序。订阅属于整个面板，\n只有授权范围为“全部节点”的设备能看到；其他范围的设备得到 limited 为 true、列表为空。App 只读：添加、修改都在 Web 中进行。\n",
+        "responses": {
+          "200": {
+            "description": "订阅列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSubscriptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/app/subscriptions/{id}/logo": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "订阅上传的图标（PNG，修订第 213 条）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "与 Web 的图标相同；授权范围不是“全部节点”或没有上传图标时返回 404。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG 图片",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/app/push": {
       "put": {
         "tags": [
@@ -12151,6 +12223,25 @@
           },
           "allow_low_risk_ops": {
             "type": "boolean"
+          }
+        }
+      },
+      "AppSubscriptions": {
+        "type": "object",
+        "required": [
+          "limited",
+          "items"
+        ],
+        "properties": {
+          "limited": {
+            "type": "boolean",
+            "description": "授权范围不是“全部节点”：不返回订阅"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subscription"
+            }
           }
         }
       },

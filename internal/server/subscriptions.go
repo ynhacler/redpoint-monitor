@@ -460,6 +460,12 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 	for i := range list {
 		list[i] = withSchedule(list[i], now)
 	}
+	sortSubscriptions(list)
+	writeList(w, list, "", nil)
+}
+
+// sortSubscriptions 按下次扣费日排序，没有下次扣费日的（已结束）排在后面，再按名称（Web 与 App 共用）。
+func sortSubscriptions(list []Subscription) {
 	slices.SortStableFunc(list, func(a, b Subscription) int {
 		switch {
 		case a.NextCharge != "" && b.NextCharge != "":
@@ -471,7 +477,6 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	writeList(w, list, "", nil)
 }
 
 // handleCreateSubscription：POST /api/v1/subscriptions，admin。

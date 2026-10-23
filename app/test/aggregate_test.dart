@@ -73,16 +73,15 @@ void main() {
       await tester.pump();
     }
     expect(find.text('全部监控中心'), findsOneWidget);
-    expect(find.text('总计 5 台 · 在线 4 · 离线 1 · 需要关注 1'), findsOneWidget);
+    expect(find.text('5 台 · 在线 4 · 离线 1'), findsOneWidget);
     expect(find.text('3 台 · 在线 3'), findsOneWidget);
     await tester.tap(find.text('home.example.com'));
     expect(switched, 1);
 
     // 事件：合并两个中心，按最近时间（恢复时间 1759660000 晚于另一条的触发时间）排序
-    await tester.tap(find.text('事件'));
-    await tester.pump();
-    await tester.pump();
-    await tester.tap(find.text('全部监控中心'));
+    await tester.tap(find.byTooltip('事件'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+    await tester.tap(find.text('全部监控中心').last);
     for (var i = 0; i < 4; i++) {
       await tester.pump();
     }

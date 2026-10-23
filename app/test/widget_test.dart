@@ -65,7 +65,7 @@ const cloudJson = {
 };
 
 void main() {
-  testWidgets('首页、服务器（搜索 / 排序）、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
+  testWidgets('服务器（概况 / 搜索 / 收藏）、云平台、订阅、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 812 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -112,6 +112,13 @@ void main() {
         ]};
       } else if (p == '/api/v1/app/cloud') {
         body = cloudJson;
+      } else if (p == '/api/v1/app/subscriptions') {
+        body = {'limited': false, 'items': [
+          {'id': 1, 'name': 'Netflix', 'brand': 'netflix', 'category': 'video', 'price_cents': 6800, 'currency': 'HKD', 'cycle': 'monthly',
+            'trial_days': 0, 'start_date': '2026-01-05', 'end_date': '', 'remind_days': 1, 'note': '', 'phones': [],
+            'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
+            'next_charge': '2099-01-05', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0},
+        ]};
       } else if (p.endsWith('/reach')) {
         body = {'configured': true, 'status': 'partial', 'text': '移动不可达', 'probes': [
           {'probe_id': 7, 'name': 'gz-cm', 'isp': 'cm', 'status': 'blocked', 'since': 1759650000, 'bad_ports': [22, 443], 'last_at': 1759650600,
@@ -151,22 +158,12 @@ void main() {
     await tester.pump(); // 请求返回
     await tester.pump();
 
-    // 首页：需要关注（离线在前），正常节点不在首页
+    // 服务器：概况在顶部，异常优先（离线在前）
     final hk = tester.getTopLeft(find.text('HK-1'));
     final tokyo = tester.getTopLeft(find.textContaining('Tokyo ARM'));
     expect(hk.dy, lessThan(tokyo.dy));
-    expect(find.text('CPU 96%'), findsOneWidget);
-    // 实时概况；云账户一行；正常节点以紧凑行列在“全部节点”中
     expect(find.text('实时概况'), findsOneWidget);
-    expect(find.textContaining('2 个账户 · 2 台实例 · 本月 \$3.21'), findsOneWidget);
-    expect(find.text('需要关注 2'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('SG-calm'), 200, scrollable: find.byType(Scrollable).first);
-    expect(find.text('全部节点'), findsOneWidget);
-
-    // 服务器：搜索按 IP 过滤，收藏后出现在首页
-    await tester.tap(find.text('服务器'));
-    await tester.pump();
-    expect(find.text('SG-calm'), findsOneWidget);
+    // 搜索按 IP 过滤；收藏
     await tester.enterText(find.byType(TextField), '103.1.2.3');
     await tester.pump();
     expect(find.text('SG-calm'), findsOneWidget);
@@ -174,11 +171,26 @@ void main() {
     await tester.tap(find.byIcon(Icons.star_border).first);
     await tester.pump();
     expect(prefs.value.favorites, {3});
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
 
-    // 事件：时间线
-    await tester.tap(find.text('事件'));
+    // 云平台、订阅为底部标签（修订第 213 条）
+    await tester.tap(find.text('云平台'));
     await tester.pump();
     await tester.pump();
+    expect(find.text('AWS 主账号'), findsOneWidget);
+    await tester.tap(find.text('订阅'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Netflix'), findsOneWidget);
+    expect(find.text('每月约'), findsOneWidget);
+    expect(find.textContaining('每月 5 日扣费'), findsOneWidget);
+
+    // 事件：从“服务器”右上角的铃铛进入
+    await tester.tap(find.text('服务器'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('事件'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.textContaining('超过 120 秒未收到上报'), findsOneWidget);
     expect(find.textContaining('恢复'), findsWidgets);
     // 系统事件（修订第 163 条）
@@ -187,10 +199,8 @@ void main() {
     await tester.pump();
     expect(find.textContaining('磁盘空间不足'), findsOneWidget);
     expect(find.textContaining('已升级到 v0.5.8'), findsOneWidget);
-    expect(find.textContaining('超过 120 秒未收到上报'), findsNothing);
-    await tester.tap(find.text('告警'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pageBack();
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
 
     // 我的：隐私模式
     await tester.tap(find.text('我的'));
@@ -199,12 +209,13 @@ void main() {
     await tester.pump();
     expect(prefs.value.privacy, isTrue);
 
-    // 首页的收藏卡片：IP 打码
-    await tester.tap(find.text('首页'));
+    // 服务器：卡片上的 IP 打码
+    await tester.tap(find.text('服务器'));
     await tester.pump();
-    await tester.scrollUntilVisible(find.textContaining('103.***.***.3'), 200, scrollable: find.byType(Scrollable).first);
+    final list = find.descendant(of: find.byType(IndexedStack), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.textContaining('103.***.***.3'), 200, scrollable: list);
     expect(find.textContaining('103.***.***.3'), findsOneWidget);
-    expect(find.text('其他节点'), findsNothing); // 唯一的正常节点已收藏
+    await tester.scrollUntilVisible(find.textContaining('Tokyo ARM'), -200, scrollable: list);
 
     // 详情：趋势、流量、资产（隐私模式下价格与供应商打码）
     await tester.tap(find.textContaining('Tokyo ARM'));
