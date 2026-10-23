@@ -9,7 +9,7 @@ export interface Site {
   id: string
   name: string
   url: string
-  /** 标志键（siteIcons.ts）；没有时用色块加首字母 */
+  /** 标志键（siteIcons.ts）；没有时用 siteLogos.ts 中的图片标志，都没有时用色块加首字母 */
   icon?: string
   color: string
   letter?: string
