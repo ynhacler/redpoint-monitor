@@ -101,7 +101,7 @@ class MePage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.visibility_outlined),
           title: Text('可查看：$scope'),
-          subtitle: Text(s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'),
+          subtitle: Text('${s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'}${s.allowSubscriptions ? '；可新增订阅' : ''}'),
         ),
         if (onCloud != null)
           ListTile(

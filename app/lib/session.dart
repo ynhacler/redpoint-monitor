@@ -17,6 +17,7 @@ class Session {
     required this.scopeType,
     required this.scopeValue,
     required this.allowLowRiskOps,
+    this.allowSubscriptions = false,
     this.pushPrivateKey = '',
   });
 
@@ -31,12 +32,15 @@ class Session {
   final String scopeValue;
   final bool allowLowRiskOps;
 
+  /// 可以新增订阅（AK 允许记录订阅且授权全部节点，修订第 217 条）；旧版面板没有这个字段时为 false
+  final bool allowSubscriptions;
+
   /// 推送解密用的 X25519 私钥（标准 Base64），配对时生成，只在本机（设计 30.3.1）；旧版本配对的会话为空
   final String pushPrivateKey;
 
   Session copyWith({String? pushPrivateKey}) => Session(server: server, deviceId: deviceId, accessToken: accessToken,
       refreshToken: refreshToken, accessExpiresAt: accessExpiresAt, scopeType: scopeType, scopeValue: scopeValue,
-      allowLowRiskOps: allowLowRiskOps, pushPrivateKey: pushPrivateKey ?? this.pushPrivateKey);
+      allowLowRiskOps: allowLowRiskOps, allowSubscriptions: allowSubscriptions, pushPrivateKey: pushPrivateKey ?? this.pushPrivateKey);
 
   /// 由配对或刷新的响应（AppTokens）生成。
   factory Session.fromTokens(Uri server, Map<String, dynamic> j, DateTime now, {String pushPrivateKey = ''}) {
@@ -50,6 +54,7 @@ class Session {
       scopeType: scope['type'] as String,
       scopeValue: scope['value'] as String,
       allowLowRiskOps: scope['allow_low_risk_ops'] as bool,
+      allowSubscriptions: scope['allow_subscriptions'] as bool? ?? false,
       pushPrivateKey: pushPrivateKey,
     );
   }
@@ -63,6 +68,7 @@ class Session {
         'scope_type': scopeType,
         'scope_value': scopeValue,
         'allow_low_risk_ops': allowLowRiskOps,
+        'allow_subscriptions': allowSubscriptions,
         'push_private_key': pushPrivateKey,
       };
 
@@ -75,6 +81,7 @@ class Session {
         scopeType: j['scope_type'] as String,
         scopeValue: j['scope_value'] as String,
         allowLowRiskOps: j['allow_low_risk_ops'] as bool,
+        allowSubscriptions: j['allow_subscriptions'] as bool? ?? false,
         pushPrivateKey: (j['push_private_key'] as String?) ?? '',
       );
 }

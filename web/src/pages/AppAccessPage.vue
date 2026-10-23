@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // App 接入（设计 8.4）：创建配对 AK、查看与吊销已连接的设备。
 // 【安全】AK 只用于首次配对：默认一次性、1 台设备、1 天内有效；完整 AK 只在创建后显示一次。
-// App 永远只读，最多允许静音与维护（设计 8.4.1）；所有配置变更留在 Web。
+// App 只读，最多允许静音与维护（设计 8.4.1）；唯一的写入例外是勾选“允许记录订阅”后新增订阅（修订第 217 条）。其他配置变更留在 Web。
 import { computed, onMounted, ref } from 'vue'
 import {
   ApiError, createAppKey, errorText, listAppDevices, listAppKeys, reauth, revokeAppDevice, revokeAppKey,
@@ -30,7 +30,7 @@ onMounted(load)
 const adding = ref(false)
 const form = ref({
   name: '', scope_type: 'all' as NonNullable<AppAccessKeyInput['scope_type']>, group: '', server_ids: [] as number[],
-  allow_low_risk_ops: true, max_devices: 1, expires_in_days: 1, password: '',
+  allow_low_risk_ops: true, allow_subscriptions: false, max_devices: 1, expires_in_days: 1, password: '',
 })
 const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
@@ -44,7 +44,7 @@ function openNew() {
   adding.value = true
   created.value = null
   form.value = { name: '', scope_type: 'all', group: groups.value[0] ?? '', server_ids: [], allow_low_risk_ops: true,
-    max_devices: 1, expires_in_days: 1, password: '' }
+    allow_subscriptions: false, max_devices: 1, expires_in_days: 1, password: '' }
   fieldErrors.value = {}
 }
 
@@ -60,6 +60,7 @@ async function save() {
     await reauth(f.password)
     const r = await createAppKey({
       name: f.name.trim(), scope_type: f.scope_type, allow_low_risk_ops: f.allow_low_risk_ops,
+      allow_subscriptions: f.scope_type === 'all' && f.allow_subscriptions,
       max_devices: f.max_devices, expires_in_days: f.expires_in_days,
       group: f.scope_type === 'group' ? f.group : undefined,
       server_ids: f.scope_type === 'servers' ? f.server_ids : undefined,
@@ -205,6 +206,9 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
         <label class="check wide">
           <input v-model="form.allow_low_risk_ops" type="checkbox" />允许静音告警、开启 / 结束维护模式（仅限可查看的节点）
         </label>
+        <label v-if="form.scope_type === 'all'" class="check wide">
+          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中新增订阅（只能新增，修改与删除仍在 Web 中进行）
+        </label>
         <label>当前登录密码
           <input v-model="form.password" type="password" autocomplete="current-password" />
           <small v-if="fieldErrors.password" class="bad">{{ fieldErrors.password }}</small>
@@ -228,7 +232,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
             <span v-if="d.status === 'revoked'" class="tag">{{ revokedByText[d.revoked_by] ?? '已吊销' }}</span>
             <span v-else-if="d.status === 'expired'" class="tag">90 天未使用，已失效</span>
             <div class="small muted">
-              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? '只读 + 静音 / 维护' : '只读' }}
+              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? '只读 + 静音 / 维护' : '只读' }}{{ d.allow_subscriptions ? ' + 记录订阅' : '' }}
               · 最后在线 {{ d.last_seen_at ? fmtTime(d.last_seen_at) : DASH }} · 配对于 {{ fmtDateTime(d.paired_at) }}
               <template v-if="d.access_key_name"> · AK：{{ d.access_key_name }}</template>
             </div>
@@ -251,7 +255,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
             <strong>{{ k.name }}</strong> <span class="small muted mono">{{ k.hint }}</span>
             <span class="tag" :class="{ live: k.status === 'active' }">{{ statusText[k.status] ?? k.status }}</span>
             <div class="small muted">
-              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? '允许静音 / 维护' : '只读' }}
+              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? '允许静音 / 维护' : '只读' }}{{ k.allow_subscriptions ? ' · 允许记录订阅' : '' }}
               · 已配对 {{ k.paired_devices }} / {{ k.max_devices }}
               · {{ k.status === 'active' ? `${fmtDateTime(k.expires_at)} 前有效` : `创建于 ${fmtDateTime(k.created_at)}` }}
             </div>

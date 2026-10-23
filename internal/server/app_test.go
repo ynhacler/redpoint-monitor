@@ -27,6 +27,22 @@ func pairTestDevice(t *testing.T, s *Server, lowRisk bool, scopeType, scopeValue
 	return tok
 }
 
+// pairSubsDevice 配对一台 AK 允许记录订阅、不允许低风险操作的设备（修订第 217 条）。
+func pairSubsDevice(t *testing.T, s *Server) appTokens {
+	t.Helper()
+	now := time.Now()
+	k := AppAccessKey{Name: "subs", ScopeType: "all", AllowSubscriptions: true, MaxDevices: 1, ExpiresAt: now.Add(time.Hour).Unix()}
+	key, err := s.store.CreateAppAccessKey(&k, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tok, err := s.store.PairDevice(PairRequest{KeyHash: HashToken(key), Name: "phone-subs", Platform: "android"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok
+}
+
 type pairResp struct {
 	DeviceID         int64  `json:"device_id"`
 	AccessToken      string `json:"access_token"`
@@ -34,9 +50,10 @@ type pairResp struct {
 	ExpiresIn        int64  `json:"expires_in"`
 	RefreshExpiresIn int64  `json:"refresh_expires_in"`
 	Scope            struct {
-		Type            string `json:"type"`
-		Value           string `json:"value"`
-		AllowLowRiskOps bool   `json:"allow_low_risk_ops"`
+		Type               string `json:"type"`
+		Value              string `json:"value"`
+		AllowLowRiskOps    bool   `json:"allow_low_risk_ops"`
+		AllowSubscriptions bool   `json:"allow_subscriptions"`
 	} `json:"scope"`
 }
 

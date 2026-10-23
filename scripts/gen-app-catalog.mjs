@@ -11,13 +11,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // esbuild 是 web/ 的开发依赖（随 Vite 安装）
 const { build } = createRequire(path.join(root, 'web/package.json'))('esbuild')
 const entry = `
-import { catalog, categoryNames, cycleNames } from './src/subscriptions'
+import { catalog, categoryNames, cycleNames, currencies } from './src/subscriptions'
 import { siteGroups } from './src/connectivity'
 import { brandIcons } from './src/brandIcons'
 import { brandLogos } from './src/brandLogos'
 import { siteIcons } from './src/siteIcons'
 import { siteLogos } from './src/siteLogos'
-globalThis.__out = { catalog, categoryNames, cycleNames, siteGroups, brandIcons, brandLogos, siteIcons, siteLogos }
+globalThis.__out = { catalog, categoryNames, cycleNames, currencies, siteGroups, brandIcons, brandLogos, siteIcons, siteLogos }
 `
 const res = await build({
   stdin: { contents: entry, resolveDir: path.join(root, 'web'), loader: 'ts' },
@@ -61,7 +61,7 @@ w('')
 w('/// 订阅目录中的一项')
 w('class CatalogEntry {')
 w('  /// 创建目录项')
-w('  const CatalogEntry(this.name, this.category, this.color, {this.letter, this.icon});')
+w('  const CatalogEntry(this.name, this.category, this.color, {this.letter, this.icon, this.currency, this.dial, this.hot = false});')
 w('  /// 名称')
 w('  final String name;')
 w('  /// 类别')
@@ -72,6 +72,12 @@ w('  /// 图标字（默认取名称的第一个字母或汉字）')
 w('  final String? letter;')
 w('  /// 标志键（默认与目录键相同）')
 w('  final String? icon;')
+w('  /// 默认币种')
+w('  final String? currency;')
+w('  /// SIM 卡的国家 / 地区区号，如 +86')
+w('  final String? dial;')
+w('  /// 常用（选择服务时排在前面）')
+w('  final bool hot;')
 w('}')
 w('')
 w('/// 连通性测试的一个目标')
@@ -112,10 +118,14 @@ w('')
 w('/// 订阅周期名称')
 w(`const cycleNames = <String, String>{${Object.entries(d.cycleNames).map(([k, v]) => `${q(k)}: ${q(v)}`).join(', ')}};`)
 w('')
-w('/// 订阅目录：键 → 目录项')
+w('/// 可选币种')
+w(`const currencies = <String>[${d.currencies.map(q).join(', ')}];`)
+w('')
+w('/// 订阅目录：键 → 目录项（按 Web 的顺序，热门在前的由 hot 决定）')
 w('const catalog = <String, CatalogEntry>{')
 for (const c of d.catalog) {
-  const opt = [c.letter ? `letter: ${q(c.letter)}` : '', c.icon ? `icon: ${q(c.icon)}` : ''].filter(Boolean)
+  const opt = [c.letter ? `letter: ${q(c.letter)}` : '', c.icon ? `icon: ${q(c.icon)}` : '',
+    c.currency ? `currency: ${q(c.currency)}` : '', c.dial ? `dial: ${q(c.dial)}` : '', c.hot ? 'hot: true' : ''].filter(Boolean)
   w(`  ${q(c.key)}: CatalogEntry(${q(c.name)}, ${q(c.category)}, ${color(c.color)}${opt.length ? ', ' + opt.join(', ') : ''}),`)
 }
 w('};')

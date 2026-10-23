@@ -193,15 +193,16 @@ func (s *Server) startBackground(ctx context.Context) {
 type access string
 
 const (
-	accessPublic access = "public" // 无需凭证：健康检查、静态页面
-	accessEnroll access = "enroll" // 凭请求体中的注册码认证，由处理函数校验并单独限流（设计 27.6）
-	accessAdmin  access = "admin"  // Web 管理员
-	accessSelf   access = "self"   // 任何 Web 账号（管理员或查看者）：只用于自己的账号设置（修订第 161 条）
-	accessRead   access = "read"   // Web 账号（含查看者）、只读 API Key 或 App 设备（设计 45.2）：只用于读取类接口
-	accessAgent  access = "agent"  // Agent Token，只能操作 Token 绑定的节点
-	accessPair   access = "pair"   // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
-	accessApp    access = "app"    // 只接受 App 设备 Access Token（设计 12.5）
-	accessOps    access = "ops"    // Web 管理员，或 AK 允许低风险操作的 App 设备：静音、维护（设计 8.4.1、17.2）
+	accessPublic  access = "public"   // 无需凭证：健康检查、静态页面
+	accessEnroll  access = "enroll"   // 凭请求体中的注册码认证，由处理函数校验并单独限流（设计 27.6）
+	accessAdmin   access = "admin"    // Web 管理员
+	accessSelf    access = "self"     // 任何 Web 账号（管理员或查看者）：只用于自己的账号设置（修订第 161 条）
+	accessRead    access = "read"     // Web 账号（含查看者）、只读 API Key 或 App 设备（设计 45.2）：只用于读取类接口
+	accessAgent   access = "agent"    // Agent Token，只能操作 Token 绑定的节点
+	accessPair    access = "pair"     // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
+	accessApp     access = "app"      // 只接受 App 设备 Access Token（设计 12.5）
+	accessOps     access = "ops"      // Web 管理员，或 AK 允许低风险操作的 App 设备：静音、维护（设计 8.4.1、17.2）
+	accessAppSubs access = "app_subs" // 【安全】AK 允许记录订阅且授权全部节点的 App 设备：新增订阅（修订第 217 条，约束 5 的唯一写入例外）
 )
 
 // routeSpec 记录一条路由及其允许的主体。
@@ -233,6 +234,8 @@ func (s *Server) routes() http.Handler {
 			wrapped = s.app(h)
 		case accessOps:
 			wrapped = s.ops(h)
+		case accessAppSubs:
+			wrapped = s.appSubs(h)
 		case accessAdmin:
 			wrapped = s.admin(h)
 		case accessSelf:
@@ -301,6 +304,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/app/cloud", accessApp, s.handleAppCloud)                 // 云账户只读摘要（修订第 144 条）
 	handle("GET /api/v1/app/subscriptions", accessApp, s.handleAppSubscriptions) // 订阅只读列表（修订第 213 条）
 	handle("GET /api/v1/app/subscriptions/{id}/logo", accessApp, s.handleAppSubscriptionLogo)
+	handle("POST /api/v1/app/subscriptions", accessAppSubs, s.handleAppCreateSubscription) // 修订第 217 条：约束 5 的例外
 	handle("PUT /api/v1/app/push", accessApp, s.handleAppPushPut)
 	handle("DELETE /api/v1/app/push", accessApp, s.handleAppPushDelete)
 	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）

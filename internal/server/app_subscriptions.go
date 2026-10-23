@@ -1,9 +1,10 @@
 package server
 
-// App 的订阅列表（设计 47，修订第 213 条）：GET /api/v1/app/subscriptions 与图标，只接受 App 设备凭证。
+// App 的订阅（设计 47，修订第 213、217 条）：GET /api/v1/app/subscriptions 与图标，POST 新增；只接受 App 设备凭证。
 //
 // 【安全】
-//   - 只读（约束 5）：App 不能添加、修改或删除订阅，这里只有读取接口
+//   - 约束 5 的例外只有“新增订阅”（修订第 217 条）：AK 勾选了“允许记录订阅”（默认关闭）且授权范围为“全部节点”的设备
+//     才能新增；不能修改、删除订阅，也不能改任何其他配置。新增写入审计日志（操作者为设备名）
 //   - 订阅属于整个面板，不按节点划分：只有授权范围为“全部节点”的设备能看到，其他范围返回 limited（图标返回 404）
 
 import (
@@ -51,4 +52,9 @@ func (s *Server) handleAppSubscriptionLogo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.handleSubscriptionLogo(w, r)
+}
+
+// handleAppCreateSubscription：POST /api/v1/app/subscriptions，accessAppSubs（修订第 217 条）。请求体与 Web 新增订阅相同。
+func (s *Server) handleAppCreateSubscription(w http.ResponseWriter, r *http.Request) {
+	s.createSubscription(w, r, "app")
 }

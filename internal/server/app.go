@@ -94,16 +94,30 @@ func (s *Server) ops(h http.HandlerFunc) http.Handler {
 	})
 }
 
+// appSubs 是 accessAppSubs 路由（新增订阅）的认证（修订第 217 条）：只接受 App 设备，且 AK 勾选了“允许记录订阅”、
+// 授权范围为“全部节点”（订阅属于整个面板）。Web 管理员走自己的 /subscriptions 接口。
+func (s *Server) appSubs(h http.HandlerFunc) http.Handler {
+	return s.app(func(w http.ResponseWriter, r *http.Request) {
+		d := info(r).device
+		if d == nil || !d.AllowSubscriptions || d.ScopeType != "all" {
+			s.writeError(w, r, errorf(CodeForbidden, "此设备的授权不包含记录订阅：在 Web 创建配对 AK 时授权全部节点并勾选“允许记录订阅”"))
+			return
+		}
+		h(w, r)
+	})
+}
+
 // ---- AK 管理（Web 管理员） ----
 
 type appKeyBody struct {
-	Name            string  `json:"name"`
-	ScopeType       string  `json:"scope_type"`
-	Group           string  `json:"group"`
-	ServerIDs       []int64 `json:"server_ids"`
-	AllowLowRiskOps *bool   `json:"allow_low_risk_ops"`
-	MaxDevices      int     `json:"max_devices"`
-	ExpiresInDays   int     `json:"expires_in_days"`
+	Name               string  `json:"name"`
+	ScopeType          string  `json:"scope_type"`
+	Group              string  `json:"group"`
+	ServerIDs          []int64 `json:"server_ids"`
+	AllowLowRiskOps    *bool   `json:"allow_low_risk_ops"`
+	AllowSubscriptions bool    `json:"allow_subscriptions"`
+	MaxDevices         int     `json:"max_devices"`
+	ExpiresInDays      int     `json:"expires_in_days"`
 }
 
 // handleAppKeys：GET /api/v1/app-access-keys，admin。
@@ -135,6 +149,7 @@ func (s *Server) handleCreateAppKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k := AppAccessKey{Name: strings.TrimSpace(b.Name), AllowLowRiskOps: true, MaxDevices: 1}
+	k.AllowSubscriptions = b.AllowSubscriptions // 默认关闭（修订第 217 条）
 	if b.AllowLowRiskOps != nil {
 		k.AllowLowRiskOps = *b.AllowLowRiskOps
 	}
@@ -174,7 +189,7 @@ func (s *Server) handleCreateAppKey(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "app_key.create", TargetType: "app_access_key", TargetID: k.ID, Success: true,
 		Details: map[string]any{"name": k.Name, "hint": k.Hint, "scope_type": k.ScopeType, "scope_value": k.ScopeValue,
-			"allow_low_risk_ops": k.AllowLowRiskOps, "max_devices": k.MaxDevices, "expires_at": k.ExpiresAt}})
+			"allow_low_risk_ops": k.AllowLowRiskOps, "allow_subscriptions": k.AllowSubscriptions, "max_devices": k.MaxDevices, "expires_at": k.ExpiresAt}})
 	server := s.panelURL(r)
 	writeJSONStatus(w, http.StatusCreated, map[string]any{"access_key": key, "server_url": server,
 		"pair_url": pairURL(server, key), "app_access_key": k})
@@ -258,10 +273,13 @@ type appScopeView struct {
 	Type            string `json:"type"`
 	Value           string `json:"value"`
 	AllowLowRiskOps bool   `json:"allow_low_risk_ops"`
+	// AllowSubscriptions 可以新增订阅（修订第 217 条；只对“全部节点”授权生效）
+	AllowSubscriptions bool `json:"allow_subscriptions"`
 }
 
 func scopeView(d AppDevice) appScopeView {
-	return appScopeView{Type: d.ScopeType, Value: d.ScopeValue, AllowLowRiskOps: d.AllowLowRiskOps}
+	return appScopeView{Type: d.ScopeType, Value: d.ScopeValue, AllowLowRiskOps: d.AllowLowRiskOps,
+		AllowSubscriptions: d.AllowSubscriptions && d.ScopeType == "all"}
 }
 
 func tokensView(d AppDevice, t appTokens, now time.Time) map[string]any {

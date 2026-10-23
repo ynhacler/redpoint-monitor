@@ -430,8 +430,8 @@ func TestPermissionMatrix(t *testing.T) {
 	}
 	creds := map[string]string{"无凭证": "", "伪造": "agt_forgedforgedforged", "伪造 API Key": "api_forgedforgedforged",
 		"伪造设备": "dev_forgedforgedforged", "Refresh Token": "rt_forgedforgedforged",
-		"admin": admin, "viewer": "", "agent": agentTok, "apikey": apiKey, "app": "", "app 无低风险操作": ""}
-	everyone := []string{"无凭证", "伪造", "伪造 API Key", "伪造设备", "Refresh Token", "admin", "viewer", "agent", "apikey", "app", "app 无低风险操作"}
+		"admin": admin, "viewer": "", "agent": agentTok, "apikey": apiKey, "app": "", "app 无低风险操作": "", "app 可记录订阅": ""}
+	everyone := []string{"无凭证", "伪造", "伪造 API Key", "伪造设备", "Refresh Token", "admin", "viewer", "agent", "apikey", "app", "app 无低风险操作", "app 可记录订阅"}
 	allowed := map[access][]string{
 		accessPublic: everyone,
 		accessEnroll: everyone, // 凭请求体中的注册码认证
@@ -440,11 +440,13 @@ func TestPermissionMatrix(t *testing.T) {
 		// 【安全】查看者只能读取与管理自己的账号（修订第 161 条）
 		accessSelf: {"admin", "viewer"},
 		// 【安全】API Key、App 设备与查看者只能访问读取类接口（设计 45.2、8.4.1）
-		accessRead:  {"admin", "viewer", "apikey", "app", "app 无低风险操作"},
+		accessRead:  {"admin", "viewer", "apikey", "app", "app 无低风险操作", "app 可记录订阅"},
 		accessAgent: {"agent"},
-		accessApp:   {"app", "app 无低风险操作"},
+		accessApp:   {"app", "app 无低风险操作", "app 可记录订阅"},
 		// 【安全】静音与维护：只有 AK 允许低风险操作的设备（设计 17.2）
 		accessOps: {"admin", "app"},
+		// 【安全】新增订阅：只有 AK 允许记录订阅的设备，Web 管理员也不行（走自己的接口，修订第 217 条）
+		accessAppSubs: {"app 可记录订阅"},
 	}
 	// 期望表独立于实现，按设计 17.2 手写：路由声明的主体必须与之完全一致。
 	// 新增路由时必须同时在这里登记，否则测试失败——防止误把管理接口声明为公开。
@@ -483,6 +485,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/app/cloud":                           accessApp,
 		"GET /api/v1/app/subscriptions":                   accessApp,
 		"GET /api/v1/app/subscriptions/{id}/logo":         accessApp,
+		"POST /api/v1/app/subscriptions":                  accessAppSubs,
 		"PUT /api/v1/app/push":                            accessApp,
 		"DELETE /api/v1/app/push":                         accessApp,
 		"POST /api/v1/app/unpair":                         accessApp,
@@ -633,6 +636,9 @@ func TestPermissionMatrix(t *testing.T) {
 			if name == "app" || name == "app 无低风险操作" {
 				// 每次用新设备：矩阵中的 /app/unpair、/app-devices/{id}/revoke 会吊销设备
 				tok = pairTestDevice(t, s, name == "app", "all", "").access
+			}
+			if name == "app 可记录订阅" {
+				tok = pairSubsDevice(t, s).access
 			}
 			rec := do(h, method, path, tok, []byte(`{}`))
 			if rt.pattern == "POST /api/v1/auth/login" || rt.pattern == "POST /api/v1/auth/login/totp" {
