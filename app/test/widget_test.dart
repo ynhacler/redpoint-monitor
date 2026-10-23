@@ -9,6 +9,7 @@ import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
 import 'package:vpsmon_app/pages/cloud_page.dart';
 import 'package:vpsmon_app/pages/connectivity_page.dart';
+import 'package:vpsmon_app/pages/ip_page.dart';
 import 'package:vpsmon_app/pages/latency_compare_page.dart';
 import 'package:vpsmon_app/pages/reorder_page.dart';
 import 'package:vpsmon_app/pages/server_detail_page.dart';
@@ -182,9 +183,10 @@ void main() {
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
 
-    // 底部：服务器 / 连通性测试 / 工具 / 设置；工具中分页“订阅”“云平台”（修订第 218 条）
-    expect(find.text('连通性测试'), findsOneWidget);
-    expect(find.byType(ConnectivityPage), findsNothing); // 没切到这个标签前不创建，不会自动开始测试
+    // 底部：服务器 / 网络 / 工具 / 设置；工具中分页“订阅”“云平台”（修订第 218 条）
+    expect(find.text('网络'), findsOneWidget);
+    expect(find.byType(ConnectivityPage), findsNothing); // 没切到这个标签前不创建，不会自动查询或测试
+    expect(find.byType(IpPage), findsNothing);
     await tester.tap(find.text('工具'));
     await tester.pump();
     await tester.pump();
