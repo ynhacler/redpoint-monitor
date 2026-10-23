@@ -300,6 +300,11 @@ func (s *Server) alertInputFor(row ServerRow, snaps map[int64]snapshot, now time
 		last = sn.ReceivedAt
 	} else if row.LastSeenAt == 0 {
 		last = time.Unix(row.EnrolledAt, 0) // 注册后从未上报：从注册时间算起
+		if row.EnrolledAt == 0 {
+			// 用 add-server 创建或早于注册流程的节点没有注册时间：从创建时间算起，
+			// 否则离线时长从 1970 年算起，告警写成“已 497582 小时未收到上报”（修订第 212 条）
+			last = time.Unix(row.CreatedAt, 0)
+		}
 	}
 	in := alertInput{OfflineFor: now.Sub(last)}
 	if _, unknown := statusWindows(reportInterval(row)); hasSnap && in.OfflineFor <= unknown {
