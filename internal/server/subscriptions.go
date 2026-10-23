@@ -16,6 +16,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,6 +33,19 @@ type SubPhone struct {
 }
 
 const maxSubPhones = 10
+
+// SubVPS 是 VPS 的地址与配置（类别为 vps 时，修订第 198 条）；数值为 0 表示没有填写。
+type SubVPS struct {
+	IPs           []string `json:"ips"`
+	CPU           int      `json:"cpu"`
+	MemoryGB      float64  `json:"memory_gb"`
+	DiskGB        int      `json:"disk_gb"`
+	BandwidthMbps int      `json:"bandwidth_mbps"`
+	TrafficGB     int      `json:"traffic_gb"`
+	Location      string   `json:"location"`
+}
+
+const maxSubIPs = 16
 
 var phoneCC = regexp.MustCompile(`^\+[0-9]{1,4}$`)
 
@@ -50,6 +64,7 @@ type Subscription struct {
 	RemindDays  int        `json:"remind_days"`
 	Note        string     `json:"note"`
 	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
+	VPS         SubVPS     `json:"vps"`          // VPS 的地址与配置（修订第 198 条）
 	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库
 	Ended       bool       `json:"ended"`        // 计算得到，不入库
 	LogoVersion int64      `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
@@ -58,7 +73,7 @@ type Subscription struct {
 }
 
 var (
-	subCategories = []string{"video", "tools", "reading", "social", "health", "game", "cloud", "sim", "other"}
+	subCategories = []string{"video", "tools", "reading", "social", "health", "game", "cloud", "sim", "vps", "other"}
 	subCycles     = []string{"weekly", "monthly", "quarterly", "semiannually", "annually", "once"}
 	subRemind     = []int{0, 1, 2, 3, 7}
 	currencyCode  = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -143,19 +158,23 @@ func withSchedule(sub Subscription, now time.Time) Subscription {
 // ---- 存储 ----
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
-	s.remind_days, s.note, s.phones, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
+	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
-	var phones string
+	var phones, vps string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &phones, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
+		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
 	if err == nil {
 		_ = json.Unmarshal([]byte(phones), &x.Phones)
+		_ = json.Unmarshal([]byte(vps), &x.VPS)
 	}
 	if x.Phones == nil {
 		x.Phones = []SubPhone{}
+	}
+	if x.VPS.IPs == nil {
+		x.VPS.IPs = []string{}
 	}
 	return x, err
 }
@@ -192,14 +211,22 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 	if x.Phones == nil {
 		x.Phones = []SubPhone{}
 	}
+	if x.VPS.IPs == nil {
+		x.VPS.IPs = []string{}
+	}
 	phones, err := json.Marshal(x.Phones)
+	if err != nil {
+		return err
+	}
+	vps, err := json.Marshal(x.VPS)
 	if err != nil {
 		return err
 	}
 	if x.ID == 0 {
 		res, err := s.DB.Exec(`INSERT INTO subscriptions (name, brand, category, price_cents, currency, cycle, trial_days, start_date,
-			end_date, remind_days, note, phones, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, x.Name, x.Brand, x.Category,
-			x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), now.Unix(), now.Unix())
+			end_date, remind_days, note, phones, vps, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, x.Name, x.Brand, x.Category,
+			x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), string(vps),
+			now.Unix(), now.Unix())
 		if err != nil {
 			return err
 		}
@@ -208,8 +235,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 		return nil
 	}
 	res, err := s.DB.Exec(`UPDATE subscriptions SET name = ?, brand = ?, category = ?, price_cents = ?, currency = ?, cycle = ?,
-		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, updated_at = ? WHERE id = ?`, x.Name, x.Brand,
-		x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), now.Unix(), x.ID)
+		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, updated_at = ? WHERE id = ?`, x.Name,
+		x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones),
+		string(vps), now.Unix(), x.ID)
 	if err != nil {
 		return err
 	}
@@ -340,6 +368,53 @@ func validateSubscription(x *Subscription) []FieldError {
 		fe = append(fe, FieldError{Field: "phones", Message: fmt.Sprintf("最多 %d 个号码", maxSubPhones)})
 	}
 	x.Phones = phones
+	return append(fe, validateSubVPS(x)...)
+}
+
+// validateSubVPS 校验 VPS 的地址与配置（修订第 198 条）：去掉空行与重复地址，地址须为 IPv4 / IPv6；其他类别清空。
+func validateSubVPS(x *Subscription) []FieldError {
+	if x.Category != "vps" {
+		x.VPS = SubVPS{IPs: []string{}}
+		return nil
+	}
+	var fe []FieldError
+	v := &x.VPS
+	ips := []string{}
+	for i, raw := range v.IPs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(raw)
+		if err != nil || addr.Zone() != "" {
+			fe = append(fe, FieldError{Field: fmt.Sprintf("vps.ips[%d]", i), Message: "请输入 IPv4 或 IPv6 地址"})
+			continue
+		}
+		if s := addr.Unmap().String(); !slices.Contains(ips, s) {
+			ips = append(ips, s)
+		}
+	}
+	if len(ips) > maxSubIPs {
+		fe = append(fe, FieldError{Field: "vps.ips", Message: fmt.Sprintf("最多 %d 个地址", maxSubIPs)})
+	}
+	v.IPs = ips
+	for _, c := range []struct {
+		field string
+		bad   bool
+		msg   string
+	}{
+		{"vps.cpu", v.CPU < 0 || v.CPU > 1024, "CPU 为 0～1024 核"},
+		{"vps.memory_gb", v.MemoryGB < 0 || v.MemoryGB > 16384, "内存为 0～16384 GB"},
+		{"vps.disk_gb", v.DiskGB < 0 || v.DiskGB > 1000000, "硬盘为 0～1000000 GB"},
+		{"vps.bandwidth_mbps", v.BandwidthMbps < 0 || v.BandwidthMbps > 1000000, "带宽为 0～1000000 Mbps"},
+		{"vps.traffic_gb", v.TrafficGB < 0 || v.TrafficGB > 100000000, "流量为 0～100000000 GB"},
+		{"vps.location", utf8.RuneCountInString(v.Location) > 40, "机房最多 40 个字符"},
+	} {
+		if c.bad {
+			fe = append(fe, FieldError{Field: c.field, Message: c.msg})
+		}
+	}
+	v.Location = strings.TrimSpace(v.Location)
 	return fe
 }
 
@@ -358,13 +433,15 @@ func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request) (Sub
 		RemindDays int        `json:"remind_days"`
 		Note       string     `json:"note"`
 		Phones     []SubPhone `json:"phones"`
+		VPS        SubVPS     `json:"vps"`
 	}
 	if err := decodeJSON(w, r, &b); err != nil {
 		s.writeError(w, r, err)
 		return x, false
 	}
 	x = Subscription{Name: b.Name, Brand: b.Brand, Category: b.Category, PriceCents: b.PriceCents, Currency: b.Currency, Cycle: b.Cycle,
-		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones}
+		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones,
+		VPS: b.VPS}
 	if fe := validateSubscription(&x); fe != nil {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: fe})
 		return x, false
