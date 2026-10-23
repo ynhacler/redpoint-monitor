@@ -5,10 +5,12 @@
 // 只发 HTTPS GET，不提交任何账号信息；每项 10 秒超时，同时最多 4 项，整次检测 90 秒内结束。
 // 判断依据是各服务公开页面的表现（跳转到“地区不可用”页面、页面中的地区代码、HTTP 403 等），为本项目独立实现；
 // 服务改版后某项可能判断为“检测失败”，不影响其他项。
+// 除通用检测项外，先从 Cloudflare 的 trace 得到本机所在地区，再追加该地区的当地服务（每个地区不超过 6 项，修订第 196 条）。
 package unlock
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -35,39 +37,69 @@ type check struct {
 	run func(ctx context.Context, f *fetcher) protocol.UnlockItem
 }
 
-// Checks 是全部检测项的键（显示顺序与面板一致）。
-var Checks = []string{"netflix", "disney", "youtube", "prime", "tiktok", "chatgpt", "claude", "google", "reddit", "steam"}
+// Checks 是通用检测项的键（显示顺序与面板一致）。
+var Checks = []string{"netflix", "disney", "youtube", "prime", "tiktok", "chatgpt", "claude", "google", "reddit", "steam",
+	"yahoo", "truthsocial", "telegram"}
+
+// Local 是各地区追加的当地服务（修订第 196 条），每个地区不超过 6 项；只收录有明确地区判断依据的服务，
+// 没有收录的地区只检测通用项。
+var Local = map[string][]string{
+	"JP": {"abema", "radiko"},
+	"HK": {"mytvsuper", "viu", "bilibili_hmt"},
+	"MO": {"bilibili_hmt"},
+	"TW": {"kktv", "bilibili_tw", "bilibili_hmt"},
+	"KR": {"coupangplay"},
+	"US": {"hulu"},
+	"GB": {"bbc_iplayer"},
+	"SG": {"viu"}, "MY": {"viu"}, "TH": {"viu"}, "ID": {"viu"}, "PH": {"viu"},
+}
 
 var checks = map[string]func(ctx context.Context, f *fetcher) protocol.UnlockItem{
 	"netflix": checkNetflix, "disney": checkDisney, "youtube": checkYouTube, "prime": checkPrime, "tiktok": checkTikTok,
 	"chatgpt": checkChatGPT, "claude": checkClaude, "google": checkGoogle, "reddit": checkReddit, "steam": checkSteam,
+	"yahoo": checkYahoo, "truthsocial": checkTruthSocial, "telegram": checkTelegram,
+	"abema": checkAbema, "radiko": checkRadiko, "mytvsuper": checkMyTVSuper, "viu": checkViu,
+	"bilibili_hmt": checkBilibiliHMT, "bilibili_tw": checkBilibiliTW, "kktv": checkKKTV, "coupangplay": checkCoupangPlay,
+	"hulu": checkHulu, "bbc_iplayer": checkBBCiPlayer,
 }
 
-// Run 执行全部检测项，按 Checks 的顺序返回结果。client 为空时使用默认客户端。
+// Run 执行通用检测项与本机所在地区的当地服务，按 Checks、Local 的顺序返回结果。client 为空时使用默认客户端。
 func Run(ctx context.Context, client *http.Client) []protocol.UnlockItem {
 	if client == nil {
 		client = &http.Client{}
 	}
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
 	defer cancel()
-	out := make([]protocol.UnlockItem, len(Checks))
+	type job struct{ key, local string }
+	jobs := make([]job, 0, len(Checks)+6)
+	for _, key := range Checks {
+		jobs = append(jobs, job{key: key})
+	}
+	// 本机所在地区：取自 Cloudflare 的 trace（与 ChatGPT、Claude 判断地区的方式相同）
+	tctx, tcancel := context.WithTimeout(ctx, itemTimeout)
+	country := (&fetcher{client: client}).traceLoc(tctx, "www.cloudflare.com")
+	tcancel()
+	for _, key := range Local[country] {
+		jobs = append(jobs, job{key: key, local: country})
+	}
+	out := make([]protocol.UnlockItem, len(jobs))
 	sem := make(chan struct{}, parallel)
 	var wg sync.WaitGroup
-	for i, key := range Checks {
+	for i, j := range jobs {
 		wg.Add(1)
-		go func(i int, key string) {
+		go func(i int, j job) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			ictx, icancel := context.WithTimeout(ctx, itemTimeout)
 			defer icancel()
-			it := checks[key](ictx, &fetcher{client: client})
-			it.Service = key
+			it := checks[j.key](ictx, &fetcher{client: client})
+			it.Service, it.Local = j.key, j.local
 			if len(it.Note) > 200 {
 				it.Note = it.Note[:200]
 			}
 			out[i] = it
-		}(i, key)
+		}(i, j)
 	}
 	wg.Wait()
 	return out
@@ -161,6 +193,10 @@ var (
 	reTerritory    = regexp.MustCompile(`"currentTerritory":"([A-Z]{2})"`)
 	reTikTokRegion = regexp.MustCompile(`"region":"([A-Z]{2})"`)
 	reSteamCur     = regexp.MustCompile(`"priceCurrency"\s+content="([A-Z]{3})"`)
+	reYahooHost    = regexp.MustCompile(`^https://([a-z]{2})\.yahoo\.com/`)
+	reRadikoArea   = regexp.MustCompile(`class="(JP\d+|OUT)"`)
+	reViuRegion    = regexp.MustCompile(`viu\.com/ott/([a-z]{2})(?:/|$)`)
+	reBiliCode     = regexp.MustCompile(`^\{"code":(-?\d+)`)
 )
 
 // ---- 检测项 ----
@@ -356,6 +392,216 @@ func checkSteam(ctx context.Context, f *fetcher) protocol.UnlockItem {
 	}
 	if p.status == http.StatusOK {
 		return protocol.UnlockItem{Status: protocol.UnlockYes}
+	}
+	return unknown(p)
+}
+
+// Yahoo：首页按地区跳转到当地站点（如 hk.yahoo.com），据此得到地区；403 / 451 为被拒绝。
+// 欧洲经济区会先跳转到 Cookie 同意页（guce / consent），仍算可用。
+func checkYahoo(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://www.yahoo.com/", true)
+	if err != nil {
+		return failed(err)
+	}
+	switch {
+	case p.status == http.StatusForbidden || p.status == http.StatusUnavailableForLegalReasons:
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "被拒绝访问"}
+	case p.status == http.StatusOK:
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: find(reYahooHost, p.url)}
+	}
+	return unknown(p)
+}
+
+// Truth Social：公开的实例信息接口（客户端使用）能取到为可用；网页对非浏览器请求常返回 403，不作为依据。
+func checkTruthSocial(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://truthsocial.com/api/v1/instance", true, "Accept", "application/json")
+	if err != nil {
+		return failed(err)
+	}
+	switch {
+	case p.status == http.StatusOK && strings.Contains(p.body, "truthsocial.com"):
+		return protocol.UnlockItem{Status: protocol.UnlockYes}
+	case p.status == http.StatusForbidden || p.status == http.StatusUnavailableForLegalReasons:
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "被拒绝访问"}
+	}
+	return unknown(p)
+}
+
+// Telegram：网页版能打开为可用；连接失败多为被封锁（如中国大陆），记为不可用并注明。
+func checkTelegram(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://web.telegram.org/", true)
+	if err != nil {
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "无法连接（可能被封锁）"}
+	}
+	if p.status == http.StatusOK {
+		return protocol.UnlockItem{Status: protocol.UnlockYes}
+	}
+	return unknown(p)
+}
+
+// ---- 当地服务（修订第 196 条） ----
+
+// ABEMA（日本）：IP 检查接口在日本返回 200 与国家代码；海外或被识别为代理时返回 403（anonymous_ip）。
+func checkAbema(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://api.abema.io/v1/ip/check?device=android", true, "Accept", "application/json")
+	if err != nil {
+		return failed(err)
+	}
+	var v struct {
+		ISOCountryCode string `json:"isoCountryCode"`
+		Message        string `json:"message"`
+	}
+	_ = json.Unmarshal([]byte(p.body), &v)
+	switch {
+	case p.status == http.StatusOK && v.ISOCountryCode == "JP":
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: "JP"}
+	case p.status == http.StatusOK:
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Region: strings.ToUpper(v.ISOCountryCode), Note: "仅限日本"}
+	case p.status == http.StatusForbidden && v.Message == "anonymous_ip":
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "被识别为代理或数据中心 IP"}
+	case p.status == http.StatusForbidden:
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "仅限日本"}
+	}
+	return unknown(p)
+}
+
+// radiko（日本）：/area 返回所在都道府县（class="JP13"）；海外为 class="OUT"。
+func checkRadiko(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://radiko.jp/area", true)
+	if err != nil {
+		return failed(err)
+	}
+	switch area := find(reRadikoArea, p.body); {
+	case p.status == http.StatusOK && area == "OUT":
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "仅限日本"}
+	case p.status == http.StatusOK && area != "":
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: "JP", Note: area}
+	}
+	return unknown(p)
+}
+
+// myTV SUPER（香港）：会话接口返回国家代码与是否在服务地区。
+func checkMyTVSuper(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://www.mytvsuper.com/api/auth/getSession/self/", true, "Accept", "application/json")
+	if err != nil {
+		return failed(err)
+	}
+	var v struct {
+		CountryCode      string `json:"country_code"`
+		SupportedCountry *bool  `json:"supported_country"`
+	}
+	if p.status != http.StatusOK || json.Unmarshal([]byte(p.body), &v) != nil || v.SupportedCountry == nil {
+		return unknown(p)
+	}
+	if *v.SupportedCountry {
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: strings.ToUpper(v.CountryCode)}
+	}
+	return protocol.UnlockItem{Status: protocol.UnlockNo, Region: strings.ToUpper(v.CountryCode), Note: "所在地区不提供服务"}
+}
+
+// Viu（香港、东南亚）：首页跳转到带地区的地址（/ott/hk），据此得到服务地区。
+func checkViu(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://www.viu.com/", true)
+	if err != nil {
+		return failed(err)
+	}
+	if region := find(reViuRegion, p.url); p.status == http.StatusOK && region != "" {
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: region}
+	}
+	if p.status == http.StatusForbidden {
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "被拒绝访问"}
+	}
+	return unknown(p)
+}
+
+// bilibili 港澳台 / 仅台湾：请求一集限定地区番剧的播放地址；code 0 为可看，-10403 为所在地区不可观看。
+func checkBilibili(ctx context.Context, f *fetcher, url string) protocol.UnlockItem {
+	p, err := f.get(ctx, url, true, "Accept", "application/json")
+	if err != nil {
+		return failed(err)
+	}
+	m := reBiliCode.FindStringSubmatch(p.body)
+	switch {
+	case m == nil:
+		return unknown(p)
+	case m[1] == "0":
+		return protocol.UnlockItem{Status: protocol.UnlockYes}
+	case m[1] == "-10403":
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "所在地区不可观看"}
+	}
+	return protocol.UnlockItem{Status: protocol.UnlockFailed, Note: "无法判断（code " + m[1] + "）"}
+}
+
+func checkBilibiliHMT(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	return checkBilibili(ctx, f, "https://api.bilibili.com/pgc/player/web/playurl?avid=18281381&cid=29892777&qn=0&type=&otype=json&ep_id=183799&fourk=1&fnver=0&fnval=16&module=bangumi")
+}
+
+func checkBilibiliTW(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	return checkBilibili(ctx, f, "https://api.bilibili.com/pgc/player/web/playurl?avid=50762638&cid=100279344&qn=0&type=&otype=json&ep_id=268176&fourk=1&fnver=0&fnval=16&module=bangumi")
+}
+
+// KKTV（台湾）：IP 检查接口返回国家代码与是否允许观看。
+func checkKKTV(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://api.kktv.me/v3/ipcheck", true, "Accept", "application/json")
+	if err != nil {
+		return failed(err)
+	}
+	var v struct {
+		Data struct {
+			Country   string `json:"country"`
+			IsAllowed *bool  `json:"is_allowed"`
+		} `json:"data"`
+	}
+	if p.status != http.StatusOK || json.Unmarshal([]byte(p.body), &v) != nil || v.Data.IsAllowed == nil {
+		return unknown(p)
+	}
+	if *v.Data.IsAllowed {
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: strings.ToUpper(v.Data.Country)}
+	}
+	return protocol.UnlockItem{Status: protocol.UnlockNo, Region: strings.ToUpper(v.Data.Country), Note: "仅限台湾"}
+}
+
+// Coupang Play（韩国）：海外跳转到 /not-available。
+func checkCoupangPlay(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://www.coupangplay.com/", true)
+	if err != nil {
+		return failed(err)
+	}
+	switch {
+	case strings.Contains(p.url, "not-available"):
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "仅限韩国"}
+	case p.status == http.StatusOK:
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: "KR"}
+	}
+	return unknown(p)
+}
+
+// Hulu（美国）：美国以外跳转到 Disney+。
+func checkHulu(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://www.hulu.com/", false)
+	if err != nil {
+		return failed(err)
+	}
+	switch {
+	case strings.Contains(p.loc, "disneyplus.com") || p.status == http.StatusForbidden:
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "仅限美国"}
+	case p.status == http.StatusOK || p.status/100 == 3:
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: "US"}
+	}
+	return unknown(p)
+}
+
+// BBC iPlayer（英国）：播放源选择接口在英国以外返回 "result":"geolocation"。
+func checkBBCiPlayer(ctx context.Context, f *fetcher) protocol.UnlockItem {
+	p, err := f.get(ctx, "https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0/mediaset/pc/vpid/bbc_one_london/format/json", true)
+	if err != nil {
+		return failed(err)
+	}
+	switch {
+	case strings.Contains(p.body, `"result":"geolocation"`):
+		return protocol.UnlockItem{Status: protocol.UnlockNo, Note: "仅限英国"}
+	case p.status == http.StatusOK && strings.Contains(p.body, `"media"`):
+		return protocol.UnlockItem{Status: protocol.UnlockYes, Region: "GB"}
 	}
 	return unknown(p)
 }

@@ -64,6 +64,10 @@ func TestUnlockAvailable(t *testing.T) {
 		"https://www.google.com/search?q=vps&hl=en": {status: 200},
 		"https://www.reddit.com/":                   {status: 200},
 		"https://store.steampowered.com/app/761830": {status: 200, body: `<meta itemprop="priceCurrency" content="JPY">`},
+		"https://www.yahoo.com/":                    {redirect: "https://sg.yahoo.com/?p=us"},
+		"https://sg.yahoo.com/?p=us":                {status: 200},
+		"https://truthsocial.com/api/v1/instance":   {status: 200, body: `{"uri":"truthsocial.com"}`},
+		"https://web.telegram.org/":                 {status: 200},
 	})
 	for key, want := range map[string]protocol.UnlockItem{
 		"netflix": {Service: "netflix", Status: "yes", Region: "JP"}, "disney": {Service: "disney", Status: "yes"},
@@ -71,15 +75,99 @@ func TestUnlockAvailable(t *testing.T) {
 		"tiktok": {Service: "tiktok", Status: "yes", Region: "JP"}, "chatgpt": {Service: "chatgpt", Status: "yes", Region: "JP"},
 		"claude": {Service: "claude", Status: "yes", Region: "JP"}, "google": {Service: "google", Status: "yes"},
 		"reddit": {Service: "reddit", Status: "yes"}, "steam": {Service: "steam", Status: "yes", Region: "JPY", Note: "商店货币"},
+		"yahoo": {Service: "yahoo", Status: "yes", Region: "SG"}, "truthsocial": {Service: "truthsocial", Status: "yes"},
+		"telegram": {Service: "telegram", Status: "yes"},
 	} {
 		if got[key] != want {
 			t.Errorf("%s：%+v，期望 %+v", key, got[key], want)
 		}
 	}
-	if len(got) != len(Checks) {
+	if len(got) != len(Checks) { // 得不到本机地区时只有通用项
 		t.Fatalf("应有 %d 项：%d", len(Checks), len(got))
 	}
 }
+
+// 当地服务（修订第 196 条）：按 Cloudflare trace 得到的地区追加，排在通用项之后并标明地区
+func TestUnlockLocal(t *testing.T) {
+	ft := fakeTransport{
+		"https://www.cloudflare.com/cdn-cgi/trace":        {status: 200, body: "loc=JP\n"},
+		"https://api.abema.io/v1/ip/check?device=android": {status: 200, body: `{"isoCountryCode":"JP"}`},
+		"https://radiko.jp/area":                          {status: 200, body: `document.write('<span class="JP13">TOKYO JAPAN</span>');`},
+	}
+	items := Run(context.Background(), &http.Client{Transport: ft})
+	if len(items) != len(Checks)+len(Local["JP"]) {
+		t.Fatalf("应有 %d 项：%d", len(Checks)+len(Local["JP"]), len(items))
+	}
+	for i, key := range Local["JP"] {
+		if it := items[len(Checks)+i]; it.Service != key || it.Local != "JP" || it.Status != "yes" || it.Region != "JP" {
+			t.Errorf("%s：%+v", key, it)
+		}
+	}
+	for _, it := range items[:len(Checks)] {
+		if it.Local != "" {
+			t.Errorf("通用项不应标地区：%+v", it)
+		}
+	}
+	if !(&protocol.UnlockResult{Request: "r", Items: items}).Valid() {
+		t.Fatal("结果格式应有效")
+	}
+	for country, keys := range Local {
+		if len(keys) > 6 {
+			t.Errorf("%s 的当地服务超过 6 项", country)
+		}
+		for _, k := range keys {
+			if checks[k] == nil {
+				t.Errorf("%s：没有检测函数 %s", country, k)
+			}
+		}
+	}
+}
+
+// 当地服务在外地：各项给出明确的不可用原因
+func TestUnlockLocalBlocked(t *testing.T) {
+	f := &fetcher{client: &http.Client{Transport: fakeTransport{
+		"https://api.abema.io/v1/ip/check?device=android": {status: 403, body: `{"message":"anonymous_ip"}`},
+		"https://radiko.jp/area":                          {status: 200, body: `<span class="OUT">HONG KONG</span>`},
+		"https://www.mytvsuper.com/api/auth/getSession/self/": {status: 200,
+			body: `{"region":1,"country_code":"JP","supported_country":false}`},
+		"https://www.viu.com/":                      {status: 403},
+		"https://api.kktv.me/v3/ipcheck":            {status: 200, body: `{"data":{"country":"HK","is_allowed":false}}`},
+		"https://www.coupangplay.com/":              {redirect: "https://www.coupangplay.com/not-available"},
+		"https://www.coupangplay.com/not-available": {status: 200},
+		"https://www.hulu.com/":                     {redirect: "https://www.disneyplus.com/"},
+		"https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0/mediaset/pc/vpid/bbc_one_london/format/json": {status: 200,
+			body: `{"result":"geolocation"}`},
+	}}}
+	for _, key := range []string{"abema", "radiko", "mytvsuper", "viu", "kktv", "coupangplay", "hulu", "bbc_iplayer"} {
+		if it := checks[key](context.Background(), f); it.Status != "no" || it.Note == "" {
+			t.Errorf("%s：%+v", key, it)
+		}
+	}
+	bili := &fetcher{client: &http.Client{Transport: fakeTransport{
+		"https://api.bilibili.com/pgc/player/web/playurl?avid=50762638&cid=100279344&qn=0&type=&otype=json&ep_id=268176&fourk=1&fnver=0&fnval=16&module=bangumi": {
+			status: 200, body: `{"code":-10403,"message":"抱歉您所在地区不可观看！"}`},
+		"https://api.bilibili.com/pgc/player/web/playurl?avid=18281381&cid=29892777&qn=0&type=&otype=json&ep_id=183799&fourk=1&fnver=0&fnval=16&module=bangumi": {
+			status: 200, body: `{"code":0,"message":"success"}`},
+	}}}
+	if it := checkBilibiliTW(context.Background(), bili); it.Status != "no" {
+		t.Errorf("bilibili_tw：%+v", it)
+	}
+	if it := checkBilibiliHMT(context.Background(), bili); it.Status != "yes" {
+		t.Errorf("bilibili_hmt：%+v", it)
+	}
+}
+
+// Telegram 连接失败记为不可用（多为被封锁）
+func TestUnlockTelegramBlocked(t *testing.T) {
+	f := &fetcher{client: &http.Client{Transport: errTransport{}}}
+	if it := checkTelegram(context.Background(), f); it.Status != "no" {
+		t.Errorf("telegram：%+v", it)
+	}
+}
+
+type errTransport struct{}
+
+func (errTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, io.ErrUnexpectedEOF }
 
 // 受限的节点：各项按页面判断为不可用 / 仅自制剧 / 需要验证
 func TestUnlockBlocked(t *testing.T) {

@@ -2,8 +2,10 @@
 // 流媒体与网站解锁检测（设计 50，修订第 192 条）：从节点访问 Netflix、Disney+、ChatGPT 等，判断能否使用与服务认定的地区。
 // 只手动触发：管理员点“检测”，Agent 下一次上报时开始，约 1 分钟内出结果（详情页每 2 秒刷新，结果到达后自动显示）。
 // 检测项内置在 Agent 中，面板只能请求“现在检测一次”（约束 1）。
+// Agent 还按所在地区追加当地服务（item.local，修订第 196 条），单独列在“当地服务”下。
 import { computed, ref } from 'vue'
 import { errorText, requestUnlockCheck, type UnlockView } from '../api'
+import { countryName } from '../countries'
 import { fmtTime } from '../format'
 import { isViewer } from '../store'
 
@@ -19,8 +21,16 @@ type Status = UnlockView['items'][number]['status']
 const names: Record<string, string> = {
   netflix: 'Netflix', disney: 'Disney+', youtube: 'YouTube Premium', prime: 'Prime Video', tiktok: 'TikTok',
   chatgpt: 'ChatGPT', claude: 'Claude', google: 'Google 搜索', reddit: 'Reddit', steam: 'Steam 商店',
+  yahoo: 'Yahoo', truthsocial: 'Truth Social', telegram: 'Telegram',
+  abema: 'ABEMA', radiko: 'radiko', mytvsuper: 'myTV SUPER', viu: 'Viu', bilibili_hmt: 'bilibili 港澳台', bilibili_tw: 'bilibili 台湾',
+  kktv: 'KKTV', coupangplay: 'Coupang Play', hulu: 'Hulu', bbc_iplayer: 'BBC iPlayer',
 }
 const statusText: Record<Status, string> = { yes: '可用', no: '不可用', partial: '部分可用', captcha: '需人机验证', failed: '检测失败' }
+
+// 通用项与当地服务分开显示；当地服务的地区取自 item.local
+const general = computed(() => props.unlock?.items.filter((it) => !it.local) ?? [])
+const local = computed(() => props.unlock?.items.filter((it) => it.local) ?? [])
+const localName = computed(() => (local.value[0]?.local ? countryName(local.value[0].local) : ''))
 
 const busy = ref(false)
 const error = ref('')
@@ -58,14 +68,19 @@ const hint = computed(() => {
       <template v-if="hint"> <b>{{ hint }}</b></template>
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
-    <ul v-if="unlock?.items.length" class="items">
-      <li v-for="it in unlock.items" :key="it.service">
-        <span class="name">{{ names[it.service] ?? it.service }}</span>
-        <span class="badge" :class="it.status">{{ statusText[it.status] }}</span>
-        <span class="region num">{{ it.region ?? '' }}</span>
-        <span v-if="it.note" class="small muted note-item" :title="it.note">{{ it.note }}</span>
-      </li>
-    </ul>
+    <template v-if="unlock?.items.length">
+      <template v-for="group in [{ key: 'general', title: '', items: general }, { key: 'local', title: `当地服务 · ${localName}`, items: local }]" :key="group.key">
+        <h4 v-if="group.title && group.items.length" class="group">{{ group.title }}</h4>
+        <ul v-if="group.items.length" class="items">
+          <li v-for="it in group.items" :key="it.service">
+            <span class="name">{{ names[it.service] ?? it.service }}</span>
+            <span class="badge" :class="it.status">{{ statusText[it.status] }}</span>
+            <span class="region num">{{ it.region ?? '' }}</span>
+            <span v-if="it.note" class="small muted note-item" :title="it.note">{{ it.note }}</span>
+          </li>
+        </ul>
+      </template>
+    </template>
     <p v-else-if="pending" class="small muted">等待 Agent 检测…</p>
   </section>
 </template>
@@ -86,5 +101,6 @@ const hint = computed(() => {
 .badge.partial, .badge.captcha { color: var(--warn); }
 .badge.failed { color: var(--text-muted); }
 .region { text-align: right; color: var(--text-muted); font-size: var(--font-sm); }
+.group { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-sm); font-weight: var(--weight-strong); color: var(--text-muted); }
 .note-item { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

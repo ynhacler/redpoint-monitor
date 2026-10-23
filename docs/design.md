@@ -372,6 +372,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 196 | 解锁检测增加 Yahoo、Truth Social、Telegram；Agent 按本机所在地区追加当地服务（日本、香港、澳门、台湾、韩国、美国、英国、东南亚，每地不超过 6 项），结果项带 local，面板单独列出 | 50.2 |
 | 195 | 节点详情：磁盘不再每个挂载点一张卡片，合为一块——每个挂载点一行横向用量条，IO 每块磁盘一行 | 11.1 |
 | 194 | 连通性测试：京东（带参数时跳转到 http）与 Claude（响应带 CORP same-origin）被浏览器拦截而显示超时；去掉随机参数，Claude、ChatGPT、npm 改测 API 地址，Takealot 换为 News24；区分“超时”与“无法连接” | 48.1 |
 | 193 | 节点详情：没有 ASN 时管理员在概况中看到“ASN”行与“查询”按钮，开关关闭时链接到“系统 → 监测”；解锁检测移到“网络”页流量之后、测速之前 | 49.1, 50.1 |
@@ -11187,6 +11188,27 @@ ChatGPT / Claude 地区来自 /cdn-cgi/trace；unsupported_country 或跳转到�
 Google 搜索      跳转到 /sorry/ 或 429 为“需人机验证”（IP 信誉差）
 Reddit           403 / 429 为被拒绝（常见于数据中心 IP）
 Steam            商店页的标价货币反映商店地区
+Yahoo            首页按地区跳转到当地站点（如 hk.yahoo.com），据此得到地区；403 / 451 为被拒绝
+Truth Social     公开的实例信息接口（/api/v1/instance）能取到为可用（网页对非浏览器请求常返回 403，不作为依据）
+Telegram         网页版能打开为可用；连接失败记为不可用并注明“可能被封锁”
+```
+
+当地服务（修订第 196 条）：Agent 先从 www.cloudflare.com 的 /cdn-cgi/trace 得到本机所在地区，再追加该地区的当地服务，
+每个地区不超过 6 项；结果项带 local（地区代码），面板单独列在“当地服务 · 地区”下。只收录有明确地区判断依据的服务，
+没有收录的地区只检测通用项。需要第三方应用内置密钥才能检测的服务（如 Wavve、TVING）不收录。
+
+```text
+日本  ABEMA      IP 检查接口：日本返回 isoCountryCode=JP；海外或被识别为代理时 403（anonymous_ip）
+      radiko     /area 返回所在都道府县（class="JP13"），海外为 class="OUT"
+香港  myTV SUPER 会话接口返回 country_code 与 supported_country
+      Viu        首页跳转到带地区的地址（/ott/hk）
+      bilibili 港澳台  一集限港澳台番剧的播放地址：code 0 可看，-10403 不可观看（澳门、台湾也检测这一项）
+台湾  KKTV       IP 检查接口返回 country 与 is_allowed
+      bilibili 台湾    一集仅限台湾番剧的播放地址，判断同上
+韩国  Coupang Play 海外跳转到 /not-available
+美国  Hulu       美国以外跳转到 Disney+
+英国  BBC iPlayer 播放源选择接口在英国以外返回 "result":"geolocation"
+东南亚（SG、MY、TH、ID、PH）  Viu
 ```
 
 状态：可用 / 不可用 / 部分可用 / 需人机验证 / 检测失败（网络错误或页面改版，不影响其他项）。
