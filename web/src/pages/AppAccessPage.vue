@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // App 接入（设计 8.4）：创建配对 AK、查看与吊销已连接的设备。
 // 【安全】AK 只用于首次配对：默认一次性、1 台设备、1 天内有效；完整 AK 只在创建后显示一次。
-// App 只读，最多允许静音与维护（设计 8.4.1）；唯一的写入例外是勾选“允许记录订阅”后新增订阅（修订第 217 条）。其他配置变更留在 Web。
+// App 只读，最多允许静音与维护（设计 8.4.1）；唯一的写入例外是勾选“允许记录订阅”后记录订阅（修订第 217、218 条）。其他配置变更留在 Web。
 import { computed, onMounted, ref } from 'vue'
 import {
   ApiError, createAppKey, errorText, listAppDevices, listAppKeys, reauth, revokeAppDevice, revokeAppKey,
@@ -207,7 +207,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
           <input v-model="form.allow_low_risk_ops" type="checkbox" />允许静音告警、开启 / 结束维护模式（仅限可查看的节点）
         </label>
         <label v-if="form.scope_type === 'all'" class="check wide">
-          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中新增订阅（只能新增，修改与删除仍在 Web 中进行）
+          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中记录订阅（新增、修改、删除；上传图标仍在 Web 中进行）
         </label>
         <label>当前登录密码
           <input v-model="form.password" type="password" autocomplete="current-password" />

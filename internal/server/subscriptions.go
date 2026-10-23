@@ -506,6 +506,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request, acto
 
 // handleUpdateSubscription：PUT /api/v1/subscriptions/{id}，admin。整体替换。
 func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request) {
+	s.updateSubscription(w, r, "admin")
+}
+
+// updateSubscription 整体替换一条订阅（Web 管理员与允许记录订阅的 App 设备共用，修订第 217、218 条）。
+func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, actor string) {
 	id, err := pathID(r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -526,12 +531,18 @@ func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request
 		s.writeError(w, r, err)
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.update", Success: true, Details: map[string]any{"id": id, "name": x.Name}})
+	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.update", Success: true,
+		Details: map[string]any{"id": id, "name": x.Name}})
 	writeJSON(w, withSchedule(x, now))
 }
 
 // handleDeleteSubscription：DELETE /api/v1/subscriptions/{id}，admin。
 func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request) {
+	s.deleteSubscription(w, r, "admin")
+}
+
+// deleteSubscription 删除一条订阅（Web 管理员与允许记录订阅的 App 设备共用，修订第 218 条）。
+func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request, actor string) {
 	id, err := pathID(r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -546,7 +557,8 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 		s.writeError(w, r, err)
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.delete", Success: true, Details: map[string]any{"id": id, "name": x.Name}})
+	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.delete", Success: true,
+		Details: map[string]any{"id": id, "name": x.Name}})
 	w.WriteHeader(http.StatusNoContent)
 }
 

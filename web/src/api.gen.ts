@@ -1461,7 +1461,7 @@ export interface AppAccessKeyInput {
   server_ids?: number[]
   /** 允许静音与维护，默认 true */
   allow_low_risk_ops?: boolean
-  /** 允许配对的设备新增订阅（修订第 217 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false */
+  /** 允许配对的设备新增、修改、删除订阅（修订第 217、218 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false */
   allow_subscriptions?: boolean
   /** 最多配对几台设备，默认 1 */
   max_devices?: number
@@ -1965,6 +1965,23 @@ export interface Paths {
     post: {
       body: SubscriptionInput
       response: Subscription
+    }
+  }
+  '/app/subscriptions/{id}': {
+    /** 修改一条订阅（修订第 218 条） */
+    put: {
+      params: {
+        id: number
+      }
+      body: SubscriptionInput
+      response: Subscription
+    }
+    /** 删除一条订阅（修订第 218 条） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
     }
   }
   '/app/subscriptions/{id}/logo': {

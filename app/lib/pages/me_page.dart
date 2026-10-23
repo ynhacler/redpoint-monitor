@@ -90,7 +90,7 @@ class MePage extends StatelessWidget {
     final scope = switch (s.scopeType) { 'group' => '分组 ${s.scopeValue}', 'servers' => '指定的节点', _ => '全部节点' };
     final error = Theme.of(context).colorScheme.error;
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
+      appBar: AppBar(title: const Text('设置')),
       body: ListView(children: [
         const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('监控中心', style: TextStyle(fontWeight: FontWeight.w600))),
         for (var i = 0; i < (centers.isEmpty ? 1 : centers.length); i++)
@@ -101,7 +101,7 @@ class MePage extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.visibility_outlined),
           title: Text('可查看：$scope'),
-          subtitle: Text('${s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'}${s.allowSubscriptions ? '；可新增订阅' : ''}'),
+          subtitle: Text('${s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'}${s.allowSubscriptions ? '；可记录订阅' : ''}'),
         ),
         if (onCloud != null)
           ListTile(

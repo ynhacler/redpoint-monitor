@@ -1,22 +1,27 @@
-// 新增订阅（修订第 217 条）：约束 5 的唯一写入例外。AK 勾选了“允许记录订阅”且授权全部节点的设备才显示入口；
-// 先选服务（与 Web 相同的目录，可搜索，也可自定义），再填写价格、周期、日期等。校验在面板进行，字段错误显示在对应输入框下。
-// 保存前按“敏感操作前验证”验证（设计 1.5.11）。只能新增：修改、删除与上传图标在 Web 中进行。
+// 新增 / 修改订阅（修订第 217、218 条）：约束 5 的唯一写入例外。AK 勾选了“允许记录订阅”且授权全部节点的设备才显示入口；
+// 新增时先选服务（与 Web 相同的目录，可搜索，也可自定义），再填写价格、周期、日期等；修改时直接打开表单。
+// 校验在面板进行，字段错误显示在对应输入框下。保存前按“敏感操作前验证”验证（设计 1.5.11）。上传图标只在 Web 中进行。
+// 修改是整体替换：表单里没有的字段（VPS 的 CPU、内存、硬盘、带宽、流量）沿用原值，不会被清空。
 import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../app_lock.dart';
 import '../catalog.gen.dart';
 import '../errors.dart';
+import '../subscriptions.dart';
 import '../theme.dart';
 import '../widgets/brand_avatar.dart';
 
-/// 新增订阅：选服务 → 填写；保存成功时以新订阅出栈
+/// 新增（选服务 → 填写）或修改订阅；保存成功时以保存后的订阅出栈
 class SubscriptionAddPage extends StatefulWidget {
-  /// 创建页面
-  const SubscriptionAddPage({super.key, required this.api});
+  /// 创建页面；[initial] 不为空时为修改
+  const SubscriptionAddPage({super.key, required this.api, this.initial});
 
   /// 当前监控中心
   final ApiClient api;
+
+  /// 要修改的订阅
+  final Subscription? initial;
 
   @override
   State<SubscriptionAddPage> createState() => _SubscriptionAddPageState();
@@ -54,6 +59,30 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
   Map<String, String> _fields = {};
 
   @override
+  void initState() {
+    super.initState();
+    final x = widget.initial;
+    if (x == null) return;
+    _picked = true;
+    _brand = x.brand;
+    _name.text = x.name;
+    _price.text = (x.priceCents / 100).toStringAsFixed(2);
+    _note.text = x.note;
+    _location.text = x.vps.location;
+    _ips.text = x.vps.ips.join('\n');
+    _category = categoryNames.containsKey(x.category) ? x.category : 'other';
+    _currency = x.currency;
+    _cycle = cycleNames.containsKey(x.cycle) ? x.cycle : 'monthly';
+    _trial = _trialOptions.any((o) => o.$1 == x.trialDays) ? x.trialDays : 0;
+    _remind = _remindOptions.any((o) => o.$1 == x.remindDays) ? x.remindDays : 1;
+    _start = DateTime.tryParse(x.startDate) ?? DateTime.now();
+    _end = x.endDate.isEmpty ? null : DateTime.tryParse(x.endDate);
+    for (final p in x.phones) {
+      _phones.add((TextEditingController(text: p.cc), TextEditingController(text: p.number)));
+    }
+  }
+
+  @override
   void dispose() {
     for (final c in [_name, _price, _note, _location, _ips]) {
       c.dispose();
@@ -79,6 +108,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
   }
 
   Map<String, dynamic> _body() {
+    final old = widget.initial?.vps;
     final price = double.tryParse(_price.text.trim().replaceAll(',', ''));
     return {
       'name': _name.text.trim(),
@@ -99,7 +129,9 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
       ],
       'vps': {
         'ips': [if (_category == 'vps') ..._ips.text.split(RegExp(r'[\s,，]+')).where((x) => x.isNotEmpty)],
-        'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0,
+        // 表单中没有的配置沿用原值（修改是整体替换）
+        'cpu': old?.cpu ?? 0, 'memory_gb': old?.memoryGB ?? 0, 'disk_gb': old?.diskGB ?? 0,
+        'bandwidth_mbps': old?.bandwidthMbps ?? 0, 'traffic_gb': old?.trafficGB ?? 0,
         'location': _category == 'vps' ? _location.text.trim() : '',
       },
     };
@@ -107,14 +139,16 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
 
   Future<void> _save() async {
     final lock = AppLockScope.of(context);
-    if (lock != null && !await lock.guard('新增订阅')) return;
+    if (lock != null && !await lock.guard(widget.initial == null ? '新增订阅' : '修改订阅')) return;
     setState(() {
       _saving = true;
       _error = null;
       _fields = {};
     });
     try {
-      final x = await widget.api.createSubscription(_body());
+      final x = widget.initial == null
+          ? await widget.api.createSubscription(_body())
+          : await widget.api.updateSubscription(widget.initial!.id, _body());
       if (mounted) Navigator.of(context).pop(x);
     } on ApiException catch (e) {
       if (mounted) {
@@ -233,8 +267,11 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('新增订阅'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _picked = false)),
+        title: Text(widget.initial == null ? '新增订阅' : '修改订阅'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => widget.initial == null ? setState(() => _picked = false) : Navigator.of(context).pop(),
+        ),
       ),
       // 换了服务后整个表单重建，下拉框取新的初始值
       body: ListView(key: ValueKey('form-$_brand'), padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
@@ -371,7 +408,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
         const SizedBox(height: 8),
         FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '保存中…' : '保存')),
         const SizedBox(height: 8),
-        Text('只能在 App 中新增；修改、删除与上传图标请在 Web 的“订阅”页进行。', style: muted, textAlign: TextAlign.center),
+        Text('上传图标请在 Web 的“订阅”页进行。', style: muted, textAlign: TextAlign.center),
       ]),
     );
   }

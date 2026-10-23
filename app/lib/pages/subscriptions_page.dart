@@ -1,10 +1,12 @@
 // 订阅（设计 47，修订第 213 条）：与 Web 相同的订阅列表，只读。顶部是每月 / 每年花费（按币种），
-// 可按类别筛选；7 天内扣费的标出倒计时；点开看号码、VPS 配置与备注。添加与修改在 Web 中进行（约束 5）。
+// 可按类别筛选；7 天内扣费或结束的排在最前并在右上角标红点（修订第 218 条）；点开看号码、VPS 配置与备注。
+// AK 允许记录订阅的设备可新增，长按一条可修改或删除（修订第 217、218 条，约束 5 的唯一写入例外）。
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../app_lock.dart';
 import '../catalog.gen.dart';
 import '../errors.dart';
 import '../format.dart';
@@ -110,10 +112,18 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     final cats = items == null ? <String>[] : [for (final k in categoryNames.keys) if (items.any((s) => s.category == k)) k];
     if (_category.isNotEmpty && !cats.contains(_category)) _category = '';
     final shown = items?.where((s) => _category.isEmpty || s.category == _category).toList() ?? [];
-    // 进行中的在前（面板已按下次扣费日排序），已结束的放最后
+    // 快到期（7 天内扣费或结束）的排在最前，其余按面板的顺序（下次扣费日）；已结束的放最后
     final active = shown.where((s) => !s.ended).toList();
+    final soonOf = {for (final s in active) s.id: dueSoonDays(s)};
+    final order = {for (final (i, s) in active.indexed) s.id: i};
+    active.sort((a, b) {
+      final x = soonOf[a.id], y = soonOf[b.id];
+      if (x != null && y != null && x != y) return x.compareTo(y);
+      if ((x == null) != (y == null)) return x == null ? 1 : -1;
+      return order[a.id]!.compareTo(order[b.id]!);
+    });
     final ended = shown.where((s) => s.ended).toList();
-    final soon = active.where((s) => (daysUntilCharge(s) ?? 99) <= 7).length;
+    final soon = active.where((s) => soonOf[s.id] != null).length;
 
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('订阅')),
@@ -199,7 +209,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           Row(children: [
             Text('每月约', style: muted),
             const Spacer(),
-            Text('${list.where((s) => !s.ended).length} 个订阅${soon > 0 ? ' · 7 天内扣费 $soon 个' : ''}', style: muted),
+            Text('${list.where((s) => !s.ended).length} 个订阅${soon > 0 ? ' · 快到期 $soon 个' : ''}', style: muted),
           ]),
           const SizedBox(height: 2),
           if (monthly.isEmpty) const Text(dash, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
@@ -221,10 +231,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     final c = appColors(context);
     final days = daysUntilCharge(s);
     final dueColor = days == null ? c.textMuted : (days <= 1 ? colors.bad : (days <= 7 ? colors.warn : c.textMuted));
-    final due = days == null ? '' : (days == 0 ? '今天扣费' : (days == 1 ? '明天扣费' : '$days 天后'));
+    final end = daysUntilEnd(s);
+    final due = end != null && end <= 7 && (days == null || end <= days)
+        ? (end == 0 ? '今天结束' : '$end 天后结束')
+        : (days == null ? '' : (days == 0 ? '今天扣费' : (days == 1 ? '明天扣费' : '$days 天后')));
+    final soon = dueSoonDays(s) != null;
     return InkWell(
       onTap: () => _detail(context, s),
-      child: Padding(
+      onLongPress: widget.api.session.allowSubscriptions ? () => _actions(context, s) : null,
+      child: Stack(children: [
+        Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
         child: Row(children: [
           _avatar(s),
@@ -246,11 +262,71 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ]),
               style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
             ),
-            if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: dueColor)),
+            if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: soon ? colors.bad : dueColor)),
           ]),
+        ]),
+        ),
+        // 快到期：右上角红点
+        if (soon)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Container(width: 8, height: 8, decoration: BoxDecoration(color: colors.bad, shape: BoxShape.circle)),
+          ),
+      ]),
+    );
+  }
+
+  // 长按：修改 / 删除（修订第 218 条）
+  Future<void> _actions(BuildContext context, Subscription s) async {
+    final act = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(chargeText(s))),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('修改'), onTap: () => Navigator.pop(ctx, 'edit')),
+          ListTile(
+            leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+            title: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+            onTap: () => Navigator.pop(ctx, 'delete'),
+          ),
         ]),
       ),
     );
+    if (!context.mounted || act == null) return;
+    if (act == 'edit') {
+      final x = await Navigator.of(context).push<Subscription>(
+          MaterialPageRoute(builder: (_) => SubscriptionAddPage(api: widget.api, initial: s)));
+      if (x == null || !mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('已保存“${x.name}”')));
+      await _load();
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除订阅'),
+        content: Text('删除“${s.name}”？删除后无法恢复，上传的图标一并删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error))),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final lock = AppLockScope.of(context);
+    if (lock != null && !await lock.guard('删除订阅')) return;
+    try {
+      await widget.api.deleteSubscription(s.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('已删除“${s.name}”')));
+      await _load();
+    } on DeviceRevoked {
+      widget.onRevoked();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('删除失败：${describeError(e)}')));
+    }
   }
 
   void _detail(BuildContext context, Subscription s) {
@@ -298,7 +374,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             if (s.category == 'vps' && s.vps.ips.isNotEmpty) line('地址', s.vps.ips.map((ip) => widget.privacy ? maskIP(ip) : ip).join('\n')),
             if (s.note.isNotEmpty) line('备注', s.note),
             const SizedBox(height: 8),
-            Text('修改与删除请在 Web 的“订阅”页进行。', style: TextStyle(fontSize: 12, color: c.textMuted)),
+            Text(widget.api.session.allowSubscriptions ? '长按列表中的订阅可修改或删除；上传图标请在 Web 中进行。' : '修改与删除请在 Web 的“订阅”页进行。',
+                style: TextStyle(fontSize: 12, color: c.textMuted)),
           ]),
         ),
       ),

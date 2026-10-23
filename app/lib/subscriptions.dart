@@ -68,6 +68,7 @@ class Subscription {
     this.trialDays = 0,
     required this.startDate,
     this.endDate = '',
+    this.remindDays = 0,
     this.note = '',
     this.phones = const [],
     this.vps = const SubVPS(),
@@ -106,6 +107,9 @@ class Subscription {
   /// 结束日期，空表示仍在订阅
   final String endDate;
 
+  /// 提前几天提醒扣费（0 表示不提醒）
+  final int remindDays;
+
   /// 备注
   final String note;
 
@@ -138,6 +142,7 @@ class Subscription {
       trialDays: (j['trial_days'] as num?)?.toInt() ?? 0,
       startDate: j['start_date'] as String? ?? '',
       endDate: j['end_date'] as String? ?? '',
+      remindDays: (j['remind_days'] as num?)?.toInt() ?? 0,
       note: j['note'] as String? ?? '',
       phones: [
         for (final p in (j['phones'] as List<dynamic>? ?? const []))
@@ -195,6 +200,21 @@ int? daysUntilCharge(Subscription s, {DateTime? now}) {
   if (d == null) return null;
   final n = now ?? DateTime.now();
   return d.difference(DateTime(n.year, n.month, n.day)).inDays;
+}
+
+/// 距结束订阅的天数（今天为 0）；没有结束日期或已结束时为 null
+int? daysUntilEnd(Subscription s, {DateTime? now}) {
+  final d = _date(s.endDate);
+  if (d == null || s.ended) return null;
+  final n = now ?? DateTime.now();
+  return d.difference(DateTime(n.year, n.month, n.day)).inDays;
+}
+
+/// 快到期（修订第 218 条）：7 天内扣费或 7 天内结束；返回最近的天数，不是时为 null
+int? dueSoonDays(Subscription s, {DateTime? now}) {
+  if (s.ended) return null;
+  final xs = [daysUntilCharge(s, now: now), daysUntilEnd(s, now: now)].whereType<int>().where((d) => d >= 0 && d <= 7);
+  return xs.isEmpty ? null : xs.reduce((a, b) => a < b ? a : b);
 }
 
 const _weekday = ['每周一扣费', '每周二扣费', '每周三扣费', '每周四扣费', '每周五扣费', '每周六扣费', '每周日扣费'];

@@ -221,6 +221,13 @@ class ApiClient {
   Future<Subscription> createSubscription(Map<String, dynamic> body) async =>
       Subscription.fromJson(await _send2xx('POST', '/app/subscriptions', body: body));
 
+  /// 修改一条订阅（整体替换，修订第 218 条）：权限与新增相同。
+  Future<Subscription> updateSubscription(int id, Map<String, dynamic> body) async =>
+      Subscription.fromJson(await _send2xx('PUT', '/app/subscriptions/$id', body: body));
+
+  /// 删除一条订阅（修订第 218 条）：权限与新增相同。
+  Future<void> deleteSubscription(int id) => _send2xx('DELETE', '/app/subscriptions/$id');
+
   /// 订阅上传的图标（PNG）；没有时返回 null。
   Future<Uint8List?> subscriptionLogo(int id) async {
     final res = await _send('GET', '/app/subscriptions/$id/logo');

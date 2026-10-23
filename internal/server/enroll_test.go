@@ -445,7 +445,7 @@ func TestPermissionMatrix(t *testing.T) {
 		accessApp:   {"app", "app 无低风险操作", "app 可记录订阅"},
 		// 【安全】静音与维护：只有 AK 允许低风险操作的设备（设计 17.2）
 		accessOps: {"admin", "app"},
-		// 【安全】新增订阅：只有 AK 允许记录订阅的设备，Web 管理员也不行（走自己的接口，修订第 217 条）
+		// 【安全】记录订阅（新增、修改、删除）：只有 AK 允许记录订阅的设备，Web 管理员也不行（走自己的接口，修订第 217 条）
 		accessAppSubs: {"app 可记录订阅"},
 	}
 	// 期望表独立于实现，按设计 17.2 手写：路由声明的主体必须与之完全一致。
@@ -486,6 +486,8 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/app/subscriptions":                   accessApp,
 		"GET /api/v1/app/subscriptions/{id}/logo":         accessApp,
 		"POST /api/v1/app/subscriptions":                  accessAppSubs,
+		"PUT /api/v1/app/subscriptions/{id}":              accessAppSubs,
+		"DELETE /api/v1/app/subscriptions/{id}":           accessAppSubs,
 		"PUT /api/v1/app/push":                            accessApp,
 		"DELETE /api/v1/app/push":                         accessApp,
 		"POST /api/v1/app/unpair":                         accessApp,

@@ -86,8 +86,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
 4. **Store hashes, show once.** Tokens, AKs and enroll codes are shown once; only SHA-256 hashes are
    stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).
 5. **App is read-only** (+ mute / maintenance mode). No App credential may change config or trigger upgrades.
-   Single exception (revision 217, owner-approved): a device whose AK has "allow subscriptions" (off by default) and scope "all"
-   may *create* subscriptions (`POST /app/subscriptions`, `accessAppSubs`); never edit/delete them or touch anything else.
+   Single exception (revisions 217/218, owner-approved): a device whose AK has "allow subscriptions" (off by default) and scope "all"
+   may create, edit and delete subscriptions (`/app/subscriptions`, `accessAppSubs`); no logo upload, nothing else.
 6. **HTTPS only** outside loopback / explicit dev flags. Never disable certificate verification.
 7. **No telemetry, no analytics SDKs, no developer-side storage of user data.** Push payloads are
    end-to-end encrypted before leaving the server (design ch. 30).
