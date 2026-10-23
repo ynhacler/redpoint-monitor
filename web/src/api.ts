@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -501,6 +501,11 @@ export function deleteCloudAccount(id: number) {
 /** 立即在后台同步（同一账户 1 分钟一次） */
 export function syncCloudAccount(id: number) {
   return request('post', '/cloud-accounts/{id}/sync', { params: { id } })
+}
+
+/** 权限检查：逐项调用一次只读接口（目前只支持阿里云，修订第 204 条） */
+export async function checkCloudAccount(id: number) {
+  return (await request('post', '/cloud-accounts/{id}/check', { params: { id } })).items
 }
 
 /** 云账户的按月费用 */

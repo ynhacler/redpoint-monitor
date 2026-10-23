@@ -796,4 +796,26 @@ func TestCloudAliyunECSOnlyPermissions(t *testing.T) {
 	if dueKinds(a, time.Now()).cost {
 		t.Fatal("费用被拒绝后不应立即重试")
 	}
+
+	// 权限检查（修订第 204 条）：逐项列出，ECS 写明各区域台数与走 CDT 的台数
+	rec := do(h, "POST", "/api/v1/cloud-accounts/"+itoa64(v.ID)+"/check", admin, nil)
+	var chk struct{ Items []cloud.CheckItem }
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &chk) != nil || len(chk.Items) != 4 {
+		t.Fatalf("检查 %d %s", rec.Code, rec.Body)
+	}
+	if it := chk.Items[0]; it.OK || it.Policy != "AliyunBSSReadOnlyAccess" || !strings.HasPrefix(it.Detail, "没有权限") {
+		t.Errorf("费用 %+v", it)
+	}
+	if it := chk.Items[1]; !it.OK || it.Detail != "查询了 1 个区域，共 2 台：cn-hongkong 2 台（走 CDT 1 台）" {
+		t.Errorf("ECS %+v", it)
+	}
+	if it := chk.Items[2]; it.OK || it.Policy != "AliyunSWASReadOnlyAccess" {
+		t.Errorf("轻量 %+v", it)
+	}
+	if it := chk.Items[3]; !it.OK || it.Detail != "本月已用：CDT 非中国内地 10.00 GiB" {
+		t.Errorf("CDT %+v", it)
+	}
+	if rec := do(h, "POST", "/api/v1/cloud-accounts/"+itoa64(v.ID)+"/check", admin, nil); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("10 秒内再次检查应限流：%d", rec.Code)
+	}
 }

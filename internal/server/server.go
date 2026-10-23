@@ -277,6 +277,7 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/cloud-accounts/{id}", accessAdmin, s.handleUpdateCloudAccount)
 	handle("DELETE /api/v1/cloud-accounts/{id}", accessAdmin, s.handleDeleteCloudAccount)
 	handle("POST /api/v1/cloud-accounts/{id}/sync", accessAdmin, s.handleSyncCloudAccount)
+	handle("POST /api/v1/cloud-accounts/{id}/check", accessAdmin, s.handleCheckCloudAccount)
 	handle("GET /api/v1/cloud-accounts/{id}/costs", accessAdmin, s.handleCloudCosts)
 	handle("GET /api/v1/cloud-instances", accessAdmin, s.handleCloudInstances)
 	handle("PUT /api/v1/cloud-instances/{id}/server", accessAdmin, s.handleLinkCloudInstance)

@@ -26,7 +26,9 @@ type SiteSetting struct {
 // siteLanguages 是界面支持的语言：zh 简体中文，en English。
 var siteLanguages = []string{"zh", "en"}
 
-func defaultSite() SiteSetting { return SiteSetting{AppName: "VPS Monitor", Language: "zh", Captcha: true} }
+func defaultSite() SiteSetting {
+	return SiteSetting{AppName: "VPS Monitor", Language: "zh", Captcha: true}
+}
 
 type siteView struct {
 	SiteSetting

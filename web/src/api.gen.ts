@@ -1299,6 +1299,17 @@ export interface CloudAccountInput {
   sync_traffic?: boolean
 }
 
+/** 权限检查的一项（修订第 204 条） */
+export interface CloudCheckItem {
+  /** 检查项，如 “ECS 实例” */
+  name: string
+  /** 所需的系统只读策略，如 AliyunECSReadOnlyAccess */
+  policy: string
+  ok: boolean
+  /** 成功时为结果摘要（如各区域的实例数），失败时为服务商返回的错误 */
+  detail: string
+}
+
 export interface CloudAccount {
   id: number
   provider: 'aws' | 'aliyun_cn' | 'aliyun_intl' | 'tencent_cn' | 'tencent_intl' | 'oci'
@@ -2706,6 +2717,17 @@ export interface Paths {
         id: number
       }
       response: void
+    }
+  }
+  '/cloud-accounts/{id}/check': {
+    /** 权限检查——逐项调用一次只读接口，返回每项是否可用与结果摘要（设计 44.2，修订第 204 条）；目前只支持阿里云；同一账户 10 秒内只允许一次 */
+    post: {
+      params: {
+        id: number
+      }
+      response: {
+        items: CloudCheckItem[]
+      }
     }
   }
   '/cloud-accounts/{id}/costs': {

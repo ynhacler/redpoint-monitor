@@ -5,6 +5,7 @@ package server
 // 日志中不含凭证。
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"math"
@@ -367,6 +368,46 @@ func (s *Server) handleSyncCloudAccount(w http.ResponseWriter, r *http.Request) 
 		Success: true, Details: map[string]any{"name": a.Name}})
 	s.triggerCloudSync(id)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// handleCheckCloudAccount：POST /api/v1/cloud-accounts/{id}/check，admin（修订第 204 条）。
+// 逐项调用一次只读接口并返回结果，不写入实例与费用；同一账户 10 秒内只允许一次（每次会调用所有区域）。
+func (s *Server) handleCheckCloudAccount(w http.ResponseWriter, r *http.Request) {
+	id, err := cloudPathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	a, err := s.store.GetCloudAccount(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	c, err := s.cloudClient(a)
+	if err != nil {
+		s.writeError(w, r, errorf(CodeBadRequest, "凭证无法使用，请重新填写"))
+		return
+	}
+	checker, ok := c.(cloud.Checker)
+	if !ok {
+		s.writeError(w, r, errorf(CodeBadRequest, "这个服务商暂不支持权限检查"))
+		return
+	}
+	now := time.Now()
+	s.cloud.mu.Lock()
+	if wait := 10*time.Second - now.Sub(s.cloud.lastCheck[id]); wait > 0 {
+		s.cloud.mu.Unlock()
+		s.writeError(w, r, &APIError{Code: CodeRateLimited, Message: "刚检查过，请稍后再试", RetryAfter: wait})
+		return
+	}
+	s.cloud.lastCheck[id] = now
+	s.cloud.mu.Unlock()
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	items := checker.Check(ctx, now)
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "cloud_account.check", TargetType: "cloud_account", TargetID: id,
+		Success: true, Details: map[string]any{"name": a.Name}})
+	writeJSON(w, map[string]any{"items": items})
 }
 
 // triggerCloudSync 请求后台立即同步；队列满时忽略（定时同步会补上）。

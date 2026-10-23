@@ -489,6 +489,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"PUT /api/v1/cloud-accounts/{id}":                 accessAdmin,
 		"DELETE /api/v1/cloud-accounts/{id}":              accessAdmin,
 		"POST /api/v1/cloud-accounts/{id}/sync":           accessAdmin,
+		"POST /api/v1/cloud-accounts/{id}/check":          accessAdmin,
 		"GET /api/v1/cloud-accounts/{id}/costs":           accessAdmin,
 		"GET /api/v1/cloud-instances":                     accessAdmin,
 		"PUT /api/v1/cloud-instances/{id}/server":         accessAdmin,
