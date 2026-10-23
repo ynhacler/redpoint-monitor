@@ -124,6 +124,19 @@ const diskTip = computed(() => {
       </div>
     </div>
 
+    <!-- 手机宽度的紧凑指标（修订第 199 条）：环换成细条，CPU / 内存 / 磁盘一行，网络速率并入下一行，卡片高度约为宽屏版的一半 -->
+    <div v-if="live && r" class="compact num">
+      <div v-for="m in [{ k: 'CPU', v: cpu(s), lv: gaugeLevel(cpu(s), 'cpu') }, { k: '内存', v: mem(s), lv: gaugeLevel(mem(s), 'mem') },
+                        { k: '磁盘', v: disk?.usage, lv: disk?.level ?? 'ok' }]" :key="m.k" class="m">
+        <span class="mk">{{ m.k }}<b :class="m.lv === 'ok' ? '' : m.lv">{{ m.v == null ? DASH : fmtPct(m.v) }}</b></span>
+        <span class="mbar"><span :class="m.lv" :style="{ width: `${Math.min(100, Math.max(2, m.v ?? 0))}%` }" /></span>
+      </div>
+      <div class="net" :title="`上行 ${fmtBytes(tx(s), true)}，下行 ${fmtBytes(rx(s), true)}`">
+        <span><Icon name="arrow-up" :size="11" />{{ fmtBytesShort(tx(s)) }}</span>
+        <span><Icon name="arrow-down" :size="11" />{{ fmtBytesShort(rx(s)) }}</span>
+      </div>
+    </div>
+
     <div class="traffic num" :title="`本计费周期 ${s.traffic.cycle_start} 起`">
       <span class="muted">流量</span>
       <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限' }}</span></span>
@@ -179,4 +192,27 @@ const diskTip = computed(() => {
 .tbar span.warn { background: var(--warn); }
 .tbar span.bad { background: var(--bad); }
 .tbar span.ok { background: var(--ok); }
+
+/* 手机宽度（修订第 199 条）：用紧凑指标代替五列环形图，名称行与流量行收紧 */
+.compact { display: none; }
+@media (max-width: 600px) {
+  .card { padding: var(--space-3); }
+  .head { padding-bottom: var(--space-2); }
+  .name { font-size: var(--font-md); line-height: var(--line-md); }
+  .metrics { display: none; }
+  .compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-2) 0; }
+  .m { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .mk { display: flex; justify-content: space-between; gap: var(--space-1); font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
+  .mk b { color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-sm); }
+  .mk b.warn { color: var(--warn); }
+  .mk b.bad { color: var(--bad); }
+  .mbar { height: 4px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; }
+  .mbar span { display: block; height: 100%; background: var(--ok); }
+  .mbar span.warn { background: var(--warn); }
+  .mbar span.bad { background: var(--bad); }
+  .net { display: flex; flex-direction: column; gap: 2px; font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text); white-space: nowrap; }
+  .net span { display: inline-flex; align-items: center; gap: 2px; }
+  .net :deep(svg) { color: var(--text-muted); }
+  .traffic { padding-top: var(--space-2); font-size: var(--font-xs); }
+}
 </style>
