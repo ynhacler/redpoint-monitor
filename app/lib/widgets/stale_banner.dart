@@ -5,6 +5,7 @@ import '../errors.dart';
 import '../format.dart';
 import '../theme.dart';
 
+/// 连不上面板时显示在页面顶部的提示条：原因、数据时间与重试按钮。
 class StaleBanner extends StatelessWidget {
   const StaleBanner({super.key, required this.error, this.updated, this.note, this.onRetry});
 
