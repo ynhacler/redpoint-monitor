@@ -39,6 +39,8 @@ type UnlockItem struct {
 	Status  string `json:"status"`           // yes / no / partial / captcha / failed
 	Region  string `json:"region,omitempty"` // 服务认定的地区（两位代码，如 JP）或货币（Steam），可能为空
 	Note    string `json:"note,omitempty"`   // 补充说明（如失败原因），简短
+	// Local 为当地服务所属的国家或地区（两位代码，修订第 196 条）：Agent 按本机所在地区追加的检测项；通用检测项为空
+	Local string `json:"local,omitempty"`
 }
 
 // Valid 检查结果的格式（面板只保存格式正确的结果）。
@@ -52,7 +54,7 @@ func (u *UnlockResult) Valid() bool {
 		default:
 			return false
 		}
-		if it.Service == "" || len(it.Service) > maxUnlockString || len(it.Region) > maxUnlockString || len(it.Note) > 200 {
+		if it.Service == "" || len(it.Service) > maxUnlockString || len(it.Region) > maxUnlockString || len(it.Note) > 200 || len(it.Local) > 2 {
 			return false
 		}
 	}

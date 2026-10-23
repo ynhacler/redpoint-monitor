@@ -2423,10 +2423,11 @@ components:
             type: object
             required: [service, status]
             properties:
-              service: { type: string, enum: [netflix, disney, youtube, prime, tiktok, chatgpt, claude, google, reddit, steam] }
+              service: { type: string, description: '检测项键，如 netflix、yahoo、abema（当地服务的键见设计 50.2；面板显示未知的键时用键名）' }
               status: { type: string, enum: ['yes', 'no', partial, captcha, failed], description: 可用 / 不可用 / 部分可用（如 Netflix 仅自制剧）/ 要求人机验证 / 检测失败 }
               region: { type: string, description: 服务认定的地区（两位代码）或货币（Steam） }
               note: { type: string }
+              local: { type: string, description: '当地服务所属的国家或地区（两位代码，修订第 196 条）：Agent 按本机所在地区追加的检测项；通用检测项没有这个字段' }
 
     PortExposure:
       type: object

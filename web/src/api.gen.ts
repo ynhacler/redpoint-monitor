@@ -85,12 +85,15 @@ export interface UnlockView {
   /** 最近一次结果的时间；0 表示还没有结果 */
   checked_at: number
   items: ({
-    service: 'netflix' | 'disney' | 'youtube' | 'prime' | 'tiktok' | 'chatgpt' | 'claude' | 'google' | 'reddit' | 'steam'
+    /** 检测项键，如 netflix、yahoo、abema（当地服务的键见设计 50.2；面板显示未知的键时用键名） */
+    service: string
     /** 可用 / 不可用 / 部分可用（如 Netflix 仅自制剧）/ 要求人机验证 / 检测失败 */
     status: 'yes' | 'no' | 'partial' | 'captcha' | 'failed'
     /** 服务认定的地区（两位代码）或货币（Steam） */
     region?: string
     note?: string
+    /** 当地服务所属的国家或地区（两位代码，修订第 196 条）：Agent 按本机所在地区追加的检测项；通用检测项没有这个字段 */
+    local?: string
   })[]
 }
 
