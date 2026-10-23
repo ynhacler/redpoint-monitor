@@ -13,6 +13,7 @@ import '../subscriptions.dart';
 import '../theme.dart';
 import '../widgets/brand_avatar.dart';
 import '../widgets/stale_banner.dart';
+import 'subscription_add_page.dart';
 
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
@@ -79,6 +80,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     }
   }
 
+  Future<void> _add() async {
+    final x = await Navigator.of(context).push<Subscription>(MaterialPageRoute(builder: (_) => SubscriptionAddPage(api: widget.api)));
+    if (x == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已新增“${x.name}”')));
+    await _load();
+  }
+
   Widget _avatar(Subscription s, {double size = 40}) {
     final png = _logoCache['${s.id}:${s.logoVersion}'];
     return BrandAvatar(
@@ -109,9 +117,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
 
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('订阅')),
+      // 新增订阅（修订第 217 条）：只有 AK 允许记录订阅、授权全部节点的设备显示
+      floatingActionButton: widget.api.session.allowSubscriptions && !_limited
+          ? FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('新增订阅'))
+          : null,
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
+        child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 88), children: [
           if (_error != null) StaleBanner(error: _error!, note: '下拉可重新加载'),
           if (items == null && _error == null) const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
           if (_limited)
@@ -122,7 +134,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           else if (items != null && items.isEmpty)
             Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('还没有订阅。在 Web 的“订阅”页添加后，这里会显示扣费日与花费。', style: muted, textAlign: TextAlign.center),
+              child: Text(widget.api.session.allowSubscriptions ? '还没有订阅。点右下角“新增订阅”添加，或在 Web 的“订阅”页添加。' : '还没有订阅。在 Web 的“订阅”页添加后，这里会显示扣费日与花费。',
+                  style: muted, textAlign: TextAlign.center),
             ),
           if (items != null && items.isNotEmpty) ...[
             _summary(context, shown, soon),
@@ -285,7 +298,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             if (s.category == 'vps' && s.vps.ips.isNotEmpty) line('地址', s.vps.ips.map((ip) => widget.privacy ? maskIP(ip) : ip).join('\n')),
             if (s.note.isNotEmpty) line('备注', s.note),
             const SizedBox(height: 8),
-            Text('添加与修改请在 Web 的“订阅”页进行。', style: TextStyle(fontSize: 12, color: c.textMuted)),
+            Text('修改与删除请在 Web 的“订阅”页进行。', style: TextStyle(fontSize: 12, color: c.textMuted)),
           ]),
         ),
       ),

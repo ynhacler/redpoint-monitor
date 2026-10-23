@@ -481,6 +481,11 @@ func sortSubscriptions(list []Subscription) {
 
 // handleCreateSubscription：POST /api/v1/subscriptions，admin。
 func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request) {
+	s.createSubscription(w, r, "admin")
+}
+
+// createSubscription 校验并保存一条新订阅（Web 管理员与允许记录订阅的 App 设备共用，修订第 217 条）。
+func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request, actor string) {
 	x, ok := s.decodeSubscription(w, r)
 	if !ok {
 		return
@@ -494,7 +499,8 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.create", Success: true, Details: map[string]any{"id": x.ID, "name": x.Name}})
+	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.create", Success: true,
+		Details: map[string]any{"id": x.ID, "name": x.Name}})
 	writeJSONStatus(w, http.StatusCreated, withSchedule(x, now))
 }
 

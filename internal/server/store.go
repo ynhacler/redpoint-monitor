@@ -995,6 +995,9 @@ var migrations = []string{
 	);`,
 	// 迁移 56：订阅的 VPS 地址与配置（修订第 198 条），JSON 对象（SubVPS）；其他类别为空对象
 	`ALTER TABLE subscriptions ADD COLUMN vps TEXT NOT NULL DEFAULT '{}';`,
+	// 迁移 57：App 记录订阅（修订第 217 条）：AK 与设备上的“允许记录订阅”，默认关闭
+	`ALTER TABLE app_access_keys ADD COLUMN allow_subscriptions INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE app_devices ADD COLUMN allow_subscriptions INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {

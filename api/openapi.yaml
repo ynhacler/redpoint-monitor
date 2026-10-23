@@ -524,6 +524,23 @@ paths:
         '200': { description: 订阅列表, content: { application/json: { schema: { $ref: '#/components/schemas/AppSubscriptions' } } } }
         '401': { $ref: '#/components/responses/Error' }
 
+    post:
+      tags: [app]
+      summary: 新增一条订阅（修订第 217 条）
+      security: [{ deviceToken: [] }]
+      description: |
+        约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增，其他返回 403。
+        请求体与 Web 的 POST /subscriptions 相同；不能修改或删除订阅。新增写入审计日志，操作者为设备名。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SubscriptionInput' } } }
+      responses:
+        '201': { description: 已新增, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /app/subscriptions/{id}/logo:
     get:
       tags: [app]
@@ -3843,12 +3860,13 @@ components:
         group: { type: string, description: scope_type=group 时的分组名 }
         server_ids: { type: array, items: { type: integer }, description: scope_type=servers 时的节点 }
         allow_low_risk_ops: { type: boolean, description: 允许静音与维护，默认 true }
+        allow_subscriptions: { type: boolean, description: '允许配对的设备新增订阅（修订第 217 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false' }
         max_devices: { type: integer, minimum: 1, maximum: 10, description: 最多配对几台设备，默认 1 }
         expires_in_days: { type: integer, minimum: 1, maximum: 90, description: AK 的配对有效期，默认 1 天 }
 
     AppAccessKey:
       type: object
-      required: [id, name, hint, scope_type, scope_value, allow_low_risk_ops, max_devices, paired_devices, expires_at, status, created_by, created_at, last_used_at, revoked_at]
+      required: [id, name, hint, scope_type, scope_value, allow_low_risk_ops, allow_subscriptions, max_devices, paired_devices, expires_at, status, created_by, created_at, last_used_at, revoked_at]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -3856,6 +3874,7 @@ components:
         scope_type: { type: string, enum: [all, group, servers] }
         scope_value: { type: string, description: 分组名，或逗号分隔的节点 ID }
         allow_low_risk_ops: { type: boolean }
+        allow_subscriptions: { type: boolean }
         max_devices: { type: integer }
         paired_devices: { type: integer }
         expires_at: { type: integer }
@@ -3867,7 +3886,7 @@ components:
 
     AppDevice:
       type: object
-      required: [id, access_key_id, access_key_name, name, platform, app_version, scope_type, scope_value, allow_low_risk_ops, status, paired_at, last_seen_at, revoked_at, revoked_by]
+      required: [id, access_key_id, access_key_name, name, platform, app_version, scope_type, scope_value, allow_low_risk_ops, allow_subscriptions, status, paired_at, last_seen_at, revoked_at, revoked_by]
       properties:
         id: { type: integer }
         access_key_id: { type: integer }
@@ -3878,6 +3897,7 @@ components:
         scope_type: { type: string, enum: [all, group, servers] }
         scope_value: { type: string }
         allow_low_risk_ops: { type: boolean }
+        allow_subscriptions: { type: boolean }
         status: { type: string, enum: [active, expired, revoked] }
         paired_at: { type: integer }
         last_seen_at: { type: integer, description: 最近一次请求（每分钟最多更新一次） }
@@ -3897,11 +3917,12 @@ components:
 
     AppScope:
       type: object
-      required: [type, value, allow_low_risk_ops]
+      required: [type, value, allow_low_risk_ops, allow_subscriptions]
       properties:
         type: { type: string, enum: [all, group, servers] }
         value: { type: string }
         allow_low_risk_ops: { type: boolean }
+        allow_subscriptions: { type: boolean, description: 可以新增订阅（AK 允许记录订阅且授权全部节点） }
 
     AppSubscriptions:
       type: object

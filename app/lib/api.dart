@@ -18,10 +18,13 @@ import 'version.dart';
 
 /// 面板返回的错误（设计 43.4）；message 是中文，可直接展示。
 class ApiException implements Exception {
-  ApiException(this.status, this.code, this.message);
+  ApiException(this.status, this.code, this.message, {this.fields = const {}});
   final int status;
   final String code;
   final String message;
+
+  /// 表单字段级错误（details，设计 43.6）：字段名 → 说明
+  final Map<String, String> fields;
 
   @override
   String toString() => message;
@@ -38,7 +41,10 @@ const _timeout = Duration(seconds: 10);
 ApiException _errorOf(http.Response res) {
   try {
     final e = (jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>)['error'] as Map<String, dynamic>;
-    return ApiException(res.statusCode, e['code'] as String, e['message'] as String);
+    return ApiException(res.statusCode, e['code'] as String, e['message'] as String, fields: {
+      for (final d in (e['details'] as List<dynamic>? ?? const []))
+        if (d is Map<String, dynamic> && d['field'] is String) d['field'] as String: d['message'] as String? ?? '',
+    });
   } catch (_) {
     return ApiException(res.statusCode, 'http_${res.statusCode}', '面板返回了错误（HTTP ${res.statusCode}）');
   }
@@ -209,6 +215,11 @@ class ApiClient {
       [for (final e in (body['items'] as List<dynamic>? ?? const [])) Subscription.fromJson(e as Map<String, dynamic>)],
     );
   }
+
+  /// 新增一条订阅（修订第 217 条）：只有 [Session.allowSubscriptions] 为 true 的设备可以；字段与 Web 新增订阅相同。
+  /// 校验失败时抛出 ApiException（422，message 为第一条原因）。
+  Future<Subscription> createSubscription(Map<String, dynamic> body) async =>
+      Subscription.fromJson(await _send2xx('POST', '/app/subscriptions', body: body));
 
   /// 订阅上传的图标（PNG）；没有时返回 null。
   Future<Uint8List?> subscriptionLogo(int id) async {

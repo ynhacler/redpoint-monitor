@@ -1350,6 +1350,52 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "新增一条订阅（修订第 217 条）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增，其他返回 403。\n请求体与 Web 的 POST /subscriptions 相同；不能修改或删除订阅。新增写入审计日志，操作者为设备名。\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已新增",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/app/subscriptions/{id}/logo": {
@@ -11997,6 +12043,10 @@
             "type": "boolean",
             "description": "允许静音与维护，默认 true"
           },
+          "allow_subscriptions": {
+            "type": "boolean",
+            "description": "允许配对的设备新增订阅（修订第 217 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false"
+          },
           "max_devices": {
             "type": "integer",
             "minimum": 1,
@@ -12020,6 +12070,7 @@
           "scope_type",
           "scope_value",
           "allow_low_risk_ops",
+          "allow_subscriptions",
           "max_devices",
           "paired_devices",
           "expires_at",
@@ -12053,6 +12104,9 @@
             "description": "分组名，或逗号分隔的节点 ID"
           },
           "allow_low_risk_ops": {
+            "type": "boolean"
+          },
+          "allow_subscriptions": {
             "type": "boolean"
           },
           "max_devices": {
@@ -12100,6 +12154,7 @@
           "scope_type",
           "scope_value",
           "allow_low_risk_ops",
+          "allow_subscriptions",
           "status",
           "paired_at",
           "last_seen_at",
@@ -12141,6 +12196,9 @@
             "type": "string"
           },
           "allow_low_risk_ops": {
+            "type": "boolean"
+          },
+          "allow_subscriptions": {
             "type": "boolean"
           },
           "status": {
@@ -12207,7 +12265,8 @@
         "required": [
           "type",
           "value",
-          "allow_low_risk_ops"
+          "allow_low_risk_ops",
+          "allow_subscriptions"
         ],
         "properties": {
           "type": {
@@ -12223,6 +12282,10 @@
           },
           "allow_low_risk_ops": {
             "type": "boolean"
+          },
+          "allow_subscriptions": {
+            "type": "boolean",
+            "description": "可以新增订阅（AK 允许记录订阅且授权全部节点）"
           }
         }
       },

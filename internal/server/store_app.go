@@ -54,14 +54,16 @@ type AppAccessKey struct {
 	ScopeType       string `json:"scope_type"`
 	ScopeValue      string `json:"scope_value"`
 	AllowLowRiskOps bool   `json:"allow_low_risk_ops"`
-	MaxDevices      int    `json:"max_devices"`
-	PairedDevices   int    `json:"paired_devices"`
-	ExpiresAt       int64  `json:"expires_at"`
-	Status          string `json:"status"` // active / used / expired / revoked
-	CreatedBy       string `json:"created_by"`
-	CreatedAt       int64  `json:"created_at"`
-	LastUsedAt      int64  `json:"last_used_at"`
-	RevokedAt       int64  `json:"revoked_at"`
+	// AllowSubscriptions 允许配对的设备新增订阅（修订第 217 条），默认关闭
+	AllowSubscriptions bool   `json:"allow_subscriptions"`
+	MaxDevices         int    `json:"max_devices"`
+	PairedDevices      int    `json:"paired_devices"`
+	ExpiresAt          int64  `json:"expires_at"`
+	Status             string `json:"status"` // active / used / expired / revoked
+	CreatedBy          string `json:"created_by"`
+	CreatedAt          int64  `json:"created_at"`
+	LastUsedAt         int64  `json:"last_used_at"`
+	RevokedAt          int64  `json:"revoked_at"`
 }
 
 func (k *AppAccessKey) setStatus(now time.Time) {
@@ -77,12 +79,12 @@ func (k *AppAccessKey) setStatus(now time.Time) {
 	}
 }
 
-const appKeyCols = `id, name, hint, scope_type, scope_value, allow_low_risk_ops, max_devices, paired_devices, expires_at,
+const appKeyCols = `id, name, hint, scope_type, scope_value, allow_low_risk_ops, allow_subscriptions, max_devices, paired_devices, expires_at,
 	created_by, created_at, last_used_at, revoked_at`
 
 func scanAppKey(sc interface{ Scan(...any) error }, now time.Time) (AppAccessKey, error) {
 	var k AppAccessKey
-	err := sc.Scan(&k.ID, &k.Name, &k.Hint, &k.ScopeType, &k.ScopeValue, &k.AllowLowRiskOps, &k.MaxDevices, &k.PairedDevices,
+	err := sc.Scan(&k.ID, &k.Name, &k.Hint, &k.ScopeType, &k.ScopeValue, &k.AllowLowRiskOps, &k.AllowSubscriptions, &k.MaxDevices, &k.PairedDevices,
 		&k.ExpiresAt, &k.CreatedBy, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt)
 	k.setStatus(now)
 	return k, err
@@ -93,8 +95,8 @@ func (s *Store) CreateAppAccessKey(k *AppAccessKey, now time.Time) (string, erro
 	key, hint := newAccessKey()
 	k.Hint, k.CreatedAt = hint, now.Unix()
 	res, err := s.DB.Exec(`INSERT INTO app_access_keys (name, key_hash, hint, scope_type, scope_value, allow_low_risk_ops,
-		max_devices, expires_at, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		k.Name, HashToken(key), k.Hint, k.ScopeType, k.ScopeValue, k.AllowLowRiskOps, k.MaxDevices, k.ExpiresAt, k.CreatedBy, k.CreatedAt)
+		allow_subscriptions, max_devices, expires_at, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		k.Name, HashToken(key), k.Hint, k.ScopeType, k.ScopeValue, k.AllowLowRiskOps, k.AllowSubscriptions, k.MaxDevices, k.ExpiresAt, k.CreatedBy, k.CreatedAt)
 	if err != nil {
 		return "", err
 	}
@@ -179,11 +181,13 @@ type AppDevice struct {
 	ScopeType       string `json:"scope_type"`
 	ScopeValue      string `json:"scope_value"`
 	AllowLowRiskOps bool   `json:"allow_low_risk_ops"`
-	Status          string `json:"status"` // active / expired / revoked
-	PairedAt        int64  `json:"paired_at"`
-	LastSeenAt      int64  `json:"last_seen_at"`
-	RevokedAt       int64  `json:"revoked_at"`
-	RevokedBy       string `json:"revoked_by"`
+	// AllowSubscriptions 来自配对时的 AK（修订第 217 条）
+	AllowSubscriptions bool   `json:"allow_subscriptions"`
+	Status             string `json:"status"` // active / expired / revoked
+	PairedAt           int64  `json:"paired_at"`
+	LastSeenAt         int64  `json:"last_seen_at"`
+	RevokedAt          int64  `json:"revoked_at"`
+	RevokedBy          string `json:"revoked_by"`
 
 	accessExpiresAt  int64
 	refreshExpiresAt int64
@@ -194,14 +198,14 @@ func (d AppDevice) scope() *apiScope {
 }
 
 const appDeviceCols = `d.id, d.access_key_id, COALESCE(k.name, ''), d.name, d.platform, d.app_version, d.scope_type, d.scope_value,
-	d.allow_low_risk_ops, d.paired_at, d.last_seen_at, d.revoked_at, d.revoked_by, d.access_expires_at, d.refresh_expires_at`
+	d.allow_low_risk_ops, d.allow_subscriptions, d.paired_at, d.last_seen_at, d.revoked_at, d.revoked_by, d.access_expires_at, d.refresh_expires_at`
 
 const appDeviceFrom = ` FROM app_devices d LEFT JOIN app_access_keys k ON k.id = d.access_key_id`
 
 func scanAppDevice(sc interface{ Scan(...any) error }, now time.Time) (AppDevice, error) {
 	var d AppDevice
 	err := sc.Scan(&d.ID, &d.AccessKeyID, &d.AccessKeyName, &d.Name, &d.Platform, &d.AppVersion, &d.ScopeType, &d.ScopeValue,
-		&d.AllowLowRiskOps, &d.PairedAt, &d.LastSeenAt, &d.RevokedAt, &d.RevokedBy, &d.accessExpiresAt, &d.refreshExpiresAt)
+		&d.AllowLowRiskOps, &d.AllowSubscriptions, &d.PairedAt, &d.LastSeenAt, &d.RevokedAt, &d.RevokedBy, &d.accessExpiresAt, &d.refreshExpiresAt)
 	switch {
 	case d.RevokedAt > 0:
 		d.Status = "revoked"
@@ -265,9 +269,9 @@ func (s *Store) PairDevice(req PairRequest, now time.Time) (AppDevice, appTokens
 	}
 	t := newAppTokens(now)
 	res, err = tx.Exec(`INSERT INTO app_devices (access_key_id, name, platform, app_version, scope_type, scope_value,
-		allow_low_risk_ops, access_hash, access_expires_at, refresh_hash, refresh_expires_at, push_public_key, paired_at, last_seen_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, k.ID, req.Name, req.Platform, req.AppVersion, k.ScopeType, k.ScopeValue,
-		k.AllowLowRiskOps, HashToken(t.access), t.accessExp, HashToken(t.refresh), t.refreshExp, req.PushPublicKey, now.Unix(), now.Unix())
+		allow_low_risk_ops, allow_subscriptions, access_hash, access_expires_at, refresh_hash, refresh_expires_at, push_public_key, paired_at, last_seen_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, k.ID, req.Name, req.Platform, req.AppVersion, k.ScopeType, k.ScopeValue,
+		k.AllowLowRiskOps, k.AllowSubscriptions, HashToken(t.access), t.accessExp, HashToken(t.refresh), t.refreshExp, req.PushPublicKey, now.Unix(), now.Unix())
 	if err != nil {
 		return AppDevice{}, appTokens{}, err
 	}

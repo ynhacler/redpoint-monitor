@@ -1461,6 +1461,8 @@ export interface AppAccessKeyInput {
   server_ids?: number[]
   /** 允许静音与维护，默认 true */
   allow_low_risk_ops?: boolean
+  /** 允许配对的设备新增订阅（修订第 217 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false */
+  allow_subscriptions?: boolean
   /** 最多配对几台设备，默认 1 */
   max_devices?: number
   /** AK 的配对有效期，默认 1 天 */
@@ -1476,6 +1478,7 @@ export interface AppAccessKey {
   /** 分组名，或逗号分隔的节点 ID */
   scope_value: string
   allow_low_risk_ops: boolean
+  allow_subscriptions: boolean
   max_devices: number
   paired_devices: number
   expires_at: number
@@ -1497,6 +1500,7 @@ export interface AppDevice {
   scope_type: 'all' | 'group' | 'servers'
   scope_value: string
   allow_low_risk_ops: boolean
+  allow_subscriptions: boolean
   status: 'active' | 'expired' | 'revoked'
   paired_at: number
   /** 最近一次请求（每分钟最多更新一次） */
@@ -1523,6 +1527,8 @@ export interface AppScope {
   type: 'all' | 'group' | 'servers'
   value: string
   allow_low_risk_ops: boolean
+  /** 可以新增订阅（AK 允许记录订阅且授权全部节点） */
+  allow_subscriptions: boolean
 }
 
 export interface AppSubscriptions {
@@ -1954,6 +1960,11 @@ export interface Paths {
     /** 订阅的只读列表（设计 47，修订第 213 条） */
     get: {
       response: AppSubscriptions
+    }
+    /** 新增一条订阅（修订第 217 条） */
+    post: {
+      body: SubscriptionInput
+      response: Subscription
     }
   }
   '/app/subscriptions/{id}/logo': {
