@@ -54,7 +54,8 @@ class ServerCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          // 紧凑排版（修订第 214 条）：去掉分隔线，环更小、说明放在环下，空白更少
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // ---- 头部 ----
             // 名称部分放在 Expanded 中：名称（Flexible）与 Spacer 同在一行时会平分剩余宽度，收藏星标被挤到中间（修订第 211 条）
@@ -88,7 +89,7 @@ class ServerCard extends StatelessWidget {
             ]),
             // 第二行：左侧 IP · 供应商 · 分组，右侧温度、开机时间、1 分钟负载（离线时为离线时长）；名称因此不再被挤短
             Padding(
-              padding: const EdgeInsets.only(top: 2),
+              padding: const EdgeInsets.only(top: 0),
               child: Row(children: [
                 Expanded(child: Text(sub.join(' · '), style: muted, overflow: TextOverflow.ellipsis)),
                 if (live && r != null)
@@ -110,20 +111,19 @@ class ServerCard extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: s.status == 'offline' ? c.bad : c.textMuted)),
               ]),
             ),
-            const SizedBox(height: 8),
-            Divider(height: 1, color: c.border),
+            const SizedBox(height: 6),
 
             // ---- 主体：三个环 + 网络 + IO ----
             if (s.status == 'pending')
-              Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('待安装：在 Web 中复制安装命令到主机执行', style: muted))
+              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('待安装：在 Web 中复制安装命令到主机执行', style: muted))
             else if (live && r != null)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: LayoutBuilder(builder: (context, box) {
-                  final ring = (box.maxWidth / 5 - 10).clamp(40.0, 52.0);
+                  final ring = (box.maxWidth / 5 - 22).clamp(38.0, 44.0);
                   final disk = diskSummary(s);
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _ringCol('CPU', r.cpu, colors.level(gaugeLevel(r.cpu, 'cpu')), '${r.cores} 核', ring),
+                    _ringCol('CPU', r.cpu, colors.level(gaugeLevel(r.cpu, 'cpu')), '${r.cores}核', ring),
                     _ringCol('Mem', r.mem, colors.level(gaugeLevel(r.mem, 'mem')), fmtBytesShort(r.memTotal), ring),
                     _ringCol('Disk', disk?.usage, colors.level(disk?.level ?? Level.ok), fmtBytesShort(disk?.total), ring),
                     _flowCol('Net', r.tx, r.txTotal, r.rx, r.rxTotal, ring, c),
@@ -135,7 +135,7 @@ class ServerCard extends StatelessWidget {
               )
             else if (s.lastSeenAt > 0)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Text('最后上报 ${fmtTime(s.lastSeenAt)}', style: muted),
               )
             else
@@ -144,15 +144,12 @@ class ServerCard extends StatelessWidget {
             // ---- 需要关注的原因 ----
             if (probs.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Wrap(spacing: 6, runSpacing: 4, children: [for (final i in probs) Tag(i.text, colors.level(i.level))]),
               ),
 
             // ---- 底部：流量（主体为空时与头部共用一条分隔线） ----
-            if (s.status == 'pending' || (live && r != null) || s.lastSeenAt > 0 || probs.isNotEmpty) Divider(height: 1, color: c.border),
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: DefaultTextStyle.merge(
+            DefaultTextStyle.merge(
                 style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]),
                 child: Row(children: [
                   Text('流量', style: muted),
@@ -176,7 +173,6 @@ class ServerCard extends StatelessWidget {
                     Text(fmtPct(pct), style: TextStyle(color: pct >= 95 ? c.bad : (pct >= 80 ? c.warn : null))),
                   ],
                 ]),
-              ),
             ),
           ]),
         ),
@@ -190,41 +186,50 @@ class ServerCard extends StatelessWidget {
         Text(text, style: color == null ? null : TextStyle(color: color)),
       ]);
 
+  // 环在上，下面一行“CPU 4核”：名称与容量合为一行，比上下各一行省一行高度
   Widget _ringCol(String label, double? pct, Color color, String cap, double size) => Expanded(
         child: Column(children: [
-          Text(label, style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 4),
           Ring(pct: pct, color: color, size: size, label: label),
-          const SizedBox(height: 4),
-          Text(cap, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.clip),
+          const SizedBox(height: 2),
+          _caption(label, cap),
         ]),
       );
 
-  /// 网络 / IO：上行（写）速率与累计、下行（读）速率与累计，四行均分与环同高的空间
+  Widget _caption(String label, String cap) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text.rich(
+          TextSpan(children: [
+            TextSpan(text: label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (cap.isNotEmpty) TextSpan(text: ' $cap'),
+          ]),
+          style: const TextStyle(fontSize: 11),
+          maxLines: 1,
+        ),
+      );
+
+  /// 网络 / IO：上行（写）与下行（读）速率，与环同高；开机以来的累计在详情页（修订第 214 条）
   Widget _flowCol(String label, int? up, int? upTotal, int? down, int? downTotal, double ring, AppColors c) {
-    final t = TextStyle(fontSize: 11, color: c.textMuted);
     Widget v(IconData icon, int? n) => Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 11, color: c.textMuted),
-          Text(fmtBytesShort(n), style: const TextStyle(fontSize: 11)),
+          Icon(icon, size: 12, color: c.textMuted),
+          Text(fmtBytesShort(n), style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()])),
         ]);
     return Expanded(
       child: Column(children: [
-        Text(label, style: const TextStyle(fontSize: 13)),
-        const SizedBox(height: 4),
         SizedBox(
-          height: ring + 4 + 15,
+          height: ring,
           child: up == null
-              ? Center(child: Text(dash, style: t))
+              ? Center(child: Text(dash, style: TextStyle(fontSize: 12, color: c.textMuted)))
               : FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     v(Icons.arrow_upward, up),
-                    Text(fmtBytesShort(upTotal), style: t),
+                    const SizedBox(height: 4),
                     v(Icons.arrow_downward, down),
-                    Text(fmtBytesShort(downTotal), style: t),
                   ]),
                 ),
         ),
+        const SizedBox(height: 2),
+        _caption(label, ''),
       ]),
     );
   }

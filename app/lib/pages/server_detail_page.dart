@@ -221,9 +221,6 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   @override
   Widget build(BuildContext context) {
     final s = _s;
-    final colors = StatusColors.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final muted = TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
     final live = isLive(s);
     final disk = diskSummary(s);
     return Scaffold(
@@ -232,89 +229,252 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
         onRefresh: () async {
           await Future.wait([_refresh(), _loadHistory(), _loadHealth(), _loadLatency(), _loadReach()]);
         },
+        // 与 Web 节点详情同一结构（修订第 214 条）：概况 → 健康摘要 → 分页（监控 / 网络 / 应用 / 告警）
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 32), children: [
+          if (_error != null) StaleBanner(error: _error!, updated: _updated, onRetry: _refresh),
+          _summary(context),
+          if (_health != null) _section(context, '健康摘要', _healthView(context)),
+          const SizedBox(height: 4),
+          _tabs(context),
+          const SizedBox(height: 4),
+          ...switch (_tab) {
+            'net' => [
+                _section(context, '流量', _traffic(context)),
+                if (UnlockResult.of(s) case final u? when s.status != 'pending') _section(context, '流媒体与网站解锁', _unlockView(context, u)),
+                if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
+                  _section(context, '测速延迟', _latencyView(context)),
+                if (_reach != null && _reach!.configured && _reach!.probes.isNotEmpty) _section(context, '国内可达性', _reachView(context)),
+                if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
+              ],
+            'apps' => [
+                if (ContainerInfo.of(s).isNotEmpty || ContainerMissing.of(s).isNotEmpty)
+                  _section(context, '容器', _containersView(context, ContainerInfo.of(s), ContainerMissing.of(s)))
+                else
+                  _empty(context, '没有发现容器。Agent 从 cgroup 读取 Docker / Podman 容器，容器名在 Web 节点详情中设置。'),
+              ],
+            'alerts' => [
+                if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)) else _empty(context, '没有进行中的告警。'),
+                if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '静音与维护', _ops(context)),
+              ],
+            _ => [
+                if (live) ...[
+                  Row(children: [
+                    _Gauge('CPU', s.latest!.cpu, gaugeLevel(s.latest!.cpu, 'cpu'), '${s.latest!.cores} 核 · 负载 ${s.latest!.load1.toStringAsFixed(2)}'),
+                    _Gauge('内存', s.latest!.mem, gaugeLevel(s.latest!.mem, 'mem'), '${fmtBytes(s.latest!.memUsed)} / ${fmtBytes(s.latest!.memTotal)}'),
+                    _Gauge('磁盘', disk?.usage, disk?.level ?? Level.ok, disk == null ? dash : '${fmtBytes(disk.used)} / ${fmtBytes(disk.total)}'),
+                  ]),
+                  _netCard(context),
+                ] else
+                  _empty(context, s.status == 'pending' ? '待安装：在 Web 中复制安装命令到主机执行' : '节点离线，不显示实时数值；历史曲线见下方。'),
+                _section(context, '历史', _trend(context)),
+              ],
+          },
+        ]),
+      ),
+    );
+  }
+
+  String _tab = 'monitor';
+
+  // 分页：与 Web 的“监控 / 网络 / 应用 / 告警”一致；告警页带进行中的告警数
+  Widget _tabs(BuildContext context) {
+    final c = appColors(context);
+    final colors = StatusColors.of(context);
+    final n = _s.alerts.length;
+    Widget tab(String key, String label, {int badge = 0}) {
+      final on = _tab == key;
+      return Expanded(
+        child: InkWell(
+          key: ValueKey('detail-tab-$key'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _tab = key),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? c.surface : null,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))] : null,
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(label, style: TextStyle(fontSize: 14, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? c.text : c.textMuted)),
+              if (badge > 0) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  decoration: BoxDecoration(color: colors.bad, borderRadius: BorderRadius.circular(99)),
+                  child: Text('$badge', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
+      child: Row(children: [tab('monitor', '监控'), tab('net', '网络'), tab('apps', '应用'), tab('alerts', '告警', badge: n)]),
+    );
+  }
+
+  Widget _empty(BuildContext context, String text) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Text(text, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ),
+      );
+
+  // 概况（与 Web 的 ServerSummary 对应）：状态、最后上报、地址与 ASN、供应商、续费与到期、静音 / 维护
+  Widget _summary(BuildContext context) {
+    final s = _s;
+    final colors = StatusColors.of(context);
+    final c = appColors(context);
+    final muted = TextStyle(fontSize: 12, color: c.textMuted);
+    final stale = _error != null;
+    final ip = IpInfo.of(s);
+    final rows = _assetRows();
+    final up = isLive(s) ? s.latest?.uptime : null;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             // 连不上面板时状态来自缓存，用灰色并注明“上次”，不把几天前的“在线”当成现在（修订第 211 条）
-            Icon(Icons.circle, size: 10, color: _error != null ? colors.muted : colors.status(s.status)),
-            const SizedBox(width: 6),
-            Text('${_error != null ? '上次' : ''}${statusText[s.status] ?? s.status}',
-                style: TextStyle(color: _error != null ? colors.muted : colors.status(s.status), fontWeight: FontWeight.w600)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: (stale ? colors.muted : colors.status(s.status)).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.circle, size: 8, color: stale ? colors.muted : colors.status(s.status)),
+                const SizedBox(width: 5),
+                Text('${stale ? '上次' : ''}${statusText[s.status] ?? s.status}',
+                    style: TextStyle(fontSize: 12, color: stale ? colors.muted : colors.status(s.status), fontWeight: FontWeight.w600)),
+              ]),
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                s.lastSeenAt > 0 ? '最后上报 ${fmtTime(s.lastSeenAt)}' : '尚未上报',
+                [s.lastSeenAt > 0 ? '最后上报 ${fmtTime(s.lastSeenAt)}' : '尚未上报', if (up != null) '已运行 ${fmtDuration(up)}'].join(' · '),
                 style: muted,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (s.group.isNotEmpty) Text(s.group, style: muted),
+            if (s.group.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(border: Border.all(color: c.border), borderRadius: BorderRadius.circular(6)),
+                child: Text(s.group, style: muted.copyWith(fontSize: 11)),
+              ),
           ]),
-          if (_error != null) StaleBanner(error: _error!, updated: _updated, onRetry: _refresh),
-          if (s.maintenance != null || s.muted != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text([
-                  if (s.maintenance != null) '维护中${_until(s.maintenance!)}：不产生告警',
-                  if (s.muted != null) '已静音${_until(s.muted!)}：告警不发送通知',
-                ].join('\n')),
-              ),
-            ),
-          const SizedBox(height: 8),
-          if (live)
-            Row(children: [
-              _Gauge('CPU', s.latest!.cpu, gaugeLevel(s.latest!.cpu, 'cpu'), '${s.latest!.cores} 核 · 负载 ${s.latest!.load1.toStringAsFixed(2)}'),
-              _Gauge('内存', s.latest!.mem, gaugeLevel(s.latest!.mem, 'mem'), '${fmtBytes(s.latest!.memUsed)} / ${fmtBytes(s.latest!.memTotal)}'),
-              _Gauge('磁盘', disk?.usage, disk?.level ?? Level.ok, disk == null ? dash : '${fmtBytes(disk.used)} / ${fmtBytes(disk.total)}'),
+          if (rows.isNotEmpty || ip != null) const SizedBox(height: 8),
+          for (final (k, v) in rows) ...[
+            _kv(k, v, c),
+            // ASN 与位置紧跟在地址之后（设计 49）
+            if (ip != null && (k == 'IPv4' || (k == 'IPv6' && s.ipv4.isEmpty)))
+              _kv('归属', [if (ip.asn.isNotEmpty) ip.asn, if (ip.org.isNotEmpty) maskText(ip.org, widget.privacy), if (ip.place.isNotEmpty) ip.place].join(' · '), c),
+          ],
+          if (s.maintenance != null || s.muted != null) ...[
+            const SizedBox(height: 6),
+            for (final t in [
+              if (s.maintenance != null) '维护中${_until(s.maintenance!)}：不产生告警',
+              if (s.muted != null) '已静音${_until(s.muted!)}：告警不发送通知',
             ])
-          else
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Text(s.status == 'pending' ? '待安装：在 Web 中复制安装命令到主机执行' : '节点离线，不显示实时指标', style: muted),
-              ),
-            ),
-          if (live)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                // 下行 / 上行：实时速率 + 开机以来累计
-                child: Row(children: [
-                  for (final (label, icon, v, total) in [
-                    ('下行', Icons.arrow_downward, s.latest!.rx, s.latest!.rxTotal),
-                    ('上行', Icons.arrow_upward, s.latest!.tx, s.latest!.txTotal),
-                  ])
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [Icon(icon, size: 13, color: scheme.onSurfaceVariant), const SizedBox(width: 2), Text(label, style: muted)]),
-                        Text(fmtBytes(v, perSec: true),
-                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
-                        if (total > 0) Text('开机以来 ${fmtBytes(total)}', style: muted.copyWith(fontSize: 11)),
-                      ]),
-                    ),
-                  if (s.latest!.uptime != null)
-                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Text('运行', style: muted),
-                      Text(fmtDuration(s.latest!.uptime), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    ]),
-                ]),
-              ),
-            ),
-          if (_health != null) _section(context, '健康摘要', _healthView(context)),
-          _section(context, '趋势', _trend(context)),
-          _section(context, '流量', _traffic(context)),
-          if (_latency != null && (_latency!.targets.isNotEmpty || _latency!.mode == 'off'))
-            _section(context, '测速延迟', _latencyView(context)),
-          if (_reach != null && _reach!.configured && _reach!.probes.isNotEmpty) _section(context, '国内可达性', _reachView(context)),
-          if (ContainerInfo.of(s).isNotEmpty || ContainerMissing.of(s).isNotEmpty)
-            _section(context, '容器', _containersView(context, ContainerInfo.of(s), ContainerMissing.of(s))),
-          if (s.alerts.isNotEmpty) _section(context, '活动告警', _alerts(context)),
-          if (_assetRows().isNotEmpty) _section(context, '资产', _assets(context)),
-          if (_cloudInstances().isNotEmpty) _section(context, '云实例', _cloudView(context)),
-          if (widget.api.session.allowLowRiskOps && s.status != 'pending') _section(context, '操作', _ops(context)),
+              Row(children: [
+                Icon(Icons.info_outline, size: 14, color: colors.warn),
+                const SizedBox(width: 4),
+                Expanded(child: Text(t, style: TextStyle(fontSize: 12, color: colors.warn))),
+              ]),
+          ],
         ]),
       ),
     );
+  }
+
+  Widget _kv(String k, String v, AppColors c) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 52, child: Text(k, style: TextStyle(fontSize: 13, color: c.textMuted))),
+          Expanded(child: SelectableText(v, style: const TextStyle(fontSize: 13))),
+        ]),
+      );
+
+  // 实时网速：下行 / 上行 + 开机以来累计
+  Widget _netCard(BuildContext context) {
+    final s = _s;
+    final scheme = Theme.of(context).colorScheme;
+    final muted = TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(children: [
+          for (final (label, icon, v, total) in [
+            ('下行', Icons.arrow_downward, s.latest!.rx, s.latest!.rxTotal),
+            ('上行', Icons.arrow_upward, s.latest!.tx, s.latest!.txTotal),
+          ])
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Icon(icon, size: 13, color: scheme.onSurfaceVariant), const SizedBox(width: 2), Text(label, style: muted)]),
+                Text(fmtBytes(v, perSec: true), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
+                if (total > 0) Text('开机以来 ${fmtBytes(total)}', style: muted.copyWith(fontSize: 11)),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  // 解锁检测服务名（与 Web 的 UnlockCard 一致）
+  static const _unlockNames = {
+    'netflix': 'Netflix', 'disney': 'Disney+', 'youtube': 'YouTube Premium', 'prime': 'Prime Video', 'tiktok': 'TikTok',
+    'chatgpt': 'ChatGPT', 'claude': 'Claude', 'google': 'Google 搜索', 'reddit': 'Reddit', 'steam': 'Steam 商店',
+    'yahoo': 'Yahoo', 'truthsocial': 'Truth Social', 'telegram': 'Telegram',
+    'abema': 'ABEMA', 'radiko': 'radiko', 'mytvsuper': 'myTV SUPER', 'viu': 'Viu', 'bilibili_hmt': 'bilibili 港澳台', 'bilibili_tw': 'bilibili 台湾',
+    'kktv': 'KKTV', 'coupangplay': 'Coupang Play', 'hulu': 'Hulu', 'bbc_iplayer': 'BBC iPlayer',
+  };
+  static const _unlockStatus = {'yes': '可用', 'no': '不可用', 'partial': '部分可用', 'captcha': '需人机验证', 'failed': '检测失败'};
+
+  Widget _unlockView(BuildContext context, UnlockResult u) {
+    final c = appColors(context);
+    final colors = StatusColors.of(context);
+    final small = TextStyle(fontSize: 12, color: c.textMuted);
+    Color tone(String st) => switch (st) { 'yes' => colors.ok, 'partial' || 'captcha' => colors.warn, 'no' => colors.bad, _ => colors.muted };
+    Widget item(UnlockItem it) => Container(
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          decoration: BoxDecoration(border: Border.all(color: c.border), borderRadius: BorderRadius.circular(8)),
+          child: Row(children: [
+            Icon(Icons.circle, size: 8, color: tone(it.status)),
+            const SizedBox(width: 6),
+            Expanded(child: Text(_unlockNames[it.service] ?? it.service, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            Text(
+              it.status == 'yes' || it.status == 'partial'
+                  ? '${it.region.isNotEmpty ? '${flagEmoji(it.region)} ${it.region}' : _unlockStatus[it.status]}${it.status == 'partial' ? ' 部分' : ''}'
+                  : _unlockStatus[it.status] ?? it.status,
+              style: TextStyle(fontSize: 12, color: tone(it.status), fontWeight: FontWeight.w600),
+            ),
+          ]),
+        );
+    final general = u.items.where((it) => it.local.isEmpty).toList();
+    final local = u.items.where((it) => it.local.isNotEmpty).toList();
+    Widget grid(List<UnlockItem> xs) => LayoutBuilder(builder: (context, box) {
+          final w = (box.maxWidth - 8) / 2;
+          return Wrap(spacing: 8, runSpacing: 8, children: [for (final it in xs) SizedBox(width: w, child: item(it))]);
+        });
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (u.items.isEmpty)
+        Text(u.pending ? '检测中，约 1 分钟出结果。' : (u.supported ? '还没有检测过。在 Web 节点详情的“网络”页点“检测”。' : 'Agent 版本不支持，升级后可用。'), style: small)
+      else ...[
+        grid(general),
+        if (local.isNotEmpty) ...[
+          Padding(padding: const EdgeInsets.fromLTRB(2, 10, 0, 6), child: Text('当地服务 · ${flagEmoji(local.first.local)} ${local.first.local}', style: small)),
+          grid(local),
+        ],
+        const SizedBox(height: 8),
+        Text('${u.checkedAt > 0 ? '${fmtTime(u.checkedAt)} 检测 · ' : ''}${u.pending ? '正在重新检测 · ' : ''}检测在 Web 中发起', style: small),
+      ],
+    ]);
   }
 
   String _until(Silence x) => x.endsAt == null ? '（直到手动结束）' : '（至 ${fmtTime(x.endsAt)}）';
@@ -761,20 +921,6 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   // 与 web/src/format.ts 的 periodNames 一致
   static const _period = {'monthly': '月付', 'quarterly': '季付', 'semiannually': '半年付', 'annually': '年付',
       'biennially': '两年付', 'triennially': '三年付', 'one_time': '一次性'};
-
-  Widget _assets(BuildContext context) {
-    final muted = TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant);
-    return Column(children: [
-      for (final (k, v) in _assetRows())
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 56, child: Text(k, style: muted)),
-            Expanded(child: SelectableText(v, style: const TextStyle(fontSize: 13))),
-          ]),
-        ),
-    ]);
-  }
 
   Widget _alerts(BuildContext context) {
     final colors = StatusColors.of(context);

@@ -84,6 +84,13 @@ void main() {
     ];
     nodes[0]['container_names'] = {'3f9a1c2b7d4e': 'nginx-reverse-proxy-with-a-very-long-container-name'};
     nodes[0]['container_restarts'] = {'c04be1f7a993': 4};
+    nodes[0]['ip_info'] = {'ip': '103.1.2.1', 'asn': 'AS13335', 'org': 'Cloudflare, Inc.', 'hostname': '', 'city': 'Tokyo', 'region': 'Tokyo',
+      'country': 'JP', 'timezone': 'Asia/Tokyo', 'fetched_at': 1759650000, 'error': ''};
+    nodes[0]['unlock'] = {'supported': true, 'pending': false, 'requested_at': 1759650000, 'checked_at': 1759650060, 'items': [
+      {'service': 'netflix', 'status': 'yes', 'region': 'JP'},
+      {'service': 'chatgpt', 'status': 'no'},
+      {'service': 'abema', 'status': 'yes', 'region': 'JP', 'local': 'JP'},
+    ]};
     nodes[0]['containers_missing'] = [
       {'label': 'postgres', 'missing': 1, 'since': 1759650000},
     ];
@@ -217,27 +224,27 @@ void main() {
     expect(find.textContaining('103.***.***.3'), findsOneWidget);
     await tester.scrollUntilVisible(find.textContaining('Tokyo ARM'), -200, scrollable: list);
 
-    // 详情：趋势、流量、资产（隐私模式下价格与供应商打码）
+    // 详情（修订第 214 条）：概况（隐私模式下 IP 与供应商打码、ASN）→ 健康摘要 → 分页
     await tester.tap(find.textContaining('Tokyo ARM'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
-    expect(find.text('趋势'), findsOneWidget);
+    expect(find.text('103.***.***.1'), findsOneWidget);
+    expect(find.text('DMIT'), findsNothing);
+    expect(find.textContaining('AS13335'), findsOneWidget);
     expect(find.text('需要关注：CPU 96%'), findsOneWidget);
     // 底部导航的各页都保留在 IndexedStack 中：指定滚动详情页自己的列表
     final detail = find.descendant(of: find.byType(ServerDetailPage), matching: find.byType(Scrollable)).first;
+    // 监控：实时数值与历史
+    await tester.scrollUntilVisible(find.text('历史'), 200, scrollable: detail);
+    expect(find.text('历史'), findsOneWidget);
+    // 网络：流量、解锁、国内可达性、云实例
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('detail-tab-net')), -200, scrollable: detail);
+    await tester.tap(find.byKey(const ValueKey('detail-tab-net')));
+    await tester.pump();
     await tester.scrollUntilVisible(find.text('638 GB / 1 TB'), 200, scrollable: detail);
     expect(find.textContaining('已使用 63.8%'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('资产'), 200, scrollable: detail);
-    expect(find.text('103.***.***.1'), findsOneWidget);
-    expect(find.text('DMIT'), findsNothing);
-    // 容器：名称或 ID、CPU、内存与上限
-    await tester.scrollUntilVisible(find.text('容器'), 200, scrollable: detail);
-    expect(find.text('nginx-reverse-proxy-with-a-very-long-container-name'), findsOneWidget);
-    expect(find.text('redis-server'), findsOneWidget); // 没有名字时显示主进程名（修订第 165 条）
-    expect(find.text('CPU 18%'), findsOneWidget);
-    expect(find.textContaining('Podman'), findsOneWidget);
-    expect(find.text('已停止：postgres'), findsOneWidget); // 修订第 166 条
-    expect(find.textContaining('24 小时内重启 4 次'), findsOneWidget); // 修订第 167 条
-    // 国内可达性：结论、各探针状态与最近一轮
+    await tester.scrollUntilVisible(find.text('流媒体与网站解锁'), 200, scrollable: detail);
+    expect(find.text('Netflix'), findsOneWidget);
+    expect(find.text('当地服务 · 🇯🇵 JP'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('国内可达性'), 200, scrollable: detail);
     expect(find.text('移动不可达'), findsOneWidget);
     expect(find.text('疑似被墙'), findsOneWidget);
@@ -249,8 +256,24 @@ void main() {
     expect(find.textContaining('AWS · '), findsOneWidget);
     expect(find.text('AWS · AWS 主账号'), findsNothing);
     expect(find.text('账户已产生 \$3.21'), findsOneWidget);
+    // 应用：容器名称或 ID、CPU、内存与上限
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('detail-tab-apps')), -200, scrollable: detail);
+    await tester.tap(find.byKey(const ValueKey('detail-tab-apps')));
+    await tester.pump();
+    await tester.scrollUntilVisible(find.text('容器'), 200, scrollable: detail);
+    expect(find.text('nginx-reverse-proxy-with-a-very-long-container-name'), findsOneWidget);
+    expect(find.text('redis-server'), findsOneWidget); // 没有名字时显示主进程名（修订第 165 条）
+    expect(find.text('CPU 18%'), findsOneWidget);
+    expect(find.textContaining('Podman'), findsOneWidget);
+    expect(find.text('已停止：postgres'), findsOneWidget); // 修订第 166 条
+    expect(find.textContaining('24 小时内重启 4 次'), findsOneWidget); // 修订第 167 条
+    // 告警：活动告警与静音 / 维护
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('detail-tab-alerts')), -200, scrollable: detail);
+    await tester.tap(find.byKey(const ValueKey('detail-tab-alerts')));
+    await tester.pump();
     await tester.scrollUntilVisible(find.text('静音告警'), 200, scrollable: detail);
     expect(find.text('开启维护'), findsOneWidget);
+    expect(find.text('活动告警'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

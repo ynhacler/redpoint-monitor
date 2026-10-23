@@ -759,3 +759,99 @@ class ReachView {
         },
       );
 }
+
+/// 节点公网 IP 的 ASN 与位置（设计 49，修订第 214 条）：只在节点详情中返回，面板开启查询后才有。
+class IpInfo {
+  /// 创建
+  const IpInfo({required this.ip, required this.asn, required this.org, required this.city, required this.region, required this.country});
+
+  /// 查询的地址
+  final String ip;
+
+  /// 如 AS13335
+  final String asn;
+
+  /// 运营方
+  final String org;
+
+  /// 城市
+  final String city;
+
+  /// 省 / 州
+  final String region;
+
+  /// 两位国家 / 地区代码
+  final String country;
+
+  /// 从节点详情的原始 JSON 读取；没有或查询失败时为 null
+  static IpInfo? of(ServerView s) {
+    final j = s.raw['ip_info'] as Map<String, dynamic>?;
+    if (j == null || (j['asn'] as String? ?? '').isEmpty && (j['org'] as String? ?? '').isEmpty) return null;
+    return IpInfo(
+      ip: j['ip'] as String? ?? '',
+      asn: j['asn'] as String? ?? '',
+      org: j['org'] as String? ?? '',
+      city: j['city'] as String? ?? '',
+      region: j['region'] as String? ?? '',
+      country: j['country'] as String? ?? '',
+    );
+  }
+
+  /// 位置：“东京 · Tokyo · JP”中去掉重复与空项
+  String get place => {city, region, country}.where((x) => x.isNotEmpty).join(' · ');
+}
+
+/// 一项解锁检测结果（设计 50）
+class UnlockItem {
+  /// 创建
+  const UnlockItem(this.service, this.status, {this.region = '', this.note = '', this.local = ''});
+
+  /// 检测项键，如 netflix
+  final String service;
+
+  /// yes / no / partial / captcha / failed
+  final String status;
+
+  /// 服务认定的地区（两位代码）或货币（Steam）
+  final String region;
+
+  /// 说明
+  final String note;
+
+  /// 当地服务所属地区（通用检测项为空）
+  final String local;
+}
+
+/// 解锁检测（设计 50，修订第 214 条）：App 只读显示最近一次结果，检测在 Web 中由管理员发起。
+class UnlockResult {
+  /// 创建
+  const UnlockResult({required this.supported, required this.pending, required this.checkedAt, required this.items});
+
+  /// Agent 支持检测
+  final bool supported;
+
+  /// 已请求、等待结果
+  final bool pending;
+
+  /// 最近一次结果的时间（Unix 秒），0 表示还没有结果
+  final int checkedAt;
+
+  /// 结果
+  final List<UnlockItem> items;
+
+  /// 从节点详情的原始 JSON 读取；旧版面板时为 null
+  static UnlockResult? of(ServerView s) {
+    final j = s.raw['unlock'] as Map<String, dynamic>?;
+    if (j == null) return null;
+    return UnlockResult(
+      supported: j['supported'] as bool? ?? false,
+      pending: j['pending'] as bool? ?? false,
+      checkedAt: (j['checked_at'] as num?)?.toInt() ?? 0,
+      items: [
+        for (final it in (j['items'] as List<dynamic>? ?? const []))
+          UnlockItem((it as Map<String, dynamic>)['service'] as String? ?? '', it['status'] as String? ?? 'failed',
+              region: it['region'] as String? ?? '', note: it['note'] as String? ?? '', local: it['local'] as String? ?? ''),
+      ],
+    );
+  }
+}
