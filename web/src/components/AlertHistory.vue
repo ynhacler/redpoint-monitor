@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, listAlerts, type AlertEvent } from '../api'
 import { fmtDateTime, fmtDuration } from '../format'
+import { t } from '../i18n'
 
 const props = defineProps<{
   /** 节点 ID */
@@ -22,7 +23,7 @@ async function load() {
     items.value = (await listAlerts({ state: 'all', server_id: props.serverId, limit: 20 })).items
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '告警记录加载失败')
+    error.value = errorText(e, t('告警记录加载失败'))
   } finally {
     loaded.value = true
   }
@@ -44,19 +45,19 @@ const duration = (e: AlertEvent) => fmtDuration((e.resolved_at || Date.now() / 1
 <template>
   <div class="panel alerts">
     <div class="head">
-      <h3>告警记录</h3>
-      <span class="muted small">最近 20 条 · 保留 180 天</span>
+      <h3>{{ t('告警记录') }}</h3>
+      <span class="muted small">{{ t('最近 20 条 · 保留 180 天') }}</span>
     </div>
     <p v-if="error" class="muted small">{{ error }}</p>
-    <p v-else-if="loaded && !items.length" class="muted small empty">还没有告警。</p>
+    <p v-else-if="loaded && !items.length" class="muted small empty">{{ t('还没有告警。') }}</p>
     <ul v-else class="list">
       <li v-for="e in sorted" :key="e.id" :class="[e.severity, e.state]">
-        <span class="sev">{{ severityName[e.severity] }}</span>
+        <span class="sev">{{ t(severityName[e.severity]) }}</span>
         <span class="msg">{{ e.message }}</span>
         <span class="when muted small num">
           {{ fmtDateTime(e.fired_at) }}
-          <template v-if="e.state === 'firing'"> · <b class="ongoing">进行中 {{ duration(e) }}</b></template>
-          <template v-else> · 持续 {{ duration(e) }} 后恢复</template>
+          <template v-if="e.state === 'firing'"> · <b class="ongoing">{{ t('进行中 {d}', { d: duration(e) }) }}</b></template>
+          <template v-else> · {{ t('持续 {d} 后恢复', { d: duration(e) }) }}</template>
         </span>
       </li>
     </ul>

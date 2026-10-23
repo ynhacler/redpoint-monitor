@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getServerReach, type ServerReach } from '../api'
 import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 import Chart, { type Series } from './Chart.vue'
 
@@ -19,7 +20,7 @@ async function load() {
     view.value = await getServerReach(props.serverId)
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '国内可达性加载失败')
+    error.value = errorText(e, t('国内可达性加载失败'))
   }
   timer = setTimeout(load, 60_000)
 }
@@ -39,7 +40,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
   const lat: Series[] = []
   const loss: Series[] = []
   for (const p of view.value?.probes ?? []) {
-    const name = ispNames[p.isp] ? `${ispNames[p.isp]}（${p.name}）` : p.name
+    const name = ispNames[p.isp] ? `${t(ispNames[p.isp])}（${p.name}）` : p.name
     const pts = view.value?.series[String(p.probe_id)] ?? []
     lat.push({ name, data: pts.map((x) => [x.ts * 1000, x.latency_ms ?? null]) })
     loss.push({ name, data: pts.map((x) => [x.ts * 1000, x.loss]) })
@@ -53,36 +54,36 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
   <!-- 没有国内探针时不显示（修订第 173 条）：设置入口与说明只在“系统 → 监测”中 -->
   <section v-if="error || view?.configured" class="panel reach">
     <div class="head">
-      <h3>国内可达性</h3>
+      <h3>{{ t('国内可达性') }}</h3>
       <span v-if="view?.text" class="verdict" :class="tone(view.status)">{{ view.text }}</span>
-      <RouterLink v-if="!isViewer" to="/monitor#reach" class="btn secondary small set">国内探针</RouterLink>
+      <RouterLink v-if="!isViewer" to="/monitor#reach" class="btn secondary small set">{{ t('国内探针') }}</RouterLink>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-else-if="view">
-      <p v-if="!view.probes.length" class="small muted note">国内探针还没有测到这台节点：探针收到列表后约 20 秒测第一轮。</p>
+      <p v-if="!view.probes.length" class="small muted note">{{ t('国内探针还没有测到这台节点：探针收到列表后约 20 秒测第一轮。') }}</p>
       <template v-else>
         <table class="probes">
           <thead>
-            <tr><th>探针</th><th>状态</th><th>最近一轮</th></tr>
+            <tr><th>{{ t('探针') }}</th><th>{{ t('状态') }}</th><th>{{ t('最近一轮') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="p in view.probes" :key="p.probe_id">
               <th scope="row">
-                <span>{{ ispNames[p.isp] ?? '' }}</span>
+                <span>{{ ispNames[p.isp] ? t(ispNames[p.isp]) : '' }}</span>
                 <small class="muted">{{ p.name }}</small>
               </th>
               <td>
-                <span :class="tone(p.status)">{{ statusNames[p.status] ?? p.status }}<template v-if="p.status === 'port'"> {{ p.bad_ports.join('、') }}</template></span>
-                <small v-if="p.status !== 'ok'" class="muted">自 {{ fmtTime(p.since) }}</small>
+                <span :class="tone(p.status)">{{ statusNames[p.status] ? t(statusNames[p.status]) : p.status }}<template v-if="p.status === 'port'"> {{ p.bad_ports.join(t('、')) }}</template></span>
+                <small v-if="p.status !== 'ok'" class="muted">{{ t('自 {time}', { time: fmtTime(p.since) }) }}</small>
               </td>
               <td>
                 <ul class="checks">
-                  <li v-for="c in p.checks ?? []" :key="`${c.family}-${c.port}`" :title="c.error ? errorNames[c.error] ?? c.error : ''">
+                  <li v-for="c in p.checks ?? []" :key="`${c.family}-${c.port}`" :title="c.error ? (errorNames[c.error] ? t(errorNames[c.error]) : c.error) : ''">
                     <span class="muted">{{ checkName(c) }}</span>
                     <span class="num" :class="c.loss >= 100 && c.error !== 'icmp_unavailable' ? 'bad' : ''">
-                      {{ c.latency_ms != null ? fmtLatency(c.latency_ms) : c.error === 'icmp_unavailable' ? DASH : '失败' }}
+                      {{ c.latency_ms != null ? fmtLatency(c.latency_ms) : c.error === 'icmp_unavailable' ? DASH : t('失败') }}
                     </span>
-                    <span v-if="c.loss > 0 && c.loss < 100" class="muted num">丢包 {{ fmtPct(c.loss) }}</span>
+                    <span v-if="c.loss > 0 && c.loss < 100" class="muted num">{{ t('丢包') }} {{ fmtPct(c.loss) }}</span>
                   </li>
                 </ul>
                 <small class="muted">{{ fmtTime(p.last_at) }}</small>
@@ -91,10 +92,10 @@ const hasSeries = computed(() => series.value.lat.some((s) => s.data.length > 1)
           </tbody>
         </table>
         <div v-if="hasSeries" class="charts">
-          <Chart title="国内 → 这台节点 · 延迟（24 小时）" :series="series.lat" :format="fmtLatency" />
-          <Chart title="国内 → 这台节点 · 丢包率" :series="series.loss" :format="fmtPct" :max="100" />
+          <Chart :title="t('国内 → 这台节点 · 延迟（24 小时）')" :series="series.lat" :format="fmtLatency" />
+          <Chart :title="t('国内 → 这台节点 · 丢包率')" :series="series.loss" :format="fmtPct" :max="100" />
         </div>
-        <p class="small muted note">结论为“疑似”：连续 3 轮异常才判定，可能是封锁，也可能是运营商故障或路由问题；探针自身网络异常的轮次不计。</p>
+        <p class="small muted note">{{ t('结论为“疑似”：连续 3 轮异常才判定，可能是封锁，也可能是运营商故障或路由问题；探针自身网络异常的轮次不计。') }}</p>
       </template>
     </template>
   </section>

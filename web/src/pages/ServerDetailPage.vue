@@ -23,6 +23,7 @@ import TrafficCard from '../components/TrafficCard.vue'
 import UnlockCard from '../components/UnlockCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
+import { t } from '../i18n'
 import { isLive, issues, type LiveSample } from '../metrics'
 import { alertsOn, isViewer, serverById, state } from '../store'
 
@@ -50,19 +51,19 @@ const tabs = computed<Tab[]>(() => {
   const d = liveServer.value ?? v
   const pending = v.status === 'pending'
   // 测速与国内可达性并入“网络”页（原“流量”，修订第 179 条）
-  const out: Tab[] = [{ key: 'monitor', name: '监控' }, { key: 'traffic', name: '网络' }]
+  const out: Tab[] = [{ key: 'monitor', name: t('监控') }, { key: 'traffic', name: t('网络') }]
   const stopped = (d.containers_missing?.length ?? 0) + (d.proxies_missing?.length ?? 0)
   if (d.latest?.containers?.length || d.latest?.proxies?.length || stopped) {
-    out.push({ key: 'apps', name: '容器与代理', dot: stopped > 0 })
+    out.push({ key: 'apps', name: t('容器与代理'), dot: stopped > 0 })
   }
   if (!isViewer.value && (d.latest?.ports || d.latest?.firewall)) {
     const fw = d.latest?.firewall
-    const weak = !!fw && (!fw.tools.some((t) => t.active && t.name !== 'fail2ban') || fw.tools.some((t) => t.active && t.policy === 'allow'))
-    out.push({ key: 'security', name: '安全', dot: weak })
+    const weak = !!fw && (!fw.tools.some((x) => x.active && x.name !== 'fail2ban') || fw.tools.some((x) => x.active && x.policy === 'allow'))
+    out.push({ key: 'security', name: t('安全'), dot: weak })
   }
   if (!pending && alertsOn.value) {
     const n = v.alerts.length
-    out.push({ key: 'alerts', name: '告警', badge: n || undefined, badgeLevel: v.alerts.some((a) => a.severity === 'critical') ? 'bad' : 'warn' })
+    out.push({ key: 'alerts', name: t('告警'), badge: n || undefined, badgeLevel: v.alerts.some((a) => a.severity === 'critical') ? 'bad' : 'warn' })
   }
   return out
 })
@@ -70,12 +71,12 @@ const tabs = computed<Tab[]>(() => {
 // 旧地址 ?tab=network 并入“网络”页（修订第 179 条）
 const tab = computed<TabKey>(() => {
   const q = route.query.tab === 'network' ? 'traffic' : route.query.tab
-  return tabs.value.find((t) => t.key === q)?.key ?? 'monitor'
+  return tabs.value.find((x) => x.key === q)?.key ?? 'monitor'
 })
 // 切换标签（修订第 184 条）：页面已滚过标签栏时，回到标签栏（紧贴吸顶的顶栏之下），而不是停在新页内容的中间或跳回顶端
 const tabsEl = ref<HTMLElement | null>(null)
-function setTab(t: TabKey) {
-  router.replace({ query: { ...route.query, tab: t === 'monitor' ? undefined : t } })
+function setTab(k: TabKey) {
+  router.replace({ query: { ...route.query, tab: k === 'monitor' ? undefined : k } })
   const el = tabsEl.value
   if (!el) return
   const top = (document.querySelector('.topbar')?.clientHeight ?? 0) + 8
@@ -164,7 +165,7 @@ const itemNames: Record<string, string> = {
   processes: '进程', conns: '连接', ports: '端口', extra: '扩展指标',
 }
 const collectErrors = computed(() =>
-  (liveServer.value?.latest?.collect_errors ?? []).map((e) => ({ item: itemNames[e.item] ?? e.item, message: e.message })),
+  (liveServer.value?.latest?.collect_errors ?? []).map((e) => ({ item: itemNames[e.item] ? t(itemNames[e.item]) : e.item, message: e.message })),
 )
 
 // ---- 历史曲线 ----
@@ -211,29 +212,29 @@ const charts = computed(() => [
   {
     title: 'CPU', max: 100, format: (v: number) => `${v.toFixed(v < 10 ? 1 : 0)}%`,
     series: hasData((p) => p.steal ?? p.iowait)
-      ? [line('使用率', (p) => p.cpu), line('被抢占', (p) => p.steal), line('IO 等待', (p) => p.iowait)]
-      : coarse.value ? [line('平均', (p) => p.cpu), line('峰值', (p) => p.cpu_max)] : [line('使用率', (p) => p.cpu)],
+      ? [line(t('使用率'), (p) => p.cpu), line(t('被抢占'), (p) => p.steal), line(t('IO 等待'), (p) => p.iowait)]
+      : coarse.value ? [line(t('平均'), (p) => p.cpu), line(t('峰值'), (p) => p.cpu_max)] : [line(t('使用率'), (p) => p.cpu)],
   },
   {
-    title: '内存', max: 100, format: (v: number) => `${Math.round(v)}%`,
-    series: [line('内存', (p) => (p.mem_total ? (p.mem_used / p.mem_total) * 100 : null))],
+    title: t('内存'), max: 100, format: (v: number) => `${Math.round(v)}%`,
+    series: [line(t('内存'), (p) => (p.mem_total ? (p.mem_used / p.mem_total) * 100 : null))],
   },
   {
-    title: '网络', format: (v: number) => fmtBytes(v, true),
-    series: [line('下行', (p) => p.rx_speed), line('上行', (p) => p.tx_speed)],
+    title: t('网络'), format: (v: number) => fmtBytes(v, true),
+    series: [line(t('下行'), (p) => p.rx_speed), line(t('上行'), (p) => p.tx_speed)],
   },
   {
-    title: '磁盘 IO', format: (v: number) => fmtBytes(v, true),
-    series: [line('读', (p) => p.disk_read), line('写', (p) => p.disk_write)],
+    title: t('磁盘 IO'), format: (v: number) => fmtBytes(v, true),
+    series: [line(t('读'), (p) => p.disk_read), line(t('写'), (p) => p.disk_write)],
   },
   {
-    title: '负载（1 分钟）', format: (v: number) => v.toFixed(v < 10 ? 2 : 0),
+    title: t('负载（1 分钟）'), format: (v: number) => v.toFixed(v < 10 ? 2 : 0),
     series: [line('Load1', (p) => p.load1)],
   },
   ...(hasData((p) => p.tcp)
     ? [{
-        title: 'TCP 连接数', format: (v: number) => String(Math.round(v)),
-        series: coarse.value ? [line('平均', (p) => p.tcp), line('峰值', (p) => p.tcp_max)] : [line('TCP', (p) => p.tcp)],
+        title: t('TCP 连接数'), format: (v: number) => String(Math.round(v)),
+        series: coarse.value ? [line(t('平均'), (p) => p.tcp), line(t('峰值'), (p) => p.tcp_max)] : [line('TCP', (p) => p.tcp)],
       }]
     : []),
 ])
@@ -242,24 +243,24 @@ const charts = computed(() => [
 <template>
   <main class="page">
     <div class="nav-row">
-      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />仪表板</RouterLink>
+      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />{{ t('仪表板') }}</RouterLink>
       <div v-if="s && !isViewer" class="actions-row">
-        <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary setup-only"><Icon name="terminal" />{{ s.status === 'pending' ? '安装命令' : '重新安装' }}</RouterLink>
-        <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary" title="编辑"><Icon name="edit" /><span class="btn-text">编辑</span></RouterLink>
+        <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary setup-only"><Icon name="terminal" />{{ s.status === 'pending' ? t('安装命令') : t('重新安装') }}</RouterLink>
+        <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary" :title="t('编辑')"><Icon name="edit" /><span class="btn-text">{{ t('编辑') }}</span></RouterLink>
       </div>
     </div>
 
-    <p v-if="!state.loaded" class="muted">加载中…</p>
-    <p v-else-if="!s" class="muted">节点不存在或已删除。<RouterLink to="/">返回列表</RouterLink></p>
+    <p v-if="!state.loaded" class="muted">{{ t('加载中…') }}</p>
+    <p v-else-if="!s" class="muted">{{ t('节点不存在或已删除。') }}<RouterLink to="/">{{ t('返回列表') }}</RouterLink></p>
 
     <template v-else>
       <div v-if="s.status === 'pending'" class="banner warn">
-        该节点尚未安装 Agent。<RouterLink v-if="!isViewer" :to="`/servers/${s.id}/install`">查看安装命令</RouterLink>
+        {{ t('该节点尚未安装 Agent。') }}<RouterLink v-if="!isViewer" :to="`/servers/${s.id}/install`">{{ t('查看安装命令') }}</RouterLink>
       </div>
       <!-- 只在离线 / 未知时提示；资源与流量的问题见下方健康摘要，不重复显示（修订第 177 条） -->
       <div v-else-if="s.status !== 'online' && problems.length" class="banner" :class="{ warn: problems[0].level === 'warn' }">
         {{ problems.map((p) => p.text).join(' · ') }}
-        <template v-if="s.status === 'offline' && s.last_seen_at">，最后上报 {{ fmtTime(s.last_seen_at) }}</template>
+        <template v-if="s.status === 'offline' && s.last_seen_at">{{ t('，最后上报 {time}', { time: fmtTime(s.last_seen_at) }) }}</template>
       </div>
 
       <!-- 静音与维护（设计 16.6） -->
@@ -272,10 +273,10 @@ const charts = computed(() => [
       <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 分页（修订第 172 条）：概况与健康摘要之下按主题分页，地址带 ?tab=，刷新与分享后保持；未打开的页不加载 -->
-      <nav ref="tabsEl" class="tabs" role="tablist" aria-label="节点详情">
-        <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ active: tab === t.key }"
-          @click="setTab(t.key)">
-          {{ t.name }}<span v-if="t.badge" class="badge num" :class="t.badgeLevel">{{ t.badge }}</span><i v-else-if="t.dot" class="dot" />
+      <nav ref="tabsEl" class="tabs" role="tablist" :aria-label="t('节点详情')">
+        <button v-for="tb in tabs" :key="tb.key" type="button" role="tab" :aria-selected="tab === tb.key" :class="{ active: tab === tb.key }"
+          @click="setTab(tb.key)">
+          {{ tb.name }}<span v-if="tb.badge" class="badge num" :class="tb.badgeLevel">{{ tb.badge }}</span><i v-else-if="tb.dot" class="dot" />
         </button>
       </nav>
 
@@ -293,24 +294,24 @@ const charts = computed(() => [
           </section>
           <!-- 部分采集项失败：其余指标照常显示（设计 43.5） -->
           <section v-if="collectErrors.length" class="section collect-errors small">
-            <strong>部分指标本轮未采集到</strong>
+            <strong>{{ t('部分指标本轮未采集到') }}</strong>
             <ul>
               <li v-for="(e, i) in collectErrors" :key="i"><span class="muted">{{ e.item }}</span>{{ e.message }}</li>
             </ul>
           </section>
         </template>
-        <p v-else-if="s.status !== 'pending'" class="muted section">节点离线，不显示实时数值；历史曲线见下方。</p>
+        <p v-else-if="s.status !== 'pending'" class="muted section">{{ t('节点离线，不显示实时数值；历史曲线见下方。') }}</p>
 
         <!-- 历史曲线（设计 11.2、41.5） -->
         <section class="section">
           <div class="section-head">
-            <h3>历史</h3>
-            <div class="segmented" role="group" aria-label="时间范围">
+            <h3>{{ t('历史') }}</h3>
+            <div class="segmented" role="group" :aria-label="t('时间范围')">
               <button v-for="r in ranges" :key="r" type="button" :class="{ active: range === r }" @click="range = r">{{ r.toUpperCase() }}</button>
             </div>
           </div>
           <p v-if="historyError" class="banner">{{ historyError }}</p>
-          <p v-else-if="history && !pts.length" class="muted">这个时间范围内还没有数据。</p>
+          <p v-else-if="history && !pts.length" class="muted">{{ t('这个时间范围内还没有数据。') }}</p>
           <div v-else class="charts">
             <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
           </div>

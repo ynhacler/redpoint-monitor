@@ -4,6 +4,7 @@
 import { computed, ref } from 'vue'
 import { errorText, forgetProxies, type ServerView } from '../api'
 import { fmtTime } from '../format'
+import { t } from '../i18n'
 
 const props = defineProps<{ server: ServerView }>()
 const proxies = computed(() => props.server.latest?.proxies ?? [])
@@ -26,7 +27,7 @@ async function forget(name: string) {
     await forgetProxies(props.server.id, name)
     forgotten.value = new Set([...forgotten.value, name])
   } catch (e) {
-    error.value = errorText(e, '操作失败')
+    error.value = errorText(e, t('操作失败'))
   }
 }
 
@@ -38,41 +39,41 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
 <template>
   <section class="panel proxies">
     <div class="head">
-      <h3>代理</h3>
-      <span class="muted small">仅管理员可见</span>
+      <h3>{{ t('代理') }}</h3>
+      <span class="muted small">{{ t('仅管理员可见') }}</span>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
     <ul v-if="missing.length" class="missing">
       <li v-for="m in missing" :key="m.name">
-        <span class="tag warn">没有运行</span>
+        <span class="tag warn">{{ t('没有运行') }}</span>
         <strong>{{ names[m.name] ?? m.name }}</strong>
-        <span class="muted small">{{ fmtTime(m.since) }} 起</span>
-        <button type="button" class="text small" title="主动停用或卸载时点这里" @click="forget(m.name)">不再提醒</button>
+        <span class="muted small">{{ t('{time} 起', { time: fmtTime(m.since) }) }}</span>
+        <button type="button" class="text small" :title="t('主动停用或卸载时点这里')" @click="forget(m.name)">{{ t('不再提醒') }}</button>
       </li>
     </ul>
     <div v-for="p in proxies" :key="p.name" class="proxy">
       <div class="proxy-head">
-        <strong>{{ names[p.name] ?? p.name }}</strong>
+        <strong>{{ names[p.name] ? t(names[p.name]) : p.name }}</strong>
         <span class="tag" :class="p.running ? (hasDown(p) ? 'warn' : 'on') : 'off'">
-          {{ p.running ? (hasDown(p) ? '运行中 · 有端口没在监听' : (p.name === 'wireguard' ? `${p.procs} 个接口` : '运行中')) : '已安装 · 未运行' }}
+          {{ p.running ? (hasDown(p) ? t('运行中 · 有端口没在监听') : (p.name === 'wireguard' ? t('{n} 个接口', { n: p.procs }) : t('运行中'))) : t('已安装 · 未运行') }}
         </span>
         <span v-if="p.config" class="muted small path">{{ p.config }}</span>
       </div>
-      <p v-if="p.config_no === 'unreadable'" class="muted small note">配置只有 root 可读：只能确认是否在运行，看不到协议与端口。</p>
-      <p v-else-if="p.config_no === 'invalid'" class="muted small note">配置格式无法识别。</p>
-      <p v-else-if="!p.inbounds?.length && p.name !== 'x-ui'" class="muted small note">没有找到配置或入站。</p>
+      <p v-if="p.config_no === 'unreadable'" class="muted small note">{{ t('配置只有 root 可读：只能确认是否在运行，看不到协议与端口。') }}</p>
+      <p v-else-if="p.config_no === 'invalid'" class="muted small note">{{ t('配置格式无法识别。') }}</p>
+      <p v-else-if="!p.inbounds?.length && p.name !== 'x-ui'" class="muted small note">{{ t('没有找到配置或入站。') }}</p>
       <ul v-if="p.inbounds?.length" class="inbounds">
         <li v-for="(i, k) in p.inbounds" :key="k">
-          <span class="proto">{{ protoNames[i.protocol] ?? i.protocol }}</span>
+          <span class="proto">{{ protoNames[i.protocol] ? t(protoNames[i.protocol]) : i.protocol }}</span>
           <span class="num">{{ i.port }}/{{ i.network ?? 'tcp' }}</span>
           <span v-if="i.transport" class="muted small">{{ i.transport }}</span>
           <span v-if="i.security && i.security !== 'none'" class="muted small">{{ i.security === 'reality' ? 'Reality' : i.security.toUpperCase() }}</span>
-          <span v-if="i.local" class="tag off">仅本机</span>
-          <span class="tag" :class="i.listening ? 'on' : (i.local || !p.running ? 'off' : 'bad')">{{ i.listening ? '监听中' : '未监听' }}</span>
+          <span v-if="i.local" class="tag off">{{ t('仅本机') }}</span>
+          <span class="tag" :class="i.listening ? 'on' : (i.local || !p.running ? 'off' : 'bad')">{{ i.listening ? t('监听中') : t('未监听') }}</span>
         </li>
       </ul>
     </div>
-    <p class="muted small note">按进程名识别，协议与端口来自可读的配置文件；不读取也不上传任何密钥、UUID 或密码。</p>
+    <p class="muted small note">{{ t('按进程名识别，协议与端口来自可读的配置文件；不读取也不上传任何密钥、UUID 或密码。') }}</p>
   </section>
 </template>
 

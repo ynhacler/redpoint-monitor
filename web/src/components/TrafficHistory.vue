@@ -5,6 +5,7 @@ import {
   errorText, getTrafficAdjustments, getTrafficMonthly, type ServerView, type TrafficAdjustment, type TrafficCycle,
 } from '../api'
 import { DASH, fmtDateTime, fmtPct, fmtTraffic } from '../format'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 import EmptyState from './EmptyState.vue'
 
@@ -29,7 +30,7 @@ async function load() {
     ])
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '流量记录加载失败')
+    error.value = errorText(e, t('流量记录加载失败'))
   } finally {
     loaded.value = true
   }
@@ -53,11 +54,11 @@ const shownCycles = computed(() => cycles.value.filter((c, i) => i === 0 || c.rx
 <template>
   <div class="panel history">
     <div class="top">
-      <h3>流量记录</h3>
+      <h3>{{ t('流量记录') }}</h3>
       <div v-if="!isViewer" class="segmented" role="tablist">
-        <button type="button" role="tab" :class="{ active: tab === 'cycles' }" @click="tab = 'cycles'">按计费周期</button>
+        <button type="button" role="tab" :class="{ active: tab === 'cycles' }" @click="tab = 'cycles'">{{ t('按计费周期') }}</button>
         <button type="button" role="tab" :class="{ active: tab === 'adjustments' }" @click="tab = 'adjustments'">
-          校准记录<template v-if="adjustments.length">（{{ adjustments.length }}）</template>
+          {{ t('校准记录') }}<template v-if="adjustments.length">（{{ adjustments.length }}）</template>
         </button>
       </div>
     </div>
@@ -68,32 +69,32 @@ const shownCycles = computed(() => cycles.value.filter((c, i) => i === 0 || c.rx
         <li v-for="(c, i) in shownCycles" :key="c.cycle_start">
           <div class="row-main">
             <span class="num">{{ range(c) }}</span>
-            <span v-if="i === 0" class="tag">本周期</span>
+            <span v-if="i === 0" class="tag">{{ t('本周期') }}</span>
           </div>
           <div class="row-facts small">
-            <span><span class="muted">计费</span> <b class="num">{{ fmt(c.used) }}</b>
+            <span><span class="muted">{{ t('计费') }}</span> <b class="num">{{ fmt(c.used) }}</b>
               <span v-if="c.limit" class="muted limit">/ {{ fmt(c.limit) }} · {{ fmtPct((c.used / c.limit) * 100) }}</span>
             </span>
-            <span><span class="muted">入</span> <span class="num">{{ fmt(c.rx) }}</span></span>
-            <span><span class="muted">出</span> <span class="num">{{ fmt(c.tx) }}</span></span>
-            <span v-if="c.adjustment"><span class="muted">校准</span> <span class="num">{{ signed(c.adjustment) }}</span></span>
+            <span><span class="muted">{{ t('入') }}</span> <span class="num">{{ fmt(c.rx) }}</span></span>
+            <span><span class="muted">{{ t('出') }}</span> <span class="num">{{ fmt(c.tx) }}</span></span>
+            <span v-if="c.adjustment"><span class="muted">{{ t('校准') }}</span> <span class="num">{{ signed(c.adjustment) }}</span></span>
           </div>
         </li>
       </ul>
-      <p class="muted small note">历史周期按当前的计费模式、系数与额度计算（这些设置没有保存历史版本）。</p>
+      <p class="muted small note">{{ t('历史周期按当前的计费模式、系数与额度计算（这些设置没有保存历史版本）。') }}</p>
     </template>
     <template v-else-if="loaded">
-      <EmptyState v-if="!adjustments.length" text="还没有校准过。在上方点击“校准已用流量”，填写服务商面板显示的数值。" />
+      <EmptyState v-if="!adjustments.length" :text="t('还没有校准过。在上方点击“校准已用流量”，填写服务商面板显示的数值。')" />
       <ul v-else class="list">
         <li v-for="a in adjustments" :key="a.id">
           <div class="row-main">
             <span class="num">{{ fmtDateTime(a.created_at) }}</span>
-            <span class="muted small">周期 {{ a.cycle_start }} 起</span>
+            <span class="muted small">{{ t('周期 {date} 起', { date: a.cycle_start }) }}</span>
           </div>
           <div class="row-facts small">
-            <span><span class="muted">服务商</span> <b class="num">{{ fmt(a.reported_bytes) }}</b></span>
-            <span><span class="muted">统计</span> <span class="num">{{ fmt(a.measured_bytes) }}</span></span>
-            <span><span class="muted">偏差</span> <span class="num">{{ signed(a.adjustment_bytes) }}</span>
+            <span><span class="muted">{{ t('服务商') }}</span> <b class="num">{{ fmt(a.reported_bytes) }}</b></span>
+            <span><span class="muted">{{ t('统计') }}</span> <span class="num">{{ fmt(a.measured_bytes) }}</span></span>
+            <span><span class="muted">{{ t('偏差') }}</span> <span class="num">{{ signed(a.adjustment_bytes) }}</span>
               <span v-if="a.measured_bytes" class="muted">（{{ a.adjustment_bytes >= 0 ? '+' : '' }}{{ ((a.adjustment_bytes / a.measured_bytes) * 100).toFixed(1) }}%）</span>
             </span>
             <span v-if="a.note" class="muted">{{ a.note }}</span>

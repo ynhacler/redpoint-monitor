@@ -59,9 +59,10 @@ dev-web: ## Run Vite dev server on :5173 (proxies /api to the panel on $(LISTEN)
 test: ## Run Go tests
 	go test ./...
 
-lint: web/node_modules/.package-lock.json ## go vet + Web type-check + exported-comment checks
+lint: web/node_modules/.package-lock.json ## go vet + Web type-check + exported-comment checks + i18n keys (design 52.2)
 	go vet ./...
 	$(MAKE) check-comments
+	python3 scripts/check_i18n.py
 	cd web && npx vue-tsc --noEmit
 
 REVIVE_VERSION := v1.7.0

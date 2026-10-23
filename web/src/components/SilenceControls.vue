@@ -4,6 +4,7 @@
 import { computed, ref } from 'vue'
 import { createSilence, endSilence, errorText, type ServerView, type Silence } from '../api'
 import { fmtTime } from '../format'
+import { t } from '../i18n'
 import { refresh } from '../store'
 
 const props = defineProps<{
@@ -38,9 +39,9 @@ const start = (kind: Silence['kind'], duration: '' | '1h' | '8h' | '24h') =>
   run(() => createSilence({ kind, scope_type: 'server', scope_id: String(props.server.id), duration, reason: reason.value.trim() }))
 const stop = (x: Silence) => run(() => endSilence(x.id))
 
-const until = (x: Silence) => (x.ends_at ? `至 ${fmtTime(x.ends_at)}` : '直到手动恢复')
+const until = (x: Silence) => (x.ends_at ? t('至 {time}', { time: fmtTime(x.ends_at) }) : t('直到手动恢复'))
 const scopeText = (x: Silence) =>
-  x.scope_type === 'server' ? '' : x.scope_type === 'group' ? `（分组 ${x.scope_id}）` : x.scope_type === 'global' ? '（全部节点）' : ''
+  x.scope_type === 'server' ? '' : x.scope_type === 'group' ? t('（分组 {name}）', { name: x.scope_id }) : x.scope_type === 'global' ? t('（全部节点）') : ''
 const m = computed(() => props.server.maintenance)
 const mu = computed(() => props.server.muted)
 </script>
@@ -48,28 +49,28 @@ const mu = computed(() => props.server.muted)
 <template>
   <div class="silence">
     <div class="buttons">
-      <button v-if="!mu" type="button" class="btn secondary" :disabled="busy" @click="menu = menu === 'mute' ? '' : 'mute'">静音告警</button>
-      <button v-if="!m" type="button" class="btn secondary" :disabled="busy" @click="menu = menu === 'maintenance' ? '' : 'maintenance'">维护模式</button>
+      <button v-if="!mu" type="button" class="btn secondary" :disabled="busy" @click="menu = menu === 'mute' ? '' : 'mute'">{{ t('静音告警') }}</button>
+      <button v-if="!m" type="button" class="btn secondary" :disabled="busy" @click="menu = menu === 'maintenance' ? '' : 'maintenance'">{{ t('维护模式') }}</button>
     </div>
 
     <div v-if="menu" class="menu panel">
       <p class="small muted">
-        {{ menu === 'mute' ? '静音期间照常记录告警，但不发送通知、不计入“需要关注”。' : '维护期间继续采集与保存数据，不产生任何告警；进行中的告警会结束。' }}
+        {{ menu === 'mute' ? t('静音期间照常记录告警，但不发送通知、不计入“需要关注”。') : t('维护期间继续采集与保存数据，不产生任何告警；进行中的告警会结束。') }}
       </p>
-      <input v-model="reason" maxlength="200" :placeholder="menu === 'mute' ? '原因（可选），如：迁移中' : '原因（可选），如：升级内核'" />
+      <input v-model="reason" maxlength="200" :placeholder="menu === 'mute' ? t('原因（可选），如：迁移中') : t('原因（可选），如：升级内核')" />
       <div class="choices">
-        <button v-for="d in durations" :key="d.v" type="button" class="secondary" :disabled="busy" @click="start(menu as Silence['kind'], d.v)">{{ d.t }}</button>
-        <button type="button" class="text" @click="menu = ''">取消</button>
+        <button v-for="d in durations" :key="d.v" type="button" class="secondary" :disabled="busy" @click="start(menu as Silence['kind'], d.v)">{{ t(d.t) }}</button>
+        <button type="button" class="text" @click="menu = ''">{{ t('取消') }}</button>
       </div>
     </div>
 
     <div v-if="m" class="banner info">
-      <span><b>维护中</b> · {{ until(m) }}<template v-if="m.reason"> · {{ m.reason }}</template> · 不产生告警</span>
-      <button type="button" class="text" :disabled="busy" @click="stop(m)">结束维护</button>
+      <span><b>{{ t('维护中') }}</b> · {{ until(m) }}<template v-if="m.reason"> · {{ m.reason }}</template> · {{ t('不产生告警') }}</span>
+      <button type="button" class="text" :disabled="busy" @click="stop(m)">{{ t('结束维护') }}</button>
     </div>
     <div v-if="mu" class="banner info">
-      <span><b>告警已静音</b>{{ scopeText(mu) }} · {{ until(mu) }}<template v-if="mu.reason"> · {{ mu.reason }}</template></span>
-      <button type="button" class="text" :disabled="busy" @click="stop(mu)">取消静音</button>
+      <span><b>{{ t('告警已静音') }}</b>{{ scopeText(mu) }} · {{ until(mu) }}<template v-if="mu.reason"> · {{ mu.reason }}</template></span>
+      <button type="button" class="text" :disabled="busy" @click="stop(mu)">{{ t('取消静音') }}</button>
     </div>
     <p v-if="error" class="small err">{{ error }}</p>
   </div>

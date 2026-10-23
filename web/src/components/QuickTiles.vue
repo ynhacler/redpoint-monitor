@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { fmtBytes, fmtBytesShort, fmtPct } from '../format'
+import { t } from '../i18n'
 import { cpu, diskSummary, gaugeLevel, mem, rx, tx, type LiveSample } from '../metrics'
 import Chart, { type Series } from './Chart.vue'
 import Qty from './Qty.vue'
@@ -29,8 +30,8 @@ const color = (lv: string) => (lv === 'ok' ? 'var(--accent)' : `var(--${lv})`)
 const pct1 = (v: number | undefined) => (v == null ? '—' : v >= 10 ? String(Math.round(v * 10) / 10) : v.toFixed(1))
 
 const speedSeries = computed<Series[]>(() => [
-  { name: '下行', data: props.samples.map((p) => [p.ts * 1000, p.rx]) },
-  { name: '上行', data: props.samples.map((p) => [p.ts * 1000, p.tx]) },
+  { name: t('下行'), data: props.samples.map((p) => [p.ts * 1000, p.rx]) },
+  { name: t('上行'), data: props.samples.map((p) => [p.ts * 1000, p.tx]) },
 ])
 const minutes = computed(() => {
   const n = props.samples.length
@@ -42,49 +43,49 @@ const minutes = computed(() => {
 <template>
   <div class="quick">
     <div class="tile spark-tile">
-      <div class="label"><Icon name="cpu" :size="15" />CPU<span class="extra num">{{ r.cpu.cores }} 核</span></div>
+      <div class="label"><Icon name="cpu" :size="15" />CPU<span class="extra num">{{ t('{n} 核', { n: r.cpu.cores }) }}</span></div>
       <div class="big" :class="cpuLv"><Qty :v="pct1(cpu(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.cpu)" :color="color(cpuLv)" :height="36" />
     </div>
 
     <div class="tile">
-      <div class="label"><Icon name="hard-drive" :size="15" />磁盘<span v-if="disk && disk.level !== 'ok' && gaugeLevel(disk.usage, 'disk') !== disk.level" class="extra" :class="disk.level">{{ disk.fullest.mount }} {{ Math.round(disk.fullest.usage) }}%</span><span v-else-if="disk && disk.count > 1" class="extra">{{ disk.count }} 块</span></div>
+      <div class="label"><Icon name="hard-drive" :size="15" />{{ t('磁盘') }}<span v-if="disk && disk.level !== 'ok' && gaugeLevel(disk.usage, 'disk') !== disk.level" class="extra" :class="disk.level">{{ disk.fullest.mount }} {{ Math.round(disk.fullest.usage) }}%</span><span v-else-if="disk && disk.count > 1" class="extra">{{ t('{n} 块', { n: disk.count }) }}</span></div>
       <div class="ring-row">
         <div>
           <div class="big" :class="diskLv"><Qty :v="disk ? Math.round(disk.usage) : '—'" u="%" /></div>
           <div class="muted small num nowrap">{{ fmtBytesShort(disk?.used) }} / {{ fmtBytesShort(disk?.total) }}</div>
         </div>
-        <Ring class="disk-ring" :pct="disk?.usage" :level="diskLv" :size="56" tinted bare label="磁盘" />
+        <Ring class="disk-ring" :pct="disk?.usage" :level="diskLv" :size="56" tinted bare :label="t('磁盘')" />
       </div>
     </div>
 
     <div class="tile spark-tile">
-      <div class="label"><Icon name="layers" :size="15" />内存<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
+      <div class="label"><Icon name="layers" :size="15" />{{ t('内存') }}<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
       <div class="big" :class="memLv"><Qty :v="pct1(mem(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.mem)" :color="color(memLv)" :height="36" />
     </div>
 
     <div class="tile">
-      <div class="label"><Icon name="radio" :size="15" />连接与进程</div>
+      <div class="label"><Icon name="radio" :size="15" />{{ t('连接与进程') }}</div>
       <div class="counts num">
         <div><b>{{ r.conns?.tcp ?? '—' }}</b><span><i style="background: var(--accent)" />TCP</span></div>
         <div><b>{{ r.conns?.udp ?? '—' }}</b><span><i style="background: var(--series-2)" />UDP</span></div>
-        <div><b>{{ r.processes?.total ?? '—' }}</b><span><i style="background: var(--ok)" />进程</span></div>
+        <div><b>{{ r.processes?.total ?? '—' }}</b><span><i style="background: var(--ok)" />{{ t('进程') }}</span></div>
       </div>
-      <div v-if="!r.conns && !r.processes" class="muted small foot">升级 Agent 后显示</div>
+      <div v-if="!r.conns && !r.processes" class="muted small foot">{{ t('升级 Agent 后显示') }}</div>
       <div v-else class="muted small num foot">
         <template v-if="r.conns">TIME_WAIT {{ r.conns.time_wait }}</template>
         <template v-if="r.conns && r.processes"> · </template>
-        <template v-if="r.processes">运行 {{ r.processes.running }}</template>
+        <template v-if="r.processes">{{ t('运行 {n}', { n: r.processes.running }) }}</template>
       </div>
     </div>
 
     <div class="tile speed">
       <div class="speed-head">
-        <div class="label" :title="minutes ? `最近 ${minutes} 分钟` : ''"><Icon name="pulse" :size="15" />上传下载速率</div>
+        <div class="label" :title="minutes ? t('最近 {n} 分钟', { n: minutes }) : ''"><Icon name="pulse" :size="15" />{{ t('上传下载速率') }}</div>
         <span class="values num small">
-          <span><i style="background: var(--accent)" />下载 {{ fmtBytes(rx(server), true) }}</span>
-          <span><i style="background: var(--ok)" />上传 {{ fmtBytes(tx(server), true) }}</span>
+          <span><i style="background: var(--accent)" />{{ t('下载') }} {{ fmtBytes(rx(server), true) }}</span>
+          <span><i style="background: var(--ok)" />{{ t('上传') }} {{ fmtBytes(tx(server), true) }}</span>
         </span>
       </div>
       <Chart title="" :series="speedSeries" :format="(v: number) => fmtBytes(v, true)" hide-legend />

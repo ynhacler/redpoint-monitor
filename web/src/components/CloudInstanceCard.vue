@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { applyCloudExpire, errorText, listCloudInstances, type CloudInstance, type ServerView } from '../api'
 import { fmtBytes, fmtDate, fmtTime } from '../format'
 import { refresh } from '../store'
+import { t } from '../i18n'
 import UsageBar from './UsageBar.vue'
 
 const props = defineProps<{ server: ServerView }>()
@@ -39,7 +40,7 @@ async function apply(i: CloudInstance) {
   msg.value = ''
   try {
     const r = await applyCloudExpire(i.id)
-    msg.value = `已把节点到期日设为 ${r.expire_date}`
+    msg.value = t('已把节点到期日设为 {date}', { date: r.expire_date })
     await refresh()
   } catch (e) {
     msg.value = errorText(e)
@@ -54,23 +55,23 @@ const updated = computed(() => Math.max(0, ...insts.value.map((i) => i.updated_a
 <template>
   <section v-if="insts.length" class="panel cloud">
     <div class="head">
-      <h3>云厂商</h3>
-      <span class="small muted">同步于 {{ fmtTime(updated) }}</span>
+      <h3>{{ t('云厂商') }}</h3>
+      <span class="small muted">{{ t('同步于 {time}', { time: fmtTime(updated) }) }}</span>
     </div>
     <div v-for="i in insts" :key="i.id" class="inst">
       <div class="row">
-        <span><b>{{ providerNames[i.provider] ?? i.provider }}</b> · {{ i.account_name }}</span>
+        <span><b>{{ providerNames[i.provider] ? t(providerNames[i.provider]) : i.provider }}</b> · {{ i.account_name }}</span>
         <span class="small" :class="i.state.toLowerCase() === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
       </div>
-      <div class="small muted">{{ kindNames[i.kind] ?? i.kind }} · {{ i.region }} · {{ i.plan || '—' }} · {{ i.instance_id }}</div>
+      <div class="small muted">{{ kindNames[i.kind] ? t(kindNames[i.kind]) : i.kind }} · {{ i.region }} · {{ i.plan || '—' }} · {{ i.instance_id }}</div>
       <div v-if="i.expire_at" class="row small">
         <span :class="daysLeft(i) < 0 ? 'bad' : daysLeft(i) < 30 ? 'warn' : ''">
-          到期 {{ fmtDate(i.expire_at) }}（{{ daysLeft(i) >= 0 ? `${daysLeft(i)} 天后` : `已过期 ${-daysLeft(i)} 天` }}）
+          {{ t('到期') }} {{ t('{date}（{rel}）', { date: fmtDate(i.expire_at), rel: daysLeft(i) >= 0 ? t('{n} 天后', { n: daysLeft(i) }) : t('已过期 {n} 天', { n: -daysLeft(i) }) }) }}
         </span>
-        <button v-if="canApply(i)" type="button" class="secondary small" :disabled="busy" @click="apply(i)">写入节点到期日</button>
+        <button v-if="canApply(i)" type="button" class="secondary small" :disabled="busy" @click="apply(i)">{{ t('写入节点到期日') }}</button>
       </div>
       <div v-if="i.traffic_limit_bytes" class="traffic">
-        <div class="row small"><span>流量包（云厂商口径）</span>
+        <div class="row small"><span>{{ t('流量包（云厂商口径）') }}</span>
           <span class="num">{{ fmtBytes(i.traffic_used_bytes) }} / {{ fmtBytes(i.traffic_limit_bytes) }}</span></div>
         <UsageBar :pct="pct(i)" />
       </div>
