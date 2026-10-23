@@ -7,6 +7,7 @@ import { computed, ref } from 'vue'
 import { ApiError, errorText, refreshIPInfo, type IPInfo, type ServerView } from '../api'
 import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, periodNames } from '../format'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 import AgentUpgrade from './AgentUpgrade.vue'
 import Flag from './Flag.vue'
@@ -40,7 +41,7 @@ const virtNames: Record<string, string> = {
 }
 const virt = computed(() => {
   const v = r.value?.extra?.env?.virt
-  return v ? virtNames[v] ?? v : ''
+  return v ? (virtNames[v] ? t(virtNames[v]) : v) : ''
 })
 
 const facts = computed<Fact[]>(() => {
@@ -48,31 +49,31 @@ const facts = computed<Fact[]>(() => {
   const out: Fact[] = []
   const add = (f: Fact) => f.v && out.push(f) // 系统信息：有值才显示
   const asset = add
-  add({ k: '主机名', v: sys.value?.hostname || x.hostname || '' })
+  add({ k: t('主机名'), v: sys.value?.hostname || x.hostname || '' })
   add({ k: 'IPv4', v: x.ipv4 || x.expected_ipv4 || '', copy: true, mono: true })
   add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
-  add({ k: '内核', v: sys.value?.kernel || '', mono: true })
-  add({ k: '虚拟化', v: virt.value })
+  add({ k: t('内核'), v: sys.value?.kernel || '', mono: true })
+  add({ k: t('虚拟化'), v: virt.value })
   // ASN 与位置（设计 49，来自 ipinfo.io，需在“系统 → 监测”中打开）
   const ii = props.ipInfo ?? x.ip_info
   if (ii && ii.asn) {
     add({ k: 'ASN', v: `${ii.asn} ${ii.org}`.trim(), copy: true })
-    add({ k: 'IP 位置', v: [ii.city, ii.region !== ii.city ? ii.region : '', ii.country ? countryName(ii.country) : ''].filter(Boolean).join(', '),
+    add({ k: t('IP 位置'), v: [ii.city, ii.region !== ii.city ? ii.region : '', ii.country ? countryName(ii.country) : ''].filter(Boolean).join(', '),
       flag: ii.country })
   }
-  asset({ k: '供应商', v: x.provider })
-  asset({ k: '套餐', v: x.plan })
-  asset({ k: '带宽', v: x.bandwidth_mbps ? fmtBandwidth(x.bandwidth_mbps) : '' })
-  asset({ k: '国家 / 地区', v: x.country ? countryName(x.country) : '', flag: x.country })
-  asset({ k: '城市 / 机房', v: x.region })
-  asset({ k: '分组', v: x.group })
-  asset({ k: '续费', v: x.price_cents ? fmtPrice(x.price_cents, x.currency) + (x.billing_period ? ` / ${periodNames[x.billing_period]}` : '') : '' })
+  asset({ k: t('供应商'), v: x.provider })
+  asset({ k: t('套餐'), v: x.plan })
+  asset({ k: t('带宽'), v: x.bandwidth_mbps ? fmtBandwidth(x.bandwidth_mbps) : '' })
+  asset({ k: t('国家 / 地区'), v: x.country ? countryName(x.country) : '', flag: x.country })
+  asset({ k: t('城市 / 机房'), v: x.region })
+  asset({ k: t('分组'), v: x.group })
+  asset({ k: t('续费'), v: x.price_cents ? fmtPrice(x.price_cents, x.currency) + (x.billing_period ? ` / ${t(periodNames[x.billing_period] ?? '')}` : '') : '' })
   const d = expireDays.value
-  asset({ k: '到期', v: x.expire_date ? `${x.expire_date}（${d! >= 0 ? `${d} 天后` : `已过期 ${-d!} 天`}）` : '',
+  asset({ k: t('到期'), v: x.expire_date ? t('{date}（{rel}）', { date: x.expire_date, rel: d! >= 0 ? t('{n} 天后', { n: d }) : t('已过期 {n} 天', { n: -d! }) }) : '',
     tone: d == null ? '' : d <= 3 ? 'bad' : d <= 14 ? 'warn' : '' })
-  add({ k: '注册', v: x.enrolled_at ? fmtTime(x.enrolled_at) : '' })
-  add({ k: '最后上报', v: x.last_seen_at ? fmtTime(x.last_seen_at) : '' })
-  asset({ k: '备注', v: x.note, wide: true })
+  add({ k: t('注册'), v: x.enrolled_at ? fmtTime(x.enrolled_at) : '' })
+  add({ k: t('最后上报'), v: x.last_seen_at ? fmtTime(x.last_seen_at) : '' })
+  asset({ k: t('备注'), v: x.note, wide: true })
   return out
 })
 
@@ -89,7 +90,7 @@ async function lookupASN() {
     await refreshIPInfo(s.value.id) // 结果随节点详情的定时刷新显示
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) asnOff.value = true
-    else asnError.value = errorText(e, '查询失败')
+    else asnError.value = errorText(e, t('查询失败'))
   } finally {
     asnBusy.value = false
   }
@@ -98,7 +99,7 @@ async function lookupASN() {
 // 手机宽度（修订第 199 条）：信息块合成一行摘要，系统与资产默认收起，点“详细信息”展开
 const specLine = computed(() => [
   [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' '), sys.value?.arch,
-  r.value ? `${r.value.cpu.cores} 核` : '', r.value ? fmtBytesShort(r.value.memory.total) : '', diskTotal.value ? fmtBytesShort(diskTotal.value) : '',
+  r.value ? t('{n} 核', { n: r.value.cpu.cores }) : '', r.value ? fmtBytesShort(r.value.memory.total) : '', diskTotal.value ? fmtBytesShort(diskTotal.value) : '',
 ].filter(Boolean).join(' · '))
 const showFacts = ref(false)
 
@@ -121,17 +122,17 @@ const missingAssets = computed(() => {
 
 // 信息块（图标见 Icon.vue，设计 41.4.3）
 const tiles = computed<{ icon: IconName, label: string, value: string, extra?: string, tone?: string }[]>(() => [
-  { icon: 'list', label: '操作系统', value: [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' ') || DASH },
-  { icon: 'cpu', label: '架构', value: sys.value?.arch || DASH },
+  { icon: 'list', label: t('操作系统'), value: [sys.value?.os, sys.value?.os_version].filter(Boolean).join(' ') || DASH },
+  { icon: 'cpu', label: t('架构'), value: sys.value?.arch || DASH },
   {
-    icon: 'layers', label: '内存',
+    icon: 'layers', label: t('内存'),
     value: r.value ? fmtBytes(r.value.memory.total) : DASH,
     extra: r.value?.swap.total ? `Swap ${fmtBytesShort(r.value.swap.total)}` : '',
   },
   {
-    icon: 'hard-drive', label: '磁盘',
+    icon: 'hard-drive', label: t('磁盘'),
     value: diskTotal.value ? fmtBytes(diskTotal.value) : DASH,
-    extra: r.value && r.value.disk.length > 1 ? `挂载 ${r.value.disk.length}` : '',
+    extra: r.value && r.value.disk.length > 1 ? t('挂载 {n}', { n: r.value.disk.length }) : '',
   },
 ])
 </script>
@@ -152,22 +153,22 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
       <div v-if="sys?.cpu_model" class="tile wide">
         <Icon name="cpu" :size="18" />
         <div class="body">
-          <div class="label">处理器</div>
-          <div class="value" :title="sys.cpu_model"><span class="ellipsis">{{ sys.cpu_model }}</span><span v-if="r" class="extra">{{ r.cpu.cores }} 核</span></div>
+          <div class="label">{{ t('处理器') }}</div>
+          <div class="value" :title="sys.cpu_model"><span class="ellipsis">{{ sys.cpu_model }}</span><span v-if="r" class="extra">{{ t('{n} 核', { n: r.cpu.cores }) }}</span></div>
         </div>
       </div>
-      <div v-for="t in tiles" :key="t.label" class="tile" :class="t.tone">
-        <Icon :name="t.icon" :size="18" />
+      <div v-for="tl in tiles" :key="tl.label" class="tile" :class="tl.tone">
+        <Icon :name="tl.icon" :size="18" />
         <div class="body">
-          <div class="label">{{ t.label }}</div>
-          <div class="value num"><span class="ellipsis">{{ t.value }}</span><span v-if="t.extra" class="extra">{{ t.extra }}</span></div>
+          <div class="label">{{ tl.label }}</div>
+          <div class="value num"><span class="ellipsis">{{ tl.value }}</span><span v-if="tl.extra" class="extra">{{ tl.extra }}</span></div>
         </div>
       </div>
     </div>
 
     <p v-if="specLine" class="spec-line num">{{ specLine }}</p>
     <button type="button" class="text facts-toggle small" :aria-expanded="showFacts" @click="showFacts = !showFacts">
-      {{ showFacts ? '收起详细信息' : '详细信息' }}
+      {{ showFacts ? t('收起详细信息') : t('详细信息') }}
     </button>
     <!-- 系统与资产 -->
     <dl class="facts" :class="{ open: showFacts }">
@@ -180,8 +181,8 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
       <div v-for="f in facts" :key="f.k" class="fact" :class="{ wide: f.wide }">
         <dt>{{ f.k }}</dt>
         <dd :class="[f.tone, { mono: f.mono }]">
-          <button v-if="f.copy" type="button" class="copy" :title="copied === f.v ? '已复制' : '点击复制'" @click="copy(f.v)">
-            {{ f.v }}<span class="copied" :class="{ on: copied === f.v }">已复制</span>
+          <button v-if="f.copy" type="button" class="copy" :title="copied === f.v ? t('已复制') : t('点击复制')" @click="copy(f.v)">
+            {{ f.v }}<span class="copied" :class="{ on: copied === f.v }">{{ t('已复制') }}</span>
           </button>
           <template v-else><Flag v-if="f.flag" :code="f.flag" class="flag" />{{ f.v }}</template>
         </dd>
@@ -189,17 +190,17 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
       <div v-if="asnMissing" class="fact">
         <dt>ASN</dt>
         <dd>
-          <RouterLink v-if="asnOff" to="/monitor#ipinfo">未开启，去“系统 → 监测”打开</RouterLink>
+          <RouterLink v-if="asnOff" to="/monitor#ipinfo">{{ t('未开启，去“系统 → 监测”打开') }}</RouterLink>
           <template v-else>
             <span v-if="asnError || ipInfoNow?.error" class="muted small">{{ asnError || ipInfoNow?.error }} </span>
-            <button type="button" class="link" :disabled="asnBusy" @click="lookupASN">{{ asnBusy ? '查询中…' : '查询' }}</button>
+            <button type="button" class="link" :disabled="asnBusy" @click="lookupASN">{{ asnBusy ? t('查询中…') : t('查询') }}</button>
           </template>
         </dd>
       </div>
     </dl>
     <p v-if="missingAssets && !isViewer" class="more small" :class="{ open: showFacts }">
-      <RouterLink :to="`/servers/${s.id}/edit`">补充资产信息</RouterLink>
-      <span class="muted">（{{ missingAssets }} 项未填：供应商、价格、到期等用于费用与到期提醒）</span>
+      <RouterLink :to="`/servers/${s.id}/edit`">{{ t('补充资产信息') }}</RouterLink>
+      <span class="muted">{{ t('（{n} 项未填：供应商、价格、到期等用于费用与到期提醒）', { n: missingAssets }) }}</span>
     </p>
   </section>
 </template>

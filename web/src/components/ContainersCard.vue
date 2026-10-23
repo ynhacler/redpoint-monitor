@@ -5,6 +5,7 @@
 import { computed, ref, watch } from 'vue'
 import { errorText, forgetContainers, putContainerNames, type ServerView } from '../api'
 import { fmtBytes, fmtPct, fmtTime } from '../format'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 
 const props = defineProps<{ server: ServerView }>()
@@ -21,7 +22,7 @@ async function forget(label: string) {
     await forgetContainers(props.server.id, label)
     forgotten.value = new Set([...forgotten.value, label])
   } catch (e) {
-    error.value = errorText(e, '操作失败')
+    error.value = errorText(e, t('操作失败'))
   }
 }
 // 本地副本：保存后立即显示，不必等下一次刷新
@@ -49,7 +50,7 @@ async function save() {
     names.value = (await putContainerNames(props.server.id, next)).names
     editing.value = ''
   } catch (e) {
-    error.value = errorText(e, '保存失败')
+    error.value = errorText(e, t('保存失败'))
   } finally {
     saving.value = false
   }
@@ -61,42 +62,42 @@ const memPct = (used: number, limit?: number) => (limit ? Math.min(100, (used / 
 <template>
   <section class="panel containers">
     <div class="head">
-      <h3>容器</h3>
-      <span class="muted small">{{ containers.length }} 个运行中</span>
+      <h3>{{ t('容器') }}</h3>
+      <span class="muted small">{{ t('{n} 个运行中', { n: containers.length }) }}</span>
     </div>
     <p class="muted small note">
-      从 cgroup 读取（不连接 Docker），默认显示容器主进程名；重启按 CPU 计数归零检测，两次采样之间多次重启只计一次。{{ isViewer ? '' : '名字按容器 ID 保存，容器重建后需重新命名。' }}
+      {{ t('从 cgroup 读取（不连接 Docker），默认显示容器主进程名；重启按 CPU 计数归零检测，两次采样之间多次重启只计一次。') }}{{ isViewer ? '' : t('名字按容器 ID 保存，容器重建后需重新命名。') }}
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <ul v-if="missing.length" class="missing">
       <li v-for="m in missing" :key="m.label">
-        <span class="stopped">已停止</span>
+        <span class="stopped">{{ t('已停止') }}</span>
         <strong>{{ m.label }}</strong><span v-if="m.missing > 1" class="num"> ×{{ m.missing }}</span>
-        <span class="muted small">{{ fmtTime(m.since) }} 起</span>
-        <button v-if="!isViewer" type="button" class="text small" title="主动停止或缩容时点这里：以当前运行的容器为准" @click="forget(m.label)">不再提醒</button>
+        <span class="muted small">{{ t('{time} 起', { time: fmtTime(m.since) }) }}</span>
+        <button v-if="!isViewer" type="button" class="text small" :title="t('主动停止或缩容时点这里：以当前运行的容器为准')" @click="forget(m.label)">{{ t('不再提醒') }}</button>
       </li>
     </ul>
     <ul class="list">
       <li v-for="c in containers" :key="c.id">
         <div class="who">
           <form v-if="editing === c.id" class="rename" @submit.prevent="save">
-            <input v-model="draft" maxlength="40" :placeholder="c.command || c.id" aria-label="容器名称" autofocus />
-            <button type="submit" class="small" :disabled="saving">保存</button>
-            <button type="button" class="text small" @click="editing = ''">取消</button>
+            <input v-model="draft" maxlength="40" :placeholder="c.command || c.id" :aria-label="t('容器名称')" autofocus />
+            <button type="submit" class="small" :disabled="saving">{{ t('保存') }}</button>
+            <button type="button" class="text small" @click="editing = ''">{{ t('取消') }}</button>
           </form>
           <template v-else>
             <!-- 标识：用户起的名字 → 主进程名（容器重建后不变，修订第 165 条）→ 容器 ID -->
             <strong>{{ names[c.id] || c.command || c.id }}</strong>
-            <button v-if="!isViewer" type="button" class="text small" @click="edit(c.id)">{{ names[c.id] ? '改名' : '命名' }}</button>
+            <button v-if="!isViewer" type="button" class="text small" @click="edit(c.id)">{{ names[c.id] ? t('改名') : t('命名') }}</button>
           </template>
           <div class="muted small">
-            <span class="num">{{ c.id }}</span><template v-if="names[c.id] && c.command"> · {{ c.command }}</template> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ c.pids }} 个进程</template><b v-if="restarts[c.id]" class="restarted" title="面板统计的 24 小时内重启次数">
-              · 24 小时内重启 {{ restarts[c.id] }} 次</b>
+            <span class="num">{{ c.id }}</span><template v-if="names[c.id] && c.command"> · {{ c.command }}</template> · {{ c.runtime === 'podman' ? 'Podman' : 'Docker' }}<template v-if="c.pids"> · {{ t('{n} 个进程', { n: c.pids }) }}</template><b v-if="restarts[c.id]" class="restarted" :title="t('面板统计的 24 小时内重启次数')">
+              · {{ t('24 小时内重启 {n} 次', { n: restarts[c.id] }) }}</b>
           </div>
         </div>
         <div class="nums">
-          <span class="num" title="占整机 CPU">CPU {{ fmtPct(c.cpu) }}</span>
-          <span class="num">内存 {{ fmtBytes(c.memory) }}<span v-if="c.mem_limit" class="muted"> / {{ fmtBytes(c.mem_limit) }}</span></span>
+          <span class="num" :title="t('占整机 CPU')">CPU {{ fmtPct(c.cpu) }}</span>
+          <span class="num">{{ t('内存') }} {{ fmtBytes(c.memory) }}<span v-if="c.mem_limit" class="muted"> / {{ fmtBytes(c.mem_limit) }}</span></span>
           <span v-if="memPct(c.memory, c.mem_limit) != null" class="bar" :title="fmtPct(memPct(c.memory, c.mem_limit))">
             <i :class="{ warn: memPct(c.memory, c.mem_limit)! >= 80, bad: memPct(c.memory, c.mem_limit)! >= 95 }"
               :style="{ width: `${memPct(c.memory, c.mem_limit)}%` }" />

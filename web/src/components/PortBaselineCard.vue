@@ -6,6 +6,7 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError, checkExposure, errorText, putPortBaseline, type ServerView } from '../api'
 import { fmtTime } from '../format'
+import { t } from '../i18n'
 import { exposure, serviceName } from '../ports'
 
 const props = defineProps<{ server: ServerView }>()
@@ -32,7 +33,7 @@ async function runCheck() {
   try {
     exposureRes.value = await checkExposure(props.server.id)
   } catch (e) {
-    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, '检测失败')
+    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, t('检测失败'))
   } finally {
     checking.value = false
   }
@@ -59,7 +60,7 @@ async function save(ports: string[]) {
     baseline.value = v.ports.length ? v : null
     editing.value = false
   } catch (e) {
-    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, '保存失败')
+    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, t('保存失败'))
   } finally {
     saving.value = false
   }
@@ -72,51 +73,51 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
 <template>
   <section class="panel baseline">
     <div class="head">
-      <h3>端口基线</h3>
-      <span class="muted small">仅管理员可见</span>
-      <button v-if="!editing" type="button" class="secondary small edit" @click="edit">{{ baseline ? '编辑' : '设置' }}</button>
+      <h3>{{ t('端口基线') }}</h3>
+      <span class="muted small">{{ t('仅管理员可见') }}</span>
+      <button v-if="!editing" type="button" class="secondary small edit" @click="edit">{{ baseline ? t('编辑') : t('设置') }}</button>
     </div>
     <p class="muted small note">
-      允许对公网开放的监听端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。
-      只看本机的监听，是否真能从公网访问还取决于防火墙与安全组。
+      {{ t('允许对公网开放的监听端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。') }}
+      {{ t('只看本机的监听，是否真能从公网访问还取决于防火墙与安全组。') }}
     </p>
 
     <form v-if="editing" class="form" novalidate @submit.prevent="saveDraft">
-      <input v-model="draft" placeholder="22/tcp, 443/tcp, 51820/udp" aria-label="允许的端口" spellcheck="false" />
-      <small class="muted">端口/协议，逗号或空格分隔；只写端口时为 tcp</small>
+      <input v-model="draft" placeholder="22/tcp, 443/tcp, 51820/udp" :aria-label="t('允许的端口')" spellcheck="false" />
+      <small class="muted">{{ t('端口/协议，逗号或空格分隔；只写端口时为 tcp') }}</small>
       <p v-if="error" class="small bad">{{ error }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving">保存</button>
-        <button type="button" class="secondary" :disabled="saving || !exposed.length" @click="useCurrent">以当前为准</button>
-        <button v-if="baseline" type="button" class="text danger-text" :disabled="saving" @click="save([])">取消基线</button>
-        <button type="button" class="text" @click="editing = false">取消</button>
+        <button type="submit" :disabled="saving">{{ t('保存') }}</button>
+        <button type="button" class="secondary" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前为准') }}</button>
+        <button v-if="baseline" type="button" class="text danger-text" :disabled="saving" @click="save([])">{{ t('取消基线') }}</button>
+        <button type="button" class="text" @click="editing = false">{{ t('取消') }}</button>
       </div>
     </form>
 
     <template v-else>
       <p v-if="!baseline" class="small">
-        还没有设置，不检查新增端口。
-        <button type="button" class="text small" :disabled="saving || !exposed.length" @click="useCurrent">以当前对公网开放的 {{ exposed.length }} 个端口为基线</button>
+        {{ t('还没有设置，不检查新增端口。') }}
+        <button type="button" class="text small" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前对公网开放的 {n} 个端口为基线', { n: exposed.length }) }}</button>
       </p>
-      <p v-else class="muted small">{{ baseline.ports.length }} 个允许的端口 · {{ fmtTime(baseline.updated_at) }} 设置</p>
+      <p v-else class="muted small">{{ t('{n} 个允许的端口 · {time} 设置', { n: baseline.ports.length, time: fmtTime(baseline.updated_at) }) }}</p>
       <p v-if="error" class="small bad">{{ error }}</p>
       <ul class="ports">
         <li v-for="p in exposed" :key="p.key" :class="baseline ? (allowed.has(p.key) ? 'ok' : 'unknown') : ''">
           <span class="num">{{ p.key }}</span><span v-if="p.service" class="muted small">{{ p.service }}</span>
-          <span v-if="baseline && !allowed.has(p.key)" class="tag warn">不在基线中</span>
-          <span v-if="reach.get(p.key)" class="tag" :class="'r-' + reach.get(p.key)!.state">{{ stateNames[reach.get(p.key)!.state] }}</span>
+          <span v-if="baseline && !allowed.has(p.key)" class="tag warn">{{ t('不在基线中') }}</span>
+          <span v-if="reach.get(p.key)" class="tag" :class="'r-' + reach.get(p.key)!.state">{{ t(stateNames[reach.get(p.key)!.state] ?? '') || reach.get(p.key)!.state }}</span>
         </li>
         <li v-for="k in gone" :key="'g' + k" class="gone">
-          <span class="num">{{ k }}</span><span class="tag bad">未监听</span>
+          <span class="num">{{ k }}</span><span class="tag bad">{{ t('未监听') }}</span>
         </li>
       </ul>
-      <p v-if="!exposed.length && !gone.length" class="muted small">没有对公网开放的监听端口。</p>
+      <p v-if="!exposed.length && !gone.length" class="muted small">{{ t('没有对公网开放的监听端口。') }}</p>
       <div v-if="exposed.length" class="check">
-        <button type="button" class="secondary small" :disabled="checking" @click="runCheck">{{ checking ? '检测中…' : '从面板检测公网可达' }}</button>
-        <span v-if="exposureRes" class="muted small">{{ fmtTime(exposureRes.checked_at) }} 检测 {{ exposureRes.target }}</span>
+        <button type="button" class="secondary small" :disabled="checking" @click="runCheck">{{ checking ? t('检测中…') : t('从面板检测公网可达') }}</button>
+        <span v-if="exposureRes" class="muted small">{{ t('{time} 检测 {target}', { time: fmtTime(exposureRes.checked_at), target: exposureRes.target }) }}</span>
       </div>
       <p v-if="exposureRes" class="muted small note">
-        逐个 TCP 连接节点的公网地址（连上即断开）。“超时”多为防火墙或安全组拦截；结果反映的是从面板所在网络能否访问。
+        {{ t('逐个 TCP 连接节点的公网地址（连上即断开）。“超时”多为防火墙或安全组拦截；结果反映的是从面板所在网络能否访问。') }}
       </p>
     </template>
   </section>

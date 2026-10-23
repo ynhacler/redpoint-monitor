@@ -3,6 +3,7 @@
 // 结论在面板计算（GET /servers/{id}/health），App 显示同样的文字；摘要变化慢，每分钟刷新一次。
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getHealth, type HealthSummary } from '../api'
+import { t } from '../i18n'
 
 const props = defineProps<{ serverId: number }>()
 const health = ref<HealthSummary | null>(null)
@@ -15,7 +16,7 @@ async function load() {
     health.value = await getHealth(props.serverId)
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '健康摘要加载失败')
+    error.value = errorText(e, t('健康摘要加载失败'))
   }
   timer = setTimeout(load, 60_000)
 }
@@ -29,7 +30,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 <template>
   <section class="panel health">
     <div class="head">
-      <h3>健康摘要</h3>
+      <h3>{{ t('健康摘要') }}</h3>
       <span v-if="health" class="status small" :class="health.level">{{ health.status }}</span>
     </div>
     <p v-if="error" class="small bad">{{ error }}</p>
@@ -39,7 +40,7 @@ onBeforeUnmount(() => clearTimeout(timer))
         <dd class="small">{{ it.text }}</dd>
       </template>
     </dl>
-    <p v-else-if="health" class="small muted">还没有足够的历史数据。</p>
+    <p v-else-if="health" class="small muted">{{ t('还没有足够的历史数据。') }}</p>
   </section>
 </template>
 

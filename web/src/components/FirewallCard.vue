@@ -3,6 +3,7 @@
 // 不一定等于实际生效的规则；配置文件只有 root 可读时只显示状态，并提示在主机上查看的命令。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
+import { t } from '../i18n'
 
 const props = defineProps<{ server: ServerView }>()
 const fw = computed(() => props.server.latest?.firewall)
@@ -15,19 +16,19 @@ const showCmd: Record<string, string> = {
   iptables: 'sudo iptables -S INPUT', fail2ban: 'sudo fail2ban-client status', csf: 'sudo csf -l',
 }
 // 正在运行的防火墙中，入站默认允许的（风险提示）
-const allowAll = computed(() => fw.value?.tools.some((t) => t.active && t.policy === 'allow' && t.name !== 'fail2ban') ?? false)
-const anyActive = computed(() => fw.value?.tools.some((t) => t.active && t.name !== 'fail2ban') ?? false)
+const allowAll = computed(() => fw.value?.tools.some((x) => x.active && x.policy === 'allow' && x.name !== 'fail2ban') ?? false)
+const anyActive = computed(() => fw.value?.tools.some((x) => x.active && x.name !== 'fail2ban') ?? false)
 
 // 状态文字：ufw 看配置是否启用，nftables / iptables 看内核模块是否加载，其余看进程
 function activeText(name: string, active: boolean) {
-  if (name === 'ufw') return active ? '已启用' : '未启用'
-  if (name === 'nftables' || name === 'iptables') return active ? '内核模块已加载' : '模块未加载'
-  return active ? '运行中' : '未运行'
+  if (name === 'ufw') return active ? t('已启用') : t('未启用')
+  if (name === 'nftables' || name === 'iptables') return active ? t('内核模块已加载') : t('模块未加载')
+  return active ? t('运行中') : t('未运行')
 }
 
 function target(r: { proto?: string; port?: string; service?: string }) {
   if (r.service) return r.service
-  if (!r.port) return r.proto ? `全部 ${r.proto.toUpperCase()}` : '全部端口'
+  if (!r.port) return r.proto ? t('全部 {proto}', { proto: r.proto.toUpperCase() }) : t('全部端口')
   return `${r.port}${r.proto ? '/' + r.proto : ''}`
 }
 </script>
@@ -35,33 +36,33 @@ function target(r: { proto?: string; port?: string; service?: string }) {
 <template>
   <section v-if="fw" class="panel firewall">
     <div class="head">
-      <h3>防火墙</h3>
-      <span class="muted small">仅管理员可见</span>
+      <h3>{{ t('防火墙') }}</h3>
+      <span class="muted small">{{ t('仅管理员可见') }}</span>
     </div>
-    <p v-if="!fw.tools.length" class="banner warn">未检测到防火墙（ufw、firewalld、nftables、iptables、fail2ban、CSF）。云厂商的安全组不在这里显示。</p>
+    <p v-if="!fw.tools.length" class="banner warn">{{ t('未检测到防火墙（ufw、firewalld、nftables、iptables、fail2ban、CSF）。云厂商的安全组不在这里显示。') }}</p>
     <template v-else>
-      <p v-if="!anyActive" class="banner warn">检测到防火墙但都没有启用。</p>
-      <p v-else-if="allowAll" class="banner warn">有防火墙的入站默认策略为“允许”，未列出的端口都可以访问。</p>
-      <div v-for="t in fw.tools" :key="t.name" class="tool">
+      <p v-if="!anyActive" class="banner warn">{{ t('检测到防火墙但都没有启用。') }}</p>
+      <p v-else-if="allowAll" class="banner warn">{{ t('有防火墙的入站默认策略为“允许”，未列出的端口都可以访问。') }}</p>
+      <div v-for="tool in fw.tools" :key="tool.name" class="tool">
         <div class="tool-head">
-          <strong>{{ toolNames[t.name] ?? t.name }}</strong>
-          <span class="tag" :class="t.active ? 'on' : 'off'">{{ activeText(t.name, t.active) }}</span>
-          <span v-if="t.policy" class="tag" :class="t.policy === 'deny' ? 'on' : 'warn'">入站默认{{ t.policy === 'deny' ? '拒绝' : '允许' }}</span>
-          <span v-if="t.source" class="muted small source">{{ t.source }}</span>
+          <strong>{{ toolNames[tool.name] ?? tool.name }}</strong>
+          <span class="tag" :class="tool.active ? 'on' : 'off'">{{ activeText(tool.name, tool.active) }}</span>
+          <span v-if="tool.policy" class="tag" :class="tool.policy === 'deny' ? 'on' : 'warn'">{{ tool.policy === 'deny' ? t('入站默认拒绝') : t('入站默认允许') }}</span>
+          <span v-if="tool.source" class="muted small source">{{ tool.source }}</span>
         </div>
-        <p v-if="!t.rules_readable" class="muted small note">
-          规则配置只有 root 可读，在主机上查看：<code>{{ showCmd[t.name] }}</code>
+        <p v-if="!tool.rules_readable" class="muted small note">
+          {{ t('规则配置只有 root 可读，在主机上查看：') }}<code>{{ showCmd[tool.name] }}</code>
         </p>
-        <p v-else-if="!t.rules?.length" class="muted small note">配置中没有{{ t.name === 'fail2ban' ? '启用的 jail' : '按端口的规则' }}。</p>
+        <p v-else-if="!tool.rules?.length" class="muted small note">{{ tool.name === 'fail2ban' ? t('配置中没有启用的 jail。') : t('配置中没有按端口的规则。') }}</p>
         <ul v-else class="rules">
-          <li v-for="(r, i) in t.rules" :key="i">
-            <span class="act" :class="r.action">{{ actionNames[r.action] ?? r.action }}</span>
+          <li v-for="(r, i) in tool.rules" :key="i">
+            <span class="act" :class="r.action">{{ actionNames[r.action] ? t(actionNames[r.action]) : r.action }}</span>
             <span class="num">{{ target(r) }}</span>
-            <span v-if="r.from" class="muted small">来自 {{ r.from }}</span>
+            <span v-if="r.from" class="muted small">{{ t('来自 {from}', { from: r.from }) }}</span>
           </li>
         </ul>
       </div>
-      <p class="muted small note">规则来自配置文件，不一定等于实际生效的规则；Agent 不以 root 运行，读不到内核中的实时规则。</p>
+      <p class="muted small note">{{ t('规则来自配置文件，不一定等于实际生效的规则；Agent 不以 root 运行，读不到内核中的实时规则。') }}</p>
     </template>
   </section>
 </template>

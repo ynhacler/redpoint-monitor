@@ -7,6 +7,7 @@ import { computed, ref } from 'vue'
 import { errorText, requestUnlockCheck, type UnlockView } from '../api'
 import { countryName } from '../countries'
 import { fmtTime } from '../format'
+import { t } from '../i18n'
 import { isViewer } from '../store'
 
 const props = defineProps<{
@@ -25,6 +26,11 @@ const names: Record<string, string> = {
   abema: 'ABEMA', radiko: 'radiko', mytvsuper: 'myTV SUPER', viu: 'Viu', bilibili_hmt: 'bilibili 港澳台', bilibili_tw: 'bilibili 台湾',
   kktv: 'KKTV', coupangplay: 'Coupang Play', hulu: 'Hulu', bbc_iplayer: 'BBC iPlayer',
 }
+// 说明文字由 Agent 给出（中文，见 internal/agent/unlock）：固定的几句按原文翻译，“无法判断（HTTP 403）”一类带变量的单独处理
+function noteText(n: string): string {
+  const m = n.match(/^无法判断（(.+)）$/)
+  return m ? t('无法判断（{what}）', { what: m[1] }) : t(n)
+}
 const statusText: Record<Status, string> = { yes: '可用', no: '不可用', partial: '部分可用', captcha: '需人机验证', failed: '检测失败' }
 
 // 通用项与当地服务分开显示；当地服务的地区取自 item.local
@@ -42,14 +48,14 @@ async function check() {
     await requestUnlockCheck(props.serverId)
     emit('requested')
   } catch (e) {
-    error.value = errorText(e, '请求失败')
+    error.value = errorText(e, t('请求失败'))
   } finally {
     busy.value = false
   }
 }
 const hint = computed(() => {
-  if (!props.online) return '节点离线'
-  if (props.unlock && !props.unlock.supported) return 'Agent 版本不支持，升级后可用'
+  if (!props.online) return t('节点离线')
+  if (props.unlock && !props.unlock.supported) return t('Agent 版本不支持，升级后可用')
   return ''
 })
 </script>
@@ -57,31 +63,31 @@ const hint = computed(() => {
 <template>
   <section class="panel unlock">
     <div class="head">
-      <h3>流媒体与网站解锁</h3>
-      <span v-if="unlock?.checked_at" class="muted small">{{ fmtTime(unlock.checked_at) }} 检测</span>
+      <h3>{{ t('流媒体与网站解锁') }}</h3>
+      <span v-if="unlock?.checked_at" class="muted small">{{ t('{time} 检测', { time: fmtTime(unlock.checked_at) }) }}</span>
       <button v-if="!isViewer" type="button" class="secondary small check" :disabled="pending || !!hint" :title="hint" @click="check">
-        {{ pending ? '检测中…' : unlock?.checked_at ? '重新检测' : '检测' }}
+        {{ pending ? t('检测中…') : unlock?.checked_at ? t('重新检测') : t('检测') }}
       </button>
     </div>
     <p class="small muted note">
-      从这台 VPS 访问各服务，判断能否使用以及服务认定的地区。只在点击时检测，约 1 分钟出结果。
+      {{ t('从这台 VPS 访问各服务，判断能否使用以及服务认定的地区。只在点击时检测，约 1 分钟出结果。') }}
       <template v-if="hint"> <b>{{ hint }}</b></template>
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <template v-if="unlock?.items.length">
-      <template v-for="group in [{ key: 'general', title: '', items: general }, { key: 'local', title: `当地服务 · ${localName}`, items: local }]" :key="group.key">
+      <template v-for="group in [{ key: 'general', title: '', items: general }, { key: 'local', title: t('当地服务 · {country}', { country: localName }), items: local }]" :key="group.key">
         <h4 v-if="group.title && group.items.length" class="group">{{ group.title }}</h4>
         <ul v-if="group.items.length" class="items">
           <li v-for="it in group.items" :key="it.service">
-            <span class="name">{{ names[it.service] ?? it.service }}</span>
-            <span class="badge" :class="it.status">{{ statusText[it.status] }}</span>
+            <span class="name">{{ names[it.service] ? t(names[it.service]) : it.service }}</span>
+            <span class="badge" :class="it.status">{{ t(statusText[it.status]) }}</span>
             <span class="region num">{{ it.region ?? '' }}</span>
-            <span v-if="it.note" class="small muted note-item" :title="it.note">{{ it.note }}</span>
+            <span v-if="it.note" class="small muted note-item" :title="noteText(it.note)">{{ noteText(it.note) }}</span>
           </li>
         </ul>
       </template>
     </template>
-    <p v-else-if="pending" class="small muted">等待 Agent 检测…</p>
+    <p v-else-if="pending" class="small muted">{{ t('等待 Agent 检测…') }}</p>
   </section>
 </template>
 

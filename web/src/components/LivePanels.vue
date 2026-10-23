@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import type { DiskInfo, ServerView } from '../api'
 import { DASH, fmtBytesShort, fmtPct } from '../format'
+import { t } from '../i18n'
 import { gaugeLevel, ioForDisk } from '../metrics'
 import { exposure, exposureNames, isRisky, serviceName, sortPorts } from '../ports'
 import Qty from './Qty.vue'
@@ -47,7 +48,7 @@ const procs = computed(() => {
   return (props.server.watch_procs ?? []).map((name) => ({ name, count: counts.get(name) ?? null }))
 })
 const procsDown = computed(() => procs.value.filter((p) => p.count === 0).length)
-const addrText = (addrs: string[]) => addrs.map((a) => (a === '0.0.0.0' || a === '::' ? `${a}（全部）` : a)).join('、')
+const addrText = (addrs: string[]) => addrs.map((a) => (a === '0.0.0.0' || a === '::' ? t('{addr}（全部）', { addr: a }) : a)).join(t('、'))
 const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Math.round(v)) : v.toFixed(1))
 </script>
 
@@ -56,18 +57,18 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     <!-- 关注的进程（设计 33.5.1）：节点设置了才显示 -->
     <section v-if="procs.length" class="block procs">
       <h3 class="title">
-        关注的进程
+        {{ t('关注的进程') }}
         <span class="title-extra">
-          <span v-if="procsDown" class="bad">未运行 <b>{{ procsDown }}</b></span>
-          <span v-else-if="procs.every((p) => p.count != null)">全部运行中</span>
+          <span v-if="procsDown" class="bad">{{ t('未运行') }} <b>{{ procsDown }}</b></span>
+          <span v-else-if="procs.every((p) => p.count != null)">{{ t('全部运行中') }}</span>
         </span>
       </h3>
       <ul class="port-list">
         <li v-for="p in procs" :key="p.name" :class="{ risky: p.count === 0 }">
           <span class="svc mono">{{ p.name }}</span>
-          <span v-if="p.count == null" class="exp" title="Agent 尚未上报：刚修改设置时等下一次上报；旧版 Agent 需升级">等待上报</span>
-          <span v-else-if="p.count === 0" class="exp bad">未运行</span>
-          <span v-else class="exp private">运行中 · {{ p.count }}</span>
+          <span v-if="p.count == null" class="exp" :title="t('Agent 尚未上报：刚修改设置时等下一次上报；旧版 Agent 需升级')">{{ t('等待上报') }}</span>
+          <span v-else-if="p.count === 0" class="exp bad">{{ t('未运行') }}</span>
+          <span v-else class="exp private">{{ t('运行中') }} · {{ p.count }}</span>
         </li>
       </ul>
     </section>
@@ -75,21 +76,21 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     <!-- 监听端口（设计 4.9.1） -->
     <section class="block ports">
       <h3 class="title">
-        监听端口
+        {{ t('监听端口') }}
         <span v-if="ports?.length" class="title-extra">
-          <span v-if="portCounts.public">公网 <b>{{ portCounts.public }}</b></span>
-          <span v-if="portCounts.private">内网 <b>{{ portCounts.private }}</b></span>
-          <span v-if="portCounts.local">本机 <b>{{ portCounts.local }}</b></span>
+          <span v-if="portCounts.public">{{ t('公网') }} <b>{{ portCounts.public }}</b></span>
+          <span v-if="portCounts.private">{{ t('内网') }} <b>{{ portCounts.private }}</b></span>
+          <span v-if="portCounts.local">{{ t('本机') }} <b>{{ portCounts.local }}</b></span>
         </span>
       </h3>
-      <p v-if="!ports" class="muted small empty">当前 Agent 未上报监听端口，升级 Agent 后显示。</p>
-      <p v-else-if="!ports.length" class="muted small empty">没有监听中的端口。</p>
+      <p v-if="!ports" class="muted small empty">{{ t('当前 Agent 未上报监听端口，升级 Agent 后显示。') }}</p>
+      <p v-else-if="!ports.length" class="muted small empty">{{ t('没有监听中的端口。') }}</p>
       <ul v-else class="port-list">
         <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }"
-          :title="`${p.proto.toUpperCase()} ${p.port} 监听于 ${addrText(p.addrs)}${isRisky(p) ? '\n此类端口通常不应对公网开放，建议改为只监听 127.0.0.1 或用防火墙限制来源' : ''}`">
+          :title="t('{proto} {port} 监听于 {addrs}', { proto: p.proto.toUpperCase(), port: p.port, addrs: addrText(p.addrs) }) + (isRisky(p) ? '\n' + t('此类端口通常不应对公网开放，建议改为只监听 127.0.0.1 或用防火墙限制来源') : '')">
           <span class="port">{{ p.port }}<span class="proto">{{ p.proto.toUpperCase() }}</span></span>
           <span class="svc">{{ serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
-          <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? '公网 · 风险' : exposureNames[exposure(p)] }}</span>
+          <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? t('公网 · 风险') : t(exposureNames[exposure(p)]) }}</span>
         </li>
       </ul>
     </section>
@@ -97,8 +98,8 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
     <!-- 磁盘（设计 4.6、4.7）：所有挂载点一块（修订第 195 条） -->
     <section v-if="r.disk.length" class="block disk">
       <h3 class="title">
-        磁盘
-        <span v-if="r.disk.length > 1" class="title-extra">挂载点 <b>{{ r.disk.length }}</b></span>
+        {{ t('磁盘') }}
+        <span v-if="r.disk.length > 1" class="title-extra">{{ t('挂载点') }} <b>{{ r.disk.length }}</b></span>
       </h3>
       <ul class="mounts">
         <li v-for="d in r.disk" :key="d.mount">
@@ -115,14 +116,14 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
         <table class="io">
           <thead>
             <tr>
-              <th>磁盘 IO</th><th>读</th><th>写</th><th>IOPS 读 / 写</th>
-              <th v-if="hasAwait" title="每次 IO 的平均耗时（含排队）">延迟</th><th v-if="hasUtil">繁忙</th>
-              <th class="total">累计读 / 写</th>
+              <th>{{ t('磁盘 IO') }}</th><th>{{ t('读') }}</th><th>{{ t('写') }}</th><th>{{ t('IOPS 读 / 写') }}</th>
+              <th v-if="hasAwait" :title="t('每次 IO 的平均耗时（含排队）')">{{ t('延迟') }}</th><th v-if="hasUtil">{{ t('繁忙') }}</th>
+              <th class="total">{{ t('累计读 / 写') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="x in ioRows" :key="x.io.device">
-              <th><span class="mono">{{ x.io.device }}</span><small class="muted" :title="x.mounts.join('、')">{{ x.mounts.join(' ') }}</small></th>
+              <th><span class="mono">{{ x.io.device }}</span><small class="muted" :title="x.mounts.join(t('、'))">{{ x.mounts.join(' ') }}</small></th>
               <td><Qty :text="fmtBytesShort(x.io.read_speed, true)" /></td>
               <td><Qty :text="fmtBytesShort(x.io.write_speed, true)" /></td>
               <td>{{ iops(x.io.read_iops) }}<span class="slash">/</span>{{ iops(x.io.write_iops) }}</td>
