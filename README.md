@@ -1,5 +1,7 @@
 # RedPoint Monitor
 
+**中文** | [English](README.en.md)
+
 App-first lightweight self-hosted monitoring platform for VPS enthusiasts.
 
 面向拥有多台 VPS 的个人用户：自建一个面板，每台主机装一个很小的 Agent，在 Web 和手机 App 上查看状态、流量与告警。
@@ -374,6 +376,7 @@ sudo userdel vpsmon
 使用 Caddy 反向代理的，再从 Caddyfile 中删除面板的站点并 `sudo systemctl reload caddy`。
 
 先卸载面板、后卸载 Agent 时，Agent 无法通知面板，但本地卸载照常完成。
+
 ---
 
 ## 6. 安全说明
