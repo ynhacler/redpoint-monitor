@@ -55,6 +55,10 @@
     {
       "name": "app",
       "description": "App 接入：AK、配对、设备凭证与设备管理（设计 8.4、12.3～12.7、19.2～19.4）"
+    },
+    {
+      "name": "system",
+      "description": "面板自身的设置：监听端口（设计 51）"
     }
   ],
   "paths": {
@@ -2826,6 +2830,90 @@
             "$ref": "#/components/responses/Error"
           },
           "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/listen": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "监听端口（设计 51）：Web 端口、Agent 专用端口与 Agent 地址",
+        "responses": {
+          "200": {
+            "description": "当前设置与生效情况",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListenSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "修改监听端口，保存后立即生效（不重启；记入操作日志 setting.update）",
+        "description": "先尝试监听新地址，失败（端口被占用等）时返回 409，什么都不改。修改 Web 端口后旧端口继续监听，直到调用 close-old 或面板重启，避免反向代理还没改好就连不上。反向代理模式下两个地址都只能是本机回环地址（对外的 HTTPS 由反向代理负责）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListenSettingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已生效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListenSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/listen/close-old": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "关闭修改前的旧 Web 端口（确认新地址可以访问后调用）",
+        "responses": {
+          "200": {
+            "description": "已关闭",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListenSetting"
+                }
+              }
+            }
+          },
+          "401": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -6910,6 +6998,73 @@
           },
           "created_at": {
             "type": "integer"
+          }
+        }
+      },
+      "ListenSettingInput": {
+        "type": "object",
+        "required": [
+          "web",
+          "agent",
+          "agent_url"
+        ],
+        "properties": {
+          "web": {
+            "type": "string",
+            "description": "Web 监听地址（host:port，或只写端口）；反向代理模式只写端口时为 127.0.0.1:端口"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent 专用监听地址；空表示不单独监听（Agent 走 Web 端口）"
+          },
+          "agent_url": {
+            "type": "string",
+            "description": "Agent 连接的对外地址（https://…），写进安装命令；单独监听 Agent 时必填（内置 HTTPS 模式可空，默认为 https://域名:端口）"
+          }
+        }
+      },
+      "ListenSetting": {
+        "type": "object",
+        "required": [
+          "mode",
+          "web",
+          "web_default",
+          "old_web",
+          "agent",
+          "agent_url",
+          "effective_agent_url"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "proxy",
+              "https"
+            ],
+            "description": "proxy：面板在反向代理后面（只监听本机）；https：内置 HTTPS（--domain）"
+          },
+          "web": {
+            "type": "string",
+            "description": "当前的 Web 监听地址"
+          },
+          "web_default": {
+            "type": "string",
+            "description": "启动参数中的 Web 监听地址（--listen / --https-listen）；面板设置清除后回到它"
+          },
+          "old_web": {
+            "type": "string",
+            "description": "修改前、仍在监听的旧 Web 地址；空表示没有"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent 专用监听地址；空表示 Agent 走 Web 端口"
+          },
+          "agent_url": {
+            "type": "string"
+          },
+          "effective_agent_url": {
+            "type": "string",
+            "description": "安装命令中实际使用的 Agent 地址；空表示与面板地址相同"
           }
         }
       },

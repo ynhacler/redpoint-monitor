@@ -51,6 +51,31 @@ export interface SystemEvent {
   created_at: number
 }
 
+export interface ListenSettingInput {
+  /** Web 监听地址（host:port，或只写端口）；反向代理模式只写端口时为 127.0.0.1:端口 */
+  web: string
+  /** Agent 专用监听地址；空表示不单独监听（Agent 走 Web 端口） */
+  agent: string
+  /** Agent 连接的对外地址（https://…），写进安装命令；单独监听 Agent 时必填（内置 HTTPS 模式可空，默认为 https://域名:端口） */
+  agent_url: string
+}
+
+export interface ListenSetting {
+  /** proxy：面板在反向代理后面（只监听本机）；https：内置 HTTPS（--domain） */
+  mode: 'proxy' | 'https'
+  /** 当前的 Web 监听地址 */
+  web: string
+  /** 启动参数中的 Web 监听地址（--listen / --https-listen）；面板设置清除后回到它 */
+  web_default: string
+  /** 修改前、仍在监听的旧 Web 地址；空表示没有 */
+  old_web: string
+  /** Agent 专用监听地址；空表示 Agent 走 Web 端口 */
+  agent: string
+  agent_url: string
+  /** 安装命令中实际使用的 Agent 地址；空表示与面板地址相同 */
+  effective_agent_url: string
+}
+
 export interface IPInfoSetting {
   /** 用 ipinfo.io 查询节点的 ASN 与位置；默认关闭 */
   enabled: boolean
@@ -2208,6 +2233,23 @@ export interface Paths {
     put: {
       body: HeartbeatInput
       response: HeartbeatView
+    }
+  }
+  '/settings/listen': {
+    /** 监听端口（设计 51）：Web 端口、Agent 专用端口与 Agent 地址 */
+    get: {
+      response: ListenSetting
+    }
+    /** 修改监听端口，保存后立即生效（不重启；记入操作日志 setting.update） */
+    put: {
+      body: ListenSettingInput
+      response: ListenSetting
+    }
+  }
+  '/settings/listen/close-old': {
+    /** 关闭修改前的旧 Web 端口（确认新地址可以访问后调用） */
+    post: {
+      response: ListenSetting
     }
   }
   '/settings/ipinfo': {

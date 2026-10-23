@@ -54,6 +54,7 @@ type Server struct {
 	version string
 
 	publicURL   string
+	lis         *listens // Web 与 Agent 监听，可在运行中修改（设计 51）
 	enrollLimit *enrollLimiter
 	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
 	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
@@ -139,7 +140,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	s := &Server{alerts: alerts, releaseBase: OfficialReleases, releaseKeys: release.TrustedKeys(),
 		releaseHTTP: &http.Client{Timeout: 30 * time.Second}, noReleaseSync: opts.NoReleaseSync,
 		mirrorRoot: opts.MirrorDir, releaseMirror: opts.ReleaseMirror && opts.MirrorDir != "", mirrorHTTP: &http.Client{Timeout: 10 * time.Minute},
-		store: store, web: web, log: opts.Logger, version: opts.Version,
+		store: store, web: web, log: opts.Logger, version: opts.Version, lis: &listens{log: opts.Logger},
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(), pairLimit: newEnrollLimiter(),
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
@@ -162,17 +163,12 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 // Run starts background loops and the HTTP server; blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context, listen string) error {
 	s.startBackground(ctx)
-	srv := &http.Server{
-		Addr:              listen,
-		Handler:           s.routes(),
-		ReadHeaderTimeout: 5 * time.Second,
+	errc := make(chan error, 4)
+	// Web 与 Agent 监听按保存的设置启动（设计 51），listen 为启动参数中的默认值
+	if err := s.startListens(listen, nil, errc); err != nil {
+		return err
 	}
-	errc := make(chan error, 1)
-	go func() {
-		s.log.Info("listening", "component", "http", "addr", listen)
-		errc <- srv.ListenAndServe()
-	}()
-	return s.serveUntil(ctx, errc, srv)
+	return s.serveUntil(ctx, errc)
 }
 
 // startBackground 启动批量写入、维护、告警与版本同步等后台任务。
@@ -336,6 +332,10 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/settings/quiet-hours", accessAdmin, s.handlePutQuietHours)
 	handle("GET /api/v1/settings/ipinfo", accessAdmin, s.handleGetIPInfoSetting) // 节点 IP 信息（设计 49）
 	handle("PUT /api/v1/settings/ipinfo", accessAdmin, s.handlePutIPInfoSetting)
+	// 监听端口（设计 51）：保存后立即生效
+	handle("GET /api/v1/settings/listen", accessAdmin, s.handleGetListen)
+	handle("PUT /api/v1/settings/listen", accessAdmin, s.handlePutListen)
+	handle("POST /api/v1/settings/listen/close-old", accessAdmin, s.handleCloseOldListen)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)
 	handle("PUT /api/v1/settings/heartbeat", accessAdmin, s.handlePutHeartbeat)

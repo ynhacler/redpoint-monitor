@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -703,6 +703,23 @@ export function getNodeProbe(id: number) {
 /** 保存节点自己的测速设置，随下一份上报下发 */
 export function putNodeProbe(id: number, body: G.NodeProbe) {
   return request('put', '/servers/{id}/probe', { params: { id }, body })
+}
+
+// ---- 监听端口（设计 51） ----
+
+/** Web 端口、Agent 专用端口与 Agent 地址 */
+export function getListenSetting() {
+  return request('get', '/settings/listen')
+}
+
+/** 修改监听端口，保存后立即生效；修改 Web 端口时旧端口保留到 closeOldListen */
+export function putListenSetting(body: G.ListenSettingInput) {
+  return request('put', '/settings/listen', { body })
+}
+
+/** 关闭修改前的旧 Web 端口 */
+export function closeOldListen() {
+  return request('post', '/settings/listen/close-old')
 }
 
 // ---- 节点 IP 信息（设计 49） ----

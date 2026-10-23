@@ -284,7 +284,7 @@ func (s *Server) panelURL(r *http.Request) string {
 // 哈希不一致时 sha256sum -c 失败，后面的命令不会执行。没有已验签版本时只提供手动方式（设计 27.3.3）。
 // 【安全】不生成 curl | sh，也不由面板分发二进制（设计 27.3、CLAUDE.md 约束 2、9）。
 func (s *Server) installCommand(r *http.Request, code string) installView {
-	url := s.panelURL(r)
+	url := s.agentURL(s.panelURL(r)) // 单独监听 Agent 时用 Agent 地址（设计 51）
 	v := installView{Mode: "manual", Server: url,
 		ManualCommand: "sudo vpsmon-agent install --server " + url + " --enroll " + code,
 		RotateCommand: "sudo vpsmon-agent rotate-token --enroll " + code}

@@ -110,7 +110,7 @@ func (s *Server) handleBatchCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.batch_create", Success: true,
 		Details: map[string]any{"count": len(ids), "ids": ids, "ttl": ttl.String()}})
-	panel := s.panelURL(r)
+	panel := s.agentURL(s.panelURL(r)) // 单独监听 Agent 时用 Agent 地址（设计 51）
 	exports := map[string]any{"commands": batchCommands(views), "csv": batchCSV(views), "ansible": nil}
 	if src, ok := s.installerSource(panel); ok {
 		exports["ansible"] = batchAnsible(views, inputs, src, panel)

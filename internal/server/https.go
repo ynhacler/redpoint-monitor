@@ -94,9 +94,8 @@ func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 // RunHTTPS 以内置 HTTPS 运行面板，直到 ctx 结束。
 func (s *Server) RunHTTPS(ctx context.Context, o HTTPSOptions) error {
 	s.startBackground(ctx)
-	tlsSrv := &http.Server{Addr: o.TLSListen, Handler: s.routes(), TLSConfig: o.TLS, ReadHeaderTimeout: 5 * time.Second}
-	servers := []*http.Server{tlsSrv}
-	errc := make(chan error, 2)
+	var servers []*http.Server
+	errc := make(chan error, 4)
 	if o.HTTPListen != "" {
 		h := http.Handler(http.HandlerFunc(redirectToHTTPS))
 		if o.HTTPHandler != nil {
@@ -109,10 +108,10 @@ func (s *Server) RunHTTPS(ctx context.Context, o HTTPSOptions) error {
 			errc <- httpSrv.ListenAndServe()
 		}()
 	}
-	go func() {
-		s.log.Info("listening", "component", "http", "addr", o.TLSListen, "tls", true)
-		errc <- tlsSrv.ListenAndServeTLS("", "") // 证书由 TLSConfig.GetCertificate 提供
-	}()
+	// HTTPS 的 Web 与 Agent 监听按保存的设置启动（设计 51），o.TLSListen 为启动参数中的默认值
+	if err := s.startListens(o.TLSListen, o.TLS, errc); err != nil {
+		return err
+	}
 	return s.serveUntil(ctx, errc, servers...)
 }
 
@@ -129,6 +128,7 @@ func (s *Server) serveUntil(ctx context.Context, errc chan error, servers ...*ht
 	for _, srv := range servers {
 		_ = srv.Shutdown(shutdown)
 	}
+	s.lis.closeAll(shutdown)
 	s.flush() // persist what is buffered
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
