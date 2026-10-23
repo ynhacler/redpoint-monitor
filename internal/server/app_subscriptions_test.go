@@ -63,7 +63,7 @@ func TestAppSubscriptions(t *testing.T) {
 	}
 }
 
-// App 新增订阅（修订第 217 条）：只有 AK 勾选“允许记录订阅”且授权全部节点的设备可以新增；不能修改、删除；记审计日志。
+// App 记录订阅（修订第 217、218 条）：只有 AK 勾选“允许记录订阅”且授权全部节点的设备可以新增、修改、删除；记审计日志。
 func TestAppCreateSubscription(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
@@ -108,16 +108,37 @@ func TestAppCreateSubscription(t *testing.T) {
 	if len(got.Items) != 1 || got.Items[0].Name != "Netflix" {
 		t.Errorf("列表：%s", rec.Body)
 	}
-	// 【安全】只能新增：修改、删除仍只有 Web 管理员
+	// 【安全】Web 管理员的订阅接口不接受设备凭证；上传图标仍只有 Web
 	if rec := do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), d.AccessToken, body); rec.Code != 401 && rec.Code != 403 {
-		t.Errorf("设备不应能修改订阅：%d", rec.Code)
+		t.Errorf("设备不应能调用 Web 的修改接口：%d", rec.Code)
 	}
-	if rec := do(h, "DELETE", "/api/v1/subscriptions/"+itoa64(x.ID), d.AccessToken, nil); rec.Code != 401 && rec.Code != 403 {
-		t.Errorf("设备不应能删除订阅：%d", rec.Code)
+	if rec := do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID)+"/logo", d.AccessToken, nil); rec.Code != 401 && rec.Code != 403 {
+		t.Errorf("设备不应能上传图标：%d", rec.Code)
+	}
+	// 修改与删除（修订第 218 条）：同样只有允许记录订阅的设备
+	upd := []byte(`{"name":"Netflix 高级","brand":"netflix","category":"video","price_cents":9800,"currency":"HKD","cycle":"monthly","start_date":"2026-01-05"}`)
+	if rec := do(h, "PUT", "/api/v1/app/subscriptions/"+itoa64(x.ID), def.AccessToken, upd); rec.Code != 403 {
+		t.Errorf("未允许的设备不能修改：%d", rec.Code)
+	}
+	rec = do(h, "PUT", "/api/v1/app/subscriptions/"+itoa64(x.ID), d.AccessToken, upd)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.Name != "Netflix 高级" || x.PriceCents != 9800 {
+		t.Fatalf("修改：%d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "DELETE", "/api/v1/app/subscriptions/"+itoa64(x.ID), def.AccessToken, nil); rec.Code != 403 {
+		t.Errorf("未允许的设备不能删除：%d", rec.Code)
+	}
+	if rec := do(h, "DELETE", "/api/v1/app/subscriptions/"+itoa64(x.ID), d.AccessToken, nil); rec.Code != 204 {
+		t.Fatalf("删除：%d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "DELETE", "/api/v1/app/subscriptions/"+itoa64(x.ID), d.AccessToken, nil); rec.Code != 404 {
+		t.Errorf("再次删除应为 404：%d", rec.Code)
 	}
 	// 审计：操作者为 App 设备
-	logs, _, _ := s.store.ListAudit(AuditQuery{Action: "subscription.create", Limit: 10})
-	if len(logs) != 1 || logs[0].ActorType != "app" || logs[0].ActorID == "" {
-		t.Errorf("审计：%+v", logs)
+	for _, act := range []string{"subscription.create", "subscription.update", "subscription.delete"} {
+		logs, _, _ := s.store.ListAudit(AuditQuery{Action: act, Limit: 10})
+		if len(logs) != 1 || logs[0].ActorType != "app" || logs[0].ActorID == "" {
+			t.Errorf("审计 %s：%+v", act, logs)
+		}
 	}
 }

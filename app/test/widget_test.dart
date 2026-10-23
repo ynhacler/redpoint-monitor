@@ -8,6 +8,7 @@ import 'package:vpsmon_app/api.dart';
 import 'package:vpsmon_app/cache.dart';
 import 'package:vpsmon_app/models.dart';
 import 'package:vpsmon_app/pages/cloud_page.dart';
+import 'package:vpsmon_app/pages/connectivity_page.dart';
 import 'package:vpsmon_app/pages/latency_compare_page.dart';
 import 'package:vpsmon_app/pages/reorder_page.dart';
 import 'package:vpsmon_app/pages/server_detail_page.dart';
@@ -181,19 +182,18 @@ void main() {
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
 
-    // 云平台、订阅为底部标签（修订第 213 条）
-    await tester.tap(find.text('云平台'));
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('AWS 主账号'), findsOneWidget);
-    // 工具：分页“订阅”“连通性测试”（修订第 216 条）
+    // 底部：服务器 / 连通性测试 / 工具 / 设置；工具中分页“订阅”“云平台”（修订第 218 条）
+    expect(find.text('连通性测试'), findsOneWidget);
+    expect(find.byType(ConnectivityPage), findsNothing); // 没切到这个标签前不创建，不会自动开始测试
     await tester.tap(find.text('工具'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('连通性测试'), findsOneWidget);
     expect(find.text('Netflix'), findsOneWidget);
     expect(find.text('每月约'), findsOneWidget);
     expect(find.textContaining('每月 5 日扣费'), findsOneWidget);
+    await tester.tap(find.text('云平台'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+    expect(find.text('AWS 主账号'), findsOneWidget);
 
     // 事件：从“服务器”右上角的铃铛进入
     await tester.tap(find.text('服务器'));
@@ -211,8 +211,8 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
 
-    // 我的：隐私模式
-    await tester.tap(find.text('我的'));
+    // 设置：隐私模式
+    await tester.tap(find.text('设置'));
     await tester.pump();
     await tester.tap(find.text('隐私模式'));
     await tester.pump();

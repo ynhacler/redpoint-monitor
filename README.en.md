@@ -295,7 +295,7 @@ The app doesn't use the panel's username and password; it pairs with a one-time 
 3. Scan the code in the app, or enter the panel address and AK by hand.
 
 - By default an AK is single-use, pairs one device and is valid for 1 day; paired devices get their own credentials, so an expired AK doesn't affect them.
-- The app is **read-only**: at most it can mute alerts and start / end maintenance mode (you can disable this when creating the AK). If you tick "allow adding subscriptions in the App" when creating the AK, it can also add subscriptions (add only). All other configuration changes happen in the web UI.
+- The app is **read-only**: at most it can mute alerts and start / end maintenance mode (you can disable this when creating the AK). If you tick "allow recording subscriptions in the App" when creating the AK, it can also add, edit and delete subscriptions. All other configuration changes happen in the web UI.
 - **App → Connected devices** (已连接设备) lets you revoke any device at any time, signing it out immediately.
 
 > The app is in development (phase C): QR / manual pairing and the node list work, but it isn't in the app stores yet; developers can run it in a simulator or on a device with `make app-setup && make app-run`.

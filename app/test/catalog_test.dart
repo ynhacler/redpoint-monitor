@@ -44,6 +44,12 @@ void main() {
     expect(sub('annually').monthlyCents, 100);
     expect(sub('weekly').monthlyCents, 5200);
     expect(daysUntilCharge(sub('monthly', next: '2026-10-25'), now: now), 2);
+    // 快到期：7 天内扣费或 7 天内结束（修订第 218 条）
+    expect(dueSoonDays(sub('monthly', next: '2026-10-25'), now: now), 2);
+    expect(dueSoonDays(sub('monthly', next: '2026-11-25'), now: now), isNull);
+    expect(dueSoonDays(const Subscription(id: 2, name: 'y', category: 'sim', priceCents: 0, currency: 'CNY', cycle: 'monthly',
+        startDate: '2026-01-01', endDate: '2026-10-28', nextCharge: '2026-11-30'), now: now), 5);
+    expect(dueSoonDays(sub('monthly', next: '2026-10-25', ended: true), now: now), isNull);
     final totals = monthlyByCurrency([sub('monthly'), sub('annually'), sub('monthly', ended: true)]);
     expect(totals, [('USD', 1300.0)]);
   });

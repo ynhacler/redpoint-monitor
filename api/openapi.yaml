@@ -529,8 +529,8 @@ paths:
       summary: 新增一条订阅（修订第 217 条）
       security: [{ deviceToken: [] }]
       description: |
-        约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增，其他返回 403。
-        请求体与 Web 的 POST /subscriptions 相同；不能修改或删除订阅。新增写入审计日志，操作者为设备名。
+        约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增（以及修改、删除，
+        修订第 218 条），其他返回 403。请求体与 Web 的 POST /subscriptions 相同；不能上传图标。写入审计日志，操作者为设备名。
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/SubscriptionInput' } } }
@@ -540,6 +540,33 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+
+  /app/subscriptions/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [app]
+      summary: 修改一条订阅（修订第 218 条）
+      security: [{ deviceToken: [] }]
+      description: 与 POST /app/subscriptions 相同的权限（AK 允许记录订阅且授权全部节点）；整体替换，请求体与 Web 的 PUT /subscriptions/{id} 相同。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SubscriptionInput' } } }
+      responses:
+        '200': { description: 已修改, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [app]
+      summary: 删除一条订阅（修订第 218 条）
+      security: [{ deviceToken: [] }]
+      description: 与 POST /app/subscriptions 相同的权限；记审计日志。
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   /app/subscriptions/{id}/logo:
     get:
@@ -3860,7 +3887,7 @@ components:
         group: { type: string, description: scope_type=group 时的分组名 }
         server_ids: { type: array, items: { type: integer }, description: scope_type=servers 时的节点 }
         allow_low_risk_ops: { type: boolean, description: 允许静音与维护，默认 true }
-        allow_subscriptions: { type: boolean, description: '允许配对的设备新增订阅（修订第 217 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false' }
+        allow_subscriptions: { type: boolean, description: '允许配对的设备新增、修改、删除订阅（修订第 217、218 条，约束 5 的唯一写入例外）；只对“全部节点”授权生效，默认 false' }
         max_devices: { type: integer, minimum: 1, maximum: 10, description: 最多配对几台设备，默认 1 }
         expires_in_days: { type: integer, minimum: 1, maximum: 90, description: AK 的配对有效期，默认 1 天 }
 

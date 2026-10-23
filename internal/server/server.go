@@ -202,7 +202,7 @@ const (
 	accessPair    access = "pair"     // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
 	accessApp     access = "app"      // 只接受 App 设备 Access Token（设计 12.5）
 	accessOps     access = "ops"      // Web 管理员，或 AK 允许低风险操作的 App 设备：静音、维护（设计 8.4.1、17.2）
-	accessAppSubs access = "app_subs" // 【安全】AK 允许记录订阅且授权全部节点的 App 设备：新增订阅（修订第 217 条，约束 5 的唯一写入例外）
+	accessAppSubs access = "app_subs" // 【安全】AK 允许记录订阅且授权全部节点的 App 设备：记录订阅（修订第 217、218 条，约束 5 的唯一写入例外）
 )
 
 // routeSpec 记录一条路由及其允许的主体。
@@ -304,7 +304,9 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/app/cloud", accessApp, s.handleAppCloud)                 // 云账户只读摘要（修订第 144 条）
 	handle("GET /api/v1/app/subscriptions", accessApp, s.handleAppSubscriptions) // 订阅只读列表（修订第 213 条）
 	handle("GET /api/v1/app/subscriptions/{id}/logo", accessApp, s.handleAppSubscriptionLogo)
-	handle("POST /api/v1/app/subscriptions", accessAppSubs, s.handleAppCreateSubscription) // 修订第 217 条：约束 5 的例外
+	handle("POST /api/v1/app/subscriptions", accessAppSubs, s.handleAppCreateSubscription)     // 修订第 217 条：约束 5 的例外
+	handle("PUT /api/v1/app/subscriptions/{id}", accessAppSubs, s.handleAppUpdateSubscription) // 修订第 218 条
+	handle("DELETE /api/v1/app/subscriptions/{id}", accessAppSubs, s.handleAppDeleteSubscription)
 	handle("PUT /api/v1/app/push", accessApp, s.handleAppPushPut)
 	handle("DELETE /api/v1/app/push", accessApp, s.handleAppPushDelete)
 	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）

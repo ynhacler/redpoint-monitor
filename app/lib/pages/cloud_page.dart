@@ -12,7 +12,11 @@ import '../tokens.dart';
 
 /// 云账户页（只读）
 class CloudPage extends StatefulWidget {
-  const CloudPage({super.key, required this.api, required this.onRevoked, this.serverNames = const {}, this.onOpenServer, this.initial});
+  const CloudPage({super.key, required this.api, required this.onRevoked, this.serverNames = const {}, this.onOpenServer, this.initial,
+      this.embedded = false});
+
+  /// 嵌在“工具”页的分页中，不显示自己的标题栏（修订第 218 条）
+  final bool embedded;
   final ApiClient api;
   final VoidCallback onRevoked;
 
@@ -61,7 +65,7 @@ class _CloudPageState extends State<CloudPage> {
     final muted = TextStyle(fontSize: 13, color: c.textMuted);
     final d = _data;
     return Scaffold(
-      appBar: AppBar(title: const Text('云平台')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('云平台')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 24), children: [

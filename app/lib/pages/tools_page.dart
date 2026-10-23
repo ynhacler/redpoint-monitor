@@ -1,15 +1,17 @@
-// 工具（修订第 216 条）：底部导航的第三个标签，分页放“订阅”与“连通性测试”。
-// 页面在第一次切到对应分页时才创建：连通性测试打开后才开始测。
+// 工具（修订第 216、218 条）：底部导航的第三个标签，分页放“订阅”与“云平台”。
+// 页面在第一次切到对应分页时才创建。
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import 'connectivity_page.dart';
+import '../models.dart';
+import 'cloud_page.dart';
 import 'subscriptions_page.dart';
 
-/// 工具页：订阅 / 连通性测试
+/// 工具页：订阅 / 云平台
 class ToolsPage extends StatelessWidget {
   /// 创建工具页
-  const ToolsPage({super.key, required this.api, required this.onRevoked, this.privacy = false});
+  const ToolsPage({super.key, required this.api, required this.onRevoked, this.privacy = false, this.cloud,
+      this.serverNames = const {}, this.onOpenServer});
 
   /// 当前监控中心
   final ApiClient api;
@@ -20,17 +22,26 @@ class ToolsPage extends StatelessWidget {
   /// 隐私模式
   final bool privacy;
 
+  /// 已读取的云账户摘要（先显示，再刷新）
+  final CloudSummary? cloud;
+
+  /// 节点 ID → 名称，用于显示云实例关联的节点
+  final Map<int, String> serverNames;
+
+  /// 点云实例关联的节点时打开详情
+  final ValueChanged<int>? onOpenServer;
+
   @override
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('工具'),
-            bottom: const TabBar(tabs: [Tab(text: '订阅'), Tab(text: '连通性测试')]),
+            bottom: const TabBar(tabs: [Tab(text: '订阅'), Tab(text: '云平台')]),
           ),
           body: TabBarView(children: [
             SubscriptionsPage(api: api, onRevoked: onRevoked, privacy: privacy, embedded: true),
-            const ConnectivityPage(embedded: true),
+            CloudPage(api: api, onRevoked: onRevoked, initial: cloud, serverNames: serverNames, onOpenServer: onOpenServer, embedded: true),
           ]),
         ),
       );
