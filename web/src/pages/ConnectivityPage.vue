@@ -35,12 +35,12 @@ function saveHistory() {
 /** 测试若干分组：清空本次结果，发给探测页 */
 function run(keys: string[]) {
   if (!ready.value || !frame.value?.contentWindow) return
-  const targets: { id: string; url: string }[] = []
+  const targets: { id: string; url: string; urls: string[] }[] = []
   for (const g of siteGroups.filter((g) => keys.includes(g.key))) {
     running[g.key] = true
     for (const s of g.sites) {
       latest[s.id] = undefined
-      targets.push({ id: s.id, url: s.url })
+      targets.push({ id: s.id, url: s.url, urls: [s.url, ...(s.alt ?? [])] }) // url 给缓存了旧探测页的浏览器
     }
   }
   const seq = ++runSeq

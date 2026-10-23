@@ -2,6 +2,8 @@
 // 测试在浏览器中进行（不经过面板与 VPS）；目标固定在这里，测的是各站点的小文件（多为 /favicon.ico），只看能否连上与耗时。
 // 地址要求（修订第 194 条）：https、不跳转到 http、响应不带 Cross-Origin-Resource-Policy: same-origin / same-site
 // （否则浏览器拒收，显示为“无法连接”）；claude.ai、chatgpt.com、npmjs.com 整站如此，改测同一服务的 API 地址。
+// Cloudflare 对可疑来源（常见于代理出口）返回的人机验证页也带这个头，所以 Claude、ChatGPT 另配备用地址，
+// 前一个连接失败时改测下一个（修订第 203 条）；会跳转到登录页的地址（如 aistudio.google.com）不能用。
 // 等级：优 < 150 ms，良 < 400 ms，慢 ≥ 400 ms，超时（5 秒内没有响应或连接失败）。
 
 /** 一个测试目标 */
@@ -9,6 +11,8 @@ export interface Site {
   id: string
   name: string
   url: string
+  /** 备用地址（同一服务、同样走代理规则的其他域名）：前一个地址连接失败时依次改测，最多 2 个 */
+  alt?: string[]
   /** 标志键（siteIcons.ts）；没有时用 siteLogos.ts 中的图片标志，都没有时用色块加首字母 */
   icon?: string
   color: string
@@ -50,9 +54,11 @@ export const siteGroups: SiteGroup[] = [
       { id: 'youtube', name: 'YouTube', url: fav('www.youtube.com'), icon: 'youtube', color: '#FF0000' },
       { id: 'github', name: 'GitHub', url: fav('github.com'), icon: 'github', color: '#181717' },
       { id: 'cloudflare', name: 'Cloudflare', url: fav('www.cloudflare.com'), icon: 'cloudflare', color: '#F38020' },
-      { id: 'claude', name: 'Claude', url: 'https://api.anthropic.com/', icon: 'claude', color: '#D97757' },
-      { id: 'chatgpt', name: 'ChatGPT', url: 'https://api.openai.com/', color: '#10A37F', letter: 'G' },
-      { id: 'aistudio', name: 'AI Studio', url: fav('aistudio.google.com'), icon: 'googlegemini', color: '#8E75B2' },
+      { id: 'claude', name: 'Claude', url: 'https://api.anthropic.com/', alt: [fav('www.anthropic.com'), fav('platform.claude.com')],
+        icon: 'claude', color: '#D97757' },
+      { id: 'chatgpt', name: 'ChatGPT', url: 'https://api.openai.com/', alt: ['https://cdn.oaistatic.com/'], color: '#10A37F', letter: 'G' },
+      // aistudio.google.com 未登录时跳转到 accounts.google.com（CORP: same-site，被拒收），改测 Gemini API 地址
+      { id: 'aistudio', name: 'Gemini', url: 'https://generativelanguage.googleapis.com/', icon: 'googlegemini', color: '#8E75B2' },
       { id: 'amazon', name: 'Amazon', url: fav('www.amazon.com'), color: '#FF9900', letter: 'a' },
       { id: 'bing', name: 'Bing', url: fav('www.bing.com'), color: '#258FFA', letter: 'b' },
       { id: 'steam', name: 'Steam', url: fav('store.steampowered.com'), icon: 'steam', color: '#000000' },

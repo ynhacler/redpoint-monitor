@@ -377,6 +377,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 203 | 连通性测试：Claude、ChatGPT 增加备用地址，Cloudflare 人机验证页被浏览器拒收时改测同一服务的其他域名；Gemini 改测 API 地址（原地址跳转到登录页） | 48 |
 | 202 | 阿里云权限说明：添加账户时逐条列出四个只读策略的用途与没有它的影响，写明查看 CDT 实例至少需要 ECS 与 CDT 两条；同步缺少 ECS / 轻量只读权限时，提示中写明要授予的策略 | 44 |
 | 201 | 新增第 52 章“网站配置与界面语言”：系统 → 网站配置（应用名称、语言、登录验证码开关、监听端口）；界面翻译框架与第一批英文翻译 | 52 |
 | 200 | 新增第 51 章“监听端口”：Web 端口与 Agent 专用端口可在网页中修改、立即生效；Web 旧端口保留到确认；Agent 端口只放行 Agent 接口，安装命令改用 Agent 地址；admin reset-listen 恢复 | 51 |
@@ -11158,6 +11159,9 @@ SIM 卡    “SIM 电话卡”类别，用于记录保号与月租。目录按�
 目标      固定在 web/src/connectivity.ts：中国 12 个、美国 20 个、全球 12 个常用网站；请求各站的小文件（多为 /favicon.ico）。
           地址须为 https、不跳转到 http、响应不带 Cross-Origin-Resource-Policy: same-origin / same-site（浏览器会拒收）；
           整站如此的服务改测同一服务的 API 地址（Claude → api.anthropic.com，ChatGPT → api.openai.com，npm → registry.npmjs.org，修订第 194 条）
+          Cloudflare 对可疑来源（常见于代理出口）返回的人机验证页也带 CORP: same-origin：Claude、ChatGPT 另配最多 2 个备用地址
+          （www.anthropic.com、platform.claude.com；cdn.oaistatic.com），前一个“连接失败”时依次改测，超时不换；会跳转到登录页的
+          地址不能用（aistudio.google.com → accounts.google.com），Gemini 改测 generativelanguage.googleapis.com（修订第 203 条）
 计时      no-cors 的 fetch，不读取内容，不加随机参数（cache: no-store 已绕过缓存）；每个目标先请求一次（含 DNS 与 TLS），
           再请求一次取较小值；5 秒没有响应为“超时”，连接失败或被浏览器拒收为“无法连接”；同时最多 6 个请求
 等级      优 < 150 ms、良 < 400 ms、慢 ≥ 400 ms、超时 / 无法连接；每个网站显示本次延迟与最近 8 次结果（圆点，只存在本机浏览器）
