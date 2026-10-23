@@ -10,6 +10,7 @@ import { HISTORY, grade, grades, siteGroups, type Grade, type Site } from '../co
 const frame = ref<HTMLIFrameElement | null>(null)
 const ready = ref(false)
 const latest = reactive<Record<string, number | null | undefined>>({}) // undefined：测试中或还没测
+const failKind = reactive<Record<string, 'timeout' | 'error'>>({}) // 最近一次失败的原因：超时 / 无法连接
 const running = reactive<Record<string, boolean>>({})
 const history = reactive<Record<string, (number | null)[]>>(loadHistory())
 let runSeq = 0
@@ -50,13 +51,14 @@ const runAll = () => run(siteGroups.map((g) => g.key))
 function onMessage(e: MessageEvent) {
   // 只接受探测页的消息
   if (!frame.value || e.source !== frame.value.contentWindow || !e.data) return
-  const d = e.data as { type: string; run?: number; id?: string; ms?: number | null }
+  const d = e.data as { type: string; run?: number; id?: string; ms?: number | null; fail?: string }
   if (d.type === 'ready') {
     ready.value = true
     runAll()
   } else if (d.type === 'result' && typeof d.id === 'string' && d.id in idSet) {
     const ms = typeof d.ms === 'number' && Number.isFinite(d.ms) ? d.ms : null
     latest[d.id] = ms
+    failKind[d.id] = d.fail === 'error' ? 'error' : 'timeout'
     history[d.id] = [...(history[d.id] ?? []), ms].slice(-HISTORY)
   } else if (d.type === 'done' && typeof d.run === 'number') {
     for (const k of runGroups.get(d.run) ?? []) running[k] = false
@@ -130,7 +132,7 @@ function logoColor(hex: string) {
           </span>
           <span class="ms num" :style="latest[s.id] !== undefined ? { color: grades[grade(latest[s.id]!)].color } : undefined">
             <template v-if="latest[s.id] === undefined"><span class="muted">{{ running[g.key] ? '…' : '—' }}</span></template>
-            <template v-else-if="latest[s.id] === null">超时</template>
+            <template v-else-if="latest[s.id] === null">{{ failKind[s.id] === 'error' ? '无法连接' : '超时' }}</template>
             <template v-else>{{ latest[s.id] }}ms</template>
           </span>
         </li>
