@@ -11,6 +11,7 @@ import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
 import UsageBar from '../components/UsageBar.vue'
 import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime, fmtTraffic } from '../format'
+import { t } from '../i18n'
 import { state } from '../store'
 
 const accounts = ref<CloudAccount[]>([])
@@ -25,7 +26,7 @@ async function load() {
     instances.value = i
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '加载失败，请稍后重试')
+    error.value = errorText(e, t('加载失败，请稍后重试'))
   } finally {
     loaded.value = true
     schedule()
@@ -105,16 +106,16 @@ const providerOf = (p: string) => providers[p as Provider] ?? providers.aws
 // ---- 账户状态 ----
 
 function status(a: CloudAccount): { tone: string; text: string } {
-  if (a.syncing) return { tone: 'muted', text: '同步中…' }
-  if (!a.enabled) return { tone: 'muted', text: '已停用' }
-  if (a.auth_failed) return { tone: 'bad', text: `凭证失效或权限不足，已停止自动同步：${a.last_error}` }
-  if (a.last_error) return { tone: 'warn', text: `同步失败：${a.last_error}（${fmtTime(a.next_try_at)} 重试）` }
+  if (a.syncing) return { tone: 'muted', text: t('同步中…') }
+  if (!a.enabled) return { tone: 'muted', text: t('已停用') }
+  if (a.auth_failed) return { tone: 'bad', text: t('凭证失效或权限不足，已停止自动同步：{error}', { error: a.last_error }) }
+  if (a.last_error) return { tone: 'warn', text: t('同步失败：{error}（{time} 重试）', { error: a.last_error, time: fmtTime(a.next_try_at) }) }
   const last = Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
   // 区域级问题（修订第 141 条）：其他区域照常同步，被跳过区域的实例保留上一次的结果
   // 有区域暂时失败时约 30 分钟后自动重新检查（修订第 151 条）
-  const recheck = a.instances_recheck_at ? `（${fmtTime(a.instances_recheck_at)} 自动重新检查）` : ''
-  if (a.last_warning) return { tone: 'warn', text: `已同步 ${fmtTime(last)}，部分内容已跳过：${a.last_warning}${recheck}` }
-  return last ? { tone: 'muted', text: `已同步 ${fmtTime(last)}` } : { tone: 'muted', text: '等待首次同步' }
+  const recheck = a.instances_recheck_at ? t('（{time} 自动重新检查）', { time: fmtTime(a.instances_recheck_at) }) : ''
+  if (a.last_warning) return { tone: 'warn', text: t('已同步 {time}，部分内容已跳过：{warning}', { time: fmtTime(last), warning: a.last_warning }) + recheck }
+  return last ? { tone: 'muted', text: t('已同步 {time}', { time: fmtTime(last) }) } : { tone: 'muted', text: t('等待首次同步') }
 }
 
 /** 预算用量：优先按本月预估，没有预估时按已产生 */
@@ -171,7 +172,7 @@ const deletePassword = ref('')
 const deleteError = ref('')
 async function remove(a: CloudAccount) {
   if (!deletePassword.value) {
-    deleteError.value = '请输入登录密码以确认'
+    deleteError.value = t('请输入登录密码以确认')
     return
   }
   deleteError.value = ''
@@ -230,7 +231,7 @@ async function save() {
   fieldErrors.value = {}
   formError.value = ''
   if (changingCred.value && !f.password) {
-    fieldErrors.value = { password: '请输入当前登录密码以确认' }
+    fieldErrors.value = { password: t('请输入当前登录密码以确认') }
     return
   }
   const body: CloudAccountInput = {
@@ -290,9 +291,9 @@ const cdtPool = (i: CloudInstance) => accounts.value.find((a) => a.id === i.acco
 // CDT 免费额度池（修订第 181 条）
 const poolPct = (p: CloudTrafficPool) => (p.limit_bytes ? (p.used_bytes / p.limit_bytes) * 100 : 0)
 const poolTip = (p: CloudTrafficPool) =>
-  `${p.period_start.slice(0, 7)} 自然月（北京时间）；只计按流量计费的 BGP（多线）流量，超出免费额度的部分按量收费`
+  t('{month} 自然月（北京时间）；只计按流量计费的 BGP（多线）流量，超出免费额度的部分按量收费', { month: p.period_start.slice(0, 7) })
 
-const intervalCost: Record<number, string> = { 6: '约 2.4', 12: '约 1.2', 24: '约 0.6' }
+const intervalCost: Record<number, string> = { 6: '2.4', 12: '1.2', 24: '0.6' }
 
 // 阿里云：在 RAM 中创建用户，只授予这四个系统只读策略；CDT 只读用于读取 CDT 公网流量（修订第 181 条），没有时只是不显示
 const aliyunPolicies = 'AliyunBSSReadOnlyAccess\nAliyunECSReadOnlyAccess\nAliyunSWASReadOnlyAccess\nAliyunCDTReadOnlyAccess'
@@ -329,8 +330,9 @@ const tencentActions: [string, string][] = [
 // Oracle Cloud：把 API 用户放进一个组，在根区间为该组添加这四条只读策略
 const ociPolicy = ['read usage-reports', 'inspect compartments', 'read instance-family', 'read virtual-network-family']
   .map((x) => `Allow group <组名> to ${x} in tenancy`).join('\n')
+// 策略中的占位文字按界面语言显示（复制到云控制台后由用户替换）
 const policyFor = (p: Provider) => (p === 'aws' ? awsPolicy : p === 'oci' ? ociPolicy
-  : p.startsWith('tencent') ? tencentPolicy : aliyunPolicies)
+  : p.startsWith('tencent') ? tencentPolicy : aliyunPolicies).replaceAll('面板服务器公网IP', t('面板服务器公网IP')).replaceAll('<组名>', t('<组名>'))
 
 // ---- 实例 ----
 
@@ -357,8 +359,8 @@ async function link(i: CloudInstance, serverId: number | null) {
 
 // 自动流量校准（设计 44.5）：默认关闭；云厂商数据有数小时延迟，且计费周期、口径需与节点一致
 async function toggleCalibrate(i: CloudInstance, on: boolean) {
-  if (on && !confirm(`每天用“${i.name || i.instance_id}”的云厂商流量校准节点“${nodeName(i.server_id)}”？\n` +
-    '请确认节点的流量重置日、计费时区与计费方式（入站 + 出站或只算出站）和云厂商一致；周期不一致时不会校准。')) return
+  if (on && !confirm(t('每天用“{inst}”的云厂商流量校准节点“{node}”？', { inst: i.name || i.instance_id, node: nodeName(i.server_id) }) + '\n' +
+    t('请确认节点的流量重置日、计费时区与计费方式（入站 + 出站或只算出站）和云厂商一致；周期不一致时不会校准。'))) return
   linkError.value = ''
   try {
     const v = await setCloudAutoCalibrate(i.id, on)
@@ -379,165 +381,158 @@ function expireTone(i: CloudInstance): string {
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>云平台</h1>
-      <button v-if="editing === null" type="button" @click="openNew">添加账户</button>
+      <h1>{{ t('云平台') }}</h1>
+      <button v-if="editing === null" type="button" @click="openNew">{{ t('添加账户') }}</button>
     </div>
     <!-- 已有账户后不再显示介绍（修订第 185 条） -->
     <p v-if="loaded && !accounts.length" class="muted small intro">
-      接入你自己的云账户，查看本月费用与预估、云厂商口径的实例与流量包用量。只需只读权限；凭证加密保存在本面板，
-      面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS、阿里云与腾讯云（国内站、国际站）、Oracle Cloud。
+      {{ t('接入你自己的云账户，查看本月费用与预估、云厂商口径的实例与流量包用量。只需只读权限；凭证加密保存在本面板，面板直接请求云厂商的官方接口，数据不经过任何第三方。目前支持 AWS、阿里云与腾讯云（国内站、国际站）、Oracle Cloud。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <!-- 添加 / 编辑 -->
     <form v-if="editing !== null" class="panel editor" novalidate @submit.prevent="save">
-      <h2>{{ editing === 'new' ? '添加云账户' : `编辑 ${form.name}` }}</h2>
+      <h2>{{ editing === 'new' ? t('添加云账户') : t('编辑 {name}', { name: form.name }) }}</h2>
       <!-- 服务商较多，用下拉而不是分段按钮，窄屏也不溢出 -->
-      <label v-if="editing === 'new'" class="provider-pick small">服务商
+      <label v-if="editing === 'new'" class="provider-pick small">{{ t('服务商') }}
         <select v-model="form.provider" @change="showPolicy = false">
-          <option v-for="(p, key) in providers" :key="key" :value="key">{{ p.label }}</option>
+          <option v-for="(p, key) in providers" :key="key" :value="key">{{ t(p.label) }}</option>
         </select>
       </label>
       <!-- AWS 完整流程（修订第 146 条）：建用户 → 建策略（限定面板 IP）→ 挂策略 → 建密钥 -->
       <div v-if="form.provider === 'aws'" class="muted small key-steps">
-        <p>完整流程：</p>
+        <p>{{ t('完整流程：') }}</p>
         <ol>
-          <li><b>建用户</b>：IAM → Users → Create user，用户名如 <code>vpsmon-readonly</code>，<b>不要</b>勾选“提供用户对 AWS 管理控制台的访问”。</li>
-          <li><b>建策略</b>：IAM → Policies → Create policy → JSON 标签页，粘贴下面的策略，把 <code>面板服务器公网IP</code> 换成面板服务器的真实公网 IP，
-            命名 <code>vpsmon-readonly</code>。
-            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看策略' }}</button></li>
-          <li><b>挂策略</b>：回到 Users → 点 <code>vpsmon-readonly</code> → Add permissions → Attach policies directly → 搜 <code>vpsmon-readonly</code> → 勾选。</li>
-          <li><b>建密钥</b>：该用户 → Security credentials → Create access key → 用例选“在 AWS 外部运行的应用程序” → 建完立刻保存 Access Key ID 与 Secret Access Key（Secret 只显示一次）。</li>
+          <li><b>{{ t('建用户') }}</b>{{ t('：IAM → Users → Create user，用户名如') }} <code>vpsmon-readonly</code>，<b>{{ t('不要') }}</b>{{ t('勾选“提供用户对 AWS 管理控制台的访问”。') }}</li>
+          <li><b>{{ t('建策略') }}</b>{{ t('：IAM → Policies → Create policy → JSON 标签页，粘贴下面的策略，把') }} <code>{{ t('面板服务器公网IP') }}</code> {{ t('换成面板服务器的真实公网 IP，命名') }} <code>vpsmon-readonly</code>。
+            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? t('收起策略') : t('查看策略') }}</button></li>
+          <li><b>{{ t('挂策略') }}</b>{{ t('：回到 Users → 点') }} <code>vpsmon-readonly</code> {{ t('→ Add permissions → Attach policies directly → 搜') }} <code>vpsmon-readonly</code> {{ t('→ 勾选。') }}</li>
+          <li><b>{{ t('建密钥') }}</b>{{ t('：该用户 → Security credentials → Create access key → 用例选“在 AWS 外部运行的应用程序” → 建完立刻保存 Access Key ID 与 Secret Access Key（Secret 只显示一次）。') }}</li>
         </ol>
         <p>
-          策略中的 IP 限制让这对密钥只能从面板服务器使用，泄露后在别处无法调用。面板若通过 IPv6 访问 AWS，把 IPv6 地址（/128）也加进 aws:SourceIp；
-          面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。
+          {{ t('策略中的 IP 限制让这对密钥只能从面板服务器使用，泄露后在别处无法调用。面板若通过 IPv6 访问 AWS，把 IPv6 地址（/128）也加进 aws:SourceIp；面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。') }}
         </p>
       </div>
       <!-- 阿里云（修订第 202 条）：逐条列出要授予的系统只读策略、用途与没有它的影响；查看 CDT 实例至少需要 ECS 与 CDT 两条 -->
       <div v-else-if="form.provider.startsWith('aliyun')" class="muted small key-steps">
         <p>
-          在{{ form.provider === 'aliyun_cn' ? '阿里云（aliyun.com）' : '阿里云国际站（alibabacloud.com）' }} RAM 控制台创建一个专用用户，
-          在“权限管理 → 新增授权”中授予下面的系统策略（都是只读，不能开关机或修改资源），再为它创建 AccessKey。
-          国内站与国际站是两套账号，请按账号所在站点选择。
+          {{ t('在{site} RAM 控制台创建一个专用用户，在“权限管理 → 新增授权”中授予下面的系统策略（都是只读，不能开关机或修改资源），再为它创建 AccessKey。国内站与国际站是两套账号，请按账号所在站点选择。',
+            { site: form.provider === 'aliyun_cn' ? t('阿里云（aliyun.com）') : t('阿里云国际站（alibabacloud.com）') }) }}
         </p>
         <ul>
-          <li v-for="[p, use] in aliyunPolicyUses" :key="p"><code>{{ p }}</code>：{{ use }}</li>
+          <li v-for="[p, use] in aliyunPolicyUses" :key="p"><code>{{ p }}</code>{{ t('：') }}{{ t(use) }}</li>
         </ul>
-        <p><b>要看 CDT 实例</b>：至少授予 <code>AliyunECSReadOnlyAccess</code>（列出实例）与 <code>AliyunCDTReadOnlyAccess</code>（流量用量）。
-          给已添加的账户补授权后，点账户上的“立即同步”。
-          <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起' : '复制策略名称' }}</button></p>
+        <p><b>{{ t('要看 CDT 实例') }}</b>{{ t('：至少授予') }} <code>AliyunECSReadOnlyAccess</code>{{ t('（列出实例）与') }} <code>AliyunCDTReadOnlyAccess</code>{{ t('（流量用量）。给已添加的账户补授权后，点账户上的“立即同步”。') }}
+          <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? t('收起') : t('复制策略名称') }}</button></p>
       </div>
       <p v-else-if="form.provider === 'oci'" class="muted small">
-        建议创建一个专用用户并加入一个组，在根区间为该组添加下面的只读策略，再为该用户添加 API 密钥（不带密码的 RSA 私钥）。
-        出站流量按租户统计，对照每月 10 TB 免费额度。
-        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看最小权限策略' }}</button>
+        {{ t('建议创建一个专用用户并加入一个组，在根区间为该组添加下面的只读策略，再为该用户添加 API 密钥（不带密码的 RSA 私钥）。出站流量按租户统计，对照每月 10 TB 免费额度。') }}
+        <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? t('收起策略') : t('查看最小权限策略') }}</button>
       </p>
       <!-- 腾讯云完整流程（修订第 147 条）：建策略（限定面板 IP）→ 建子用户（只开编程访问）→ 关联策略 → 保存密钥 -->
       <div v-else class="muted small key-steps">
         <p>
-          在{{ form.provider === 'tencent_cn' ? '腾讯云（cloud.tencent.com）' : '腾讯云国际站（tencentcloud.com）' }}访问管理 CAM 中操作。
-          国内站与国际站是两套账号，请按账号所在站点选择。完整流程：
+          {{ t('在{site}访问管理 CAM 中操作。国内站与国际站是两套账号，请按账号所在站点选择。完整流程：',
+            { site: form.provider === 'tencent_cn' ? t('腾讯云（cloud.tencent.com）') : t('腾讯云国际站（tencentcloud.com）') }) }}
         </p>
         <ol>
-          <li><b>建策略</b>：CAM → 策略 → 新建自定义策略 → 按策略语法创建 → 空白模板，粘贴下面的策略，把 <code>面板服务器公网IP</code>
-            换成面板服务器的真实公网 IP，命名 <code>vpsmon-readonly</code>。
-            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? '收起策略' : '查看策略' }}</button></li>
-          <li><b>建子用户</b>：CAM → 用户 → 新建用户 → 自定义创建 → 可访问资源并接收消息，访问方式<b>只勾“编程访问”</b>，不勾“腾讯云控制台访问”。</li>
-          <li><b>关联策略</b>：设置用户权限时搜索 <code>vpsmon-readonly</code> 并勾选（不要关联 AdministratorAccess 等管理权限）。</li>
-          <li><b>保存密钥</b>：创建完成页面显示 SecretId 与 SecretKey，立刻保存（SecretKey 只显示一次）。</li>
+          <li><b>{{ t('建策略') }}</b>{{ t('：CAM → 策略 → 新建自定义策略 → 按策略语法创建 → 空白模板，粘贴下面的策略，把') }} <code>{{ t('面板服务器公网IP') }}</code>
+            {{ t('换成面板服务器的真实公网 IP，命名') }} <code>vpsmon-readonly</code>。
+            <button type="button" class="text" @click="showPolicy = !showPolicy">{{ showPolicy ? t('收起策略') : t('查看策略') }}</button></li>
+          <li><b>{{ t('建子用户') }}</b>{{ t('：CAM → 用户 → 新建用户 → 自定义创建 → 可访问资源并接收消息，访问方式') }}<b>{{ t('只勾“编程访问”') }}</b>{{ t('，不勾“腾讯云控制台访问”。') }}</li>
+          <li><b>{{ t('关联策略') }}</b>{{ t('：设置用户权限时搜索') }} <code>vpsmon-readonly</code> {{ t('并勾选（不要关联 AdministratorAccess 等管理权限）。') }}</li>
+          <li><b>{{ t('保存密钥') }}</b>{{ t('：创建完成页面显示 SecretId 与 SecretKey，立刻保存（SecretKey 只显示一次）。') }}</li>
         </ol>
-        <p>策略需要开通的权限（都是只读）：</p>
+        <p>{{ t('策略需要开通的权限（都是只读）：') }}</p>
         <ul>
-          <li v-for="[a, use] in tencentActions" :key="a"><code>{{ a }}</code>：{{ use }}</li>
+          <li v-for="[a, use] in tencentActions" :key="a"><code>{{ a }}</code>{{ t('：') }}{{ t(use) }}</li>
         </ul>
         <p>
-          也可以改用预设策略 QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess，但费用与余额仍需上面两条 billing 权限，
-          推荐直接用这条自定义策略。IP 限制让密钥泄露后在别处无法使用；面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。
+          {{ t('也可以改用预设策略 QcloudCVMReadOnlyAccess、QcloudLighthouseReadOnlyAccess，但费用与余额仍需上面两条 billing 权限，推荐直接用这条自定义策略。IP 限制让密钥泄露后在别处无法使用；面板服务器换 IP 后要同步修改策略，否则同步会提示权限不足。') }}
         </p>
       </div>
       <CommandBlock v-if="showPolicy" :command="policyFor(form.provider)" plain class="policy" />
       <!-- 密钥从哪里获取（用户最常问的问题）：一行步骤 + 控制台链接 -->
       <p class="key-help small">
-        <b>{{ info.idLabel }} 从哪里获取：</b>{{ info.keySteps }}。
-        <a :href="info.keyURL" target="_blank" rel="noopener noreferrer">打开控制台</a>
-        <br><span class="muted">密钥只显示一次，请立即复制；不要使用主账号（根账号）的密钥。</span>
+        <b>{{ t('{label} 从哪里获取：', { label: t(info.idLabel) }) }}</b>{{ t(info.keySteps) }}{{ t('。') }}
+        <a :href="info.keyURL" target="_blank" rel="noopener noreferrer">{{ t('打开控制台') }}</a>
+        <br><span class="muted">{{ t('密钥只显示一次，请立即复制；不要使用主账号（根账号）的密钥。') }}</span>
       </p>
       <div class="fields">
-        <label>名称
-          <input v-model="form.name" maxlength="64" :placeholder="`如 ${info.label} 主账户`" />
+        <label>{{ t('名称') }}
+          <input v-model="form.name" maxlength="64" :placeholder="t('如 {name} 主账户', { name: t(info.label) })" />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
         </label>
-        <label>{{ info.idLabel }}
+        <label>{{ t(info.idLabel) }}
           <input v-model="form.access_key_id" autocomplete="off" spellcheck="false"
-            :placeholder="editing === 'new' ? info.idPlaceholder : '留空保持不变'" />
+            :placeholder="editing === 'new' ? info.idPlaceholder : t('留空保持不变')" />
           <small v-if="fieldErrors.access_key_id" class="err">{{ fieldErrors.access_key_id }}</small>
         </label>
         <template v-if="form.provider === 'oci'">
-          <label>租户 OCID
+          <label>{{ t('租户 OCID') }}
             <input v-model="form.tenancy_ocid" autocomplete="off" spellcheck="false"
-              :placeholder="editing === 'new' ? 'ocid1.tenancy.oc1..…' : '留空保持不变'" />
+              :placeholder="editing === 'new' ? 'ocid1.tenancy.oc1..…' : t('留空保持不变')" />
             <small v-if="fieldErrors.tenancy_ocid" class="err">{{ fieldErrors.tenancy_ocid }}</small>
           </label>
-          <label>指纹（fingerprint）
+          <label>{{ t('指纹（fingerprint）') }}
             <input v-model="form.fingerprint" autocomplete="off" spellcheck="false"
-              :placeholder="editing === 'new' ? 'aa:bb:…（16 组）' : '留空保持不变'" />
+              :placeholder="editing === 'new' ? t('aa:bb:…（16 组）') : t('留空保持不变')" />
             <small v-if="fieldErrors.fingerprint" class="err">{{ fieldErrors.fingerprint }}</small>
           </label>
-          <label>主区域（home region）
+          <label>{{ t('主区域（home region）') }}
             <input v-model="form.home_region" autocomplete="off" spellcheck="false"
-              :placeholder="editing === 'new' ? '如 ap-tokyo-1' : '留空保持不变'" />
+              :placeholder="editing === 'new' ? t('如 ap-tokyo-1') : t('留空保持不变')" />
             <small v-if="fieldErrors.home_region" class="err">{{ fieldErrors.home_region }}</small>
           </label>
         </template>
-        <label :class="{ wide: form.provider === 'oci' }">{{ info.secretLabel }}
+        <label :class="{ wide: form.provider === 'oci' }">{{ t(info.secretLabel) }}
           <!-- 私钥是多行 PEM：用文本框；不进浏览器自动填充 -->
           <textarea v-if="form.provider === 'oci'" v-model="form.secret" rows="4" autocomplete="off" spellcheck="false" class="mono pem"
-            :placeholder="editing === 'new' ? '-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----' : '留空保持不变'" />
+            :placeholder="editing === 'new' ? '-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----' : t('留空保持不变')" />
           <input v-else v-model="form.secret" type="password" autocomplete="new-password" spellcheck="false"
-            :placeholder="editing === 'new' ? '' : '留空保持不变'" />
+            :placeholder="editing === 'new' ? '' : t('留空保持不变')" />
           <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
           <small v-else-if="fieldErrors.credential" class="err">{{ fieldErrors.credential }}</small>
         </label>
-        <label class="wide">区域
-          <input v-model="form.regions" spellcheck="false" :placeholder="`留空表示全部区域；如 ${info.regionExample}`" />
+        <label class="wide">{{ t('区域') }}
+          <input v-model="form.regions" spellcheck="false" :placeholder="t('留空表示全部区域；如 {example}', { example: info.regionExample })" />
           <small v-if="fieldErrors.regions" class="err">{{ fieldErrors.regions }}</small>
         </label>
-        <label>月度预算（{{ info.currency }}）
-          <input v-model="form.budget" inputmode="decimal" placeholder="不设" />
+        <label>{{ t('月度预算（{cur}）', { cur: info.currency }) }}
+          <input v-model="form.budget" inputmode="decimal" :placeholder="t('不设')" />
           <small v-if="fieldErrors.budget" class="err">{{ fieldErrors.budget }}</small>
         </label>
-        <label v-if="info.hasBalance">余额低于（{{ info.currency }}）时提醒
-          <input v-model="form.balance_alert" inputmode="decimal" placeholder="不提醒" />
+        <label v-if="info.hasBalance">{{ t('余额低于（{cur}）时提醒', { cur: info.currency }) }}
+          <input v-model="form.balance_alert" inputmode="decimal" :placeholder="t('不提醒')" />
           <small v-if="fieldErrors.balance_alert" class="err">{{ fieldErrors.balance_alert }}</small>
         </label>
-        <label>费用同步间隔
+        <label>{{ t('费用同步间隔') }}
           <select v-model.number="form.cost_interval_h">
-            <option :value="6">每 6 小时</option>
-            <option :value="12">每 12 小时</option>
-            <option :value="24">每天</option>
+            <option :value="6">{{ t('每 6 小时') }}</option>
+            <option :value="12">{{ t('每 12 小时') }}</option>
+            <option :value="24">{{ t('每天') }}</option>
           </select>
-          <small v-if="info.paidCostApi" class="muted">AWS Cost Explorer 每次调用收费 0.01 美元，此频率每月{{ intervalCost[form.cost_interval_h] }} 美元</small>
-          <small v-else class="muted">账单与余额接口免费</small>
+          <small v-if="info.paidCostApi" class="muted">{{ t('AWS Cost Explorer 每次调用收费 0.01 美元，此频率每月约 {n} 美元', { n: intervalCost[form.cost_interval_h] }) }}</small>
+          <small v-else class="muted">{{ t('账单与余额接口免费') }}</small>
         </label>
-        <label class="check"><input v-model="form.sync_cost" type="checkbox" />同步费用</label>
-        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />同步流量包（{{ info.trafficName }}，每小时）</label>
-        <label class="check"><input v-model="form.enabled" type="checkbox" />启用</label>
-        <label v-if="changingCred">当前登录密码
+        <label class="check"><input v-model="form.sync_cost" type="checkbox" />{{ t('同步费用') }}</label>
+        <label class="check"><input v-model="form.sync_traffic" type="checkbox" />{{ t('同步流量包（{name}，每小时）', { name: t(info.trafficName) }) }}</label>
+        <label class="check"><input v-model="form.enabled" type="checkbox" />{{ t('启用') }}</label>
+        <label v-if="changingCred">{{ t('当前登录密码') }}
           <input v-model="form.password" type="password" autocomplete="current-password" />
           <small v-if="fieldErrors.password" class="err">{{ fieldErrors.password }}</small>
-          <small v-else class="muted">添加或更换凭证前确认身份</small>
+          <small v-else class="muted">{{ t('添加或更换凭证前确认身份') }}</small>
         </label>
       </div>
       <p v-if="formError" class="err small">{{ formError }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
-        <button type="button" class="secondary" @click="editing = null">取消</button>
+        <button type="submit" :disabled="saving">{{ saving ? t('保存中…') : t('保存') }}</button>
+        <button type="button" class="secondary" @click="editing = null">{{ t('取消') }}</button>
       </div>
     </form>
 
-    <EmptyState v-if="loaded && !accounts.length && editing === null" text="还没有云账户。添加后面板会定时同步费用、实例与流量包用量。">
-      <button type="button" @click="openNew">添加账户</button>
+    <EmptyState v-if="loaded && !accounts.length && editing === null" :text="t('还没有云账户。添加后面板会定时同步费用、实例与流量包用量。')">
+      <button type="button" @click="openNew">{{ t('添加账户') }}</button>
     </EmptyState>
 
     <!-- 账户 -->
@@ -545,25 +540,25 @@ function expireTone(i: CloudInstance): string {
       <li v-for="a in accounts" :key="a.id" class="panel account" :class="{ off: !a.enabled }">
         <div class="head">
           <div class="title">
-            <span class="type">{{ providerOf(a.provider).label }}</span><b>{{ a.name }}</b>
+            <span class="type">{{ t(providerOf(a.provider).label) }}</span><b>{{ a.name }}</b>
             <span class="muted small mono">{{ a.credential_hint }}</span>
           </div>
           <div class="acts">
-            <button type="button" class="secondary" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">立即同步</button>
+            <button type="button" class="secondary" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">{{ t('立即同步') }}</button>
             <button v-if="isAliyun(a)" type="button" class="text" :disabled="checks[a.id]?.busy" @click="checkNow(a)">
-              {{ checks[a.id]?.busy ? '检查中…' : '检查权限' }}
+              {{ checks[a.id]?.busy ? t('检查中…') : t('检查权限') }}
             </button>
-            <button type="button" class="text" @click="toggle(a)">{{ a.enabled ? '停用' : '启用' }}</button>
-            <button type="button" class="text" @click="openEdit(a)">编辑</button>
-            <button type="button" class="text danger-text" @click="deleting = deleting === a.id ? null : a.id; deleteError = ''">删除</button>
+            <button type="button" class="text" @click="toggle(a)">{{ a.enabled ? t('停用') : t('启用') }}</button>
+            <button type="button" class="text" @click="openEdit(a)">{{ t('编辑') }}</button>
+            <button type="button" class="text danger-text" @click="deleting = deleting === a.id ? null : a.id; deleteError = ''">{{ t('删除') }}</button>
           </div>
         </div>
         <p class="small status" :class="status(a).tone">{{ status(a).text }}</p>
         <p v-if="syncMsg[a.id]" class="small err">{{ syncMsg[a.id] }}</p>
         <div v-if="checks[a.id] && (checks[a.id].items.length || checks[a.id].error)" class="check">
           <div class="check-head">
-            <b class="small">权限检查</b>
-            <button type="button" class="text small" @click="closeCheck(a)">收起</button>
+            <b class="small">{{ t('权限检查') }}</b>
+            <button type="button" class="text small" @click="closeCheck(a)">{{ t('收起') }}</button>
           </div>
           <p v-if="checks[a.id].error" class="small err">{{ checks[a.id].error }}</p>
           <ul v-if="checks[a.id].items.length">
@@ -575,44 +570,44 @@ function expireTone(i: CloudInstance): string {
               </div>
             </li>
           </ul>
-          <p v-if="checks[a.id].items.length" class="small muted">✗ 的一项：在 RAM 控制台给这个子用户授予后面的系统策略，再点“立即同步”。要找的实例不在 ECS 的台数里：它在别的阿里云账号下，或不在查询的区域中（编辑账户，检查“区域”）。</p>
+          <p v-if="checks[a.id].items.length" class="small muted">{{ t('✗ 的一项：在 RAM 控制台给这个子用户授予后面的系统策略，再点“立即同步”。要找的实例不在 ECS 的台数里：它在别的阿里云账号下，或不在查询的区域中（编辑账户，检查“区域”）。') }}</p>
         </div>
 
         <div class="stats">
           <div>
-            <div class="muted small">本月已产生</div>
+            <div class="muted small">{{ t('本月已产生') }}</div>
             <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.amount_cents, a.current_cost.currency) : DASH }}</div>
           </div>
           <!-- 阿里云没有费用预测，显示账户余额 -->
           <div v-if="a.current_cost?.balance_cents != null">
-            <div class="muted small">账户余额</div>
+            <div class="muted small">{{ t('账户余额') }}</div>
             <div class="big num" :class="{ bad: a.balance_alert_cents > 0 && a.current_cost.balance_cents < a.balance_alert_cents }">
               {{ fmtMoney(a.current_cost.balance_cents, a.current_cost.currency) }}
             </div>
-            <div v-if="a.balance_alert_cents" class="muted small">低于 {{ fmtMoney(a.balance_alert_cents, a.current_cost.currency) }} 时提醒</div>
+            <div v-if="a.balance_alert_cents" class="muted small">{{ t('低于 {amount} 时提醒', { amount: fmtMoney(a.balance_alert_cents, a.current_cost.currency) }) }}</div>
           </div>
           <div v-else>
-            <div class="muted small">本月预估</div>
+            <div class="muted small">{{ t('本月预估') }}</div>
             <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.forecast_cents, a.current_cost.currency) : DASH }}</div>
           </div>
           <div>
-            <div class="muted small">预算</div>
-            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? providerOf(a.provider).currency) : '未设' }}</div>
+            <div class="muted small">{{ t('预算') }}</div>
+            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? providerOf(a.provider).currency) : t('未设') }}</div>
           </div>
           <div>
-            <div class="muted small">实例</div>
+            <div class="muted small">{{ t('实例') }}</div>
             <div class="big num">{{ a.instance_count }}</div>
           </div>
         </div>
         <div v-if="budgetPct(a) != null" class="budget">
           <UsageBar :pct="budgetPct(a)!" />
           <span class="small num" :class="budgetPct(a)! >= 100 ? 'bad' : budgetPct(a)! >= 80 ? 'warn' : 'muted'">
-            {{ a.current_cost?.forecast_cents != null ? '预估' : '已产生' }}占预算 {{ Math.round(budgetPct(a)!) }}%
+            {{ t(a.current_cost?.forecast_cents != null ? '预估占预算 {n}%' : '已产生占预算 {n}%', { n: Math.round(budgetPct(a)!) }) }}
           </span>
         </div>
         <!-- CDT 公网流量免费额度（修订第 181 条）：按账号计算，中国内地与非中国内地各一个池子 -->
         <div v-for="p in a.traffic_pools" :key="p.key" class="budget pool" :title="poolTip(p)">
-          <span class="small pool-name">{{ p.name }}</span>
+          <span class="small pool-name">{{ t(p.name) }}</span>
           <UsageBar :pct="poolPct(p)" />
           <span class="small num" :class="poolPct(p) >= 95 ? 'bad' : poolPct(p) >= 80 ? 'warn' : 'muted'">
             {{ fmtTraffic(p.used_bytes, 'binary') }} / {{ fmtTraffic(p.limit_bytes, 'binary') }}
@@ -621,15 +616,15 @@ function expireTone(i: CloudInstance): string {
         <p v-if="a.pool_warning" class="small warn">{{ a.pool_warning }}</p>
         <p v-if="a.cost_warning" class="small warn">{{ a.cost_warning }}</p>
         <p class="muted small">
-          {{ a.regions.length ? `区域：${a.regions.join('、')}` : '全部已启用的区域' }} ·
-          费用每 {{ a.cost_interval_h }} 小时{{ a.sync_cost ? '' : '（已关闭）' }} ·
-          {{ providerOf(a.provider).billingTZ }}，数据有数小时延迟
+          {{ a.regions.length ? t('区域：{list}', { list: a.regions.join(t('、')) }) : t('全部已启用的区域') }} ·
+          {{ t('费用每 {n} 小时', { n: a.cost_interval_h }) }}{{ a.sync_cost ? '' : t('（已关闭）') }} ·
+          {{ t('{tz}，数据有数小时延迟', { tz: t(providerOf(a.provider).billingTZ) }) }}
         </p>
 
         <form v-if="deleting === a.id" class="confirm" @submit.prevent="remove(a)">
-          <span class="small">删除账户及同步的费用、实例数据（不影响云上的资源）。输入当前登录密码确认：</span>
+          <span class="small">{{ t('删除账户及同步的费用、实例数据（不影响云上的资源）。输入当前登录密码确认：') }}</span>
           <input v-model="deletePassword" type="password" autocomplete="current-password" />
-          <button type="submit" class="danger">删除</button>
+          <button type="submit" class="danger">{{ t('删除') }}</button>
           <span v-if="deleteError" class="small err">{{ deleteError }}</span>
         </form>
       </li>
@@ -637,53 +632,53 @@ function expireTone(i: CloudInstance): string {
 
     <!-- 实例 -->
     <section v-if="instances.length" class="section">
-      <h2>实例</h2>
+      <h2>{{ t('实例') }}</h2>
       <ul class="panel list">
         <li v-for="i in instances" :key="i.id">
           <div class="inst-main">
             <div class="ellipsis"><b>{{ i.name || i.instance_id }}</b>
-              <span class="muted small meta">{{ kindNames[i.kind] ?? i.kind }} · {{ i.region }} · {{ i.plan }}</span>
-              <span v-if="i.cdt_pool" class="tag-cdt small" title="公网按流量计费，流量走 CDT，使用账号的 CDT 免费额度">CDT</span>
+              <span class="muted small meta">{{ kindNames[i.kind] ? t(kindNames[i.kind]) : i.kind }} · {{ i.region }} · {{ i.plan }}</span>
+              <span v-if="i.cdt_pool" class="tag-cdt small" :title="t('公网按流量计费，流量走 CDT，使用账号的 CDT 免费额度')">CDT</span>
             </div>
-            <div class="muted small ellipsis mono">{{ [i.public_ipv4, i.public_ipv6].filter(Boolean).join(' / ') || '无公网 IP' }}</div>
+            <div class="muted small ellipsis mono">{{ [i.public_ipv4, i.public_ipv6].filter(Boolean).join(' / ') || t('无公网 IP') }}</div>
           </div>
           <span class="small state">
             <span :class="i.state.toLowerCase() === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
-            <span v-if="i.expire_at" class="expire" :class="expireTone(i)">到期 {{ fmtDate(i.expire_at) }}</span>
+            <span v-if="i.expire_at" class="expire" :class="expireTone(i)">{{ t('到期') }} {{ fmtDate(i.expire_at) }}</span>
           </span>
           <div v-if="i.traffic_limit_bytes" class="traffic">
             <UsageBar :pct="trafficPct(i)" />
             <span class="small num muted">{{ fmtBytes(i.traffic_used_bytes) }} / {{ fmtBytes(i.traffic_limit_bytes) }}</span>
           </div>
           <!-- CDT（修订第 186 条）：额度按账号与地域类别共用，这里显示所属池子的用量，不是这台实例自己的流量 -->
-          <div v-else-if="i.cdt_pool && cdtPool(i)" class="traffic" :title="`${cdtPool(i)!.name}：账号内同类地域的按流量计费实例共用这份免费额度`">
+          <div v-else-if="i.cdt_pool && cdtPool(i)" class="traffic" :title="t('{pool}：账号内同类地域的按流量计费实例共用这份免费额度', { pool: t(cdtPool(i)!.name) })">
             <UsageBar :pct="poolPct(cdtPool(i)!)" />
             <span class="small num" :class="poolPct(cdtPool(i)!) >= 95 ? 'bad' : poolPct(cdtPool(i)!) >= 80 ? 'warn' : 'muted'">
-              {{ cdtPool(i)!.name.replace('CDT ', '') }}（共用）{{ fmtTraffic(cdtPool(i)!.used_bytes, 'binary') }} / {{ fmtTraffic(cdtPool(i)!.limit_bytes, 'binary') }}
+              {{ t('{pool}（共用）', { pool: t(cdtPool(i)!.name.replace('CDT ', '')) }) }}{{ fmtTraffic(cdtPool(i)!.used_bytes, 'binary') }} / {{ fmtTraffic(cdtPool(i)!.limit_bytes, 'binary') }}
             </span>
           </div>
-          <span v-else-if="i.cdt_pool" class="traffic muted small" title="需要子用户有 AliyunCDTReadOnlyAccess（RAM → 用户 → 新增授权）；已授权但本月还没有 CDT 流量时也显示这一句">CDT：本月暂无数据</span>
+          <span v-else-if="i.cdt_pool" class="traffic muted small" :title="t('需要子用户有 AliyunCDTReadOnlyAccess（RAM → 用户 → 新增授权）；已授权但本月还没有 CDT 流量时也显示这一句')">{{ t('CDT：本月暂无数据') }}</span>
           <span v-else class="traffic muted small">{{ i.account_name }}</span>
           <!-- 与节点关联：已关联 / 建议关联（公网 IP 唯一匹配）/ 手动选择 -->
           <div v-if="i.kind !== 'oci_egress'" class="link small">
             <template v-if="i.server_id">
-              关联节点 <RouterLink :to="`/servers/${i.server_id}`">{{ nodeName(i.server_id) }}</RouterLink>
-              <button type="button" class="text" @click="link(i, null)">取消关联</button>
+              {{ t('关联节点') }} <RouterLink :to="`/servers/${i.server_id}`">{{ nodeName(i.server_id) }}</RouterLink>
+              <button type="button" class="text" @click="link(i, null)">{{ t('取消关联') }}</button>
               <label v-if="i.traffic_limit_bytes > 0" class="auto-cal">
                 <input type="checkbox" :checked="i.auto_calibrate" @change="toggleCalibrate(i, ($event.target as HTMLInputElement).checked)" />
-                每天按云厂商流量校准节点
+                {{ t('每天按云厂商流量校准节点') }}
               </label>
               <span v-if="i.auto_calibrate && i.calibrate_status" class="muted cal-status">
                 {{ i.calibrate_status }}{{ i.calibrated_at > 0 ? `（${fmtTime(i.calibrated_at)}）` : '' }}
               </span>
             </template>
             <template v-else-if="i.suggested_server_id">
-              公网 IP 与节点 <b>{{ nodeName(i.suggested_server_id) }}</b> 相同
-              <button type="button" class="secondary small" @click="link(i, i.suggested_server_id)">关联</button>
+              {{ t('公网 IP 与节点') }} <b>{{ nodeName(i.suggested_server_id) }}</b> {{ t('相同') }}
+              <button type="button" class="secondary small" @click="link(i, i.suggested_server_id)">{{ t('关联') }}</button>
             </template>
-            <select v-else class="small" aria-label="关联节点" :value="''"
+            <select v-else class="small" :aria-label="t('关联节点')" :value="''"
               @change="link(i, Number(($event.target as HTMLSelectElement).value) || null)">
-              <option value="">关联到节点…</option>
+              <option value="">{{ t('关联到节点…') }}</option>
               <option v-for="s in linkable" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
           </div>
@@ -691,8 +686,7 @@ function expireTone(i: CloudInstance): string {
       </ul>
       <p v-if="linkError" class="small err">{{ linkError }}</p>
       <p class="muted small">
-        Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量；阿里云 ECS 公网按流量计费时标有 CDT，显示所属 CDT 免费额度池的用量（按账号计算、同类地域共用，不是单台实例的流量）。
-        关联节点后，节点详情显示云厂商口径的状态、流量包与到期时间，可一键写入节点的到期日。
+        {{ t('Lightsail 流量为本月（UTC）入站 + 出站，按套餐额度计；阿里云、腾讯云轻量为流量包的额度与已用量；阿里云 ECS 公网按流量计费时标有 CDT，显示所属 CDT 免费额度池的用量（按账号计算、同类地域共用，不是单台实例的流量）。关联节点后，节点详情显示云厂商口径的状态、流量包与到期时间，可一键写入节点的到期日。') }}
       </p>
     </section>
   </main>

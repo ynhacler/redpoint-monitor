@@ -16,6 +16,7 @@ import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
 import { fmtMoney } from '../format'
+import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
   byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, mainCurrency, monthStart,
@@ -50,7 +51,7 @@ async function load() {
     list.value = await listSubscriptions()
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '加载失败')
+    error.value = errorText(e, t('加载失败'))
   } finally {
     loaded.value = true
   }
@@ -83,7 +84,7 @@ const rangeBounds = computed<[Date, Date]>(() => {
 })
 const cats = computed(() => byCategory(list.value, cur.value, ...rangeBounds.value))
 const catTotal = computed(() => cats.value.reduce((a, c) => a + c.cents, 0))
-const rangeLabel = computed(() => ({ month: '本月预计花费', year: '本年预计花费', all: '累计已花费' })[range.value])
+const rangeLabel = computed(() => t({ month: '本月预计花费', year: '本年预计花费', all: '累计已花费' }[range.value]))
 // 环形图：半径 70，线宽 22；各段之间留 2 的空隙
 const R = 70
 const C = 2 * Math.PI * R
@@ -103,7 +104,7 @@ const bars = computed(() => {
   for (let i = -4; i <= 4; i++) {
     const from = monthStart(today, i)
     const v = spendBetween(list.value.filter((s) => s.currency === cur.value), from, monthStart(today, i + 1)).get(cur.value) ?? 0
-    out.push({ key: i, label: from.getMonth() === 0 ? String(from.getFullYear()) : `${from.getMonth() + 1} 月`, cents: v, current: i === 0, future: i > 0 })
+    out.push({ key: i, label: from.getMonth() === 0 ? String(from.getFullYear()) : from.toLocaleString(locale.value === 'en' ? 'en' : 'zh-CN', { month: 'short' }), cents: v, current: i === 0, future: i > 0 })
   }
   return out
 })
@@ -123,8 +124,8 @@ const picks = computed(() => {
     && (!q || c.name.toLowerCase().includes(q) || c.key.includes(q)))
 })
 const countryOf = (key?: string) => simCountries.find((c) => c.key === key)
-const pickTabs = computed(() => [{ k: 'all', t: '全部' }, { k: 'hot', t: '热门' },
-  ...(Object.keys(categoryNames) as SubCategory[]).filter((c) => c !== 'other' && catalog.some((x) => x.category === c)).map((c) => ({ k: c, t: categoryNames[c] }))])
+const pickTabs = computed(() => [{ k: 'all', label: t('全部') }, { k: 'hot', label: t('热门') },
+  ...(Object.keys(categoryNames) as SubCategory[]).filter((c) => c !== 'other' && catalog.some((x) => x.category === c)).map((c) => ({ k: c, label: t(categoryNames[c]) }))])
 
 type FormPhone = { cc: string; number: string }
 // VPS 配置在表单中为字符串（空表示没有填写），保存时转为数字
@@ -157,7 +158,7 @@ async function pickLogo(e: Event) {
   input.value = ''
   if (!file) return
   if (file.size > 10 << 20) {
-    fieldErrors.value = { ...fieldErrors.value, logo: '图片不能超过 10 MB' }
+    fieldErrors.value = { ...fieldErrors.value, logo: t('图片不能超过 10 MB') }
     return
   }
   try {
@@ -183,7 +184,7 @@ async function pickLogo(e: Event) {
     const { logo: _, ...rest } = fieldErrors.value
     fieldErrors.value = rest
   } catch {
-    fieldErrors.value = { ...fieldErrors.value, logo: '无法读取这张图片' }
+    fieldErrors.value = { ...fieldErrors.value, logo: t('无法读取这张图片') }
   }
 }
 function clearLogo() {
@@ -201,7 +202,7 @@ function openAdd() {
 }
 function choose(item: CatalogItem | null) {
   Object.assign(form, blank())
-  if (item) Object.assign(form, { name: item.name, brand: item.key, category: item.category, currency: item.currency ?? cur.value })
+  if (item) Object.assign(form, { name: t(item.name), brand: item.key, category: item.category, currency: item.currency ?? cur.value })
   if (form.category === 'sim') form.phones = [{ cc: item?.dial ?? '+86', number: '' }]
   fieldErrors.value = {}
   resetLogo()
@@ -228,7 +229,7 @@ const close = () => { step.value = null; editing.value = null }
 async function save() {
   const price = Number(form.price || 0)
   if (!Number.isFinite(price) || price < 0) {
-    fieldErrors.value = { price_cents: '请填写价格' }
+    fieldErrors.value = { price_cents: t('请填写价格') }
     return
   }
   const body: SubscriptionInput = {
@@ -254,7 +255,7 @@ async function save() {
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.details.length) fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-    else fieldErrors.value = { _: errorText(e, '保存失败') }
+    else fieldErrors.value = { _: errorText(e, t('保存失败')) }
   } finally {
     saving.value = false
   }
@@ -267,18 +268,18 @@ async function remove() {
     close()
     await load()
   } catch (e) {
-    fieldErrors.value = { _: errorText(e, '删除失败') }
+    fieldErrors.value = { _: errorText(e, t('删除失败')) }
   } finally {
     saving.value = false
   }
 }
-const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} ${s.category === 'vps' ? '购买' : '开始订阅'}`
+const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} ${s.category === 'vps' ? t('购买') : t('开始订阅')}`
 // VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
 function vpsSpec(v: Subscription['vps']) {
   const gb = (n: number) => (n >= 1024 && n % 1024 === 0 ? `${n / 1024} TB` : `${n} GB`)
   return [
-    v.cpu ? `${v.cpu} 核` : '', v.memory_gb ? `${v.memory_gb} GB` : '', v.disk_gb ? gb(v.disk_gb) : '',
-    v.traffic_gb ? `${gb(v.traffic_gb)}/月` : '', v.bandwidth_mbps ? `${v.bandwidth_mbps} Mbps` : '',
+    v.cpu ? t('{n} 核', { n: v.cpu }) : '', v.memory_gb ? `${v.memory_gb} GB` : '', v.disk_gb ? gb(v.disk_gb) : '',
+    v.traffic_gb ? t('{v}/月', { v: gb(v.traffic_gb) }) : '', v.bandwidth_mbps ? `${v.bandwidth_mbps} Mbps` : '',
   ].filter(Boolean).join(' · ')
 }
 const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
@@ -299,39 +300,39 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>订阅</h1>
-      <button v-if="!step" type="button" class="btn" @click="openAdd"><Icon name="plus" />添加订阅</button>
+      <h1>{{ t('订阅') }}</h1>
+      <button v-if="!step" type="button" class="btn" @click="openAdd"><Icon name="plus" />{{ t('添加订阅') }}</button>
     </div>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <!-- 选择服务 -->
     <section v-if="step === 'pick'" class="panel editor">
       <div class="editor-head">
-        <h2>选择服务</h2>
+        <h2>{{ t('选择服务') }}</h2>
         <div class="row-actions">
-          <button type="button" class="secondary" @click="choose(null)"><Icon name="edit" />自定义</button>
-          <button type="button" class="text" @click="close">取消</button>
+          <button type="button" class="secondary" @click="choose(null)"><Icon name="edit" />{{ t('自定义') }}</button>
+          <button type="button" class="text" @click="close">{{ t('取消') }}</button>
         </div>
       </div>
-      <nav class="cat-tabs" aria-label="类别">
-        <button v-for="t in pickTabs" :key="t.k" type="button" :class="{ active: pickCat === t.k }" @click="pickCat = t.k as typeof pickCat">{{ t.t }}</button>
+      <nav class="cat-tabs" :aria-label="t('类别')">
+        <button v-for="tb in pickTabs" :key="tb.k" type="button" :class="{ active: pickCat === tb.k }" @click="pickCat = tb.k as typeof pickCat">{{ tb.label }}</button>
       </nav>
-      <div v-if="pickCat === 'sim'" class="countries" role="group" aria-label="国家 / 地区">
-        <button type="button" class="chip" :class="{ active: !pickCountry }" @click="pickCountry = ''">全部</button>
+      <div v-if="pickCat === 'sim'" class="countries" role="group" :aria-label="t('国家 / 地区')">
+        <button type="button" class="chip" :class="{ active: !pickCountry }" @click="pickCountry = ''">{{ t('全部') }}</button>
         <button v-for="c in simCountries" :key="c.key" type="button" class="chip" :class="{ active: pickCountry === c.key }" @click="pickCountry = c.key">
-          {{ c.flag }} {{ c.name }}<span class="muted num">{{ c.dial }}</span>
+          {{ c.flag }} {{ t(c.name) }}<span class="muted num">{{ c.dial }}</span>
         </button>
       </div>
-      <label class="search"><Icon name="search" /><input v-model="query" type="search" placeholder="输入名称搜索" /></label>
+      <label class="search"><Icon name="search" /><input v-model="query" type="search" :placeholder="t('输入名称搜索')" /></label>
       <ul class="pick-list">
         <li v-for="c in picks" :key="c.key">
           <button type="button" class="pick" @click="choose(c)">
             <SubAvatar :brand="c.key" :name="c.name" />
-            <span class="pick-name">{{ c.name }}<small v-if="c.country" class="muted"> {{ countryOf(c.country)?.flag }} {{ c.dial }}</small></span>
+            <span class="pick-name">{{ t(c.name) }}<small v-if="c.country" class="muted"> {{ countryOf(c.country)?.flag }} {{ c.dial }}</small></span>
             <Icon name="plus" class="muted" />
           </button>
         </li>
-        <li v-if="!picks.length" class="muted small empty">没有找到，点击右上角“自定义”添加。</li>
+        <li v-if="!picks.length" class="muted small empty">{{ t('没有找到，点击右上角“自定义”添加。') }}</li>
       </ul>
     </section>
 
@@ -339,125 +340,125 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
     <form v-else-if="step === 'form'" class="panel editor" novalidate @submit.prevent="save">
       <div class="form-head">
         <SubAvatar :brand="form.brand" :name="form.name || '?'" :size="64" :src="formLogo" />
-        <h2>{{ form.name || '自定义订阅' }}</h2>
+        <h2>{{ form.name || t('自定义订阅') }}</h2>
         <!-- 上传图标（修订第 189 条）：浏览器中裁剪为正方形并缩放为 128×128 PNG 后上传 -->
         <div class="logo-actions small">
-          <label class="text upload">上传图标<input type="file" accept="image/*" @change="pickLogo" /></label>
-          <button v-if="formLogo" type="button" class="text" @click="clearLogo">移除图标</button>
+          <label class="text upload">{{ t('上传图标') }}<input type="file" accept="image/*" @change="pickLogo" /></label>
+          <button v-if="formLogo" type="button" class="text" @click="clearLogo">{{ t('移除图标') }}</button>
         </div>
         <small v-if="fieldErrors.logo" class="bad">{{ fieldErrors.logo }}</small>
       </div>
       <div class="grid">
-        <label>名称<input v-model="form.name" maxlength="64" placeholder="如 Netflix" />
+        <label>{{ t('名称') }}<input v-model="form.name" maxlength="64" :placeholder="t('如 Netflix')" />
           <small v-if="fieldErrors.name" class="bad">{{ fieldErrors.name }}</small></label>
-        <label>类别
-          <select v-model="form.category"><option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ n }}</option></select></label>
-        <label>价格
+        <label>{{ t('类别') }}
+          <select v-model="form.category"><option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
+        <label>{{ t('价格') }}
           <span class="price">
-            <select v-model="form.currency" aria-label="币种"><option v-for="c in currencies" :key="c" :value="c">{{ c }}</option></select>
+            <select v-model="form.currency" :aria-label="t('币种')"><option v-for="c in currencies" :key="c" :value="c">{{ c }}</option></select>
             <input v-model="form.price" inputmode="decimal" placeholder="0.00" />
           </span>
           <small v-if="fieldErrors.price_cents || fieldErrors.currency" class="bad">{{ fieldErrors.price_cents || fieldErrors.currency }}</small></label>
-        <label>订阅周期
-          <select v-model="form.cycle"><option v-for="(n, k) in cycleNames" :key="k" :value="k">{{ n }}</option></select></label>
-        <label>免费试用
-          <select v-model.number="form.trial_days"><option v-for="o in trialOptions" :key="o.v" :value="o.v">{{ o.t }}</option></select></label>
-        <label>到期提醒
-          <select v-model.number="form.remind_days"><option v-for="o in remindOptions" :key="o.v" :value="o.v">{{ o.t }}</option></select>
+        <label>{{ t('订阅周期') }}
+          <select v-model="form.cycle"><option v-for="(n, k) in cycleNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
+        <label>{{ t('免费试用') }}
+          <select v-model.number="form.trial_days"><option v-for="o in trialOptions" :key="o.v" :value="o.v">{{ t(o.t) }}</option></select></label>
+        <label>{{ t('到期提醒') }}
+          <select v-model.number="form.remind_days"><option v-for="o in remindOptions" :key="o.v" :value="o.v">{{ t(o.t) }}</option></select>
           <small v-if="fieldErrors.remind_days" class="bad">{{ fieldErrors.remind_days }}</small></label>
-        <label>{{ form.category === 'vps' ? '购买日期' : '开始订阅' }}<input v-model="form.start_date" type="date" />
+        <label>{{ form.category === 'vps' ? t('购买日期') : t('开始订阅') }}<input v-model="form.start_date" type="date" />
           <small v-if="fieldErrors.start_date" class="bad">{{ fieldErrors.start_date }}</small></label>
-        <label>结束订阅<input v-model="form.end_date" type="date" />
+        <label>{{ t('结束订阅') }}<input v-model="form.end_date" type="date" />
           <small v-if="fieldErrors.end_date" class="bad">{{ fieldErrors.end_date }}</small>
-          <small v-else class="muted">留空表示仍在订阅</small></label>
+          <small v-else class="muted">{{ t('留空表示仍在订阅') }}</small></label>
         <!-- SIM 电话卡的号码（修订第 189 条）：可增减，最多 10 个；空行不保存 -->
         <div v-if="form.category === 'sim'" class="wide phones">
-          <span class="phones-label">手机号</span>
+          <span class="phones-label">{{ t('手机号') }}</span>
           <div v-for="(p, i) in form.phones" :key="i" class="phone-row">
-            <select v-model="p.cc" aria-label="区号" class="cc">
+            <select v-model="p.cc" :aria-label="t('区号')" class="cc">
               <option v-if="!simCountries.some((c) => c.dial === p.cc)" :value="p.cc">{{ p.cc }}</option>
               <option v-for="c in simCountries" :key="c.key" :value="c.dial">{{ c.flag }} {{ c.dial }}</option>
             </select>
-            <input v-model="p.number" inputmode="tel" autocomplete="off" placeholder="号码" aria-label="号码" />
-            <button type="button" class="text" :aria-label="`删除第 ${i + 1} 个号码`" @click="form.phones.splice(i, 1)">删除</button>
+            <input v-model="p.number" inputmode="tel" autocomplete="off" :placeholder="t('号码')" :aria-label="t('号码')" />
+            <button type="button" class="text" :aria-label="t('删除第 {n} 个号码', { n: i + 1 })" @click="form.phones.splice(i, 1)">{{ t('删除') }}</button>
             <small v-if="phoneError(i)" class="bad">{{ phoneError(i) }}</small>
           </div>
-          <button v-if="form.phones.length < 10" type="button" class="text add-phone" @click="addPhone"><Icon name="plus" :size="14" />添加号码</button>
+          <button v-if="form.phones.length < 10" type="button" class="text add-phone" @click="addPhone"><Icon name="plus" :size="14" />{{ t('添加号码') }}</button>
           <small v-if="fieldErrors.phones" class="bad">{{ fieldErrors.phones }}</small>
         </div>
         <!-- VPS（修订第 198 条）：地址可增减（最多 16 个，空行不保存），配置都可不填 -->
         <template v-if="form.category === 'vps'">
           <div class="wide phones">
-            <span class="phones-label">IP 地址</span>
+            <span class="phones-label">{{ t('IP 地址') }}</span>
             <div v-for="(_, i) in form.vps.ips" :key="i" class="ip-row">
-              <input v-model="form.vps.ips[i]" class="mono" inputmode="url" autocomplete="off" spellcheck="false" placeholder="IPv4 或 IPv6"
-                :aria-label="`第 ${i + 1} 个地址`" />
-              <button type="button" class="text" :aria-label="`删除第 ${i + 1} 个地址`" @click="form.vps.ips.splice(i, 1)">删除</button>
+              <input v-model="form.vps.ips[i]" class="mono" inputmode="url" autocomplete="off" spellcheck="false" :placeholder="t('IPv4 或 IPv6')"
+                :aria-label="t('第 {n} 个地址', { n: i + 1 })" />
+              <button type="button" class="text" :aria-label="t('删除第 {n} 个地址', { n: i + 1 })" @click="form.vps.ips.splice(i, 1)">{{ t('删除') }}</button>
               <small v-if="ipError(i)" class="bad">{{ ipError(i) }}</small>
             </div>
             <button v-if="form.vps.ips.length < 16" type="button" class="text add-phone" @click="form.vps.ips.push('')">
-              <Icon name="plus" :size="14" />添加地址</button>
+              <Icon name="plus" :size="14" />{{ t('添加地址') }}</button>
             <small v-if="fieldErrors['vps.ips']" class="bad">{{ fieldErrors['vps.ips'] }}</small>
           </div>
-          <label>CPU（核）<input v-model="form.vps.cpu" inputmode="numeric" placeholder="如 2" />
+          <label>{{ t('CPU（核）') }}<input v-model="form.vps.cpu" inputmode="numeric" :placeholder="t('如 2')" />
             <small v-if="fieldErrors['vps.cpu']" class="bad">{{ fieldErrors['vps.cpu'] }}</small></label>
-          <label>内存（GB）<input v-model="form.vps.memory_gb" inputmode="decimal" placeholder="如 1 或 0.5" />
+          <label>{{ t('内存（GB）') }}<input v-model="form.vps.memory_gb" inputmode="decimal" :placeholder="t('如 1 或 0.5')" />
             <small v-if="fieldErrors['vps.memory_gb']" class="bad">{{ fieldErrors['vps.memory_gb'] }}</small></label>
-          <label>硬盘（GB）<input v-model="form.vps.disk_gb" inputmode="numeric" placeholder="如 20" />
+          <label>{{ t('硬盘（GB）') }}<input v-model="form.vps.disk_gb" inputmode="numeric" :placeholder="t('如 20')" />
             <small v-if="fieldErrors['vps.disk_gb']" class="bad">{{ fieldErrors['vps.disk_gb'] }}</small></label>
-          <label>每月流量（GB）<input v-model="form.vps.traffic_gb" inputmode="numeric" placeholder="如 1024" />
+          <label>{{ t('每月流量（GB）') }}<input v-model="form.vps.traffic_gb" inputmode="numeric" :placeholder="t('如 1024')" />
             <small v-if="fieldErrors['vps.traffic_gb']" class="bad">{{ fieldErrors['vps.traffic_gb'] }}</small></label>
-          <label>带宽（Mbps）<input v-model="form.vps.bandwidth_mbps" inputmode="numeric" placeholder="如 500" />
+          <label>{{ t('带宽（Mbps）') }}<input v-model="form.vps.bandwidth_mbps" inputmode="numeric" :placeholder="t('如 500')" />
             <small v-if="fieldErrors['vps.bandwidth_mbps']" class="bad">{{ fieldErrors['vps.bandwidth_mbps'] }}</small></label>
-          <label>机房<input v-model="form.vps.location" maxlength="40" placeholder="如 东京、Los Angeles" />
+          <label>{{ t('机房') }}<input v-model="form.vps.location" maxlength="40" :placeholder="t('如 东京、Los Angeles')" />
             <small v-if="fieldErrors['vps.location']" class="bad">{{ fieldErrors['vps.location'] }}</small></label>
         </template>
-        <label class="wide">描述<input v-model="form.note" maxlength="200" placeholder="可选，如 家庭版、和朋友合租" /></label>
+        <label class="wide">{{ t('描述') }}<input v-model="form.note" maxlength="200" :placeholder="t('可选，如 家庭版、和朋友合租')" /></label>
       </div>
       <p v-if="fieldErrors._" class="small bad">{{ fieldErrors._ }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving || !form.name.trim()">{{ saving ? '保存中…' : '保存' }}</button>
-        <button type="button" class="secondary" :disabled="saving" @click="editing ? close() : (step = 'pick')">{{ editing ? '取消' : '返回' }}</button>
+        <button type="submit" :disabled="saving || !form.name.trim()">{{ saving ? t('保存中…') : t('保存') }}</button>
+        <button type="button" class="secondary" :disabled="saving" @click="editing ? close() : (step = 'pick')">{{ editing ? t('取消') : t('返回') }}</button>
         <template v-if="editing">
-          <button v-if="!confirmDelete" type="button" class="text danger-text del" @click="confirmDelete = true">删除</button>
-          <button v-else type="button" class="danger del" :disabled="saving" @click="remove">确认删除</button>
+          <button v-if="!confirmDelete" type="button" class="text danger-text del" @click="confirmDelete = true">{{ t('删除') }}</button>
+          <button v-else type="button" class="danger del" :disabled="saving" @click="remove">{{ t('确认删除') }}</button>
         </template>
       </div>
     </form>
 
     <template v-if="loaded && !step">
-      <EmptyState v-if="!list.length" text="还没有订阅。记录影音、工具、云服务等订阅的价格与扣费日，扣费前可提醒。">
-        <button type="button" class="btn" @click="openAdd"><Icon name="plus" />添加订阅</button>
+      <EmptyState v-if="!list.length" :text="t('还没有订阅。记录影音、工具、云服务等订阅的价格与扣费日，扣费前可提醒。')">
+        <button type="button" class="btn" @click="openAdd"><Icon name="plus" />{{ t('添加订阅') }}</button>
       </EmptyState>
 
       <template v-else>
         <!-- 概览 -->
         <div class="panel strip">
           <div class="item">
-            <span class="label">本月预计花费</span>
+            <span class="label">{{ t('本月预计花费') }}</span>
             <span class="big num">{{ mainText(thisMonth) }}</span>
             <span v-if="otherText(thisMonth)" class="sub muted num">{{ otherText(thisMonth) }}</span>
           </div>
           <div class="item">
-            <span class="label">订阅中</span>
-            <span class="big num">{{ active.length }}<small> 个</small></span>
-            <span class="sub muted">共记录 {{ list.length }} 个</span>
+            <span class="label">{{ t('订阅中') }}</span>
+            <span class="big num">{{ active.length }}<small> {{ t('个') }}</small></span>
+            <span class="sub muted">{{ t('共记录 {n} 个', { n: list.length }) }}</span>
           </div>
           <div class="item">
-            <span class="label">截至目前已花费</span>
+            <span class="label">{{ t('截至目前已花费') }}</span>
             <span class="big num">{{ mainText(spentSoFar) }}</span>
             <span v-if="otherText(spentSoFar)" class="sub muted num">{{ otherText(spentSoFar) }}</span>
           </div>
           <div v-if="next" class="item">
-            <span class="label">下次扣费</span>
+            <span class="label">{{ t('下次扣费') }}</span>
             <span class="big">{{ next.name }}</span>
             <span class="sub muted num">{{ next.next_charge }} · {{ fmtMoney(next.price_cents, next.currency) }}</span>
           </div>
         </div>
 
-        <div class="segmented view-tabs" role="tablist" aria-label="视图">
-          <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">列表</button>
-          <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">统计</button>
+        <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
+          <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
+          <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
         </div>
 
         <!-- 列表 -->
@@ -467,15 +468,15 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
                 <b class="ellipsis">{{ s.name }}</b>
-                <span v-if="s.phones.length" class="small num phone-line">{{ fmtPhone(s.phones[0]) }}<span v-if="s.phones.length > 1" class="muted"> 等 {{ s.phones.length }} 个号码</span></span>
+                <span v-if="s.phones.length" class="small num phone-line">{{ fmtPhone(s.phones[0]) }}<span v-if="s.phones.length > 1" class="muted">{{ t(' 等 {n} 个号码', { n: s.phones.length }) }}</span></span>
                 <template v-if="s.category === 'vps'">
                   <span v-if="s.vps.ips.length" class="small mono phone-line ellipsis">{{ s.vps.ips[0] }}<span v-if="s.vps.ips.length > 1" class="muted"> +{{ s.vps.ips.length - 1 }}</span></span>
                   <span v-if="vpsSpec(s.vps) || s.vps.location" class="small muted ellipsis">{{ [s.vps.location, vpsSpec(s.vps)].filter(Boolean).join(' · ') }}</span>
                 </template>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
               </span>
-              <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="`已接入监控：${nodeOf(s)!.name}`"
-                @click.stop>监控中</RouterLink>
+              <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
+                @click.stop>{{ t('监控中') }}</RouterLink>
               <span class="sub-price">
                 <b class="num">{{ fmtMoney(s.price_cents, s.currency) }}</b>
                 <span class="small muted">{{ chargeText(s, today) }}</span>
@@ -486,10 +487,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 
         <!-- 统计 -->
         <section v-else class="panel stats">
-          <div class="segmented" role="group" aria-label="时间范围">
-            <button type="button" :class="{ active: range === 'month' }" @click="range = 'month'">本月</button>
-            <button type="button" :class="{ active: range === 'year' }" @click="range = 'year'">本年</button>
-            <button type="button" :class="{ active: range === 'all' }" @click="range = 'all'">全部</button>
+          <div class="segmented" role="group" :aria-label="t('时间范围')">
+            <button type="button" :class="{ active: range === 'month' }" @click="range = 'month'">{{ t('本月') }}</button>
+            <button type="button" :class="{ active: range === 'year' }" @click="range = 'year'">{{ t('本年') }}</button>
+            <button type="button" :class="{ active: range === 'all' }" @click="range = 'all'">{{ t('全部') }}</button>
           </div>
           <div class="donut-row">
             <svg class="donut" viewBox="0 0 180 180" role="img" :aria-label="`${rangeLabel} ${fmtMoney(catTotal, cur)}`">
@@ -505,19 +506,19 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <li v-for="c in cats" :key="c.category">
                 <i :style="{ background: categoryColors[c.category] }" />
                 <span class="legend-main">
-                  <span>{{ categoryNames[c.category] }} <b class="num">{{ Math.round(c.pct) }}%</b></span>
+                  <span>{{ t(categoryNames[c.category]) }} <b class="num">{{ Math.round(c.pct) }}%</b></span>
                   <span class="bar"><span :style="{ width: `${c.pct}%`, background: categoryColors[c.category] }" /></span>
                 </span>
                 <span class="legend-amt">
                   <b class="num">{{ fmtMoney(c.cents, cur) }}</b>
-                  <span class="small muted">{{ c.count }} 个订阅</span>
+                  <span class="small muted">{{ t('{n} 个订阅', { n: c.count }) }}</span>
                 </span>
               </li>
-              <li v-if="!cats.length" class="muted small">这段时间没有 {{ cur }} 扣费。</li>
+              <li v-if="!cats.length" class="muted small">{{ t('这段时间没有 {cur} 扣费。', { cur }) }}</li>
             </ul>
           </div>
 
-          <h3 class="bars-title">每月扣费（{{ cur }}）</h3>
+          <h3 class="bars-title">{{ t('每月扣费（{cur}）', { cur }) }}</h3>
           <div class="bars">
             <div v-for="b in bars" :key="b.key" class="bar-col" :title="fmtMoney(b.cents, cur)">
               <span v-if="b.current" class="bar-tip num">{{ fmtMoney(b.cents, cur) }}</span>
