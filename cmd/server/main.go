@@ -4,6 +4,7 @@
 //	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
 //	vpsmon-server admin disable-totp   --data DIR      关闭两步验证（丢失认证器且没有恢复码时，修订第 160 条）
 //	vpsmon-server admin alerts on|off  --data DIR      告警总开关（修订第 175 条，默认关闭）
+//	vpsmon-server admin reset-listen   --data DIR      清除网页中修改的监听端口，回到启动参数（设计 51）
 //	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
 //	vpsmon-server run         --data DIR --listen ADDR|PORT [--log-format json|text] [--log-level info]（参数也可用环境变量 VPSMON_*）
 //	vpsmon-server backup      --data DIR [--out FILE] [--keep N]   在线备份（设计 25）
@@ -48,6 +49,7 @@ usage:
   vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server admin disable-totp   --data DIR [--username admin]   turn off two-step login (lost authenticator and recovery codes)
   vpsmon-server admin alerts on|off  --data DIR   turn alerts and all notifications on or off (default off)
+  vpsmon-server admin reset-listen   --data DIR   forget the listen ports set in the Web UI; restart the panel to use the startup flags
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080 | PORT] [--log-format json|text] [--log-level info]
                            (every run flag can also be set via VPSMON_<FLAG>, e.g. VPSMON_LISTEN=9090)
@@ -89,8 +91,17 @@ func main() {
 		setPassword(st, *username, "initialised "+*data)
 
 	case "admin":
-		if len(args) == 0 || (args[0] != "reset-password" && args[0] != "disable-totp" && args[0] != "alerts") {
+		if len(args) == 0 || (args[0] != "reset-password" && args[0] != "disable-totp" && args[0] != "alerts" && args[0] != "reset-listen") {
 			usage()
+		}
+		if args[0] == "reset-listen" {
+			// 网页中改的监听端口导致连不上时的恢复途径（设计 51）：清除后重启面板，按启动参数监听
+			_ = fsx.Parse(args[1:])
+			if err := open(*data).ResetListen(); err != nil {
+				log.Fatal("reset listen setting failed: ", err)
+			}
+			fmt.Println("listen ports set in the Web UI were cleared; restart the panel (e.g. systemctl restart vpsmon-server) to use the startup flags")
+			return
 		}
 		if args[0] == "alerts" {
 			// 告警总开关（修订第 175 条）：面板运行中也可执行，10 秒内生效
