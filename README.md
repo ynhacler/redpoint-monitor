@@ -5,11 +5,62 @@ App-first lightweight self-hosted monitoring platform for VPS enthusiasts.
 面向拥有多台 VPS 的个人用户：自建一个面板，每台主机装一个很小的 Agent，在 Web 和手机 App 上查看状态、流量与告警。
 
 - **轻量**：Agent 是单个静态二进制，以非 root 用户运行，只读 `/proc` 与 `/sys`；面板是单个二进制 + SQLite，不依赖其他服务
-- **流量准确**：重启识别、计费周期、手动校准、超额预测；云厂商口径的流量包（AWS Lightsail、阿里云 / 腾讯云轻量、Oracle 出站流量）
-- **告警与通知**：离线、CPU、内存、磁盘、流量等规则，Telegram / Webhook 通知，免打扰、静音与维护模式
+- **流量准确**：重启识别、计费周期、手动校准、超额预测；云厂商口径的流量包（AWS Lightsail、阿里云 / 腾讯云轻量、阿里云 CDT、Oracle 出站流量）
+- **不止监控**：流媒体解锁检测、国内可达性与被墙检测、三网测速、云账户费用、订阅记账、浏览器端连通性测试
 - **安全优先**：Agent 只采集上报、不执行任何面板下发的命令；Agent 升级只接受开发者离线签名的官方版本；凭证只保存哈希；没有任何遥测
 
 完整设计见 [docs/design.md](docs/design.md)，开发进度见 [TODO.md](TODO.md)。
+
+---
+
+## 功能一览
+
+### 节点监控
+
+- **实时指标**：CPU（含被抢占 steal、IO 等待）、内存与 Swap、每个挂载点的磁盘用量、按磁盘的 IO（读写速率、IOPS、延迟、繁忙度）、
+  网速、TCP / UDP 连接与进程数；打开节点详情时临时提高到 2 秒一次，离开后自动恢复
+- **历史曲线**：1 小时到 30 天，长时间范围同时显示平均与峰值；断报的时段曲线断开，不会连成假数据
+- **健康摘要**：把最近 24 小时 / 30 天的指标归纳成几句话（“CPU 平均 21%，峰值 30%”“预计周期结束用到 7.4 GB”），不用逐张图判断
+- **节点 IP 信息**：自动查询公网 IP 的 ASN、运营方与位置（每周一次，地址变化立即更新）
+- **关注的进程、监听端口**：指定的进程没在运行时提醒；监听端口按公网 / 内网 / 本机分组，Redis、MySQL 等暴露在公网时标为风险
+- **容器**：从 cgroup 读取 Docker / Podman 容器的 CPU、内存与进程数（不连接 Docker 套接字），记录重启次数，容器停止时告警
+- **代理程序**：识别 Xray、sing-box、Hysteria、WireGuard 等常见代理，读出协议与端口（不读取任何密钥），端口没在监听时提醒
+- **安全**：防火墙状态与规则（ufw、firewalld、nftables、iptables、fail2ban、CSF）；端口基线——出现基线外的公网端口时告警，
+  并可从面板逐个检测端口是否真能从公网访问
+
+### 网络与解锁
+
+- **流媒体与网站解锁检测**：从 VPS 检测 Netflix、Disney+、YouTube Premium、Prime Video、TikTok、ChatGPT、Claude、Google、Reddit、
+  Steam、Yahoo、Truth Social、Telegram 能否使用及服务认定的地区；并按 VPS 所在地追加当地服务（日本 ABEMA / radiko、
+  香港 myTV SUPER / Viu、台湾 KKTV、韩国 Coupang Play、美国 Hulu、英国 BBC iPlayer 等）
+- **三网测速**：从每台 VPS 定时测到各省电信 / 联通 / 移动与境外城市的延迟与丢包，显示中位数与曲线；可对比哪台节点到某地最快
+- **国内可达性与被墙检测**：把国内的节点设为探针，反向测其他节点的 Ping 与 TCP 端口，连续多轮异常才判定“疑似被墙”或“端口疑似被封”
+- **连通性测试**：在浏览器中一键测试当前网络到中国 / 美国 / 全球 44 个常用网站（带真实标志）的连通性与延迟，用来检查代理分流规则
+
+### 流量与费用
+
+- **流量套餐**：按计费日与时区统计（入 + 出、只算出站等模式，可设系数），预测周期结束用量，填写服务商面板的数值即可校准；
+  流量记录按计费周期保留
+- **云平台**：接入 AWS、阿里云、腾讯云（国内站与国际站）、Oracle Cloud 的只读账户，查看本月费用与预估、余额、预算，
+  以及云厂商口径的实例、到期时间与流量包；阿里云按流量计费的 ECS 标出 CDT 并显示免费额度用量；
+  添加账户时给出分步说明与每条权限的用途，“检查权限”逐项列出哪些接口可用、各区域有几台实例
+- **订阅**：记录影音、工具、云服务、SIM 电话卡、VPS 等订阅的价格、周期、试用期与扣费日，到期前提醒；
+  VPS 类可记录多个 IP 与配置，并自动链接到已接入监控的节点；统计页按类别与月份显示花费
+
+### 告警与通知
+
+- 离线、CPU、内存、磁盘、流量、到期、证书、容器停止、端口变化等规则，默认规则开箱即用
+- 通知渠道：Telegram、Webhook、邮件、Bark、ntfy、Discord、企业微信、钉钉、飞书；App 推送端到端加密
+- 免打扰时段、静音、维护模式；面板自身异常（后台任务崩溃、磁盘不足等）同样告警；可配置外部心跳监控面板本身
+
+### 使用体验
+
+- **手机 Web 与 App 以查看为主**：手机 Web 底部标签栏、紧凑节点卡片、详情第一屏就是实时指标；Flutter App 支持扫码配对、
+  首页小组件、生物识别锁与加密推送
+- **网页中完成配置**：系统 → 网站配置可修改应用名称、界面语言、登录验证码，以及 Web 端口与 Agent 专用端口（立即生效）
+- **中文 / English**：界面语言可切换，国家名称、日期等随语言显示
+- **账号与权限**：两步验证（TOTP + 恢复码）、登录设备管理、只读查看者账号、可限定节点范围的只读 API Key
+- **一条命令安装 Agent**：先校验哈希再执行；Agent 可在 Web 中批量远程升级，失败自动回滚
 
 ---
 
@@ -83,7 +134,9 @@ curl -fsSLo vpsmon-server.service \
 sudo install -m 0644 vpsmon-server.service /etc/systemd/system/vpsmon-server.service
 ```
 
-**自定义端口**：面板的参数可以写在 `/etc/vpsmon/server.env`（`VPSMON_<参数名>`，升级不会覆盖），例如换到 9090：
+**自定义端口**：面板启动后可以直接在 **系统 → 网站配置 → 监听端口** 中修改 Web 端口，并单独设置 Agent 专用端口（立即生效，
+改错连不上时在面板主机上运行 `sudo -u vpsmon vpsmon-server admin reset-listen --data /var/lib/vpsmon` 并重启面板，回到启动参数）。启动参数也可以写在
+`/etc/vpsmon/server.env`（`VPSMON_<参数名>`，升级不会覆盖），例如换到 9090：
 
 ```bash
 sudo install -d -m 0755 /etc/vpsmon
@@ -142,7 +195,7 @@ WebSocket（实时刷新）经 Caddy 自动转发，无需额外配置。Nginx �
 
 ### 2.1 首次登录
 
-浏览器打开 `https://monitor.example.com`，用 `admin` 和第 1.3 节显示的初始密码登录，按提示修改密码（至少 12 位）。
+浏览器打开 `https://monitor.example.com`，用 `admin` 和第 1.3 节显示的初始密码登录，按提示修改密码（至少 8 位）。之后可在 **系统 → 账号** 中开启两步验证。
 
 > 忘记密码：在面板主机上执行 `sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon`。
 > 丢失两步验证设备且没有恢复码：执行 `sudo -u vpsmon vpsmon-server admin disable-totp --data /var/lib/vpsmon`，之后只用密码登录。
