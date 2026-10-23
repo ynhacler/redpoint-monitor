@@ -1,4 +1,4 @@
-// App 主框架（设计 1.5.18，修订第 213、216、218 条）：底部导航 服务器 / 连通性测试 / 工具 / 设置。
+// App 主框架（设计 1.5.18，修订第 213、216、218、219 条）：底部导航 服务器 / 网络（本机 IP、连通性测试）/ 工具 / 设置。
 // 原“首页”的概况并入“服务器”顶部；事件从“服务器”右上角进入；“工具”中分页放订阅与云平台。
 // 节点数据在这里统一获取：每 10 秒刷新（1.5.9），先显示离线缓存，网络失败时保留最近数据并显示最后更新时间（1.5.10）。
 import 'dart:async';
@@ -20,7 +20,7 @@ import '../sorting.dart';
 import '../theme.dart';
 import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
-import 'connectivity_page.dart';
+import 'network_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
 import 'reorder_page.dart';
@@ -257,8 +257,8 @@ class _AppShellState extends State<AppShell> {
             setState(() => _prefs.sortBy = v);
             _savePrefs();
           }),
-      // 第一次切到这个标签时才创建：打开 App 不自动开始测试
-      _visited.contains(1) ? const ConnectivityPage() : const SizedBox.shrink(),
+      // 第一次切到这个标签时才创建：打开 App 不自动查询 IP 或开始测试
+      _visited.contains(1) ? NetworkPage(privacy: _prefs.privacy) : const SizedBox.shrink(),
       ToolsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy, cloud: _cloud,
           serverNames: {for (final s in _items) s.id: s.name}, onOpenServer: (id) {
         final s = _items.where((x) => x.id == id).firstOrNull;
@@ -290,7 +290,7 @@ class _AppShellState extends State<AppShell> {
             selectedIcon: Badge(isLabelVisible: attention > 0, label: Text('$attention'), child: const Icon(Icons.dns)),
             label: '服务器',
           ),
-          const NavigationDestination(icon: Icon(Icons.network_check), selectedIcon: Icon(Icons.network_check), label: '连通性测试'),
+          const NavigationDestination(icon: Icon(Icons.public_outlined), selectedIcon: Icon(Icons.public), label: '网络'),
           const NavigationDestination(icon: Icon(Icons.handyman_outlined), selectedIcon: Icon(Icons.handyman), label: '工具'),
           const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '设置'),
         ],
