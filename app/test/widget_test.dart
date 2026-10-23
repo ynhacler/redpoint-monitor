@@ -65,7 +65,7 @@ const cloudJson = {
 };
 
 void main() {
-  testWidgets('服务器（概况 / 搜索 / 收藏）、云平台、订阅、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
+  testWidgets('服务器（概况 / 搜索 / 收藏）、云平台、工具（订阅）、事件、我的（隐私模式）与详情页在窄屏上正常渲染', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 812 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -186,9 +186,11 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('AWS 主账号'), findsOneWidget);
-    await tester.tap(find.text('订阅'));
+    // 工具：分页“订阅”“连通性测试”（修订第 216 条）
+    await tester.tap(find.text('工具'));
     await tester.pump();
     await tester.pump();
+    expect(find.text('连通性测试'), findsOneWidget);
     expect(find.text('Netflix'), findsOneWidget);
     expect(find.text('每月约'), findsOneWidget);
     expect(find.textContaining('每月 5 日扣费'), findsOneWidget);
