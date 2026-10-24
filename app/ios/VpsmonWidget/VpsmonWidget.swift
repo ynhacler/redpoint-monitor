@@ -104,18 +104,25 @@ struct SmallView: View {
     }
 }
 
+// 一行一台服务器（修订第 220 条，与 Android 相同）：名称加粗、名称与 CPU / 内存 14pt，大尺寸 16pt；最多 4 行
 struct RowView: View {
     let r: WidgetSnapshot.Row
     let showNet: Bool
+    var big = false
     var body: some View {
+        let size = big ? Tokens.fontLg : Tokens.fontMd
         HStack(spacing: Tokens.space2) {
             Dot(status: r.status)
-            Text(r.name).font(.system(size: Tokens.fontSm)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-            Text(r.cpu).frame(width: 36, alignment: .trailing)
-            Text(r.mem).frame(width: 36, alignment: .trailing)
-            if showNet { Text(r.rx == "—" ? r.rx : "↓\(r.rx)").lineLimit(1).frame(width: 70, alignment: .trailing) }
+            Text(r.name).font(.system(size: size, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            Text(r.cpu).frame(width: big ? 48 : 42, alignment: .trailing)
+            Text(r.mem).frame(width: big ? 48 : 42, alignment: .trailing)
+            if showNet {
+                Text(r.rx == "—" ? r.rx : "↓\(r.rx)").lineLimit(1).font(.system(size: Tokens.fontSm).monospacedDigit())
+                    .foregroundStyle(Tokens.textMuted).frame(width: 76, alignment: .trailing)
+            }
         }
-        .font(.system(size: Tokens.fontXs).monospacedDigit())
+        .font(.system(size: size).monospacedDigit())
+        .padding(.vertical, big ? 6 : 1)
     }
 }
 
@@ -125,6 +132,7 @@ struct ListView: View {
     let now: Date
     let rows: Int
     let showNet: Bool
+    var big = false
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.space1) {
             HStack(spacing: Tokens.space2) {
@@ -134,16 +142,16 @@ struct ListView: View {
                 Spacer()
                 UpdatedLine(snapshot: s, now: now)
             }
-            .font(.system(size: Tokens.fontSm, weight: .semibold).monospacedDigit())
+            .font(.system(size: Tokens.fontMd, weight: .semibold).monospacedDigit())
             HStack(spacing: Tokens.space2) {
                 Text("服务器").frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 10)
-                Text("CPU").frame(width: 36, alignment: .trailing)
-                Text("内存").frame(width: 36, alignment: .trailing)
-                if showNet { Text("下载").frame(width: 70, alignment: .trailing) }
+                Text("CPU").frame(width: big ? 48 : 42, alignment: .trailing)
+                Text("内存").frame(width: big ? 48 : 42, alignment: .trailing)
+                if showNet { Text("下载").frame(width: 76, alignment: .trailing) }
             }
             .font(.system(size: Tokens.fontXs))
             .foregroundStyle(Tokens.textMuted)
-            ForEach(s.servers.prefix(rows)) { RowView(r: $0, showNet: showNet) }
+            ForEach(s.servers.prefix(rows)) { RowView(r: $0, showNet: showNet, big: big) }
             Spacer(minLength: 0)
             // 最近 24 小时内的告警（通知扩展写入）
             if let a = alert, now.timeIntervalSince1970 - Double(a.ts) < 86400 {
@@ -166,8 +174,9 @@ struct WidgetView: View {
             if let s = entry.snapshot {
                 switch family {
                 case .systemSmall: SmallView(s: s, now: entry.date)
+                // 最多 4 台（修订第 220 条）：中尺寸一行一台，大尺寸同样 4 台、字号与行距更大
                 case .systemMedium: ListView(s: s, alert: nil, now: entry.date, rows: 4, showNet: true)
-                default: ListView(s: s, alert: entry.alert, now: entry.date, rows: 8, showNet: true)
+                default: ListView(s: s, alert: entry.alert, now: entry.date, rows: 4, showNet: true, big: true)
                 }
             } else {
                 PlaceholderView()

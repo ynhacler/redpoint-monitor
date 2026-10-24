@@ -16,8 +16,8 @@ import 'models.dart';
 
 const _channel = MethodChannel('dev.vpsmon/widget');
 
-/// 大组件最多显示的行数
-const widgetRows = 8;
+/// 小组件最多显示的行数：Android 与 iOS 都最多 4 台（修订第 215、220 条）
+const widgetRows = 4;
 
 /// 小组件里一行的状态：ok / warn / bad / offline / maintenance / pending
 String widgetStatus(ServerView s) {
