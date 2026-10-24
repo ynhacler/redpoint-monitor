@@ -114,6 +114,8 @@ grep ' vpsmon-install.sh$' SHA256SUMS | sha256sum -c - && sudo sh vpsmon-install
 
 - **不需要域名**：没有域名时自动使用免费域名 `<本机 IP>.sslip.io`，证书由 Let's Encrypt 签发。有自己的域名时先解析到本机，
   运行时输入域名，或 `sudo sh vpsmon-install.sh --domain monitor.example.com`。
+- **交互设置端口**：在终端中运行且没有给 `--port` 时，脚本显示 80 / 443 是否被占用、推荐一个能申请到证书的端口并询问；
+  80 与 443 都被占用时询问是否改用反向代理（再询问本机端口与对外地址）。`-y` 不提问。
 - **自定义端口**：`--port` 指定 HTTPS 端口（默认 443），如 `sudo sh vpsmon-install.sh --domain monitor.example.com --port 8443`，
   访问地址为 `https://monitor.example.com:8443`。证书只能经 80 或 443 端口验证，所以：80 空闲时 HTTPS 可以用任意端口；
   80 被占用时只能用 `--port 443`（证书经 443 验证，不监听 80）；80 与 443 都被占用时用下面的反向代理方式。

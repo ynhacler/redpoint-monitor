@@ -116,6 +116,8 @@ starts on boot) → opens ports 80 / 443 in the local firewall → waits for the
 
 - **No domain needed**: without a domain it uses the free `<server IP>.sslip.io` with a Let's Encrypt certificate. With your own domain, point it at the server first,
   then enter it when asked, or run `sudo sh vpsmon-install.sh --domain monitor.example.com`.
+- **Interactive port setup**: when run in a terminal without `--port`, the script shows whether 80 / 443 are taken, suggests a port that can get a certificate and asks;
+  if both 80 and 443 are taken it asks whether to switch to reverse-proxy mode (then asks for the local port and public address). `-y` skips all questions.
 - **Custom port**: `--port` sets the HTTPS port (default 443), e.g. `sudo sh vpsmon-install.sh --domain monitor.example.com --port 8443`,
   giving `https://monitor.example.com:8443`. Certificates can only be validated through port 80 or 443, so: with 80 free, HTTPS can use any port;
   with 80 taken, only `--port 443` works (validated through 443, nothing listens on 80); with both taken, use reverse-proxy mode below.
