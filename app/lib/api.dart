@@ -228,6 +228,9 @@ class ApiClient {
   /// 删除一条订阅（修订第 218 条）：权限与新增相同。
   Future<void> deleteSubscription(int id) => _send2xx('DELETE', '/app/subscriptions/$id');
 
+  /// 汇率（修订第 223 条）：1 单位外币折合多少人民币；旧版面板没有该接口时抛出 ApiException（404）。
+  Future<FxRates> fxRates() async => FxRates.fromJson(await getJson('/fx-rates') as Map<String, dynamic>);
+
   /// 订阅上传的图标（PNG）；没有时返回 null。
   Future<Uint8List?> subscriptionLogo(int id) async {
     final res = await _send('GET', '/app/subscriptions/$id/logo');

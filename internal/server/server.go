@@ -62,8 +62,12 @@ type Server struct {
 	alerts      *alertEngine   // 告警引擎（设计 16.7）
 	alertsOn    alertsSwitch   // 告警总开关（修订第 175 条）
 	ipinfoBase  string         // ipinfo.io 地址（测试中替换，设计 49）
-	ipinfoHTTP  *http.Client
-	unlock      unlockSupport // 各节点 Agent 是否支持解锁检测（设计 50）
+	// 汇率（修订第 223 条）：fxURL 在测试中替换
+	fx         fxState
+	fxURL      string
+	fxHTTP     *http.Client
+	ipinfoHTTP *http.Client
+	unlock     unlockSupport // 各节点 Agent 是否支持解锁检测（设计 50）
 
 	// 官方版本同步（设计 29.1）：发布地址与验签公钥默认为官方值，测试中替换
 	releaseBase   string
@@ -151,6 +155,8 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
 	s.exposure = newExposureState()
 	s.ipinfoBase, s.ipinfoHTTP = "https://ipinfo.io", &http.Client{Timeout: 15 * time.Second}
+	s.fxURL, s.fxHTTP = "https://open.er-api.com/v6/latest/CNY", &http.Client{Timeout: 15 * time.Second}
+	s.loadFx()
 	s.reloadAlertsSwitch()
 	if s.quiet, err = newQuietState(store); err != nil {
 		return nil, err
@@ -184,6 +190,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "heartbeat", s.heartbeatLoop)
 	go s.runTask(ctx, "panel-health", s.panelHealthLoop)
 	go s.runTask(ctx, "ipinfo", s.ipinfoLoop) // 节点 IP 信息（设计 49），打开开关后才查询
+	go s.runTask(ctx, "fx", s.fxLoop)         // 汇率（修订第 223 条），有非人民币订阅时才请求
 	if !s.noReleaseSync {
 		go s.runTask(ctx, "release-sync", s.releaseSyncLoop)
 	}
@@ -359,6 +366,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/notification-channels/{id}/test", accessAdmin, s.handleTestChannel)
 	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
 	handle("GET /api/v1/subscriptions", accessAdmin, s.handleSubscriptions) // 订阅（设计 47）
+	handle("GET /api/v1/fx-rates", accessRead, s.handleFxRates)             // 汇率（修订第 223 条），不含用户数据
 	handle("POST /api/v1/subscriptions", accessAdmin, s.handleCreateSubscription)
 	handle("PUT /api/v1/subscriptions/{id}", accessAdmin, s.handleUpdateSubscription)
 	handle("DELETE /api/v1/subscriptions/{id}", accessAdmin, s.handleDeleteSubscription)

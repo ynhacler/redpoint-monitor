@@ -75,6 +75,8 @@ class Subscription {
     this.nextCharge = '',
     this.ended = false,
     this.logoVersion = 0,
+    this.country = '',
+    this.payment = '',
   });
 
   /// 编号
@@ -128,6 +130,12 @@ class Subscription {
   /// 上传图标的版本，0 表示没有
   final int logoVersion;
 
+  /// 国家 / 地区（两位代码，修订第 223 条）；旧记录可能为空
+  final String country;
+
+  /// 支付方式（paymentNames 的键）；旧记录可能为空
+  final String payment;
+
   /// 从接口 JSON 创建
   factory Subscription.fromJson(Map<String, dynamic> j) {
     final v = (j['vps'] as Map<String, dynamic>?) ?? const {};
@@ -160,6 +168,8 @@ class Subscription {
       nextCharge: j['next_charge'] as String? ?? '',
       ended: j['ended'] as bool? ?? false,
       logoVersion: (j['logo_version'] as num?)?.toInt() ?? 0,
+      country: j['country'] as String? ?? '',
+      payment: j['payment'] as String? ?? '',
     );
   }
 
@@ -250,4 +260,145 @@ List<(String, double)> monthlyByCurrency(Iterable<Subscription> list) {
     m[s.currency] = (m[s.currency] ?? 0) + s.monthlyCents;
   }
   return m.entries.map((e) => (e.key, e.value)).toList()..sort((a, b) => b.$2.compareTo(a.$2));
+}
+
+// ---- 国家 / 地区、支付方式与人民币换算（修订第 223 条，与 Web 的 subscriptions.ts 一致） ----
+
+/// 支付方式（键与面板一致）
+const paymentNames = <String, String>{
+  'alipay': '支付宝', 'wechat': '微信支付', 'bank': '银行卡', 'credit': '信用卡', 'paypal': 'PayPal', 'apple': 'Apple 账户',
+  'google': 'Google Play', 'carrier': '运营商代扣', 'crypto': '加密货币', 'other': '其他',
+};
+
+const _currencyCountry = <String, String>{
+  'CNY': 'CN', 'USD': 'US', 'HKD': 'HK', 'JPY': 'JP', 'GBP': 'GB', 'TWD': 'TW', 'SGD': 'SG', 'MOP': 'MO', 'AUD': 'AU', 'MYR': 'MY',
+  'THB': 'TH', 'PHP': 'PH', 'ZAR': 'ZA', 'NGN': 'NG', 'GHS': 'GH',
+};
+
+/// 币种对应的默认国家 / 地区；EUR 等多国通用的币种为空
+String defaultCountry(String currency) => _currencyCountry[currency] ?? '';
+
+/// 国家 / 地区名称
+String countryLabel(String code) => code.isEmpty ? '' : (countryNames[code] ?? code);
+
+/// 汇率（GET /fx-rates）：1 单位外币折合多少人民币
+class FxRates {
+  /// 创建
+  const FxRates({this.rates = const {'CNY': 1}, this.asOf = 0, this.source = '', this.error = ''});
+
+  /// 币种 → 人民币
+  final Map<String, double> rates;
+
+  /// 来源数据时间（Unix 秒），0 表示还没有
+  final int asOf;
+
+  /// 来源说明
+  final String source;
+
+  /// 最近一次更新失败的原因
+  final String error;
+
+  /// 从接口 JSON 创建
+  factory FxRates.fromJson(Map<String, dynamic> j) => FxRates(
+        rates: {'CNY': 1, for (final e in (j['rates'] as Map<String, dynamic>? ?? const {}).entries) e.key: (e.value as num).toDouble()},
+        asOf: (j['as_of'] as num?)?.toInt() ?? 0,
+        source: j['source'] as String? ?? '',
+        error: j['error'] as String? ?? '',
+      );
+
+  /// 换算为人民币（分）；没有汇率时为 null
+  int? toCny(num cents, String currency) {
+    if (currency == 'CNY') return cents.round();
+    final r = rates[currency];
+    return r == null || r <= 0 ? null : (cents * r).round();
+  }
+}
+
+/// 一组的折算月费
+class Share {
+  /// 创建
+  Share(this.key);
+
+  /// 分组键（类别 / 国家代码 / 支付方式）
+  final String key;
+
+  /// 每月合计（人民币，分）
+  int cents = 0;
+
+  /// 订阅数
+  int count = 0;
+
+  /// 占比（0～100）
+  double pct = 0;
+}
+
+/// 分析结果：进行中的订阅折算为每月花费（人民币）
+class Analysis {
+  /// 每月合计（分）
+  int monthly = 0;
+
+  /// 参与折算的订阅数
+  int count = 0;
+
+  /// 一次性付费的订阅数（不计入）
+  int once = 0;
+
+  /// 缺少汇率、没有计入的币种
+  final missing = <String>[];
+
+  /// 按类别
+  List<Share> byCategory = [];
+
+  /// 按国家 / 地区
+  List<Share> byCountry = [];
+
+  /// 按支付方式
+  List<Share> byPayment = [];
+
+  /// 按月费从高到低
+  final top = <(Subscription, int)>[];
+}
+
+/// 分析（修订第 223 条）：进行中的订阅按扣费周期折算为月费（每周 × 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12），换算为人民币后
+/// 按类别、国家 / 地区、支付方式汇总并排行；一次性付费的不计入。与 Web 的 analyze 一致。
+Analysis analyze(Iterable<Subscription> list, FxRates fx) {
+  final out = Analysis();
+  final cat = <String, Share>{}, country = <String, Share>{}, pay = <String, Share>{};
+  void add(Map<String, Share> m, String key, int cents) {
+    final x = m.putIfAbsent(key, () => Share(key));
+    x.cents += cents;
+    x.count++;
+  }
+
+  for (final s in list) {
+    if (s.ended) continue;
+    if (s.cycle == 'once') {
+      out.once++;
+      continue;
+    }
+    final cents = fx.toCny(s.monthlyCents, s.currency);
+    if (cents == null) {
+      if (!out.missing.contains(s.currency)) out.missing.add(s.currency);
+      continue;
+    }
+    out.monthly += cents;
+    out.count++;
+    out.top.add((s, cents));
+    add(cat, s.category, cents);
+    add(country, s.country, cents);
+    add(pay, s.payment, cents);
+  }
+  List<Share> sorted(Map<String, Share> m) {
+    final xs = m.values.toList()..sort((a, b) => b.cents.compareTo(a.cents));
+    for (final x in xs) {
+      x.pct = out.monthly == 0 ? 0 : x.cents / out.monthly * 100;
+    }
+    return xs;
+  }
+
+  out.byCategory = sorted(cat);
+  out.byCountry = sorted(country);
+  out.byPayment = sorted(pay);
+  out.top.sort((a, b) => b.$2.compareTo(a.$2));
+  return out;
 }

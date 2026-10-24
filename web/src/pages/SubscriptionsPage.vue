@@ -2,30 +2,32 @@
 // 订阅（设计 47，修订第 189 条）：记录影音、工具、云服务等个人订阅的价格、周期与起止日期。
 // “列表”按下次扣费日排列，已结束的置灰；“统计”按本月 / 本年 / 全部显示各类别占比（环形图）与前后几个月的扣费（柱状）。
 // 添加时先从常用服务目录中选择（按类别、可搜索），也可自定义；图标为内置的标志（SubAvatar），不加载外部图片。
-// 金额按币种分别统计，不换算；主币种为折算月费最大的币种。
+// 金额换算为人民币统计（修订第 223 条，汇率见 GET /fx-rates）；外币价格下方显示约合人民币。“分析”把进行中的订阅折算为月费，
+// 按类别、国家 / 地区、支付方式汇总并排行。每条订阅须选择国家 / 地区与支付方式。
 // VPS（修订第 198 条）：每台 VPS 一条订阅，记录厂商、地址（可多个）、配置与机房；列表中显示地址与配置，
 // 地址与已接入的节点相同时链接到该节点。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, listServers, listSubscriptions, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
-  type Subscription, type SubscriptionInput,
+  type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
+import { countryName, countryOptions, flagUrl } from '../countries'
 import { fmtMoney } from '../format'
 import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
-  byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, mainCurrency, monthStart,
-  remindOptions, spendBetween, trialOptions, ymd, type CatalogItem, type Money, type SubCategory,
+  analyze, byCategory, catalog, categoryColors, categoryNames, chargeText, cnyTotal, cycleNames, currencies, defaultCountry, monthlyCents,
+  monthStart, paymentNames, remindOptions, spendBetween, toCny, trialOptions, ymd, type CatalogItem, type Money, type Rates, type SubCategory,
 } from '../subscriptions'
 
 const route = useRoute()
 const router = useRouter()
-const view = computed(() => (route.query.tab === 'stats' ? 'stats' : 'list'))
+const view = computed(() => (route.query.tab === 'stats' || route.query.tab === 'analysis' ? route.query.tab : 'list'))
 const setView = (v: string) => router.replace({ query: { tab: v === 'list' ? undefined : v } })
 
 const list = ref<Subscription[]>([])
@@ -46,10 +48,21 @@ async function loadNodes() {
 }
 const nodeOf = (s: Subscription) => s.vps.ips.map((ip) => nodeByIP.value.get(ip.toLowerCase())).find(Boolean)
 
+// 汇率（修订第 223 条）：读取失败时只显示原币种，统计中不计入外币
+const fx = ref<FxRates | null>(null)
+const rates = computed<Rates>(() => fx.value?.rates ?? { CNY: 1 })
+async function loadFx() {
+  try {
+    fx.value = await getFxRates()
+  } catch {
+    fx.value = null
+  }
+}
 async function load() {
   try {
     list.value = await listSubscriptions()
     error.value = ''
+    if (list.value.some((s) => s.currency !== 'CNY')) void loadFx()
   } catch (e) {
     error.value = errorText(e, t('加载失败'))
   } finally {
@@ -62,10 +75,24 @@ onMounted(() => { load(); loadNodes() })
 const now = new Date()
 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 const active = computed(() => list.value.filter((s) => !s.ended))
-const cur = computed(() => mainCurrency(list.value))
+const cur = 'CNY' // 统计一律按人民币（修订第 223 条）
 // 主币种大字显示，其他币种在下一行（金额按币种分别统计，不换算）
-const mainText = (m: Money) => fmtMoney(m.get(cur.value) ?? 0, cur.value)
-const otherText = (m: Money) => [...m.entries()].filter(([c]) => c !== cur.value).map(([c, v]) => `+ ${fmtMoney(v, c)}`).join(' ')
+const mainText = (m: Money) => fmtMoney(cnyTotal(m, rates.value).cents, cur)
+// 缺少汇率、没有计入人民币合计的部分按原币种列出
+const otherText = (m: Money) => {
+  const { missing } = cnyTotal(m, rates.value)
+  return missing.map((c) => `+ ${fmtMoney(m.get(c) ?? 0, c)}`).join(' ')
+}
+/** 外币价格约合人民币：“≈ ¥52.30”；人民币或没有汇率时为空 */
+const cnyText = (cents: number, currency: string) => {
+  if (currency === 'CNY') return ''
+  const v = toCny(cents, currency, rates.value)
+  return v == null ? '' : `≈ ${fmtMoney(v, 'CNY')}`
+}
+const rateDate = computed(() => (fx.value?.as_of ? ymd(new Date(fx.value.as_of * 1000)) : ''))
+// 列表中用到的外币及其汇率：“1 USD = ¥7.12”
+const usedRates = computed(() => [...new Set(list.value.map((s) => s.currency))].filter((c) => c !== 'CNY')
+  .map((c) => ({ c, v: rates.value[c] })))
 const thisMonth = computed(() => spendBetween(list.value, monthStart(today), monthStart(today, 1)))
 const spentSoFar = computed(() => {
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
@@ -82,7 +109,7 @@ const rangeBounds = computed<[Date, Date]>(() => {
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
   return [new Date(2000, 0, 1), tomorrow]
 })
-const cats = computed(() => byCategory(list.value, cur.value, ...rangeBounds.value))
+const cats = computed(() => byCategory(list.value, rates.value, ...rangeBounds.value))
 const catTotal = computed(() => cats.value.reduce((a, c) => a + c.cents, 0))
 const rangeLabel = computed(() => t({ month: '本月预计花费', year: '本年预计花费', all: '累计已花费' }[range.value]))
 // 环形图：半径 70，线宽 22；各段之间留 2 的空隙
@@ -103,12 +130,25 @@ const bars = computed(() => {
   const out = []
   for (let i = -4; i <= 4; i++) {
     const from = monthStart(today, i)
-    const v = spendBetween(list.value.filter((s) => s.currency === cur.value), from, monthStart(today, i + 1)).get(cur.value) ?? 0
+    const v = cnyTotal(spendBetween(list.value, from, monthStart(today, i + 1)), rates.value).cents
     out.push({ key: i, label: from.getMonth() === 0 ? String(from.getFullYear()) : from.toLocaleString(locale.value === 'en' ? 'en' : 'zh-CN', { month: 'short' }), cents: v, current: i === 0, future: i > 0 })
   }
   return out
 })
 const barMax = computed(() => Math.max(1, ...bars.value.map((b) => b.cents)))
+
+// ---- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） ----
+const ana = computed(() => analyze(list.value, rates.value))
+const anaGroup = ref<'category' | 'country' | 'payment'>('category')
+const anaRows = computed(() => {
+  const a = ana.value
+  if (anaGroup.value === 'country') return a.byCountry.map((x) => ({ ...x, name: x.key ? countryName(x.key) : t('未设置'), flag: x.key }))
+  if (anaGroup.value === 'payment') return a.byPayment.map((x) => ({ ...x, name: x.key ? t(paymentNames[x.key] ?? x.key) : t('未设置'), flag: '' }))
+  return a.byCategory.map((x) => ({ ...x, name: t(categoryNames[x.key as SubCategory] ?? x.key), flag: '' }))
+})
+const anaColor = (i: number) => ['var(--accent)', 'var(--ok)', 'var(--series-2)', 'var(--series-3)', 'var(--warn)', 'var(--bad)'][i % 6]
+const countryOpts = computed(() => countryOptions())
+const cycleShort: Record<string, string> = { weekly: '周', monthly: '月', quarterly: '季', semiannually: '半年', annually: '年', once: '次' }
 
 // ---- 添加 / 编辑 ----
 type Step = 'pick' | 'form'
@@ -131,9 +171,10 @@ type FormPhone = { cc: string; number: string }
 // VPS 配置在表单中为字符串（空表示没有填写），保存时转为数字
 type FormVPS = { ips: string[]; cpu: string; memory_gb: string; disk_gb: string; bandwidth_mbps: string; traffic_gb: string; location: string }
 const blankVPS = (): FormVPS => ({ ips: [''], cpu: '', memory_gb: '', disk_gb: '', bandwidth_mbps: '', traffic_gb: '', location: '' })
-const blank = (): Omit<SubscriptionInput, 'vps'> & { price: string; phones: FormPhone[]; vps: FormVPS } => ({
-  name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: cur.value, cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(),
+// 支付方式没有默认值：表单中可为空，保存时由面板要求选择（修订第 223 条）
+const blank = (): Omit<SubscriptionInput, 'vps' | 'payment'> & { price: string; phones: FormPhone[]; vps: FormVPS; payment: SubscriptionInput['payment'] | '' } => ({
+  name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: 'CNY', cycle: 'monthly', trial_days: 0,
+  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '',
 })
 const vpsNum = (v: string) => (v.trim() === '' ? 0 : Number(v))
 const vpsStr = (n: number) => (n ? String(n) : '')
@@ -202,7 +243,9 @@ function openAdd() {
 }
 function choose(item: CatalogItem | null) {
   Object.assign(form, blank())
-  if (item) Object.assign(form, { name: t(item.name), brand: item.key, category: item.category, currency: item.currency ?? cur.value })
+  if (item) Object.assign(form, { name: t(item.name), brand: item.key, category: item.category, currency: item.currency ?? 'CNY' })
+  // 国家 / 地区按 SIM 卡的国家或币种预填（可改）；支付方式须自己选择
+  form.country = item?.country ? item.country.toUpperCase() : defaultCountry(form.currency)
   if (form.category === 'sim') form.phones = [{ cc: item?.dial ?? '+86', number: '' }]
   fieldErrors.value = {}
   resetLogo()
@@ -235,6 +278,7 @@ async function save() {
   const body: SubscriptionInput = {
     name: form.name, brand: form.brand, category: form.category, price_cents: Math.round(price * 100), currency: form.currency,
     cycle: form.cycle, trial_days: form.trial_days, start_date: form.start_date, end_date: form.end_date ?? '', remind_days: form.remind_days, note: form.note,
+    country: form.country, payment: form.payment as SubscriptionInput['payment'],
     phones: form.category === 'sim' ? form.phones.filter((p) => p.number.trim()) : [],
     vps: form.category === 'vps'
       ? {
@@ -359,6 +403,20 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <input v-model="form.price" inputmode="decimal" placeholder="0.00" />
           </span>
           <small v-if="fieldErrors.price_cents || fieldErrors.currency" class="bad">{{ fieldErrors.price_cents || fieldErrors.currency }}</small></label>
+        <!-- 国家 / 地区与支付方式（修订第 223 条）：必选 -->
+        <label>{{ t('国家 / 地区') }}
+          <select v-model="form.country">
+            <option value="" disabled>{{ t('请选择') }}</option>
+            <optgroup :label="t('常用')"><option v-for="c in countryOpts.common" :key="c.code" :value="c.code">{{ c.name }}</option></optgroup>
+            <optgroup :label="t('全部')"><option v-for="c in countryOpts.all" :key="c.code" :value="c.code">{{ c.name }}</option></optgroup>
+          </select>
+          <small v-if="fieldErrors.country" class="bad">{{ fieldErrors.country }}</small></label>
+        <label>{{ t('支付方式') }}
+          <select v-model="form.payment">
+            <option value="" disabled>{{ t('请选择') }}</option>
+            <option v-for="(n, k) in paymentNames" :key="k" :value="k">{{ t(n) }}</option>
+          </select>
+          <small v-if="fieldErrors.payment" class="bad">{{ fieldErrors.payment }}</small></label>
         <label>{{ t('订阅周期') }}
           <select v-model="form.cycle"><option v-for="(n, k) in cycleNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
         <label>{{ t('免费试用') }}
@@ -459,6 +517,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
           <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
           <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
+          <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
         </div>
 
         <!-- 列表 -->
@@ -474,16 +533,70 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                   <span v-if="vpsSpec(s.vps) || s.vps.location" class="small muted ellipsis">{{ [s.vps.location, vpsSpec(s.vps)].filter(Boolean).join(' · ') }}</span>
                 </template>
                 <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
+                <span v-if="s.country || s.payment" class="small muted meta-line">
+                  <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
+                  {{ [s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ') }}
+                </span>
               </span>
               <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
                 @click.stop>{{ t('监控中') }}</RouterLink>
               <span class="sub-price">
                 <b class="num">{{ fmtMoney(s.price_cents, s.currency) }}</b>
+                <span v-if="cnyText(s.price_cents, s.currency)" class="small muted num">{{ cnyText(s.price_cents, s.currency) }}</span>
                 <span class="small muted">{{ chargeText(s, today) }}</span>
               </span>
             </button>
           </li>
         </ul>
+
+        <!-- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） -->
+        <section v-else-if="view === 'analysis'" class="panel stats">
+          <div class="ana-head">
+            <div>
+              <span class="label">{{ t('每月折合') }}</span>
+              <span class="big num">{{ fmtMoney(ana.monthly, 'CNY') }}</span>
+              <span class="sub muted num">{{ t('每年约 {v} · {n} 个订阅 · 平均每个 {avg}/月', {
+                v: fmtMoney(ana.monthly * 12, 'CNY'), n: ana.count, avg: fmtMoney(ana.count ? Math.round(ana.monthly / ana.count) : 0, 'CNY') }) }}</span>
+            </div>
+            <div class="segmented" role="group" :aria-label="t('分组')">
+              <button type="button" :class="{ active: anaGroup === 'category' }" @click="anaGroup = 'category'">{{ t('类别') }}</button>
+              <button type="button" :class="{ active: anaGroup === 'country' }" @click="anaGroup = 'country'">{{ t('国家 / 地区') }}</button>
+              <button type="button" :class="{ active: anaGroup === 'payment' }" @click="anaGroup = 'payment'">{{ t('支付方式') }}</button>
+            </div>
+          </div>
+          <ul class="legend ana-groups">
+            <li v-for="(r, i) in anaRows" :key="r.key">
+              <i :style="{ background: anaGroup === 'category' ? categoryColors[r.key as SubCategory] : anaColor(i) }" />
+              <span class="legend-main">
+                <span><img v-if="r.flag && flagUrl(r.flag)" :src="flagUrl(r.flag)" alt="" class="flag" /> {{ r.name }} <b class="num">{{ Math.round(r.pct) }}%</b></span>
+                <span class="bar"><span :style="{ width: `${r.pct}%`, background: anaGroup === 'category' ? categoryColors[r.key as SubCategory] : anaColor(i) }" /></span>
+              </span>
+              <span class="legend-amt">
+                <b class="num">{{ t('{v}/月', { v: fmtMoney(r.cents, 'CNY') }) }}</b>
+                <span class="small muted">{{ t('{n} 个订阅', { n: r.count }) }}</span>
+              </span>
+            </li>
+            <li v-if="!anaRows.length" class="muted small">{{ t('没有进行中的按周期扣费的订阅。') }}</li>
+          </ul>
+          <h3 class="bars-title">{{ t('月费排行（不是按月付费的折算为每月）') }}</h3>
+          <ol class="ana-top">
+            <li v-for="(x, i) in ana.top.slice(0, 10)" :key="x.s.id">
+              <span class="rank num">{{ i + 1 }}</span>
+              <SubAvatar :brand="x.s.brand" :name="x.s.name" :size="28" :src="x.s.logo_version ? subscriptionLogoURL(x.s) : ''" />
+              <span class="sub-main">
+                <b class="ellipsis">{{ x.s.name }}</b>
+                <span class="small muted num">{{ fmtMoney(x.s.price_cents, x.s.currency) }}/{{ t(cycleShort[x.s.cycle] ?? x.s.cycle) }}
+                  <template v-if="x.s.cycle !== 'monthly'"> · {{ t('折合 {v}/月', { v: fmtMoney(monthlyCents(x.s), x.s.currency) }) }}</template></span>
+              </span>
+              <b class="num">{{ fmtMoney(x.cents, 'CNY') }}</b>
+            </li>
+          </ol>
+          <p class="small muted rate-note">
+            {{ t('每周按 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12 折算为每月；已结束的不计入。') }}
+            <template v-if="ana.once">{{ t('一次性付费的 {n} 个不计入。', { n: ana.once }) }}</template>
+            <template v-if="ana.missing.length">{{ t('缺少 {c} 的汇率，这些订阅没有计入。', { c: ana.missing.join('、') }) }}</template>
+          </p>
+        </section>
 
         <!-- 统计 -->
         <section v-else class="panel stats">
@@ -514,11 +627,11 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                   <span class="small muted">{{ t('{n} 个订阅', { n: c.count }) }}</span>
                 </span>
               </li>
-              <li v-if="!cats.length" class="muted small">{{ t('这段时间没有 {cur} 扣费。', { cur }) }}</li>
+              <li v-if="!cats.length" class="muted small">{{ t('这段时间没有扣费。') }}</li>
             </ul>
           </div>
 
-          <h3 class="bars-title">{{ t('每月扣费（{cur}）', { cur }) }}</h3>
+          <h3 class="bars-title">{{ t('每月扣费（人民币）') }}</h3>
           <div class="bars">
             <div v-for="b in bars" :key="b.key" class="bar-col" :title="fmtMoney(b.cents, cur)">
               <span v-if="b.current" class="bar-tip num">{{ fmtMoney(b.cents, cur) }}</span>
@@ -527,6 +640,12 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </div>
           </div>
         </section>
+        <!-- 汇率说明（修订第 223 条） -->
+        <p v-if="usedRates.length && view !== 'list'" class="small muted rate-note">
+          {{ t('外币按汇率换算为人民币：') }}<span v-for="r in usedRates" :key="r.c" class="num rate">1 {{ r.c }} = {{ r.v ? `¥${r.v.toFixed(r.v < 0.1 ? 4 : 2)}` : t('无汇率') }}</span>
+          <template v-if="rateDate">{{ t('（{source}，{date}）', { source: fx?.source ?? '', date: rateDate }) }}</template>
+          <template v-if="fx?.error"> · {{ t('最近一次更新失败：{e}', { e: fx.error }) }}</template>
+        </p>
       </template>
     </template>
   </main>
@@ -577,6 +696,19 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .bar-label { position: absolute; bottom: 0; white-space: nowrap; }
 .bar-tip { position: absolute; top: -26px; padding: 2px var(--space-2); border-radius: var(--radius-full); background: var(--accent);
   color: var(--on-accent); font-size: var(--font-xs); white-space: nowrap; }
+
+/* 分析（修订第 223 条） */
+.ana-head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.ana-head > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.ana-groups { margin-bottom: var(--space-4); }
+.ana-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ana-top li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; }
+.ana-top li + li { border-top: 1px solid var(--border); }
+.rank { width: 20px; text-align: center; color: var(--text-muted); font-size: var(--font-sm); flex: none; }
+.rate-note { margin: var(--space-3) 0 0; }
+.rate { margin-right: var(--space-3); }
+.flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; }
+.meta-line { display: inline-flex; align-items: center; gap: 4px; }
 
 /* 选择与填写 */
 .editor { padding: var(--space-4) var(--space-5); margin-bottom: var(--space-4); }

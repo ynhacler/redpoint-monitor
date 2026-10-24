@@ -8,6 +8,7 @@ import '../api.dart';
 import '../app_lock.dart';
 import '../catalog.gen.dart';
 import '../errors.dart';
+import '../format.dart';
 import '../subscriptions.dart';
 import '../theme.dart';
 import '../widgets/brand_avatar.dart';
@@ -47,6 +48,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
   final _ips = TextEditingController();
   String _category = 'video';
   String _currency = 'CNY';
+  String _country = ''; // 国家 / 地区与支付方式必选（修订第 223 条）
+  String _payment = '';
   String _cycle = 'monthly';
   int _trial = 0;
   int _remind = 1;
@@ -72,6 +75,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
     _ips.text = x.vps.ips.join('\n');
     _category = categoryNames.containsKey(x.category) ? x.category : 'other';
     _currency = x.currency;
+    _country = x.country;
+    _payment = paymentNames.containsKey(x.payment) ? x.payment : '';
     _cycle = cycleNames.containsKey(x.cycle) ? x.cycle : 'monthly';
     _trial = _trialOptions.any((o) => o.$1 == x.trialDays) ? x.trialDays : 0;
     _remind = _remindOptions.any((o) => o.$1 == x.remindDays) ? x.remindDays : 1;
@@ -102,6 +107,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
       _name.text = e?.name ?? '';
       _category = e?.category ?? 'other';
       _currency = e?.currency ?? 'CNY';
+      // 国家 / 地区按 SIM 卡的国家或币种预填（可改）；支付方式须自己选择
+      _country = e?.country ?? defaultCountry(_currency);
       _cycle = _category == 'vps' ? 'annually' : 'monthly';
       if (_category == 'sim' && _phones.isEmpty) _phones.add((TextEditingController(text: e?.dial ?? '+86'), TextEditingController()));
     });
@@ -122,6 +129,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
       'end_date': _end == null ? '' : _ymd(_end!),
       'remind_days': _remind,
       'note': _note.text.trim(),
+      'country': _country,
+      'payment': _payment,
       'phones': [
         if (_category == 'sim')
           for (final (cc, n) in _phones)
@@ -170,6 +179,17 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
       if (e.key == field || e.key.startsWith('$field[') || e.key.startsWith('$field.')) return e.value;
     }
     return null;
+  }
+
+  // 国家 / 地区：可搜索的列表，常用的在前
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _CountrySheet(selected: _country),
+    );
+    if (picked != null && mounted) setState(() => _country = picked);
   }
 
   @override
@@ -306,7 +326,10 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
               initialValue: currencies.contains(_currency) ? _currency : 'CNY',
               decoration: deco('币种', 'currency'),
               items: [for (final x in currencies) DropdownMenuItem(value: x, child: Text(x))],
-              onChanged: (v) => setState(() => _currency = v!),
+              onChanged: (v) => setState(() {
+                _currency = v!;
+                if (_country.isEmpty) _country = defaultCountry(_currency);
+              }),
             ),
           ),
           const SizedBox(width: 12),
@@ -315,6 +338,31 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
               controller: _price,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: deco('价格', 'price_cents', hint: '0.00'),
+            ),
+          ),
+        ]),
+        gap(),
+        // 国家 / 地区（可搜索）与支付方式（修订第 223 条）
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: InkWell(
+              onTap: _pickCountry,
+              child: InputDecorator(
+                decoration: deco('国家 / 地区', 'country').copyWith(suffixIcon: const Icon(Icons.arrow_drop_down)),
+                child: Text(_country.isEmpty ? '请选择' : '${flagEmoji(_country)} ${countryLabel(_country)}'.trim(),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: _country.isEmpty ? TextStyle(color: c.textMuted) : null),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: _payment.isEmpty ? null : _payment,
+              isExpanded: true,
+              hint: const Text('请选择'),
+              decoration: deco('支付方式', 'payment'),
+              items: [for (final x in paymentNames.entries) DropdownMenuItem(value: x.key, child: Text(x.value))],
+              onChanged: (v) => setState(() => _payment = v ?? ''),
             ),
           ),
         ]),
@@ -409,6 +457,56 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
         FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '保存中…' : '保存')),
         const SizedBox(height: 8),
         Text('上传图标请在 Web 的“订阅”页进行。', style: muted, textAlign: TextAlign.center),
+      ]),
+    );
+  }
+}
+
+/// 选择国家 / 地区（修订第 223 条）：按名称或代码搜索；不搜索时常用的在前
+class _CountrySheet extends StatefulWidget {
+  const _CountrySheet({required this.selected});
+  final String selected;
+
+  @override
+  State<_CountrySheet> createState() => _CountrySheetState();
+}
+
+class _CountrySheetState extends State<_CountrySheet> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = appColors(context);
+    final q = _q.trim().toLowerCase();
+    final codes = q.isEmpty
+        ? [...commonCountries, ...countryNames.keys.where((k) => !commonCountries.contains(k))]
+        : countryNames.keys.where((k) => k.toLowerCase().contains(q) || countryNames[k]!.toLowerCase().contains(q)).toList();
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            autofocus: false,
+            decoration: const InputDecoration(hintText: '搜索国家 / 地区（名称或代码，如 美国、US）', prefixIcon: Icon(Icons.search), isDense: true),
+            onChanged: (v) => setState(() => _q = v),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: codes.length,
+            itemBuilder: (_, i) {
+              final k = codes[i];
+              return ListTile(
+                dense: true,
+                leading: Text(flagEmoji(k), style: const TextStyle(fontSize: 20)),
+                title: Text(countryNames[k] ?? k),
+                trailing: k == widget.selected ? Icon(Icons.check, color: c.accent) : Text(k, style: TextStyle(color: c.textMuted)),
+                onTap: () => Navigator.pop(context, k),
+              );
+            },
+          ),
+        ),
       ]),
     );
   }

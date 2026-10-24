@@ -13,8 +13,8 @@ func TestAppSubscriptions(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
 	for _, b := range []string{
-		`{"name":"iCloud","category":"cloud","price_cents":600,"currency":"CNY","cycle":"monthly","start_date":"2026-01-05"}`,
-		`{"name":"Netflix","brand":"netflix","category":"video","price_cents":6800,"currency":"HKD","cycle":"monthly","start_date":"2026-01-02"}`,
+		`{"name":"iCloud","category":"cloud","price_cents":600,"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-05"}`,
+		`{"name":"Netflix","brand":"netflix","category":"video","price_cents":6800,"currency":"HKD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-02"}`,
 	} {
 		if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(b)); rec.Code != 201 {
 			t.Fatalf("添加：%d %s", rec.Code, rec.Body)
@@ -67,7 +67,7 @@ func TestAppSubscriptions(t *testing.T) {
 func TestAppCreateSubscription(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
-	body := []byte(`{"name":"Netflix","brand":"netflix","category":"video","price_cents":6800,"currency":"HKD","cycle":"monthly","start_date":"2026-01-05"}`)
+	body := []byte(`{"name":"Netflix","brand":"netflix","category":"video","price_cents":6800,"currency":"HKD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-05"}`)
 
 	// 默认不允许
 	keyDefault, _, k := createAppKey(t, h, admin, `{"name":"default"}`)
@@ -116,7 +116,7 @@ func TestAppCreateSubscription(t *testing.T) {
 		t.Errorf("设备不应能上传图标：%d", rec.Code)
 	}
 	// 修改与删除（修订第 218 条）：同样只有允许记录订阅的设备
-	upd := []byte(`{"name":"Netflix 高级","brand":"netflix","category":"video","price_cents":9800,"currency":"HKD","cycle":"monthly","start_date":"2026-01-05"}`)
+	upd := []byte(`{"name":"Netflix 高级","brand":"netflix","category":"video","price_cents":9800,"currency":"HKD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-05"}`)
 	if rec := do(h, "PUT", "/api/v1/app/subscriptions/"+itoa64(x.ID), def.AccessToken, upd); rec.Code != 403 {
 		t.Errorf("未允许的设备不能修改：%d", rec.Code)
 	}

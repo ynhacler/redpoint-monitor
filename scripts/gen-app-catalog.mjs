@@ -3,7 +3,7 @@
 // 转成 app/lib/catalog.gen.dart，App 与 Web 显示同样的名称、品牌色与标志，不各自维护一份。
 // 用法：make app-catalog（在 web/ 中用 esbuild 打包读取，再写出 Dart）。
 import { createRequire } from 'node:module'
-import { writeFileSync } from 'node:fs'
+import { readdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -61,7 +61,7 @@ w('')
 w('/// 订阅目录中的一项')
 w('class CatalogEntry {')
 w('  /// 创建目录项')
-w('  const CatalogEntry(this.name, this.category, this.color, {this.letter, this.icon, this.currency, this.dial, this.hot = false});')
+w('  const CatalogEntry(this.name, this.category, this.color, {this.letter, this.icon, this.currency, this.dial, this.country, this.hot = false});')
 w('  /// 名称')
 w('  final String name;')
 w('  /// 类别')
@@ -76,6 +76,8 @@ w('  /// 默认币种')
 w('  final String? currency;')
 w('  /// SIM 卡的国家 / 地区区号，如 +86')
 w('  final String? dial;')
+w('  /// SIM 卡的国家 / 地区（两位代码，大写）')
+w('  final String? country;')
 w('  /// 常用（选择服务时排在前面）')
 w('  final bool hot;')
 w('}')
@@ -125,7 +127,7 @@ w('/// 订阅目录：键 → 目录项（按 Web 的顺序，热门在前的由
 w('const catalog = <String, CatalogEntry>{')
 for (const c of d.catalog) {
   const opt = [c.letter ? `letter: ${q(c.letter)}` : '', c.icon ? `icon: ${q(c.icon)}` : '',
-    c.currency ? `currency: ${q(c.currency)}` : '', c.dial ? `dial: ${q(c.dial)}` : '', c.hot ? 'hot: true' : ''].filter(Boolean)
+    c.currency ? `currency: ${q(c.currency)}` : '', c.dial ? `dial: ${q(c.dial)}` : '', c.country ? `country: ${q(c.country.toUpperCase())}` : '', c.hot ? 'hot: true' : ''].filter(Boolean)
   w(`  ${q(c.key)}: CatalogEntry(${q(c.name)}, ${q(c.category)}, ${color(c.color)}${opt.length ? ', ' + opt.join(', ') : ''}),`)
 }
 w('};')
@@ -165,5 +167,20 @@ glyphs('brandIcons', '订阅服务的单色标志', d.brandIcons)
 logos('brandLogos', '订阅服务的图片标志', d.brandLogos)
 glyphs('siteIcons', '连通性测试网站的单色标志', d.siteIcons)
 logos('siteLogos', '连通性测试网站的图片标志', d.siteLogos)
+// 国家 / 地区名称（修订第 223 条）：代码取自 Web 用的 flag-icons，中文名由 Node 内置的 Intl.DisplayNames 生成（与 Web 一致）
+const flagDir = path.join(root, 'web/node_modules/flag-icons/flags/4x3')
+const codes = readdirSync(flagDir).map((f) => f.match(/^([a-z]{2})\.svg$/)?.[1]).filter((c) => c && c !== 'eu' && c !== 'un')
+  .map((c) => c.toUpperCase()).sort()
+const zh = new Intl.DisplayNames(['zh-CN'], { type: 'region' })
+const commonCountries = ['CN', 'HK', 'MO', 'TW', 'US', 'JP', 'SG', 'KR', 'GB', 'DE', 'FR', 'NL', 'CA', 'AU', 'MY', 'TH', 'PH']
+w('')
+w('/// 国家 / 地区的中文名：两位代码 → 名称（由 Web 的国旗列表与 Intl.DisplayNames 生成）')
+w('const countryNames = <String, String>{')
+const short = { HK: '香港', MO: '澳门' } // 手机上一行放不下“中国香港特别行政区”
+for (const c of codes) w(`  ${q(c)}: ${q(short[c] ?? zh.of(c) ?? c)},`)
+w('};')
+w('')
+w('/// 选择国家 / 地区时排在前面的')
+w(`const commonCountries = <String>[${commonCountries.map(q).join(', ')}];`)
 writeFileSync(path.join(root, 'app/lib/catalog.gen.dart'), lines.join('\n') + '\n')
 console.log(`已生成 app/lib/catalog.gen.dart：订阅目录 ${d.catalog.length} 项，测试目标 ${d.siteGroups.reduce((a, g) => a + g.sites.length, 0)} 个，标志 ${Object.keys(d.brandIcons).length + Object.keys(d.siteIcons).length + Object.keys(d.brandLogos).length + Object.keys(d.siteLogos).length} 个`)

@@ -1474,6 +1474,17 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /fx-rates:
+    get:
+      tags: [subscriptions]
+      summary: 汇率：1 单位外币折合多少人民币（修订第 223 条）
+      description: |
+        用于把订阅的外币价格换算成人民币显示与统计。来源 ExchangeRate-API（open.er-api.com，每日更新）；面板每 12 小时最多请求一次，
+        只在有非人民币订阅时请求，请求不带任何用户数据。汇率过期时本次先返回已有的汇率并在后台刷新；从未取到时 rates 只有 CNY。
+      responses:
+        '200': { description: 汇率, content: { application/json: { schema: { $ref: '#/components/schemas/FxRates' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+
   /subscriptions:
     get:
       tags: [subscriptions]
@@ -3334,13 +3345,15 @@ components:
 
     SubscriptionInput:
       type: object
-      required: [name, category, price_cents, currency, cycle, start_date]
+      required: [name, category, price_cents, currency, cycle, start_date, country, payment]
       properties:
         name: { type: string, minLength: 1, maxLength: 64 }
         brand: { type: string, maxLength: 32, description: 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 }
         category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other], description: 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他 }
         price_cents: { type: integer, minimum: 0, maximum: 100000000, description: 每期价格（分） }
         currency: { type: string, pattern: '^[A-Z]{3}$', description: 如 CNY、USD }
+        country: { type: string, pattern: '^[A-Z]{2}$', description: 订阅的国家 / 地区（ISO 3166-1 两位代码，修订第 223 条） }
+        payment: { type: string, enum: [alipay, wechat, bank, credit, paypal, apple, google, carrier, crypto, other], description: 支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他 }
         cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once], description: 扣费周期；once 为一次性 }
         trial_days: { type: integer, minimum: 0, maximum: 366, description: 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 }
         start_date: { type: string, format: date, description: 开始订阅的日期（YYYY-MM-DD） }
@@ -3377,7 +3390,7 @@ components:
     Subscription:
       type: object
       required: [id, name, brand, category, price_cents, currency, cycle, trial_days, start_date, end_date, remind_days, note,
-                 phones, vps, next_charge, ended, logo_version, created_at, updated_at]
+                 phones, vps, next_charge, ended, logo_version, created_at, updated_at, country, payment]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -3391,6 +3404,8 @@ components:
         end_date: { type: string, description: YYYY-MM-DD；空表示仍在订阅 }
         remind_days: { type: integer }
         note: { type: string }
+        country: { type: string, description: 订阅的国家 / 地区（两位代码）；修订第 223 条之前添加、尚未编辑的为空 }
+        payment: { type: string, description: 支付方式（见 SubscriptionInput.payment）；尚未设置时为空 }
         phones: { type: array, items: { $ref: '#/components/schemas/SubscriptionPhone' } }
         vps: { $ref: '#/components/schemas/SubscriptionVPS' }
         next_charge: { type: string, description: '下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空' }
@@ -3951,6 +3966,16 @@ components:
         allow_low_risk_ops: { type: boolean }
         allow_subscriptions: { type: boolean, description: 可以新增订阅（AK 允许记录订阅且授权全部节点） }
 
+    FxRates:
+      type: object
+      required: [base, source, as_of, fetched_at, rates, error]
+      properties:
+        base: { type: string, enum: [CNY] }
+        source: { type: string, description: 汇率来源说明 }
+        as_of: { type: integer, description: 来源数据的时间（Unix 秒）；0 表示还没有取到 }
+        fetched_at: { type: integer, description: 面板最近一次成功取得的时间（Unix 秒） }
+        rates: { type: object, additionalProperties: { type: number }, description: 币种 → 1 单位折合多少人民币；总含 CNY = 1 }
+        error: { type: string, description: 最近一次请求失败的原因；成功后为空 }
     AppSubscriptions:
       type: object
       required: [limited, items]
