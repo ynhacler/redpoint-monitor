@@ -157,4 +157,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('修改'), findsNothing);
   });
+
+  testWidgets('订阅“已续费”（修订第 224 条）：有结束日期的长按显示，顺延后刷新列表', (tester) async {
+    var end = '2026-11-02';
+    final calls = <String>[];
+    Map<String, dynamic> sub() => {
+          'id': 7, 'name': '域名 example.dev', 'brand': '', 'category': 'cloud', 'price_cents': 8900, 'currency': 'CNY', 'cycle': 'annually',
+          'trial_days': 0, 'start_date': '2025-11-02', 'end_date': end, 'remind_days': 1, 'note': '', 'phones': [], 'vps': {},
+          'next_charge': '', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0, 'country': 'CN', 'payment': 'alipay',
+        };
+    final client = MockClient((req) async {
+      calls.add('${req.method} ${req.url.path}');
+      if (req.method == 'POST' && req.url.path == '/api/v1/app/subscriptions/7/renew') {
+        end = '2027-11-02';
+        return http.Response.bytes(utf8.encode(jsonEncode(sub())), 200);
+      }
+      return http.Response.bytes(utf8.encode(jsonEncode({'limited': false, 'items': [sub()]})), 200);
+    });
+    await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: true), MemorySessionStore(), client: client), onRevoked: () {})));
+    await tester.pump();
+    await tester.pump();
+    await tester.longPress(find.text('域名 example.dev'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('结束日期 2026-11-02 顺延一个周期（每年）'), findsOneWidget);
+    await tester.tap(find.text('已续费'));
+    await tester.pumpAndSettle();
+    expect(calls, contains('POST /api/v1/app/subscriptions/7/renew'));
+    expect(find.textContaining('已顺延到 2027-11-02'), findsOneWidget);
+  });
 }

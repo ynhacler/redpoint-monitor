@@ -405,4 +405,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved, [2, 3, 1]); // a-node、b-node、c-node
   });
+
+  testWidgets('节点“已续费”（修订第 224 条）：允许记录订阅的设备在到期日旁显示，确认后顺延；普通设备不显示', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 812 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    var expire = '2026-10-28';
+    final calls = <String>[];
+    final n = node(1, 'Tokyo', 'online');
+    final client = MockClient((req) async {
+      calls.add('${req.method} ${req.url.path}');
+      if (req.method == 'POST' && req.url.path == '/api/v1/app/servers/1/renew') {
+        expire = '2026-11-28';
+        return http.Response.bytes(utf8.encode(jsonEncode({'expire_date': expire, 'previous': '2026-10-28'})), 200);
+      }
+      if (req.url.path == '/api/v1/servers/1') {
+        return http.Response.bytes(utf8.encode(jsonEncode({...n, 'expire_date': expire})), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    Session sess(bool subs) => Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
+        refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all',
+        scopeValue: '', allowLowRiskOps: true, allowSubscriptions: subs);
+    final initial = ServerView.fromJson({...n, 'expire_date': expire});
+
+    await tester.pumpWidget(MaterialApp(home: ServerDetailPage(api: ApiClient(sess(false), MemorySessionStore(), client: client),
+        cache: MemCache(), initial: initial, onRevoked: () {})));
+    await tester.pump();
+    expect(find.text('已续费'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(home: ServerDetailPage(api: ApiClient(sess(true), MemorySessionStore(), client: client),
+        cache: MemCache(), initial: initial, onRevoked: () {})));
+    await tester.pump();
+    await tester.tap(find.text('已续费'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('顺延一个计费周期（月付）'), findsOneWidget);
+    await tester.tap(find.text('顺延'));
+    await tester.pumpAndSettle();
+    expect(calls, contains('POST /api/v1/app/servers/1/renew'));
+    expect(find.textContaining('2026-11-28'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

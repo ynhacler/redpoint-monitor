@@ -2006,6 +2006,27 @@ export interface Paths {
       response: void
     }
   }
+  '/app/subscriptions/{id}/renew': {
+    /** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+    post: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+  }
+  '/app/servers/{id}/renew': {
+    /** 已续费：节点到期日顺延一个计费周期（修订第 224 条） */
+    post: {
+      params: {
+        id: number
+      }
+      response: {
+        expire_date: string
+        previous: string
+      }
+    }
+  }
   '/app/subscriptions/{id}/logo': {
     /** 订阅上传的图标（PNG，修订第 213 条） */
     get: {
@@ -2626,6 +2647,15 @@ export interface Paths {
       response: Subscription
     }
   }
+  '/subscriptions/{id}/renew': {
+    /** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+    post: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+  }
   '/subscriptions/{id}': {
     /** 修改订阅（整体替换） */
     put: {
@@ -2917,6 +2947,18 @@ export interface Paths {
         ids: number[]
       }
       response: void
+    }
+  }
+  '/servers/{id}/renew': {
+    /** 已续费：节点到期日顺延一个计费周期（修订第 224 条） */
+    post: {
+      params: {
+        id: number
+      }
+      response: {
+        expire_date: string
+        previous: string
+      }
     }
   }
   '/servers/{id}': {

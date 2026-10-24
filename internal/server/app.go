@@ -94,7 +94,7 @@ func (s *Server) ops(h http.HandlerFunc) http.Handler {
 	})
 }
 
-// appSubs 是 accessAppSubs 路由（新增、修改、删除订阅）的认证（修订第 217、218 条）：只接受 App 设备，且 AK 勾选了“允许记录订阅”、
+// appSubs 是 accessAppSubs 路由（新增、修改、删除订阅，订阅与节点的已续费）的认证（修订第 217、218、224 条）：只接受 App 设备，且 AK 勾选了“允许记录订阅”、
 // 授权范围为“全部节点”（订阅属于整个面板）。Web 管理员走自己的 /subscriptions 接口。
 func (s *Server) appSubs(h http.HandlerFunc) http.Handler {
 	return s.app(func(w http.ResponseWriter, r *http.Request) {

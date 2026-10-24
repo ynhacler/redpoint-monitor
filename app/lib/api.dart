@@ -231,6 +231,12 @@ class ApiClient {
   /// 汇率（修订第 223 条）：1 单位外币折合多少人民币；旧版面板没有该接口时抛出 ApiException（404）。
   Future<FxRates> fxRates() async => FxRates.fromJson(await getJson('/fx-rates') as Map<String, dynamic>);
 
+  /// 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条），权限与记录订阅相同。
+  Future<Subscription> renewSubscription(int id) async => Subscription.fromJson(await _send2xx('POST', '/app/subscriptions/$id/renew'));
+
+  /// 已续费：节点到期日顺延一个计费周期（修订第 224 条），权限与记录订阅相同；返回新的到期日。
+  Future<String> renewServer(int id) async => (await _send2xx('POST', '/app/servers/$id/renew'))['expire_date'] as String;
+
   /// 订阅上传的图标（PNG）；没有时返回 null。
   Future<Uint8List?> subscriptionLogo(int id) async {
     final res = await _send('GET', '/app/subscriptions/$id/logo');

@@ -585,6 +585,16 @@ export async function listSubscriptions() {
   return (await request('get', '/subscriptions')).items
 }
 
+/** 已续费：节点到期日顺延一个计费周期（修订第 224 条） */
+export function renewServer(id: number) {
+  return request('post', '/servers/{id}/renew', { params: { id } })
+}
+
+/** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+export function renewSubscription(id: number) {
+  return request('post', '/subscriptions/{id}/renew', { params: { id } })
+}
+
 /** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
 export function getFxRates() {
   return request('get', '/fx-rates')

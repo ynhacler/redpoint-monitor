@@ -319,6 +319,14 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(chargeText(s))),
+          // 已续费（修订第 224 条）：有结束日期的订阅按周期顺延结束日期
+          if (s.endDate.isNotEmpty && s.cycle != 'once')
+            ListTile(
+              leading: const Icon(Icons.event_repeat_outlined),
+              title: const Text('已续费'),
+              subtitle: Text('结束日期 ${s.endDate} 顺延一个周期（${cycleNames[s.cycle] ?? s.cycle}）'),
+              onTap: () => Navigator.pop(ctx, 'renew'),
+            ),
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('修改'), onTap: () => Navigator.pop(ctx, 'edit')),
           ListTile(
             leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
@@ -329,6 +337,21 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       ),
     );
     if (!context.mounted || act == null) return;
+    if (act == 'renew') {
+      final lock = AppLockScope.of(context);
+      if (lock != null && !await lock.guard('已续费')) return;
+      try {
+        final x = await widget.api.renewSubscription(s.id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('“${x.name}”结束日期已顺延到 ${x.endDate}')));
+        await _load();
+      } on DeviceRevoked {
+        widget.onRevoked();
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('续费失败：${describeError(e)}')));
+      }
+      return;
+    }
     if (act == 'edit') {
       final x = await Navigator.of(context).push<Subscription>(
           MaterialPageRoute(builder: (_) => SubscriptionAddPage(api: widget.api, initial: s)));

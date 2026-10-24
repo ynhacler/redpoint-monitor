@@ -371,7 +371,14 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           ]),
           if (rows.isNotEmpty || ip != null) const SizedBox(height: 8),
           for (final (k, v) in rows) ...[
-            _kv(k, v, c),
+            _kv(k, v, c,
+                trailing: k == '到期' && _canRenew
+                    ? TextButton(
+                        onPressed: _busy ? null : _renew,
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        child: const Text('已续费'),
+                      )
+                    : null),
             // ASN 与位置紧跟在地址之后（设计 49）
             if (ip != null && (k == 'IPv4' || (k == 'IPv6' && s.ipv4.isEmpty)))
               _kv('归属', [if (ip.asn.isNotEmpty) ip.asn, if (ip.org.isNotEmpty) maskText(ip.org, widget.privacy), if (ip.place.isNotEmpty) ip.place].join(' · '), c),
@@ -393,13 +400,38 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     );
   }
 
-  Widget _kv(String k, String v, AppColors c) => Padding(
+  Widget _kv(String k, String v, AppColors c, {Widget? trailing}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child: Row(crossAxisAlignment: trailing == null ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
           SizedBox(width: 52, child: Text(k, style: TextStyle(fontSize: 13, color: c.textMuted))),
           Expanded(child: SelectableText(v, style: const TextStyle(fontSize: 13))),
+          if (trailing != null) trailing,
         ]),
       );
+
+  // 已续费（修订第 224 条）：到期日按计费周期顺延一个周期；AK 允许记录订阅且授权全部节点的设备才显示
+  bool get _canRenew {
+    final sess = widget.api.session;
+    return sess.allowSubscriptions && _s.expireDate.isNotEmpty && _period.containsKey(_s.billingPeriod) && _s.billingPeriod != 'one_time';
+  }
+
+  Future<void> _renew() async {
+    final period = _period[_s.billingPeriod] ?? _s.billingPeriod;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('已续费'),
+        content: Text('到期日 ${_s.expireDate} 顺延一个计费周期（$period）？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('顺延')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    // _do 先按“敏感操作前验证”验证，完成后提示并刷新（新的到期日显示在概况中）
+    await _do(() => widget.api.renewServer(_s.id), '已续费：到期日顺延一个周期（$period）');
+  }
 
   // 实时网速：下行 / 上行 + 开机以来累计
   Widget _netCard(BuildContext context) {

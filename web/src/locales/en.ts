@@ -1135,4 +1135,13 @@ export const en: Record<string, string> = {
   '季': 'qtr',
   '半年': 'half-yr',
   '次': 'once',
+
+  // ---- 已续费（修订第 224 条） ----
+  '已顺延到 {date}': 'Extended to {date}',
+  '续费失败': 'Renewal failed',
+  '续费中…': 'Renewing…',
+  '确认顺延一个周期（{p}）': 'Confirm: extend one period ({p})',
+  '已续费': 'Renewed',
+  '结束日期已顺延到 {date}': 'End date extended to {date}',
+  '结束日期按订阅周期顺延一个周期': 'Move the end date forward by one billing cycle',
 }

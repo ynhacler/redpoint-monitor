@@ -207,7 +207,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
           <input v-model="form.allow_low_risk_ops" type="checkbox" />允许静音告警、开启 / 结束维护模式（仅限可查看的节点）
         </label>
         <label v-if="form.scope_type === 'all'" class="check wide">
-          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中记录订阅（新增、修改、删除；上传图标仍在 Web 中进行）
+          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中记录订阅与续费（订阅的新增、修改、删除，订阅与节点的“已续费”；上传图标仍在 Web 中进行）
         </label>
         <label>当前登录密码
           <input v-model="form.password" type="password" autocomplete="current-password" />
@@ -232,7 +232,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
             <span v-if="d.status === 'revoked'" class="tag">{{ revokedByText[d.revoked_by] ?? '已吊销' }}</span>
             <span v-else-if="d.status === 'expired'" class="tag">90 天未使用，已失效</span>
             <div class="small muted">
-              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? '只读 + 静音 / 维护' : '只读' }}{{ d.allow_subscriptions ? ' + 记录订阅' : '' }}
+              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? '只读 + 静音 / 维护' : '只读' }}{{ d.allow_subscriptions ? ' + 记录订阅与续费' : '' }}
               · 最后在线 {{ d.last_seen_at ? fmtTime(d.last_seen_at) : DASH }} · 配对于 {{ fmtDateTime(d.paired_at) }}
               <template v-if="d.access_key_name"> · AK：{{ d.access_key_name }}</template>
             </div>
@@ -255,7 +255,7 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
             <strong>{{ k.name }}</strong> <span class="small muted mono">{{ k.hint }}</span>
             <span class="tag" :class="{ live: k.status === 'active' }">{{ statusText[k.status] ?? k.status }}</span>
             <div class="small muted">
-              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? '允许静音 / 维护' : '只读' }}{{ k.allow_subscriptions ? ' · 允许记录订阅' : '' }}
+              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? '允许静音 / 维护' : '只读' }}{{ k.allow_subscriptions ? ' · 允许记录订阅与续费' : '' }}
               · 已配对 {{ k.paired_devices }} / {{ k.max_devices }}
               · {{ k.status === 'active' ? `${fmtDateTime(k.expires_at)} 前有效` : `创建于 ${fmtDateTime(k.created_at)}` }}
             </div>
