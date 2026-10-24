@@ -21,6 +21,7 @@
 #   --mirror URL         从镜像下载（如无法访问 GitHub 时）；下载的程序仍按内置 SHA256 校验
 #   --local 目录         使用本地已下载的 vpsmon-server-linux-<架构>（离线安装；仍按内置 SHA256 校验）
 #   -y, --yes            不提问，全部用默认值
+#   在终端中运行且没有给 --port 时，会显示 80 / 443 的占用情况并询问端口（修订第 222 条）
 #
 # 证书验证（修订第 221 条）：Let's Encrypt 只能经 80 端口（HTTP-01）或 443 端口（TLS-ALPN-01）验证域名，所以
 #   80 空闲 → HTTPS 可以用任意端口（--port 8443），80 只用于验证与跳转；
@@ -204,6 +205,64 @@ check_port() { case "$1" in *[!0-9]*|'') die "--port 必须是数字" ;; esac
   if [ "$1" -lt 1 ] || [ "$1" -gt 65535 ]; then die "--port 必须在 1-65535 之间"; fi; }
 # https_ok 端口：内置 HTTPS 能否用这个端口——端口空闲，且证书能验证（80 空闲，或 HTTPS 就在 443）
 https_ok() { ! port_busy "$1" && { ! port_busy 80 || [ "$1" = 443 ]; }; }
+# ---- 交互选择端口（修订第 222 条）：首次安装、在终端中运行、没有给 --port 与 -y 时 ----
+ask() { printf '%s' "$1"; read -r ans || ans=""; }
+port_state() { if port_busy "$1"; then printf '%s已被占用%s' "$R" "$N"; else printf '%s空闲%s' "$G" "$N"; fi; }
+valid_port() { # 输入的端口：数字、范围、空闲；不合格时说明原因并返回 1
+  case "$1" in ''|*[!0-9]*) warn "请输入数字"; return 1 ;; esac
+  if [ "$1" -lt 1 ] || [ "$1" -gt 65535 ]; then warn "端口应在 1-65535 之间"; return 1; fi
+  if port_busy "$1"; then warn "端口 $1 已被其他程序占用，换一个"; return 1; fi
+}
+ask_https_port() { # 内置 HTTPS：显示 80 / 443 的占用情况，推荐一个能申请到证书的端口；都不行时询问是否改用反向代理
+  say ""
+  say "选择 HTTPS 端口。证书只能经 80 或 443 端口验证：80 $(port_state 80)，443 $(port_state 443)"
+  DEF=""
+  if https_ok 443; then DEF=443
+  elif ! port_busy 80; then
+    for p in 8443 9443 10443 2053 2083 2087 2096; do if ! port_busy "$p"; then DEF=$p; break; fi; done
+  fi
+  if [ -z "$DEF" ]; then
+    say "  80 与 443 都已被占用，面板无法自己申请证书；可以改由本机已有的 Nginx / Caddy 反向代理（它们负责证书）。"
+    ask "改用反向代理方式？[Y/n]："
+    case "$ans" in n|N|no|NO) die "请先停止占用 80 或 443 的程序，再重新运行" ;; esac
+    # 用自己的域名时，它就是反向代理对外的地址
+    case "$DOMAIN" in *.sslip.io) ;; *) [ -n "$PUBLIC_URL" ] || PUBLIC_URL="https://$DOMAIN" ;; esac
+    PROXY=1; DOMAIN=""
+    return
+  fi
+  if port_busy 80; then say "  80 已被占用：只能用 443（证书经 443 验证，不监听 80，http:// 不会跳转）"
+  else say "  80 空闲：HTTPS 可以用任意空闲端口；不用 443 时访问地址带端口，如 https://$DOMAIN:8443"; fi
+  while :; do
+    ask "HTTPS 端口 [回车 = $DEF]："
+    [ -n "$ans" ] || ans=$DEF
+    valid_port "$ans" || continue
+    if [ "$ans" = 80 ]; then warn "80 用于证书验证与跳转，不能作为 HTTPS 端口"; continue; fi
+    if port_busy 80 && [ "$ans" != 443 ]; then warn "80 已被占用时只能用 443"; continue; fi
+    PORT=$ans
+    return
+  done
+}
+ask_local_port() { # 反向代理：面板监听的本机端口与对外地址
+  DEF=8080
+  while port_busy "$DEF"; do DEF=$((DEF + 1)); done
+  say ""
+  say "反向代理方式：面板只监听本机（127.0.0.1），由 Nginx / Caddy 对外提供 HTTPS 并转发到这个端口。"
+  while :; do
+    ask "面板监听的本机端口 [回车 = $DEF]："
+    [ -n "$ans" ] || ans=$DEF
+    valid_port "$ans" || continue
+    PORT=$ans
+    break
+  done
+  if [ -z "$PUBLIC_URL" ]; then
+    ask "对外的 HTTPS 地址（写进 Agent 安装命令，如 https://monitor.example.com；回车跳过）："
+    case "$ans" in
+      "") ;;
+      https://*) PUBLIC_URL="${ans%/}" ;;
+      *) warn "不是 https:// 地址，已跳过；之后可用 --public-url 设置" ;;
+    esac
+  fi
+}
 
 if [ "$UPGRADE" -eq 1 ] && [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
   # 升级：沿用原来的访问方式（按 README 手工安装时，域名写在 systemd drop-in 的 --domain 参数中）
@@ -238,10 +297,16 @@ if [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
   fi
 fi
 
+ASK_PORT=0
+if [ -t 0 ] && [ "$YES" -eq 0 ] && [ -z "$PORT" ] && [ "$UPGRADE" -eq 0 ]; then ASK_PORT=1; fi
+
 if [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
   if [ -z "$IP" ]; then
     warn "没有取得本机公网 IPv4，改用反向代理方式（--proxy）"
     PROXY=1
+  elif [ "$ASK_PORT" -eq 1 ]; then
+    DOMAIN="$(printf '%s' "$IP" | tr . -).sslip.io" # 端口在下面询问；80 / 443 都被占用时会询问是否改用反向代理
+    ok "使用免费域名 $DOMAIN（sslip.io 把它解析到 $IP，证书由 Let's Encrypt 签发）"
   elif ! https_ok "${PORT:-443}"; then
     warn "端口 ${PORT:-443}$(port_busy 80 && printf ' 或 80') 已被其他程序占用（可能已有网站），改用反向代理方式（--proxy）"
     PROXY=1
@@ -249,6 +314,11 @@ if [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
     DOMAIN="$(printf '%s' "$IP" | tr . -).sslip.io"
     ok "使用免费域名 $DOMAIN（sslip.io 把它解析到 $IP，证书由 Let's Encrypt 签发）"
   fi
+fi
+
+if [ "$ASK_PORT" -eq 1 ]; then
+  [ "$PROXY" -eq 0 ] && ask_https_port
+  [ "$PROXY" -eq 1 ] && ask_local_port
 fi
 
 if [ "$PROXY" -eq 0 ]; then
@@ -268,6 +338,7 @@ if [ "$PROXY" -eq 0 ]; then
   [ -n "$PORT" ] || PORT="$(env_get VPSMON_HTTPS_LISTEN | sed 's/.*://')"
   [ -n "$PORT" ] || PORT=443
   check_port "$PORT"
+  [ "$PORT" = 80 ] && die "80 用于证书验证与 http 跳转，不能作为 HTTPS 端口：用 --port 443 或 8443 等"
   ALT=8443; [ "$PORT" = 8443 ] && ALT=9443
   if port_busy "$PORT"; then
     if port_busy 80; then die "端口 $PORT 与 80 都已被其他程序占用，证书无法验证：停止占用的程序，或改用 --proxy 由已有的网站服务器反向代理"; fi
@@ -440,8 +511,9 @@ else
 fi
 say "$G$LINE$N"
 if [ "$PROXY" -eq 1 ]; then
+  PHOST="$(printf '%s' "${PUBLIC_URL:-https://monitor.example.com}" | sed 's#^https://##; s#/.*##')"
   say " 反向代理：把你的 HTTPS 域名转发到 127.0.0.1:$PORT，例如 Caddy："
-  say "     monitor.example.com {"
+  say "     $PHOST {"
   say "         reverse_proxy 127.0.0.1:$PORT"
   say "     }"
   [ -n "$PUBLIC_URL" ] || say " 然后：sudo sh $0 --proxy --public-url https://monitor.example.com（写进 Agent 安装命令）"
