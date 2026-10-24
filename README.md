@@ -114,6 +114,9 @@ grep ' vpsmon-install.sh$' SHA256SUMS | sha256sum -c - && sudo sh vpsmon-install
 
 - **不需要域名**：没有域名时自动使用免费域名 `<本机 IP>.sslip.io`，证书由 Let's Encrypt 签发。有自己的域名时先解析到本机，
   运行时输入域名，或 `sudo sh vpsmon-install.sh --domain monitor.example.com`。
+- **自定义端口**：`--port` 指定 HTTPS 端口（默认 443），如 `sudo sh vpsmon-install.sh --domain monitor.example.com --port 8443`，
+  访问地址为 `https://monitor.example.com:8443`。证书只能经 80 或 443 端口验证，所以：80 空闲时 HTTPS 可以用任意端口；
+  80 被占用时只能用 `--port 443`（证书经 443 验证，不监听 80）；80 与 443 都被占用时用下面的反向代理方式。
 - **已有 Nginx / Caddy**（80 / 443 被占用）：自动改为反向代理方式，面板只监听本机端口，并给出代理配置；也可以指定
   `--proxy --port 8080 --public-url https://monitor.example.com`。
 - **支持的系统**：Debian、Ubuntu、CentOS / RHEL / Rocky / Alma、Fedora、Amazon Linux、openSUSE、Arch（systemd），
@@ -205,6 +208,7 @@ sudo systemctl enable --now vpsmon-server
 
 面板仍以 `vpsmon` 用户运行，只额外获得绑定 80 / 443 端口的能力。证书缓存在 `/var/lib/vpsmon/certs`。
 HTTPS 不用 443 时，在 `/etc/vpsmon/server.env` 中加 `VPSMON_HTTPS_LISTEN=8443`（证书验证仍需要公网 80 端口）。
+80 被占用时可以只用 443：加 `VPSMON_HTTP_LISTEN=off`，证书改经 443 验证（TLS-ALPN-01），http:// 不再跳转。
 
 ### 方式 B：Caddy 反向代理（主机上已有其他网站时）
 

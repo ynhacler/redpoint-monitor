@@ -116,6 +116,9 @@ starts on boot) → opens ports 80 / 443 in the local firewall → waits for the
 
 - **No domain needed**: without a domain it uses the free `<server IP>.sslip.io` with a Let's Encrypt certificate. With your own domain, point it at the server first,
   then enter it when asked, or run `sudo sh vpsmon-install.sh --domain monitor.example.com`.
+- **Custom port**: `--port` sets the HTTPS port (default 443), e.g. `sudo sh vpsmon-install.sh --domain monitor.example.com --port 8443`,
+  giving `https://monitor.example.com:8443`. Certificates can only be validated through port 80 or 443, so: with 80 free, HTTPS can use any port;
+  with 80 taken, only `--port 443` works (validated through 443, nothing listens on 80); with both taken, use reverse-proxy mode below.
 - **Nginx / Caddy already running** (80 / 443 taken): switches to reverse-proxy mode, where the panel only listens on a local port, and prints the proxy config; or specify
   `--proxy --port 8080 --public-url https://monitor.example.com`.
 - **Supported systems**: Debian, Ubuntu, CentOS / RHEL / Rocky / Alma, Fedora, Amazon Linux, openSUSE, Arch (systemd),
@@ -207,6 +210,7 @@ sudo systemctl enable --now vpsmon-server
 
 The panel still runs as `vpsmon`, with only the extra ability to bind ports 80 / 443. Certificates are cached in `/var/lib/vpsmon/certs`.
 To serve HTTPS on a port other than 443, add `VPSMON_HTTPS_LISTEN=8443` to `/etc/vpsmon/server.env` (certificate validation still needs public port 80).
+If port 80 is taken you can use 443 alone: add `VPSMON_HTTP_LISTEN=off` and the certificate is validated through 443 (TLS-ALPN-01); http:// no longer redirects.
 
 ### Option B: Caddy reverse proxy (when the host already serves other sites)
 

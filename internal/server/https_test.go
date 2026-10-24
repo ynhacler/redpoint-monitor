@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strconv"
 	"testing"
@@ -64,6 +65,17 @@ func freePort(t *testing.T) string {
 	}
 	defer l.Close()
 	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+}
+
+// HTTPS 不在 443 时，HTTP 重定向带上 HTTPS 端口（修订第 221 条）
+func TestRedirectToHTTPSPort(t *testing.T) {
+	for port, want := range map[string]string{"": "https://example.com/a?b=1", "443": "https://example.com/a?b=1", "8443": "https://example.com:8443/a?b=1"} {
+		rec := httptest.NewRecorder()
+		redirectToHTTPS(port)(rec, httptest.NewRequest("GET", "http://example.com:80/a?b=1", nil))
+		if got := rec.Header().Get("Location"); rec.Code != http.StatusPermanentRedirect || got != want {
+			t.Errorf("端口 %q：%d %s，应为 %s", port, rec.Code, got, want)
+		}
+	}
 }
 
 func TestRunHTTPS(t *testing.T) {
