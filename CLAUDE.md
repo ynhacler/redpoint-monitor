@@ -87,7 +87,8 @@ These are the product's core promise. If a request conflicts with one, stop and 
    stored. Never log credentials, Authorization headers or cookies; redact by prefix (design 24.7).
 5. **App is read-only** (+ mute / maintenance mode). No App credential may change config or trigger upgrades.
    Single exception (revisions 217/218, owner-approved): a device whose AK has "allow subscriptions" (off by default) and scope "all"
-   may create, edit and delete subscriptions (`/app/subscriptions`, `accessAppSubs`); no logo upload, nothing else.
+   may create, edit and delete subscriptions and mark subscriptions / nodes as renewed (revision 224: moves the end / expiry
+   date forward one billing period) via `/app/subscriptions…` and `/app/servers/{id}/renew` (`accessAppSubs`); no logo upload, nothing else.
 6. **HTTPS only** outside loopback / explicit dev flags. Never disable certificate verification.
 7. **No telemetry, no analytics SDKs, no developer-side storage of user data.** Push payloads are
    end-to-end encrypted before leaving the server (design ch. 30).

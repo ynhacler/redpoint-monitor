@@ -209,7 +209,7 @@ const (
 	accessPair    access = "pair"     // 凭请求体中的 AK 或 Refresh Token 认证，由处理函数校验并按 IP 限流（设计 12.3、12.5）
 	accessApp     access = "app"      // 只接受 App 设备 Access Token（设计 12.5）
 	accessOps     access = "ops"      // Web 管理员，或 AK 允许低风险操作的 App 设备：静音、维护（设计 8.4.1、17.2）
-	accessAppSubs access = "app_subs" // 【安全】AK 允许记录订阅且授权全部节点的 App 设备：记录订阅（修订第 217、218 条，约束 5 的唯一写入例外）
+	accessAppSubs access = "app_subs" // 【安全】AK 允许记录订阅且授权全部节点的 App 设备：记录订阅与续费（修订第 217、218、224 条，约束 5 的唯一写入例外）
 )
 
 // routeSpec 记录一条路由及其允许的主体。
@@ -314,6 +314,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/app/subscriptions", accessAppSubs, s.handleAppCreateSubscription)     // 修订第 217 条：约束 5 的例外
 	handle("PUT /api/v1/app/subscriptions/{id}", accessAppSubs, s.handleAppUpdateSubscription) // 修订第 218 条
 	handle("DELETE /api/v1/app/subscriptions/{id}", accessAppSubs, s.handleAppDeleteSubscription)
+	handle("POST /api/v1/app/subscriptions/{id}/renew", accessAppSubs, s.handleAppRenewSubscription) // 已续费（修订第 224 条）
+	handle("POST /api/v1/app/servers/{id}/renew", accessAppSubs, s.handleAppRenewServer)
 	handle("PUT /api/v1/app/push", accessApp, s.handleAppPushPut)
 	handle("DELETE /api/v1/app/push", accessApp, s.handleAppPushDelete)
 	handle("POST /api/v1/app/unpair", accessApp, s.handleUnpair) // 解除会吊销设备，放在 App 路由最后（权限矩阵测试按顺序调用）
@@ -368,6 +370,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/subscriptions", accessAdmin, s.handleSubscriptions) // 订阅（设计 47）
 	handle("GET /api/v1/fx-rates", accessRead, s.handleFxRates)             // 汇率（修订第 223 条），不含用户数据
 	handle("POST /api/v1/subscriptions", accessAdmin, s.handleCreateSubscription)
+	handle("POST /api/v1/subscriptions/{id}/renew", accessAdmin, s.handleRenewSubscription) // 已续费（修订第 224 条）
 	handle("PUT /api/v1/subscriptions/{id}", accessAdmin, s.handleUpdateSubscription)
 	handle("DELETE /api/v1/subscriptions/{id}", accessAdmin, s.handleDeleteSubscription)
 	handle("GET /api/v1/subscriptions/{id}/logo", accessAdmin, s.handleSubscriptionLogo)
@@ -398,6 +401,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/servers/batch", accessAdmin, s.handleBatchCreate)
 	handle("GET /api/v1/servers/{id}", accessRead, s.handleGetServer)
 	handle("POST /api/v1/servers/{id}/unlock-check", accessAdmin, s.handleUnlockCheck) // 解锁检测（设计 50）
+	handle("POST /api/v1/servers/{id}/renew", accessAdmin, s.handleRenewServer)        // 已续费（修订第 224 条）
 	handle("PUT /api/v1/servers/order", accessAdmin, s.handleServerOrder)              // 自定义顺序（修订第 150 条）
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)

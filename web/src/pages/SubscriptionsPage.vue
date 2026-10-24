@@ -9,7 +9,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, renewSubscription, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
@@ -253,6 +253,7 @@ function choose(item: CatalogItem | null) {
 }
 function openEdit(s: Subscription) {
   editing.value = s
+  renewMsg.value = ''
   Object.assign(form, {
     ...s, price: (s.price_cents / 100).toFixed(2), phones: s.phones.map((p) => ({ ...p })),
     vps: {
@@ -300,6 +301,23 @@ async function save() {
   } catch (e) {
     if (e instanceof ApiError && e.details.length) fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
     else fieldErrors.value = { _: errorText(e, t('保存失败')) }
+  } finally {
+    saving.value = false
+  }
+}
+// 已续费（修订第 224 条）：有结束日期的订阅按周期顺延结束日期（只改这一项，表单中其他未保存的修改不受影响）
+const renewMsg = ref('')
+async function renew() {
+  if (!editing.value) return
+  saving.value = true
+  try {
+    const x = await renewSubscription(editing.value.id)
+    editing.value = x
+    form.end_date = x.end_date
+    renewMsg.value = t('结束日期已顺延到 {date}', { date: x.end_date })
+    await load()
+  } catch (e) {
+    fieldErrors.value = { _: errorText(e, t('续费失败')) }
   } finally {
     saving.value = false
   }
@@ -477,6 +495,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
       <div class="actions">
         <button type="submit" :disabled="saving || !form.name.trim()">{{ saving ? t('保存中…') : t('保存') }}</button>
         <button type="button" class="secondary" :disabled="saving" @click="editing ? close() : (step = 'pick')">{{ editing ? t('取消') : t('返回') }}</button>
+        <button v-if="editing && editing.end_date && editing.cycle !== 'once'" type="button" class="secondary" :disabled="saving"
+          :title="t('结束日期按订阅周期顺延一个周期')" @click="renew">{{ t('已续费') }}</button>
+        <span v-if="renewMsg" class="small muted">{{ renewMsg }}</span>
         <template v-if="editing">
           <button v-if="!confirmDelete" type="button" class="text danger-text del" @click="confirmDelete = true">{{ t('删除') }}</button>
           <button v-else type="button" class="danger del" :disabled="saving" @click="remove">{{ t('确认删除') }}</button>

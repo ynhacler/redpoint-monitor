@@ -1482,6 +1482,114 @@
         }
       }
     },
+    "/app/subscriptions/{id}/renew": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "已续费：订阅结束日期顺延一个订阅周期（修订第 224 条）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "只适用于填写了结束日期的订阅（手动续费的 VPS、域名等），从原结束日期按订阅周期顺延；没有结束日期或一次性付费时返回 409。App 设备：AK 允许记录订阅且授权全部节点（accessAppSubs，约束 5 的唯一写入例外）；记审计日志。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "续费后的订阅",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/app/servers/{id}/renew": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "summary": "已续费：节点到期日顺延一个计费周期（修订第 224 条）",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "description": "从原来的到期日算起（不是今天）按计费周期（月 / 季 / 半年 / 年 / 两年 / 三年付）顺延；没有到期日或一次性付费时返回 409。App 设备：AK 允许记录订阅且授权全部节点（accessAppSubs，约束 5 的唯一写入例外）；记审计日志。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "新的到期日",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "expire_date",
+                    "previous"
+                  ],
+                  "properties": {
+                    "expire_date": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/app/subscriptions/{id}/logo": {
       "get": {
         "tags": [
@@ -4360,6 +4468,49 @@
         }
       }
     },
+    "/subscriptions/{id}/renew": {
+      "post": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "已续费：订阅结束日期顺延一个订阅周期（修订第 224 条）",
+        "description": "只适用于填写了结束日期的订阅（手动续费的 VPS、域名等），从原结束日期按订阅周期顺延；没有结束日期或一次性付费时返回 409。Web 管理员；记审计日志。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "续费后的订阅",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/subscriptions/{id}": {
       "parameters": [
         {
@@ -5740,6 +5891,61 @@
             "$ref": "#/components/responses/Error"
           },
           "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/servers/{id}/renew": {
+      "post": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "已续费：节点到期日顺延一个计费周期（修订第 224 条）",
+        "description": "从原来的到期日算起（不是今天）按计费周期（月 / 季 / 半年 / 年 / 两年 / 三年付）顺延；没有到期日或一次性付费时返回 409。Web 管理员；记审计日志。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "新的到期日",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "expire_date",
+                    "previous"
+                  ],
+                  "properties": {
+                    "expire_date": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
             "$ref": "#/components/responses/Error"
           }
         }

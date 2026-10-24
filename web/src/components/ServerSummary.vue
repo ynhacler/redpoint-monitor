@@ -4,7 +4,7 @@
 // 以及系统与资产信息（主机名、IP、内核、Agent、供应商、续费与到期等）。
 // 只显示读一眼就能用的静态或慢变信息，没有填写的资产字段不显示；实时指标在下方的指标块中。
 import { computed, ref } from 'vue'
-import { ApiError, errorText, refreshIPInfo, type IPInfo, type ServerView } from '../api'
+import { ApiError, errorText, refreshIPInfo, renewServer, type IPInfo, type ServerView } from '../api'
 import { countryName } from '../countries'
 import { DASH, fmtBandwidth, fmtBytes, fmtBytesShort, fmtPrice, fmtTime, periodNames } from '../format'
 import { t } from '../i18n'
@@ -33,7 +33,7 @@ const expireDays = computed(() => {
   if (!s.value.expire_date) return null
   return Math.ceil((new Date(s.value.expire_date + 'T00:00:00').getTime() - Date.now()) / 86400000)
 })
-type Fact = { k: string; v: string; copy?: boolean; mono?: boolean; tone?: string; wide?: boolean; flag?: string }
+type Fact = { k: string; v: string; copy?: boolean; mono?: boolean; tone?: string; wide?: boolean; flag?: string; renew?: boolean }
 // 虚拟化类型（设计 46.3）：OpenVZ / LXC 等容器的内存与流量是容器口径，提示用户
 const virtNames: Record<string, string> = {
   kvm: 'KVM', xen: 'Xen', vmware: 'VMware', hyperv: 'Hyper-V', virtualbox: 'VirtualBox', openvz: 'OpenVZ（容器）',
@@ -43,6 +43,30 @@ const virt = computed(() => {
   const v = r.value?.extra?.env?.virt
   return v ? (virtNames[v] ? t(virtNames[v]) : v) : ''
 })
+
+// 已续费（修订第 224 条）：到期日按计费周期顺延一个周期；一次性付费或没有到期日时不显示。点一次确认，再点一次执行
+const renewable = computed(() => !isViewer.value && !!s.value.expire_date && !!s.value.billing_period && s.value.billing_period !== 'one_time')
+const renewConfirm = ref(false)
+const renewBusy = ref(false)
+const renewMsg = ref('')
+async function renew() {
+  if (!renewConfirm.value) {
+    renewConfirm.value = true
+    renewMsg.value = ''
+    return
+  }
+  renewBusy.value = true
+  try {
+    const r = await renewServer(s.value.id)
+    s.value.expire_date = r.expire_date // 列表下次刷新时也会是这个日期
+    renewMsg.value = t('已顺延到 {date}', { date: r.expire_date })
+  } catch (e) {
+    renewMsg.value = errorText(e, t('续费失败'))
+  } finally {
+    renewBusy.value = false
+    renewConfirm.value = false
+  }
+}
 
 const facts = computed<Fact[]>(() => {
   const x = s.value
@@ -70,7 +94,7 @@ const facts = computed<Fact[]>(() => {
   asset({ k: t('续费'), v: x.price_cents ? fmtPrice(x.price_cents, x.currency) + (x.billing_period ? ` / ${t(periodNames[x.billing_period] ?? '')}` : '') : '' })
   const d = expireDays.value
   asset({ k: t('到期'), v: x.expire_date ? t('{date}（{rel}）', { date: x.expire_date, rel: d! >= 0 ? t('{n} 天后', { n: d }) : t('已过期 {n} 天', { n: -d! }) }) : '',
-    tone: d == null ? '' : d <= 3 ? 'bad' : d <= 14 ? 'warn' : '' })
+    tone: d == null ? '' : d <= 3 ? 'bad' : d <= 14 ? 'warn' : '', renew: renewable.value })
   add({ k: t('注册'), v: x.enrolled_at ? fmtTime(x.enrolled_at) : '' })
   add({ k: t('最后上报'), v: x.last_seen_at ? fmtTime(x.last_seen_at) : '' })
   asset({ k: t('备注'), v: x.note, wide: true })
@@ -185,6 +209,13 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
             {{ f.v }}<span class="copied" :class="{ on: copied === f.v }">{{ t('已复制') }}</span>
           </button>
           <template v-else><Flag v-if="f.flag" :code="f.flag" class="flag" />{{ f.v }}</template>
+          <template v-if="f.renew">
+            <button type="button" class="link renew" :disabled="renewBusy" @click="renew">
+              {{ renewBusy ? t('续费中…') : renewConfirm ? t('确认顺延一个周期（{p}）', { p: t(periodNames[s.billing_period] ?? s.billing_period) }) : t('已续费') }}
+            </button>
+            <button v-if="renewConfirm && !renewBusy" type="button" class="link renew muted" @click="renewConfirm = false">{{ t('取消') }}</button>
+            <span v-if="renewMsg" class="small muted renew-msg">{{ renewMsg }}</span>
+          </template>
         </dd>
       </div>
       <div v-if="asnMissing" class="fact">
@@ -207,6 +238,8 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 
 <style scoped>
 .summary { padding: var(--space-4); }
+.renew { margin-left: var(--space-2); font-size: var(--font-sm); }
+.renew-msg { margin-left: var(--space-2); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .name-row { display: flex; align-items: center; gap: var(--space-3); min-width: 0; font-size: 22px; }
 .names { min-width: 0; }
