@@ -75,20 +75,27 @@ func TLSConfigFor(m *autocert.Manager) *tls.Config {
 
 // HTTPSOptions 是 RunHTTPS 的监听设置。
 type HTTPSOptions struct {
-	TLSListen  string      // 如 :443
-	HTTPListen string      // 如 :80；空则不监听（只能用 TLS-ALPN-01 验证，没有 HTTP 到 HTTPS 的重定向）
-	TLS        *tls.Config // 证书来源；正式运行为 TLSConfigFor(manager)，测试时可传入静态证书
+	TLSListen  string // 如 :443
+	HTTPListen string // 如 :80；空则不监听（只能用 TLS-ALPN-01 验证，没有 HTTP 到 HTTPS 的重定向）
+	// RedirectPort 是 HTTP 重定向到的 HTTPS 端口；空或 443 时不写端口（修订第 221 条）
+	RedirectPort string
+	TLS          *tls.Config // 证书来源；正式运行为 TLSConfigFor(manager)，测试时可传入静态证书
 	// HTTPHandler 处理 :80 的请求：正式运行为 manager.HTTPHandler(重定向)，完成 HTTP-01 验证后其余请求重定向
 	HTTPHandler func(fallback http.Handler) http.Handler
 }
 
-// redirectToHTTPS 把 HTTP 请求 308 重定向到同一主机的 HTTPS 地址（保留路径与查询参数）。
-func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+// redirectToHTTPS 把 HTTP 请求 308 重定向到同一主机的 HTTPS 地址（保留路径与查询参数）；HTTPS 不在 443 时带上端口。
+func redirectToHTTPS(port string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if port != "" && port != "443" {
+			host = net.JoinHostPort(host, port)
+		}
+		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusPermanentRedirect)
 	}
-	http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusPermanentRedirect)
 }
 
 // RunHTTPS 以内置 HTTPS 运行面板，直到 ctx 结束。
@@ -97,7 +104,7 @@ func (s *Server) RunHTTPS(ctx context.Context, o HTTPSOptions) error {
 	var servers []*http.Server
 	errc := make(chan error, 4)
 	if o.HTTPListen != "" {
-		h := http.Handler(http.HandlerFunc(redirectToHTTPS))
+		h := http.Handler(redirectToHTTPS(o.RedirectPort))
 		if o.HTTPHandler != nil {
 			h = o.HTTPHandler(h)
 		}

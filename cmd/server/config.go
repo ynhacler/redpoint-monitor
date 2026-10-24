@@ -42,10 +42,11 @@ func applyEnv(fs *flag.FlagSet, getenv func(string) string) error {
 	return err
 }
 
-// normalizeListen 校验监听地址；只写端口时补上 defaultHost（"" 表示所有地址）。空字符串原样返回（表示关闭）。
+// normalizeListen 校验监听地址；只写端口时补上 defaultHost（"" 表示所有地址）。空字符串或 off 表示关闭
+// （环境变量不能用空值关闭，所以接受 off，如 VPSMON_HTTP_LISTEN=off，修订第 221 条）。
 func normalizeListen(v, defaultHost string) (string, error) {
 	v = strings.TrimSpace(v)
-	if v == "" {
+	if v == "" || strings.EqualFold(v, "off") {
 		return "", nil
 	}
 	if _, err := strconv.Atoi(v); err == nil {
@@ -107,4 +108,22 @@ func envLookup(getenv func(string) string, file map[string]string) func(string) 
 		}
 		return file[k]
 	}
+}
+
+// portOf 返回监听地址中的端口（如 ":8443" → "8443"）；格式不对时为空。
+func portOf(listen string) string {
+	_, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+// defaultPublicURL 是内置 HTTPS 时安装命令与 App 配对中的面板地址：HTTPS 不在 443 时带上端口（修订第 221 条），
+// 否则 Agent 与 App 会连到 443。
+func defaultPublicURL(domain, httpsListen string) string {
+	if p := portOf(httpsListen); p != "" && p != "443" {
+		return "https://" + net.JoinHostPort(domain, p)
+	}
+	return "https://" + domain
 }

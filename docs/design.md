@@ -379,6 +379,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 221 | 一键安装 --port 在内置 HTTPS 时为 HTTPS 端口（默认 443）：80 空闲时可用任意端口，80 被占用时只能 443 并经 TLS-ALPN-01 验证（VPSMON_HTTP_LISTEN=off）；面板在 HTTPS 不在 443 时对外地址与 http 跳转带上端口；监听地址接受 off | 25、25.1 |
 | 220 | iOS 桌面小组件与 Android 一致：中、大尺寸都最多显示 4 台，名称加粗、名称与 CPU / 内存 14pt（大尺寸 16pt、行距加大），下载速率次要色；小组件快照只写前 4 台 | 1.5.4 |
 | 219 | App 底部“连通性测试”改为“网络”，分页放“本机 IP”（国内 IPIP.net / 哔哩哔哩、国际 Cloudflare / IPinfo.io / IP.SB 看到的出口 IP、位置、运营商与 ASN，IPv6 探测，分流是否生效）与“连通性测试” | 48.2 |
 | 218 | App 底部导航改为 服务器 / 连通性测试 / 工具（订阅、云平台）/ 设置（原“我的”）；连通性测试第一次打开时才创建。订阅列表 7 天内扣费或结束的排在最前并在右上角标红点；允许记录订阅的设备长按可修改或删除（PUT / DELETE /api/v1/app/subscriptions/{id}，accessAppSubs，记审计） | 1.5.18、8.4.1、47.2 |
@@ -6676,6 +6677,10 @@ monitor-server run  --data /var/lib/monitor-server --domain monitor.example.com
           ② 默认：80 / 443 空闲时用 <公网 IPv4 以 - 连接>.sslip.io（公共 DNS 服务，把该名字解析到这个 IP），同样内置 HTTPS，
              不需要自己的域名；公网 IP 取自 Cloudflare trace（只读 ip= 一行）
           ③ --proxy：80 / 443 被占用或没有公网 IPv4 时，面板只监听 127.0.0.1:端口，给出 Caddy 配置示例，--public-url 写入对外地址
+端口      --port 在①②中为 HTTPS 端口（默认 443，修订第 221 条），在③中为本机监听端口（默认 8080）。证书只能经 80（HTTP-01）
+          或 443（TLS-ALPN-01）验证：80 空闲时 HTTPS 可用任意端口，80 只用于验证与跳转；80 被占用时只能 --port 443，写入
+          VPSMON_HTTP_LISTEN=off（不监听 80、http:// 不跳转）；HTTPS 端口或两者都被占用时给出原因与可选做法后退出（默认方式
+          改用 ③）。HTTPS 不在 443 时面板的对外地址（安装命令、App 配对）与 http:// 跳转都带上端口；防火墙只放行实际用到的端口
           交互运行时只问一个问题（域名，回车用默认，proxy 用反向代理）；-y 不提问。都只走 HTTPS（约束 6），不提供明文对外
 系统      systemd：Debian / Ubuntu / CentOS / RHEL / Rocky / Alma / Fedora / Amazon Linux / openSUSE / Arch；
           OpenRC：Alpine（supervise-daemon，capabilities 需要 OpenRC 0.45+，即 Alpine 3.17+）；架构 amd64、arm64；

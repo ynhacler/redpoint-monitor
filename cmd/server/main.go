@@ -282,7 +282,7 @@ func main() {
 				log.Fatal(err)
 			}
 			if *publicURL == "" {
-				*publicURL = "https://" + domains[0] // 安装命令中的面板地址
+				*publicURL = defaultPublicURL(domains[0], *httpsListen) // 安装命令中的面板地址
 			}
 		}
 		level, err := logging.ParseLevel(*logLevel)
@@ -340,7 +340,7 @@ func main() {
 			// 内置 HTTPS（设计 25）：证书缓存在 DATA/certs，重启后不重复申请
 			m := server.NewCertManager(server.ACMEOptions{Domains: domains, Email: *acmeEmail,
 				CacheDir: filepath.Join(*data, "certs"), Directory: *acmeDir})
-			err = srv.RunHTTPS(ctx, server.HTTPSOptions{TLSListen: *httpsListen, HTTPListen: *httpListen,
+			err = srv.RunHTTPS(ctx, server.HTTPSOptions{TLSListen: *httpsListen, HTTPListen: *httpListen, RedirectPort: portOf(*httpsListen),
 				TLS: server.TLSConfigFor(m), HTTPHandler: m.HTTPHandler})
 		} else {
 			err = srv.Run(ctx, *listen)

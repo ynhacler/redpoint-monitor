@@ -15,12 +15,16 @@
 #   --domain 域名        用自己的域名（须已解析到本机）；面板自动申请 Let's Encrypt 证书
 #   --email 邮箱         证书到期等通知的联系邮箱（可选）
 #   --proxy              已有 Nginx / Caddy 等反向代理：面板只监听本机端口，由代理提供 HTTPS
-#   --port 端口          --proxy 时面板监听的本机端口（默认 8080）
+#   --port 端口          内置 HTTPS 时为 HTTPS 端口（默认 443，80 / 443 被占用时可换，如 8443）；
+#                        --proxy 时为面板监听的本机端口（默认 8080）
 #   --public-url URL     --proxy 时对外的 https 地址（写进 Agent 安装命令），如 https://monitor.example.com
 #   --mirror URL         从镜像下载（如无法访问 GitHub 时）；下载的程序仍按内置 SHA256 校验
 #   --local 目录         使用本地已下载的 vpsmon-server-linux-<架构>（离线安装；仍按内置 SHA256 校验）
 #   -y, --yes            不提问，全部用默认值
 #
+# 证书验证（修订第 221 条）：Let's Encrypt 只能经 80 端口（HTTP-01）或 443 端口（TLS-ALPN-01）验证域名，所以
+#   80 空闲 → HTTPS 可以用任意端口（--port 8443），80 只用于验证与跳转；
+#   80 被占用 → HTTPS 必须用 443（--port 443，且 443 空闲），不监听 80；两个都被占用时只能用 --proxy。
 # 默认（不带 --domain / --proxy）：80 与 443 端口空闲时，使用免费域名 <本机 IP>.sslip.io 并自动申请证书，
 # 不需要自己的域名；端口被其他网站占用时改为 --proxy 方式，并给出反向代理配置。
 #
@@ -196,6 +200,10 @@ public_ip() { # 本机公网 IPv4（Cloudflare trace，只读取 ip= 一行）
   rm -f "$t"
 }
 valid_domain() { printf '%s' "$1" | grep -Eq '^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$'; }
+check_port() { case "$1" in *[!0-9]*|'') die "--port 必须是数字" ;; esac
+  if [ "$1" -lt 1 ] || [ "$1" -gt 65535 ]; then die "--port 必须在 1-65535 之间"; fi; }
+# https_ok 端口：内置 HTTPS 能否用这个端口——端口空闲，且证书能验证（80 空闲，或 HTTPS 就在 443）
+https_ok() { ! port_busy "$1" && { ! port_busy 80 || [ "$1" = 443 ]; }; }
 
 if [ "$UPGRADE" -eq 1 ] && [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
   # 升级：沿用原来的访问方式（按 README 手工安装时，域名写在 systemd drop-in 的 --domain 参数中）
@@ -234,8 +242,8 @@ if [ -z "$DOMAIN" ] && [ "$PROXY" -eq 0 ]; then
   if [ -z "$IP" ]; then
     warn "没有取得本机公网 IPv4，改用反向代理方式（--proxy）"
     PROXY=1
-  elif port_busy 80 || port_busy 443; then
-    warn "80 / 443 端口已被其他程序占用（可能已有网站），改用反向代理方式（--proxy）"
+  elif ! https_ok "${PORT:-443}"; then
+    warn "端口 ${PORT:-443}$(port_busy 80 && printf ' 或 80') 已被其他程序占用（可能已有网站），改用反向代理方式（--proxy）"
     PROXY=1
   else
     DOMAIN="$(printf '%s' "$IP" | tr . -).sslip.io"
@@ -256,9 +264,25 @@ if [ "$PROXY" -eq 0 ]; then
     else ok "$DOMAIN 已解析到本机"; fi
     ;;
   esac
-  for p in 80 443; do
-    port_busy "$p" && die "端口 $p 已被其他程序占用：停止它，或改用 --proxy 由已有的网站服务器反向代理"
-  done
+  # HTTPS 端口（修订第 221 条）：默认 443；升级时沿用原来的
+  [ -n "$PORT" ] || PORT="$(env_get VPSMON_HTTPS_LISTEN | sed 's/.*://')"
+  [ -n "$PORT" ] || PORT=443
+  check_port "$PORT"
+  ALT=8443; [ "$PORT" = 8443 ] && ALT=9443
+  if port_busy "$PORT"; then
+    if port_busy 80; then die "端口 $PORT 与 80 都已被其他程序占用，证书无法验证：停止占用的程序，或改用 --proxy 由已有的网站服务器反向代理"; fi
+    die "端口 $PORT 已被其他程序占用：换一个空闲的 HTTPS 端口，如 --port $ALT（80 空闲，证书经 80 验证）"
+  fi
+  HTTP01=1
+  if port_busy 80 && [ "$PORT" != 443 ]; then
+    if port_busy 443; then die "端口 80 与 443 都已被其他程序占用，证书只能经这两个端口之一验证：停止占用的程序，或改用 --proxy 由已有的网站服务器反向代理"; fi
+    die "端口 80 已被其他程序占用：证书只能经 80 或 443 验证。改用 --port 443（443 空闲），或停止占用 80 的程序，或改用 --proxy 由已有的网站服务器反向代理"
+  fi
+  if port_busy 80; then
+    HTTP01=0
+    warn "端口 80 已被占用：证书改经 443 端口验证（TLS-ALPN-01），不监听 80，http:// 不会自动跳转到 https://"
+  fi
+  [ "$PORT" = 443 ] || ok "HTTPS 使用端口 $PORT"
 else
   [ -n "$PORT" ] || PORT="$(env_get VPSMON_LISTEN | sed 's/.*://')"
   [ -n "$PORT" ] || PORT=8080
@@ -319,8 +343,13 @@ if [ "$PROXY" -eq 0 ]; then
   env_set VPSMON_DOMAIN "$DOMAIN"
   [ -n "$EMAIL" ] && env_set VPSMON_ACME_EMAIL "$EMAIL"
   env_del VPSMON_PUBLIC_URL
+  env_del VPSMON_LISTEN
+  if [ "$PORT" = 443 ]; then env_del VPSMON_HTTPS_LISTEN; else env_set VPSMON_HTTPS_LISTEN ":$PORT"; fi
+  if [ "$HTTP01" -eq 1 ]; then env_del VPSMON_HTTP_LISTEN; else env_set VPSMON_HTTP_LISTEN off; fi
 else
   env_del VPSMON_DOMAIN
+  env_del VPSMON_HTTPS_LISTEN
+  env_del VPSMON_HTTP_LISTEN
   env_set VPSMON_LISTEN "127.0.0.1:$PORT"
   [ -n "$PUBLIC_URL" ] && env_set VPSMON_PUBLIC_URL "$PUBLIC_URL"
 fi
@@ -358,11 +387,14 @@ svc restart 2>/dev/null || svc start
 ok "服务已启动，崩溃自动重启，开机自启（$INIT）"
 
 # ---- 防火墙（只处理本机的 ufw / firewalld；云厂商的安全组需要在控制台放行） ----
+FW_PORTS=""
 if [ "$PROXY" -eq 0 ]; then
+  if [ "${HTTP01:-1}" -eq 1 ]; then FW_PORTS="80 $PORT"; else FW_PORTS="$PORT"; fi
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-    ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null && ok "ufw 已放行 80、443"
+    for p in $FW_PORTS; do ufw allow "$p/tcp" >/dev/null; done && ok "ufw 已放行 $(printf '%s' "$FW_PORTS" | sed 's/ /、/g')"
   elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-service=http --add-service=https >/dev/null && firewall-cmd --reload >/dev/null && ok "firewalld 已放行 80、443"
+    for p in $FW_PORTS; do firewall-cmd --permanent --add-port="$p/tcp" >/dev/null; done && firewall-cmd --reload >/dev/null &&
+      ok "firewalld 已放行 $(printf '%s' "$FW_PORTS" | sed 's/ /、/g')"
   fi
 fi
 
@@ -375,8 +407,8 @@ while [ $i -lt 60 ]; do
     if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null "http://127.0.0.1:$PORT/api/v1/site" 2>/dev/null && READY=1
     else wget -q -O /dev/null "http://127.0.0.1:$PORT/api/v1/site" 2>/dev/null && READY=1; fi
   elif command -v curl >/dev/null 2>&1; then
-    # 证书由 Let's Encrypt 验证本机的 80 端口后签发，首次约需 10～60 秒
-    curl -fsS -o /dev/null --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/v1/site" 2>/dev/null && READY=1
+    # 证书由 Let's Encrypt 验证本机的 80（或 443）端口后签发，首次约需 10～60 秒
+    curl -fsS -o /dev/null --max-time 10 --resolve "$DOMAIN:$PORT:127.0.0.1" "https://$DOMAIN:$PORT/api/v1/site" 2>/dev/null && READY=1
   else
     svc active && READY=1
   fi
@@ -386,11 +418,11 @@ while [ $i -lt 60 ]; do
 done
 if [ "$READY" -eq 1 ]; then ok "面板已就绪"
 elif ! svc active; then warn "面板没有运行起来，查看日志：$(logs_hint)"
-elif [ "$PROXY" -eq 0 ]; then warn "证书还没有签发成功：确认云厂商安全组已放行 80 与 443、域名解析到本机；日志：$(logs_hint)"
+elif [ "$PROXY" -eq 0 ]; then warn "证书还没有签发成功：确认云厂商安全组已放行 TCP $(printf '%s' "$FW_PORTS" | sed 's/ /、/g')、域名解析到本机；日志：$(logs_hint)"
 else warn "面板还没有响应，稍后再试；日志：$(logs_hint)"; fi
 
 # ---- 结果 ----
-if [ "$PROXY" -eq 0 ]; then URL="https://$DOMAIN"
+if [ "$PROXY" -eq 0 ]; then URL="https://$DOMAIN"; [ "$PORT" = 443 ] || URL="https://$DOMAIN:$PORT"
 elif [ -n "$PUBLIC_URL" ]; then URL="$PUBLIC_URL"
 else URL="http://127.0.0.1:$PORT（只监听本机，需配置反向代理）"; fi
 LINE="============================================================"
@@ -415,7 +447,7 @@ if [ "$PROXY" -eq 1 ]; then
   [ -n "$PUBLIC_URL" ] || say " 然后：sudo sh $0 --proxy --public-url https://monitor.example.com（写进 Agent 安装命令）"
   say "$G$LINE$N"
 else
-  say " 提示：云服务器请在安全组中放行 TCP 80 与 443（证书签发与访问都需要）"
+  say " 提示：云服务器请在安全组中放行 TCP $(printf '%s' "$FW_PORTS" | sed 's/ /、/g')（证书签发与访问都需要）"
 fi
 say ' 添加节点：登录后点“仪表板 → 新建节点”，在要监控的主机上运行页面给出的安装命令'
 if [ "$INIT" = systemd ]; then

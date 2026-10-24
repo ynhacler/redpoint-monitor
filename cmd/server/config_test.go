@@ -18,6 +18,8 @@ func TestNormalizeListen(t *testing.T) {
 		{"[::1]:9000", "127.0.0.1", "[::1]:9000", false},
 		{":8080", "127.0.0.1", ":8080", false},
 		{"", "127.0.0.1", "", false},
+		{"off", "", "", false}, // 环境变量关闭监听（修订第 221 条）
+		{"OFF", "", "", false},
 		{"0", "127.0.0.1", "", true},
 		{"70000", "127.0.0.1", "", true},
 		{"localhost", "127.0.0.1", "", true},
@@ -89,5 +91,22 @@ func TestReadEnvFile(t *testing.T) {
 	}
 	if *listen != "7070" || *domain != "monitor.example.com" {
 		t.Fatalf("listen %q domain %q", *listen, *domain)
+	}
+}
+
+func TestPortOf(t *testing.T) {
+	for in, want := range map[string]string{":443": "443", "0.0.0.0:8443": "8443", "[::]:9443": "9443", "": "", "bad": ""} {
+		if got := portOf(in); got != want {
+			t.Errorf("portOf(%q) = %q，应为 %q", in, got, want)
+		}
+	}
+}
+
+func TestDefaultPublicURL(t *testing.T) {
+	if got := defaultPublicURL("m.example.com", ":443"); got != "https://m.example.com" {
+		t.Error(got)
+	}
+	if got := defaultPublicURL("m.example.com", ":8443"); got != "https://m.example.com:8443" {
+		t.Error(got)
 	}
 }
