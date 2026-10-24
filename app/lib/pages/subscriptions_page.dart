@@ -16,6 +16,7 @@ import '../theme.dart';
 import '../widgets/brand_avatar.dart';
 import '../widgets/stale_banner.dart';
 import 'subscription_add_page.dart';
+import 'subscription_analysis_page.dart';
 
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
@@ -49,6 +50,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   bool _limited = false;
   String? _error;
   String _category = '';
+  FxRates _fx = const FxRates();
 
   @override
   void initState() {
@@ -65,6 +67,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
         _items = items;
         _error = null;
       });
+      // 有外币订阅时读取汇率（修订第 223 条）；失败时只显示原币种，人民币合计不计入外币
+      if (items.any((s) => s.currency != 'CNY')) {
+        widget.api.fxRates().then((fx) {
+          if (mounted) setState(() => _fx = fx);
+        }).catchError((_) {});
+      }
       for (final s in items.where((s) => s.logoVersion > 0)) {
         final k = '${s.id}:${s.logoVersion}';
         if (_logoCache.containsKey(k)) continue;
@@ -102,6 +110,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   }
 
   String _price(Subscription s) => widget.privacy ? '***' : fmtMoney(s.priceCents, s.currency);
+
+  // 外币价格约合人民币（修订第 223 条）：“≈ ¥52.30”；人民币、没有汇率或隐私模式时为 null
+  String? _cnyText(Subscription s) {
+    if (s.currency == 'CNY' || widget.privacy) return null;
+    final v = _fx.toCny(s.priceCents, s.currency);
+    return v == null ? null : '≈ ${fmtMoney(v, 'CNY')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -197,31 +212,39 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     );
   }
 
+  // 概览（修订第 223 条）：进行中的订阅折算为每月花费，统一换算为人民币；点“分析”看分组与排行
   Widget _summary(BuildContext context, List<Subscription> list, int soon) {
     final c = appColors(context);
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
-    final monthly = monthlyByCurrency(list);
-    String money(double cents, String cur) => widget.privacy ? '***' : fmtMoney(cents.round(), cur);
+    final a = analyze(list, _fx);
+    String money(int cents) => widget.privacy ? '***' : fmtMoney(cents, 'CNY');
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Text('每月约', style: muted),
             const Spacer(),
             Text('${list.where((s) => !s.ended).length} 个订阅${soon > 0 ? ' · 快到期 $soon 个' : ''}', style: muted),
+            const SizedBox(width: 8),
           ]),
           const SizedBox(height: 2),
-          if (monthly.isEmpty) const Text(dash, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-          Wrap(spacing: 14, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.end, children: [
-            for (final (i, (cur, cents)) in monthly.indexed)
-              Text(money(cents, cur),
-                  style: TextStyle(fontSize: i == 0 ? 24 : 16, fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(a.count == 0 ? dash : money(a.monthly),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                const SizedBox(height: 2),
+                Text('每年约 ${money(a.monthly * 12)}${a.missing.isEmpty ? '' : ' · ${a.missing.join('、')} 无汇率未计入'}', style: muted),
+              ]),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SubscriptionAnalysisPage(items: list, fx: _fx, privacy: widget.privacy, avatar: _avatar))),
+              icon: const Icon(Icons.insights_outlined, size: 18),
+              label: const Text('分析'),
+            ),
           ]),
-          if (monthly.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text('每年约 ${monthly.map((m) => money(m.$2 * 12, m.$1)).join(' + ')}', style: muted),
-          ],
         ]),
       ),
     );
@@ -251,6 +274,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               const SizedBox(height: 2),
               Text('${categoryNames[s.category] ?? s.category} · ${chargeText(s)}',
                   style: TextStyle(fontSize: 12, color: c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (s.country.isNotEmpty || s.payment.isNotEmpty)
+                Text(
+                  [
+                    if (s.country.isNotEmpty) '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim(),
+                    if (s.payment.isNotEmpty) paymentNames[s.payment] ?? s.payment,
+                  ].join(' · '),
+                  style: TextStyle(fontSize: 12, color: c.textMuted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ]),
           ),
           const SizedBox(width: 8),
@@ -262,6 +295,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ]),
               style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
             ),
+            if (_cnyText(s) case final t?) Text(t, style: TextStyle(fontSize: 11, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
             if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: soon ? colors.bad : dueColor)),
           ]),
         ]),
@@ -363,7 +397,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ),
             ]),
             const SizedBox(height: 12),
-            line('价格', '${_price(s)}${cycleSuffix[s.cycle] ?? ''}'),
+            line('价格', '${_price(s)}${cycleSuffix[s.cycle] ?? ''}${_cnyText(s) != null ? '（${_cnyText(s)}）' : ''}'),
+            if (s.country.isNotEmpty) line('国家地区', '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim()),
+            if (s.payment.isNotEmpty) line('支付方式', paymentNames[s.payment] ?? s.payment),
             line('扣费', chargeText(s)),
             if (s.nextCharge.isNotEmpty && !s.ended) line('下次扣费', s.nextCharge),
             line(s.category == 'vps' ? '购买日期' : '开始订阅', s.startDate),

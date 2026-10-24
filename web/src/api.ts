@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, FxRates, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -583,6 +583,11 @@ export function revokeAppDevice(id: number) {
 /** 订阅列表（下次扣费日在前） */
 export async function listSubscriptions() {
   return (await request('get', '/subscriptions')).items
+}
+
+/** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
+export function getFxRates() {
+  return request('get', '/fx-rates')
 }
 
 /** 添加订阅 */

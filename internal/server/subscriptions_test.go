@@ -55,7 +55,7 @@ func TestSubscriptionsAPI(t *testing.T) {
 	admin := adminToken(t, s)
 
 	// 校验
-	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"","category":"x","price_cents":-1,"currency":"rmbb","cycle":"daily","start_date":"2026/1/1","remind_days":5}`))
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"","category":"x","price_cents":-1,"currency":"rmbb","country":"US","payment":"credit","cycle":"daily","start_date":"2026/1/1","remind_days":5}`))
 	if rec.Code != 422 {
 		t.Fatalf("应拒绝：%d %s", rec.Code, rec.Body)
 	}
@@ -74,7 +74,7 @@ func TestSubscriptionsAPI(t *testing.T) {
 	// 添加：明天扣费、提前 1 天提醒
 	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Netflix","brand":"netflix","category":"video","price_cents":6800,
-		"currency":"cny","cycle":"monthly","start_date":"`+start+`","remind_days":1,"note":"家庭"}`))
+		"currency":"cny","country":"US","payment":"credit","cycle":"monthly","start_date":"`+start+`","remind_days":1,"note":"家庭"}`))
 	if rec.Code != 201 {
 		t.Fatalf("添加：%d %s", rec.Code, rec.Body)
 	}
@@ -87,17 +87,17 @@ func TestSubscriptionsAPI(t *testing.T) {
 	// 修改：设置结束日期为昨天 → 已结束、没有下次扣费
 	end := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	rec = do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), admin, []byte(`{"name":"Netflix","category":"video","price_cents":6800,
-		"currency":"CNY","cycle":"monthly","start_date":"2026-01-01","end_date":"`+end+`"}`))
+		"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01","end_date":"`+end+`"}`))
 	json.Unmarshal(rec.Body.Bytes(), &x)
 	if rec.Code != 200 || !x.Ended || x.NextCharge != "" {
 		t.Fatalf("修改：%d %+v", rec.Code, x)
 	}
-	if rec := do(h, "PUT", "/api/v1/subscriptions/9999", admin, []byte(`{"name":"a","category":"video","price_cents":1,"currency":"CNY","cycle":"monthly","start_date":"2026-01-01"}`)); rec.Code != 404 {
+	if rec := do(h, "PUT", "/api/v1/subscriptions/9999", admin, []byte(`{"name":"a","category":"video","price_cents":1,"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01"}`)); rec.Code != 404 {
 		t.Fatalf("不存在应为 404：%d", rec.Code)
 	}
 
 	// 提醒：再添加一个明天扣费、提前 1 天提醒的，只提醒一次
-	do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"iCloud","category":"cloud","price_cents":600,"currency":"CNY","cycle":"monthly","start_date":"`+start+`","remind_days":1}`))
+	do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"iCloud","category":"cloud","price_cents":600,"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"`+start+`","remind_days":1}`))
 	s.subscriptionReminders(time.Now())
 	s.subscriptionReminders(time.Now())
 	var n int
@@ -129,7 +129,7 @@ func TestSubscriptionsAPI(t *testing.T) {
 func TestSubscriptionLogo(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
-	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Tello","category":"sim","price_cents":500,"currency":"USD","cycle":"monthly","start_date":"2026-01-01"}`))
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Tello","category":"sim","price_cents":500,"currency":"USD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01"}`))
 	var x Subscription
 	json.Unmarshal(rec.Body.Bytes(), &x)
 	if rec.Code != 201 || x.LogoVersion != 0 {
@@ -197,7 +197,7 @@ func TestSubscriptionLogo(t *testing.T) {
 func TestSubscriptionPhones(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
-	body := `{"name":"Tello","brand":"sim-us-tello","category":"sim","price_cents":500,"currency":"USD","cycle":"monthly","start_date":"2026-01-01",
+	body := `{"name":"Tello","brand":"sim-us-tello","category":"sim","price_cents":500,"currency":"USD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01",
 		"phones":[{"cc":"+1","number":"(650) 555-1234"},{"cc":"+1","number":""},{"cc":"+86","number":"138 0013 8000"}]}`
 	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))
 	var x Subscription
@@ -221,7 +221,7 @@ func TestSubscriptionPhones(t *testing.T) {
 		}
 	}
 	// 不带号码的旧请求体：号码为空数组
-	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Netflix","category":"video","price_cents":1,"currency":"USD","cycle":"monthly","start_date":"2026-01-01"}`))
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Netflix","category":"video","price_cents":1,"currency":"USD","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01"}`))
 	json.Unmarshal(rec.Body.Bytes(), &x)
 	if rec.Code != 201 || x.Phones == nil || len(x.Phones) != 0 {
 		t.Fatalf("没有号码时应为空数组：%s", rec.Body)
@@ -232,7 +232,7 @@ func TestSubscriptionPhones(t *testing.T) {
 func TestSubscriptionVPS(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
-	body := `{"name":"DMIT 东京","brand":"vps-dmit","category":"vps","price_cents":3699,"currency":"USD","cycle":"annually","start_date":"2026-03-01",
+	body := `{"name":"DMIT 东京","brand":"vps-dmit","category":"vps","price_cents":3699,"currency":"USD","country":"US","payment":"credit","cycle":"annually","start_date":"2026-03-01",
 		"vps":{"ips":["203.0.113.7"," ","2001:DB8::1","203.0.113.7","::ffff:198.51.100.2"],"cpu":2,"memory_gb":0.5,"disk_gb":20,
 		"bandwidth_mbps":500,"traffic_gb":1024,"location":" 东京 "}}`
 	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))

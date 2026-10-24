@@ -63,6 +63,8 @@ type Subscription struct {
 	EndDate     string     `json:"end_date"`
 	RemindDays  int        `json:"remind_days"`
 	Note        string     `json:"note"`
+	Country     string     `json:"country"`      // 订阅的国家 / 地区（两位代码，修订第 223 条）
+	Payment     string     `json:"payment"`      // 支付方式（subPayments 中的键）
 	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
 	VPS         SubVPS     `json:"vps"`          // VPS 的地址与配置（修订第 198 条）
 	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库
@@ -76,8 +78,11 @@ var (
 	subCategories = []string{"video", "tools", "reading", "social", "health", "game", "cloud", "sim", "vps", "other"}
 	subCycles     = []string{"weekly", "monthly", "quarterly", "semiannually", "annually", "once"}
 	subRemind     = []int{0, 1, 2, 3, 7}
-	currencyCode  = regexp.MustCompile(`^[A-Z]{3}$`)
-	errNoSub      = errorf(CodeNotFound, "订阅不存在或已删除")
+	// subPayments 是支付方式（修订第 223 条）：支付宝、微信、银行卡、信用卡、PayPal、Apple / Google 账户、运营商代扣、加密货币、其他
+	subPayments  = []string{"alipay", "wechat", "bank", "credit", "paypal", "apple", "google", "carrier", "crypto", "other"}
+	countryCode  = regexp.MustCompile(`^[A-Z]{2}$`)
+	currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
+	errNoSub     = errorf(CodeNotFound, "订阅不存在或已删除")
 )
 
 // cycleMonths 返回按月类周期的月数；weekly 与 once 返回 0。
@@ -158,14 +163,14 @@ func withSchedule(sub Subscription, now time.Time) Subscription {
 // ---- 存储 ----
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
-	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0)
+	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
 	var phones, vps string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion)
+		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment)
 	if err == nil {
 		_ = json.Unmarshal([]byte(phones), &x.Phones)
 		_ = json.Unmarshal([]byte(vps), &x.VPS)
@@ -224,9 +229,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 	}
 	if x.ID == 0 {
 		res, err := s.DB.Exec(`INSERT INTO subscriptions (name, brand, category, price_cents, currency, cycle, trial_days, start_date,
-			end_date, remind_days, note, phones, vps, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, x.Name, x.Brand, x.Category,
-			x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones), string(vps),
-			now.Unix(), now.Unix())
+			end_date, remind_days, note, phones, vps, country, payment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note,
+			string(phones), string(vps), x.Country, x.Payment, now.Unix(), now.Unix())
 		if err != nil {
 			return err
 		}
@@ -235,9 +240,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 		return nil
 	}
 	res, err := s.DB.Exec(`UPDATE subscriptions SET name = ?, brand = ?, category = ?, price_cents = ?, currency = ?, cycle = ?,
-		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, updated_at = ? WHERE id = ?`, x.Name,
-		x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note, string(phones),
-		string(vps), now.Unix(), x.ID)
+		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, country = ?, payment = ?, updated_at = ?
+		WHERE id = ?`, x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays,
+		x.Note, string(phones), string(vps), x.Country, x.Payment, now.Unix(), x.ID)
 	if err != nil {
 		return err
 	}
@@ -339,6 +344,14 @@ func validateSubscription(x *Subscription) []FieldError {
 	if utf8.RuneCountInString(x.Note) > 200 {
 		fe = append(fe, FieldError{Field: "note", Message: "描述最多 200 个字符"})
 	}
+	// 国家 / 地区与支付方式必选（修订第 223 条）
+	x.Country, x.Payment = strings.ToUpper(strings.TrimSpace(x.Country)), strings.TrimSpace(x.Payment)
+	if !countryCode.MatchString(x.Country) {
+		fe = append(fe, FieldError{Field: "country", Message: "请选择订阅的国家 / 地区"})
+	}
+	if !slices.Contains(subPayments, x.Payment) {
+		fe = append(fe, FieldError{Field: "payment", Message: "请选择支付方式"})
+	}
 	// 号码：去掉空行，号码只保留数字（可粘贴“650-555 1234”），区号形如 +1、+86
 	phones := []SubPhone{}
 	for i, p := range x.Phones {
@@ -434,12 +447,15 @@ func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request) (Sub
 		Note       string     `json:"note"`
 		Phones     []SubPhone `json:"phones"`
 		VPS        SubVPS     `json:"vps"`
+		Country    string     `json:"country"`
+		Payment    string     `json:"payment"`
 	}
 	if err := decodeJSON(w, r, &b); err != nil {
 		s.writeError(w, r, err)
 		return x, false
 	}
 	x = Subscription{Name: b.Name, Brand: b.Brand, Category: b.Category, PriceCents: b.PriceCents, Currency: b.Currency, Cycle: b.Cycle,
+		Country: b.Country, Payment: b.Payment,
 		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones,
 		VPS: b.VPS}
 	if fe := validateSubscription(&x); fe != nil {

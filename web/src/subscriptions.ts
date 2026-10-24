@@ -1,4 +1,5 @@
 // 订阅（设计 47，修订第 189 条）：常用服务目录、类别、扣费日计算与统计。全部是纯函数，界面只负责展示。
+// 统计与分析换算为人民币（修订第 223 条），汇率来自面板的 GET /fx-rates。
 // 扣费日规则与面板（internal/server/subscriptions.go）一致：首次扣费 = 开始日期 + 试用天数，之后按周期递推，
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
 // 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts、brandLogos.ts），没有标志的用品牌色方块加首字母；不从外部加载。
@@ -224,15 +225,6 @@ export function spendBetween(list: Subscription[], from: Date, to: Date): Money 
 /** t 所在月（加 offset 个月）的 1 日 */
 export const monthStart = (t: Date, offset = 0) => new Date(t.getFullYear(), t.getMonth() + offset, 1)
 
-/** 主币种：金额最大的币种（没有时为 CNY） */
-export function mainCurrency(list: Subscription[]): string {
-  const m: Money = new Map()
-  for (const s of list) add(m, s.currency, monthlyCents(s))
-  let best = 'CNY'
-  let v = -1
-  for (const [c, x] of m) if (x > v) [best, v] = [c, x]
-  return best
-}
 
 /** 一个类别的统计 */
 export interface CategoryStat {
@@ -242,19 +234,120 @@ export interface CategoryStat {
   pct: number
 }
 
-/** 区间内某币种按类别的花费，金额大的在前 */
-export function byCategory(list: Subscription[], currency: string, from: Date, to: Date): CategoryStat[] {
+/** 区间内按类别的花费（换算为人民币，修订第 223 条），金额大的在前；没有汇率的币种不计入 */
+export function byCategory(list: Subscription[], rates: Rates, from: Date, to: Date): CategoryStat[] {
   const m = new Map<SubCategory, { cents: number; count: number }>()
   for (const s of list) {
-    if (s.currency !== currency) continue
     const n = chargesBetween(s, from, to).length
-    if (!n) continue
+    const cny = n ? toCny(n * s.price_cents, s.currency, rates) : null
+    if (cny == null) continue
     const x = m.get(s.category) ?? { cents: 0, count: 0 }
-    x.cents += n * s.price_cents
+    x.cents += cny
     x.count++
     m.set(s.category, x)
   }
   const total = [...m.values()].reduce((a, x) => a + x.cents, 0)
   return [...m.entries()].map(([category, x]) => ({ category, ...x, pct: total ? (x.cents / total) * 100 : 0 }))
     .sort((a, b) => b.cents - a.cents)
+}
+
+// ---- 国家 / 地区、支付方式与人民币换算（修订第 223 条） ----
+
+/** 支付方式（键与面板一致） */
+export const paymentNames: Record<string, string> = {
+  alipay: '支付宝', wechat: '微信支付', bank: '银行卡', credit: '信用卡', paypal: 'PayPal', apple: 'Apple 账户', google: 'Google Play',
+  carrier: '运营商代扣', crypto: '加密货币', other: '其他',
+}
+
+// 币种对应的默认国家 / 地区（选择服务时预填，可改）
+const currencyCountry: Record<string, string> = {
+  CNY: 'CN', USD: 'US', HKD: 'HK', JPY: 'JP', GBP: 'GB', TWD: 'TW', SGD: 'SG', MOP: 'MO', AUD: 'AU', MYR: 'MY', THB: 'TH', PHP: 'PH',
+  ZAR: 'ZA', NGN: 'NG', GHS: 'GH',
+}
+/** 币种对应的默认国家 / 地区；EUR 等多国通用的币种为空 */
+export const defaultCountry = (currency: string) => currencyCountry[currency] ?? ''
+
+/** 汇率：币种 → 1 单位折合多少人民币（GET /fx-rates） */
+export type Rates = Record<string, number>
+
+/** 换算为人民币（分）；没有汇率时为 null */
+export function toCny(cents: number, currency: string, rates: Rates): number | null {
+  if (currency === 'CNY') return cents
+  const r = rates[currency]
+  return r ? Math.round(cents * r) : null
+}
+
+/** 按币种的金额换算后的人民币合计，以及缺少汇率的币种 */
+export function cnyTotal(m: Money, rates: Rates): { cents: number; missing: string[] } {
+  let cents = 0
+  const missing: string[] = []
+  for (const [cur, v] of m) {
+    const x = toCny(v, cur, rates)
+    if (x == null) missing.push(cur)
+    else cents += x
+  }
+  return { cents, missing }
+}
+
+/** 一组的折算月费 */
+export interface Share {
+  key: string
+  cents: number
+  count: number
+  pct: number
+}
+
+/** 分析结果：进行中的订阅折算为每月花费（人民币） */
+export interface Analysis {
+  /** 每月合计（分） */
+  monthly: number
+  /** 参与折算的订阅数 */
+  count: number
+  /** 一次性付费的订阅数（不计入月费） */
+  once: number
+  /** 缺少汇率、没有计入的币种 */
+  missing: string[]
+  byCategory: Share[]
+  byCountry: Share[]
+  byPayment: Share[]
+  /** 按月费从高到低 */
+  top: { s: Subscription; cents: number }[]
+}
+
+/** 分析（修订第 223 条）：进行中的订阅按扣费周期折算为月费（每周 × 52 / 12，每季 ÷ 3，每年 ÷ 12），换算为人民币后
+ *  按类别、国家 / 地区、支付方式汇总，并按月费排行。一次性付费的不计入。 */
+export function analyze(list: Subscription[], rates: Rates): Analysis {
+  const out: Analysis = { monthly: 0, count: 0, once: 0, missing: [], byCategory: [], byCountry: [], byPayment: [], top: [] }
+  const groups = { cat: new Map<string, Share>(), country: new Map<string, Share>(), pay: new Map<string, Share>() }
+  const add = (m: Map<string, Share>, key: string, cents: number) => {
+    const x = m.get(key) ?? { key, cents: 0, count: 0, pct: 0 }
+    x.cents += cents
+    x.count++
+    m.set(key, x)
+  }
+  for (const s of list) {
+    if (s.ended) continue
+    if (s.cycle === 'once') {
+      out.once++
+      continue
+    }
+    const cents = toCny(monthlyCents(s), s.currency, rates)
+    if (cents == null) {
+      if (!out.missing.includes(s.currency)) out.missing.push(s.currency)
+      continue
+    }
+    out.monthly += cents
+    out.count++
+    out.top.push({ s, cents })
+    add(groups.cat, s.category, cents)
+    add(groups.country, s.country || '', cents)
+    add(groups.pay, s.payment || '', cents)
+  }
+  const sorted = (m: Map<string, Share>) =>
+    [...m.values()].map((x) => ({ ...x, pct: out.monthly ? (x.cents / out.monthly) * 100 : 0 })).sort((a, b) => b.cents - a.cents)
+  out.byCategory = sorted(groups.cat)
+  out.byCountry = sorted(groups.country)
+  out.byPayment = sorted(groups.pay)
+  out.top.sort((a, b) => b.cents - a.cents)
+  return out
 }

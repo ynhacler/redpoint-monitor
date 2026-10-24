@@ -998,6 +998,15 @@ var migrations = []string{
 	// 迁移 57：App 记录订阅（修订第 217 条）：AK 与设备上的“允许记录订阅”，默认关闭
 	`ALTER TABLE app_access_keys ADD COLUMN allow_subscriptions INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE app_devices ADD COLUMN allow_subscriptions INTEGER NOT NULL DEFAULT 0;`,
+	// 迁移 58：订阅的国家 / 地区（ISO 3166-1 两位代码）与支付方式（修订第 223 条）；汇率缓存（1 单位外币折合多少人民币）
+	`ALTER TABLE subscriptions ADD COLUMN country TEXT NOT NULL DEFAULT '';
+	ALTER TABLE subscriptions ADD COLUMN payment TEXT NOT NULL DEFAULT '';
+	CREATE TABLE fx_rates (
+		currency   TEXT PRIMARY KEY,
+		cny        REAL NOT NULL,
+		as_of      INTEGER NOT NULL,
+		fetched_at INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {

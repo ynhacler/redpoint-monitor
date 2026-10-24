@@ -4260,6 +4260,30 @@
         }
       }
     },
+    "/fx-rates": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "汇率：1 单位外币折合多少人民币（修订第 223 条）",
+        "description": "用于把订阅的外币价格换算成人民币显示与统计。来源 ExchangeRate-API（open.er-api.com，每日更新）；面板每 12 小时最多请求一次，\n只在有非人民币订阅时请求，请求不带任何用户数据。汇率过期时本次先返回已有的汇率并在后台刷新；从未取到时 rates 只有 CNY。\n",
+        "responses": {
+          "200": {
+            "description": "汇率",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxRates"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/subscriptions": {
       "get": {
         "tags": [
@@ -10247,7 +10271,9 @@
           "price_cents",
           "currency",
           "cycle",
-          "start_date"
+          "start_date",
+          "country",
+          "payment"
         ],
         "properties": {
           "name": {
@@ -10286,6 +10312,27 @@
             "type": "string",
             "pattern": "^[A-Z]{3}$",
             "description": "如 CNY、USD"
+          },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "订阅的国家 / 地区（ISO 3166-1 两位代码，修订第 223 条）"
+          },
+          "payment": {
+            "type": "string",
+            "enum": [
+              "alipay",
+              "wechat",
+              "bank",
+              "credit",
+              "paypal",
+              "apple",
+              "google",
+              "carrier",
+              "crypto",
+              "other"
+            ],
+            "description": "支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他"
           },
           "cycle": {
             "type": "string",
@@ -10439,7 +10486,9 @@
           "ended",
           "logo_version",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "country",
+          "payment"
         ],
         "properties": {
           "id": {
@@ -10501,6 +10550,14 @@
           },
           "note": {
             "type": "string"
+          },
+          "country": {
+            "type": "string",
+            "description": "订阅的国家 / 地区（两位代码）；修订第 223 条之前添加、尚未编辑的为空"
+          },
+          "payment": {
+            "type": "string",
+            "description": "支付方式（见 SubscriptionInput.payment）；尚未设置时为空"
           },
           "phones": {
             "type": "array",
@@ -12370,6 +12427,48 @@
           "allow_subscriptions": {
             "type": "boolean",
             "description": "可以新增订阅（AK 允许记录订阅且授权全部节点）"
+          }
+        }
+      },
+      "FxRates": {
+        "type": "object",
+        "required": [
+          "base",
+          "source",
+          "as_of",
+          "fetched_at",
+          "rates",
+          "error"
+        ],
+        "properties": {
+          "base": {
+            "type": "string",
+            "enum": [
+              "CNY"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "汇率来源说明"
+          },
+          "as_of": {
+            "type": "integer",
+            "description": "来源数据的时间（Unix 秒）；0 表示还没有取到"
+          },
+          "fetched_at": {
+            "type": "integer",
+            "description": "面板最近一次成功取得的时间（Unix 秒）"
+          },
+          "rates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "币种 → 1 单位折合多少人民币；总含 CNY = 1"
+          },
+          "error": {
+            "type": "string",
+            "description": "最近一次请求失败的原因；成功后为空"
           }
         }
       },

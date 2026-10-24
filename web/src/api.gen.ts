@@ -885,6 +885,10 @@ export interface SubscriptionInput {
   price_cents: number
   /** 如 CNY、USD */
   currency: string
+  /** 订阅的国家 / 地区（ISO 3166-1 两位代码，修订第 223 条） */
+  country: string
+  /** 支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他 */
+  payment: 'alipay' | 'wechat' | 'bank' | 'credit' | 'paypal' | 'apple' | 'google' | 'carrier' | 'crypto' | 'other'
   /** 扣费周期；once 为一次性 */
   cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
   /** 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 */
@@ -943,6 +947,10 @@ export interface Subscription {
   end_date: string
   remind_days: number
   note: string
+  /** 订阅的国家 / 地区（两位代码）；修订第 223 条之前添加、尚未编辑的为空 */
+  country: string
+  /** 支付方式（见 SubscriptionInput.payment）；尚未设置时为空 */
+  payment: string
   phones: SubscriptionPhone[]
   vps: SubscriptionVPS
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
@@ -1529,6 +1537,20 @@ export interface AppScope {
   allow_low_risk_ops: boolean
   /** 可以新增订阅（AK 允许记录订阅且授权全部节点） */
   allow_subscriptions: boolean
+}
+
+export interface FxRates {
+  base: 'CNY'
+  /** 汇率来源说明 */
+  source: string
+  /** 来源数据的时间（Unix 秒）；0 表示还没有取到 */
+  as_of: number
+  /** 面板最近一次成功取得的时间（Unix 秒） */
+  fetched_at: number
+  /** 币种 → 1 单位折合多少人民币；总含 CNY = 1 */
+  rates: Record<string, number>
+  /** 最近一次请求失败的原因；成功后为空 */
+  error: string
 }
 
 export interface AppSubscriptions {
@@ -2581,6 +2603,12 @@ export interface Paths {
         id: number
       }
       response: void
+    }
+  }
+  '/fx-rates': {
+    /** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
+    get: {
+      response: FxRates
     }
   }
   '/subscriptions': {

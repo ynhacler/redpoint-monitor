@@ -70,4 +70,35 @@ void main() {
     expect(await measureSite(['a'], fake({'a': ['error']})), (ms: null, fail: 'error'));
     expect([gradeOf(149), gradeOf(150), gradeOf(400), gradeOf(null)], ['best', 'good', 'slow', 'timeout']);
   });
+
+  test('汇率换算与分析（修订第 223 条）：折算月费、换算人民币、分组、排行、缺汇率与一次性', () {
+    Subscription sub(int id, String cycle, int cents, String cur, {String cat = 'video', String country = 'US', String pay = 'credit', bool ended = false}) =>
+        Subscription(id: id, name: 's$id', category: cat, priceCents: cents, currency: cur, cycle: cycle, startDate: '2026-01-01',
+            country: country, payment: pay, ended: ended);
+    const fx = FxRates(rates: {'CNY': 1, 'USD': 7.0, 'HKD': 0.9});
+    expect(fx.toCny(1000, 'USD'), 7000);
+    expect(fx.toCny(1000, 'CNY'), 1000);
+    expect(fx.toCny(1000, 'EUR'), isNull);
+    final a = analyze([
+      sub(1, 'monthly', 2000, 'USD'), // ¥140
+      sub(2, 'annually', 12000, 'CNY', cat: 'cloud', country: 'CN', pay: 'alipay'), // ¥10/月
+      sub(3, 'quarterly', 3000, 'HKD', cat: 'cloud', country: 'HK', pay: 'alipay'), // HK$10/月 → ¥9
+      sub(4, 'once', 9900, 'CNY'),
+      sub(5, 'monthly', 500, 'EUR'),
+      sub(6, 'monthly', 100000, 'CNY', ended: true),
+    ], fx);
+    expect(a.monthly, 14000 + 1000 + 900);
+    expect(a.count, 3);
+    expect(a.once, 1);
+    expect(a.missing, ['EUR']);
+    expect(a.byCategory.map((x) => (x.key, x.cents)), [('video', 14000), ('cloud', 1900)]);
+    expect(a.byPayment.first.key, 'credit');
+    expect(a.byCountry.map((x) => x.key), ['US', 'CN', 'HK']);
+    expect(a.top.first.$1.id, 1);
+    expect(a.byCategory.fold<double>(0, (t, x) => t + x.pct).round(), 100);
+    expect(defaultCountry('HKD'), 'HK');
+    expect(defaultCountry('EUR'), '');
+    expect(countryLabel('HK'), '香港');
+    expect(paymentNames['carrier'], '运营商代扣');
+  });
 }

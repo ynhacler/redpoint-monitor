@@ -51,13 +51,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('新增订阅'), findsOneWidget);
     // 价格没填：面板返回字段错误，显示在价格输入框下
+    await tester.ensureVisible(find.text('保存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(posted.last['brand'], 'netflix');
     expect(posted.last['category'], 'video');
     expect(posted.last['currency'], 'USD');
+    expect(posted.last['country'], 'US'); // 按币种预填（修订第 223 条）
+    expect(posted.last['payment'], ''); // 支付方式须自己选择，由面板校验
     expect(find.text('价格应在 0 ～ 1,000,000 之间'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '价格'), '15.49');
+    await tester.ensureVisible(find.text('保存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(posted.last['price_cents'], 1549);
@@ -115,6 +121,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('修改订阅'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '价格'), '12.5');
+    await tester.ensureVisible(find.text('保存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(calls, contains('PUT /api/v1/app/subscriptions/2'));
