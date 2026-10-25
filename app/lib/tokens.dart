@@ -48,9 +48,9 @@ class AppColors {
   final Color accent;
   /// 主按钮、危险按钮上的文字
   final Color onAccent;
-  /// 在线、正常
+  /// 在线、正常（修订第 257 条：浅色 #15803D，白底对比度 5:1，满足 WCAG AA 小字）
   final Color ok;
-  /// 告警、未知、接近阈值
+  /// 告警、未知、接近阈值（修订第 257 条：浅色 #B45309，白底对比度 5:1）
   final Color warn;
   /// 离线、超限、失败
   final Color bad;
@@ -88,16 +88,16 @@ class AppColors {
   final Color catOther;
 
   static const light = AppColors(
-    bg: Color(0xFFF6F7F9),
+    bg: Color(0xFFF8FAFC),
     surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFF1F3F6),
+    surface2: Color(0xFFF1F5F9),
     border: Color(0xFFE5E7EB),
-    text: Color(0xFF16181D),
-    textMuted: Color(0xFF6B7280),
+    text: Color(0xFF0F172A),
+    textMuted: Color(0xFF64748B),
     accent: Color(0xFF2563EB),
     onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF16A34A),
-    warn: Color(0xFFD97706),
+    ok: Color(0xFF15803D),
+    warn: Color(0xFFB45309),
     bad: Color(0xFFDC2626),
     mutedState: Color(0xFF9CA3AF),
     series2: Color(0xFF7C3AED),
@@ -129,7 +129,7 @@ class AppColors {
     ok: Color(0xFF22C55E),
     warn: Color(0xFFF59E0B),
     bad: Color(0xFFEF4444),
-    mutedState: Color(0xFF6B7280),
+    mutedState: Color(0xFF9CA3AF),
     series2: Color(0xFFA78BFA),
     series3: Color(0xFF22D3EE),
     track: Color(0xFF2A2F3A),

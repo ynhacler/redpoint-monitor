@@ -11,7 +11,8 @@ const props = defineProps<{
   dotOnly?: boolean
 }>()
 
-const labels = { online: '在线', unknown: '未知', offline: '离线', pending: '待安装', maintenance: '维护中' } as const
+// 状态用语与 App 一致（修订第 257 条，UI-018）：未按时上报为“上报延迟”
+const labels = { online: '在线', unknown: '上报延迟', offline: '离线', pending: '待安装', maintenance: '维护中' } as const
 const label = computed(() => t(labels[props.status]))
 </script>
 
