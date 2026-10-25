@@ -48,6 +48,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   Timer? _timer;
 
   String _range = '1h';
+  bool _healthAll = false; // 健康摘要展开全部（修订第 256 条）
   String _metric = 'cpu';
   List<MetricPoint> _history = [];
   DateTime? _historyAt;
@@ -539,9 +540,17 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     final h = _health!;
     final colors = StatusColors.of(context);
     Color lc(String l) => switch (l) { 'bad' => colors.bad, 'warn' => colors.warn, 'muted' => colors.muted, _ => colors.ok };
+    // 默认只显示需要关注的项（最多 3 条，严重的在前）；全部正常时一句话概括，点“详情”展开（修订第 256 条，与 Web 相同）
+    const rank = {'bad': 0, 'warn': 1};
+    final abnormal = h.items.where((it) => it.level == 'bad' || it.level == 'warn').toList()
+      ..sort((a, b) => (rank[a.level] ?? 2) - (rank[b.level] ?? 2));
+    final shown = _healthAll ? h.items : abnormal.take(3).toList();
+    final okNames = [for (final it in h.items) if (it.level != 'bad' && it.level != 'warn') it.title];
+    final muted = TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(h.status, style: TextStyle(fontWeight: FontWeight.w600, color: lc(h.level))),
-      for (final it in h.items)
+      if (shown.isEmpty && okNames.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text('${okNames.join('、')}均正常', style: muted)),
+      for (final it in shown)
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -550,6 +559,12 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
             SizedBox(width: 36, child: Text(it.title, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant))),
             Expanded(child: Text(it.text, style: const TextStyle(fontSize: 13))),
           ]),
+        ),
+      if (h.items.length > shown.length || _healthAll)
+        TextButton(
+          onPressed: () => setState(() => _healthAll = !_healthAll),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+          child: Text(_healthAll ? '收起' : '详情（${h.items.length} 项）'),
         ),
     ]);
   }
