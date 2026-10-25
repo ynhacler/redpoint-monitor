@@ -46,6 +46,16 @@
   --track: #E5E7EB;
   --qr-dark: #000000;
   --qr-light: #FFFFFF;
+  --cat-video: #EA580C;
+  --cat-tools: #16A34A;
+  --cat-reading: #CA8A04;
+  --cat-social: #C026D3;
+  --cat-health: #65A30D;
+  --cat-game: #E11D48;
+  --cat-cloud: #0891B2;
+  --cat-sim: #7C3AED;
+  --cat-vps: #2563EB;
+  --cat-other: #6B7280;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -67,6 +77,16 @@
     --track: #2A2F3A;
     --qr-dark: #000000;
     --qr-light: #FFFFFF;
+    --cat-video: #FB923C;
+    --cat-tools: #22C55E;
+    --cat-reading: #FACC15;
+    --cat-social: #E879F9;
+    --cat-health: #A3E635;
+    --cat-game: #FB7185;
+    --cat-cloud: #22D3EE;
+    --cat-sim: #A78BFA;
+    --cat-vps: #3B82F6;
+    --cat-other: #9CA3AF;
     color-scheme: dark;
   }
 }
@@ -88,5 +108,15 @@
   --track: #2A2F3A;
   --qr-dark: #000000;
   --qr-light: #FFFFFF;
+  --cat-video: #FB923C;
+  --cat-tools: #22C55E;
+  --cat-reading: #FACC15;
+  --cat-social: #E879F9;
+  --cat-health: #A3E635;
+  --cat-game: #FB7185;
+  --cat-cloud: #22D3EE;
+  --cat-sim: #A78BFA;
+  --cat-vps: #3B82F6;
+  --cat-other: #9CA3AF;
   color-scheme: dark;
 }

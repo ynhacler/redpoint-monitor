@@ -1,6 +1,9 @@
 // 订阅（设计 47，修订第 213 条）：App 只读展示。下次扣费日由面板计算（next_charge）；扣费说明、每月折算与
 // 首字母、品牌色与 Web 的 web/src/subscriptions.ts 一致。
+import 'package:flutter/painting.dart';
+
 import 'catalog.gen.dart';
+import 'tokens.dart';
 
 /// SIM 电话卡的号码
 class SubPhone {
@@ -263,6 +266,20 @@ List<(String, double)> monthlyByCurrency(Iterable<Subscription> list) {
 }
 
 // ---- 国家 / 地区、支付方式与人民币换算（修订第 223 条，与 Web 的 subscriptions.ts 一致） ----
+
+/// 订阅类别的固定颜色（修订第 233 条，与 Web 的 categoryColors 相同，来自 design/tokens.json 的 cat-*）
+Color categoryColor(AppColors c, String key) => switch (key) {
+      'video' => c.catVideo,
+      'tools' => c.catTools,
+      'reading' => c.catReading,
+      'social' => c.catSocial,
+      'health' => c.catHealth,
+      'game' => c.catGame,
+      'cloud' => c.catCloud,
+      'sim' => c.catSim,
+      'vps' => c.catVps,
+      _ => c.catOther,
+    };
 
 /// 支付方式（键与面板一致）
 const paymentNames = <String, String>{

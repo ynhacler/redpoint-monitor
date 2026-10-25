@@ -19,9 +19,10 @@ export const categoryNames: Record<SubCategory, string> = {
 }
 /** 类别在图表中的颜色（设计令牌中的系列色与状态色） */
 export const categoryColors: Record<SubCategory, string> = {
-  video: 'var(--accent)', tools: 'var(--ok)', reading: 'color-mix(in srgb, var(--ok) 50%, var(--series-3))', social: 'var(--series-2)',
-  health: 'var(--warn)', game: 'var(--bad)', cloud: 'var(--series-3)', sim: 'color-mix(in srgb, var(--accent) 50%, var(--series-2))',
-  vps: 'color-mix(in srgb, var(--series-3) 55%, var(--accent))', other: 'var(--muted-state)',
+  // 修订第 233 条：每个类别一个固定且容易区分的颜色（design/tokens.json 的 cat-*），Web 与 App 相同；图表中始终同时有文字
+  video: 'var(--cat-video)', tools: 'var(--cat-tools)', reading: 'var(--cat-reading)', social: 'var(--cat-social)',
+  health: 'var(--cat-health)', game: 'var(--cat-game)', cloud: 'var(--cat-cloud)', sim: 'var(--cat-sim)',
+  vps: 'var(--cat-vps)', other: 'var(--cat-other)',
 }
 /** 周期名称 */
 export const cycleNames: Record<SubCycle, string> = {

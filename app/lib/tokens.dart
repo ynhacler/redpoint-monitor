@@ -20,6 +20,16 @@ class AppColors {
     required this.track,
     required this.qrDark,
     required this.qrLight,
+    required this.catVideo,
+    required this.catTools,
+    required this.catReading,
+    required this.catSocial,
+    required this.catHealth,
+    required this.catGame,
+    required this.catCloud,
+    required this.catSim,
+    required this.catVps,
+    required this.catOther,
   });
 
   /// 页面背景
@@ -56,6 +66,26 @@ class AppColors {
   final Color qrDark;
   /// 二维码背景与静区
   final Color qrLight;
+  /// 订阅类别“影音娱乐”的固定颜色（修订第 233 条）
+  final Color catVideo;
+  /// 订阅类别“效率工具”的固定颜色（修订第 233 条）
+  final Color catTools;
+  /// 订阅类别“阅读学习”的固定颜色（修订第 233 条）
+  final Color catReading;
+  /// 订阅类别“社交通讯”的固定颜色（修订第 233 条）
+  final Color catSocial;
+  /// 订阅类别“健康运动”的固定颜色（修订第 233 条）
+  final Color catHealth;
+  /// 订阅类别“游戏”的固定颜色（修订第 233 条）
+  final Color catGame;
+  /// 订阅类别“云服务与开发”的固定颜色（修订第 233 条）
+  final Color catCloud;
+  /// 订阅类别“SIM 电话卡”的固定颜色（修订第 233 条）
+  final Color catSim;
+  /// 订阅类别“VPS”的固定颜色（修订第 233 条）
+  final Color catVps;
+  /// 订阅类别“其他”的固定颜色（修订第 233 条）
+  final Color catOther;
 
   static const light = AppColors(
     bg: Color(0xFFF6F7F9),
@@ -75,6 +105,16 @@ class AppColors {
     track: Color(0xFFE5E7EB),
     qrDark: Color(0xFF000000),
     qrLight: Color(0xFFFFFFFF),
+    catVideo: Color(0xFFEA580C),
+    catTools: Color(0xFF16A34A),
+    catReading: Color(0xFFCA8A04),
+    catSocial: Color(0xFFC026D3),
+    catHealth: Color(0xFF65A30D),
+    catGame: Color(0xFFE11D48),
+    catCloud: Color(0xFF0891B2),
+    catSim: Color(0xFF7C3AED),
+    catVps: Color(0xFF2563EB),
+    catOther: Color(0xFF6B7280),
   );
 
   static const dark = AppColors(
@@ -95,6 +135,16 @@ class AppColors {
     track: Color(0xFF2A2F3A),
     qrDark: Color(0xFF000000),
     qrLight: Color(0xFFFFFFFF),
+    catVideo: Color(0xFFFB923C),
+    catTools: Color(0xFF22C55E),
+    catReading: Color(0xFFFACC15),
+    catSocial: Color(0xFFE879F9),
+    catHealth: Color(0xFFA3E635),
+    catGame: Color(0xFFFB7185),
+    catCloud: Color(0xFF22D3EE),
+    catSim: Color(0xFFA78BFA),
+    catVps: Color(0xFF3B82F6),
+    catOther: Color(0xFF9CA3AF),
   );
 }
 

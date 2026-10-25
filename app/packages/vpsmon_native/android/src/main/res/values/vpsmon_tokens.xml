@@ -18,6 +18,16 @@
     <color name="vpsmon_track">#E5E7EB</color>
     <color name="vpsmon_qr_dark">#000000</color>
     <color name="vpsmon_qr_light">#FFFFFF</color>
+    <color name="vpsmon_cat_video">#EA580C</color>
+    <color name="vpsmon_cat_tools">#16A34A</color>
+    <color name="vpsmon_cat_reading">#CA8A04</color>
+    <color name="vpsmon_cat_social">#C026D3</color>
+    <color name="vpsmon_cat_health">#65A30D</color>
+    <color name="vpsmon_cat_game">#E11D48</color>
+    <color name="vpsmon_cat_cloud">#0891B2</color>
+    <color name="vpsmon_cat_sim">#7C3AED</color>
+    <color name="vpsmon_cat_vps">#2563EB</color>
+    <color name="vpsmon_cat_other">#6B7280</color>
     <dimen name="vpsmon_space_1">4dp</dimen>
     <dimen name="vpsmon_space_2">8dp</dimen>
     <dimen name="vpsmon_space_3">12dp</dimen>

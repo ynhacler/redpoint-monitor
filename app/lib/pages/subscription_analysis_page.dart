@@ -103,7 +103,7 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(value: r.pct / 100, minHeight: 5, backgroundColor: c.track, color: palette[i % palette.length]),
+                          child: LinearProgressIndicator(value: r.pct / 100, minHeight: 5, backgroundColor: c.track, color: _group == 'category' ? categoryColor(c, r.key) : palette[i % palette.length]),
                         ),
                       ),
                       const SizedBox(width: 10),

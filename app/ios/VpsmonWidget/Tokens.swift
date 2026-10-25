@@ -44,6 +44,26 @@ enum Tokens {
     static let qrDark = dynamic((0.000, 0.000, 0.000), (0.000, 0.000, 0.000))
     /// 二维码背景与静区
     static let qrLight = dynamic((1.000, 1.000, 1.000), (1.000, 1.000, 1.000))
+    /// 订阅类别“影音娱乐”的固定颜色（修订第 233 条）
+    static let catVideo = dynamic((0.918, 0.345, 0.047), (0.984, 0.573, 0.235))
+    /// 订阅类别“效率工具”的固定颜色（修订第 233 条）
+    static let catTools = dynamic((0.086, 0.639, 0.290), (0.133, 0.773, 0.369))
+    /// 订阅类别“阅读学习”的固定颜色（修订第 233 条）
+    static let catReading = dynamic((0.792, 0.541, 0.016), (0.980, 0.800, 0.082))
+    /// 订阅类别“社交通讯”的固定颜色（修订第 233 条）
+    static let catSocial = dynamic((0.753, 0.149, 0.827), (0.910, 0.475, 0.976))
+    /// 订阅类别“健康运动”的固定颜色（修订第 233 条）
+    static let catHealth = dynamic((0.396, 0.639, 0.051), (0.639, 0.902, 0.208))
+    /// 订阅类别“游戏”的固定颜色（修订第 233 条）
+    static let catGame = dynamic((0.882, 0.114, 0.282), (0.984, 0.443, 0.522))
+    /// 订阅类别“云服务与开发”的固定颜色（修订第 233 条）
+    static let catCloud = dynamic((0.031, 0.569, 0.698), (0.133, 0.827, 0.933))
+    /// 订阅类别“SIM 电话卡”的固定颜色（修订第 233 条）
+    static let catSim = dynamic((0.486, 0.227, 0.929), (0.655, 0.545, 0.980))
+    /// 订阅类别“VPS”的固定颜色（修订第 233 条）
+    static let catVps = dynamic((0.145, 0.388, 0.922), (0.231, 0.510, 0.965))
+    /// 订阅类别“其他”的固定颜色（修订第 233 条）
+    static let catOther = dynamic((0.420, 0.447, 0.502), (0.612, 0.639, 0.686))
     static let space1: CGFloat = 4
     static let space2: CGFloat = 8
     static let space3: CGFloat = 12
