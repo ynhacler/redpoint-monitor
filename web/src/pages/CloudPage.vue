@@ -3,6 +3,7 @@
 // 已支持 AWS、阿里云与腾讯云（各分国内站、国际站）；Oracle Cloud 随后续步骤加入（设计 44.10）。
 // 【安全】凭证只写不读：列表只显示末 4 位；添加、更换凭证、删除前重新输入密码（设计 17.4、44.2）。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   createCloudAccount, deleteCloudAccount, errorText, linkCloudInstance, setCloudAutoCalibrate, listCloudAccounts, listCloudInstances, reauth, syncCloudAccount, checkCloudAccount,
   updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudCheckItem, type CloudInstance, type CloudTrafficPool,
@@ -17,6 +18,13 @@ import { state } from '../store'
 
 const accounts = ref<CloudAccount[]>([])
 const instances = ref<CloudInstance[]>([])
+// 只看未关联节点的实例（修订第 241 条，需求说明书 NODE-05 / CLOUD-05）：地址 ?unlinked=1，从仪表板的“未关联”提示进入
+const route = useRoute()
+const router = useRouter()
+const onlyUnlinked = computed(() => route.query.unlinked === '1')
+const unlinkedCount = computed(() => instances.value.filter((i) => !i.server_id).length)
+const shownInstances = computed(() => (onlyUnlinked.value ? instances.value.filter((i) => !i.server_id) : instances.value))
+const setOnlyUnlinked = (v: boolean) => router.replace({ query: { ...route.query, unlinked: v ? '1' : undefined }, hash: '#instances' })
 const loaded = ref(false)
 const error = ref('')
 
@@ -633,10 +641,17 @@ function expireTone(i: CloudInstance): string {
     </ul>
 
     <!-- 实例 -->
-    <section v-if="instances.length" class="section">
-      <h2>{{ t('实例') }}</h2>
+    <section v-if="instances.length" id="instances" class="section">
+      <div class="inst-head">
+        <h2>{{ t('实例') }}</h2>
+        <div v-if="unlinkedCount" class="segmented" role="group" :aria-label="t('筛选')">
+          <button type="button" :class="{ active: !onlyUnlinked }" @click="setOnlyUnlinked(false)">{{ t('全部 {n}', { n: instances.length }) }}</button>
+          <button type="button" :class="{ active: onlyUnlinked }" @click="setOnlyUnlinked(true)">{{ t('未关联节点 {n}', { n: unlinkedCount }) }}</button>
+        </div>
+      </div>
+      <p v-if="onlyUnlinked && !unlinkedCount" class="muted small">{{ t('所有实例都已关联节点。') }}</p>
       <ul class="panel list">
-        <li v-for="i in instances" :key="i.id">
+        <li v-for="i in shownInstances" :key="i.id">
           <div class="inst-main">
             <div class="ellipsis"><b>{{ i.name || i.instance_id }}</b>
               <span class="muted small meta">{{ kindNames[i.kind] ? t(kindNames[i.kind]) : i.kind }} · {{ i.region }} · {{ i.plan }}</span>
@@ -695,6 +710,7 @@ function expireTone(i: CloudInstance): string {
 </template>
 
 <style scoped>
+.inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .intro { margin: 0 0 var(--space-4); max-width: 72ch; }
 .editor { margin-bottom: var(--space-4); }
 .editor h2 { margin-bottom: var(--space-2); }
