@@ -472,7 +472,11 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     final c = appColors(context);
     final colors = StatusColors.of(context);
     final small = TextStyle(fontSize: 12, color: c.textMuted);
-    Color tone(String st) => switch (st) { 'yes' => colors.ok, 'partial' || 'captcha' => colors.warn, 'no' => colors.bad, _ => colors.muted };
+    // 超过 24 小时的结果（修订第 236 条）：说明多久以前、颜色变灰，不当作当前状态
+    final stale = u.checkedAt > 0 && DateTime.now().millisecondsSinceEpoch ~/ 1000 - u.checkedAt > 24 * 3600;
+    Color tone(String st) => stale
+        ? colors.muted
+        : switch (st) { 'yes' => colors.ok, 'partial' || 'captcha' => colors.warn, 'no' => colors.bad, _ => colors.muted };
     Widget item(UnlockItem it) => Container(
           padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
           decoration: BoxDecoration(border: Border.all(color: c.border), borderRadius: BorderRadius.circular(8)),
@@ -498,13 +502,19 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (u.items.isEmpty)
         Text(u.pending ? '检测中，约 1 分钟出结果。' : (u.supported ? '还没有检测过。在 Web 节点详情的“网络”页点“检测”。' : 'Agent 版本不支持，升级后可用。'), style: small)
       else ...[
+        if (stale)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('结果是 ${fmtAgo(u.checkedAt)}的，可能已经变化；下面的状态不代表现在。', style: TextStyle(fontSize: 12, color: colors.warn)),
+          ),
         grid(general),
         if (local.isNotEmpty) ...[
           Padding(padding: const EdgeInsets.fromLTRB(2, 10, 0, 6), child: Text('当地服务 · ${flagEmoji(local.first.local)} ${local.first.local}', style: small)),
           grid(local),
         ],
         const SizedBox(height: 8),
-        Text('${u.checkedAt > 0 ? '${fmtTime(u.checkedAt)} 检测 · ' : ''}${u.pending ? '正在重新检测 · ' : ''}检测在 Web 中发起', style: small),
+        Text('${u.checkedAt > 0 ? '上次检测 ${fmtTime(u.checkedAt)}（${fmtAgo(u.checkedAt)}）· ' : ''}${u.pending ? '正在重新检测 · ' : ''}检测在 Web 中发起',
+            style: small),
       ],
     ]);
   }

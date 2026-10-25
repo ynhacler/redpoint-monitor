@@ -1011,6 +1011,15 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 结果时效（修订第 236 条） ----
+  '刚刚': 'just now',
+  '{n} 分钟前': '{n} min ago',
+  '{n} 小时前': '{n} h ago',
+  '{n} 天前': '{n} d ago',
+  '上次检测 {time}（{ago}）': 'Last checked {time} ({ago})',
+  '结果是 {ago}的，可能已经变化；下面的状态不代表现在。': 'These results are from {ago} and may have changed; they do not show the current state.',
+  '可用：能正常使用；不可用：地区或账号限制；部分可用：只能使用部分内容（如 Netflix 只有自制剧）；需人机验证：出口 IP 被要求验证；检测失败：超时或网络错误。':
+    'Available: works normally. Unavailable: region or account restriction. Partial: only some content (e.g. Netflix originals). Captcha: the exit IP is challenged. Failed: timeout or network error.',
   // ---- 系统菜单（修订第 231 条） ----
   '通用': 'General',
   '监测与告警': 'Monitoring & alerts',

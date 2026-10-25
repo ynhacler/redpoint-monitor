@@ -150,4 +150,10 @@ void main() {
     expect(fmtTrafficLeft(2e12, 2e12, 'decimal'), '2 TB');
     expect([fmtPctFine(0.05), fmtPctFine(0.004), fmtPctFine(42.4)], ['0.05%', '<0.01%', '42%']);
   });
+
+  test('相对时间（修订第 236 条）', () {
+    final now = DateTime.fromMillisecondsSinceEpoch(1800000000 * 1000);
+    expect([fmtAgo(1800000000 - 30, now: now), fmtAgo(1800000000 - 720, now: now), fmtAgo(1800000000 - 3 * 3600, now: now),
+      fmtAgo(1800000000 - 2 * 86400 - 5, now: now)], ['刚刚', '12 分钟前', '3 小时前', '2 天前']);
+  });
 }

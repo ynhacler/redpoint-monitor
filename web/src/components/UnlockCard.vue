@@ -6,7 +6,7 @@
 import { computed, ref } from 'vue'
 import { errorText, requestUnlockCheck, type UnlockView } from '../api'
 import { countryName } from '../countries'
-import { fmtTime } from '../format'
+import { fmtAgo, fmtTime } from '../format'
 import { t } from '../i18n'
 import { isViewer } from '../store'
 
@@ -32,6 +32,9 @@ function noteText(n: string): string {
   return m ? t('无法判断（{what}）', { what: m[1] }) : t(n)
 }
 const statusText: Record<Status, string> = { yes: '可用', no: '不可用', partial: '部分可用', captcha: '需人机验证', failed: '检测失败' }
+// 结果时效（修订第 236 条，需求说明书 NET-08）：超过 24 小时的结果标为“上次”并说明多久以前，结果变灰，不当作当前状态
+const STALE_S = 24 * 3600
+const stale = computed(() => !!props.unlock?.checked_at && Date.now() / 1000 - props.unlock.checked_at > STALE_S)
 
 // 通用项与当地服务分开显示；当地服务的地区取自 item.local
 const general = computed(() => props.unlock?.items.filter((it) => !it.local) ?? [])
@@ -64,7 +67,8 @@ const hint = computed(() => {
   <section class="panel unlock">
     <div class="head">
       <h3>{{ t('流媒体与网站解锁') }}</h3>
-      <span v-if="unlock?.checked_at" class="muted small">{{ t('{time} 检测', { time: fmtTime(unlock.checked_at) }) }}</span>
+      <span v-if="unlock?.checked_at" class="muted small" :class="{ warn: stale }">{{ t('上次检测 {time}（{ago}）', { time: fmtTime(unlock.checked_at), ago: fmtAgo(unlock.checked_at) }) }}</span>
+      <span v-else-if="unlock && !pending" class="muted small">{{ t('未检测') }}</span>
       <button v-if="!isViewer" type="button" class="secondary small check" :disabled="pending || !!hint" :title="hint" @click="check">
         {{ pending ? t('检测中…') : unlock?.checked_at ? t('重新检测') : t('检测') }}
       </button>
@@ -74,10 +78,11 @@ const hint = computed(() => {
       <template v-if="hint"> <b>{{ hint }}</b></template>
     </p>
     <p v-if="error" class="small bad">{{ error }}</p>
+    <p v-if="stale && unlock?.items.length" class="small warn stale-note">{{ t('结果是 {ago}的，可能已经变化；下面的状态不代表现在。', { ago: fmtAgo(unlock!.checked_at) }) }}</p>
     <template v-if="unlock?.items.length">
       <template v-for="group in [{ key: 'general', title: '', items: general }, { key: 'local', title: t('当地服务 · {country}', { country: localName }), items: local }]" :key="group.key">
         <h4 v-if="group.title && group.items.length" class="group">{{ group.title }}</h4>
-        <ul v-if="group.items.length" class="items">
+        <ul v-if="group.items.length" class="items" :class="{ stale }">
           <li v-for="it in group.items" :key="it.service">
             <span class="name">{{ names[it.service] ? t(names[it.service]) : it.service }}</span>
             <span class="badge" :class="it.status">{{ t(statusText[it.status]) }}</span>
@@ -88,6 +93,7 @@ const hint = computed(() => {
       </template>
     </template>
     <p v-else-if="pending" class="small muted">{{ t('等待 Agent 检测…') }}</p>
+    <p v-if="unlock?.items.length" class="small muted legend">{{ t('可用：能正常使用；不可用：地区或账号限制；部分可用：只能使用部分内容（如 Netflix 只有自制剧）；需人机验证：出口 IP 被要求验证；检测失败：超时或网络错误。') }}</p>
   </section>
 </template>
 
@@ -106,6 +112,10 @@ const hint = computed(() => {
 .badge.no { color: var(--bad); }
 .badge.partial, .badge.captcha { color: var(--warn); }
 .badge.failed { color: var(--text-muted); }
+.items.stale .badge { opacity: 0.55; }
+.warn { color: var(--warn); }
+.stale-note { margin: 0 0 var(--space-2); }
+.legend { margin: var(--space-3) 0 0; }
 .region { text-align: right; color: var(--text-muted); font-size: var(--font-sm); }
 .group { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-sm); font-weight: var(--weight-strong); color: var(--text-muted); }
 .note-item { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
