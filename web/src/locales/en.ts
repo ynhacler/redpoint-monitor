@@ -1013,6 +1013,7 @@ export const en: Record<string, string> = {
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
   // ---- 云账户卡片（修订第 245 条） ----
   '同步成功': 'Synced',
+  '已运行': 'Up',
   '同步中': 'Syncing',
   '部分同步': 'Partly synced',
   '同步失败': 'Sync failed',

@@ -78,8 +78,9 @@ const diskTip = computed(() => {
       <div v-if="live && r" class="meta num">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
         <span v-if="r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
-        <span :title="t('开机时间')"><Icon name="power" :size="15" />{{ uptime }}</span>
-        <span :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" />{{ load1 }}</span>
+        <!-- 手机上显示文字标签（修订第 246 条，UI-005）：“已运行 1天 · 负载 0.30”，不只靠图标 -->
+        <span :title="t('开机时间')"><Icon name="power" :size="15" /><span class="lbl">{{ t('已运行') }}</span>{{ uptime }}</span>
+        <span :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" /><span class="lbl">{{ t('负载') }}</span>{{ load1 }}</span>
       </div>
       <div v-else class="meta">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
@@ -197,9 +198,16 @@ const diskTip = computed(() => {
 
 /* 手机宽度（修订第 199 条）：用紧凑指标代替五列环形图，名称行与流量行收紧 */
 .compact { display: none; }
+/* 手机：名称独占一行，到期 / 温度 / 运行时间 / 负载在第二行并带文字标签（修订第 246 条，UI-005） */
+.lbl { display: none; }
 @media (max-width: 600px) {
   .card { padding: var(--space-3); }
-  .head { padding-bottom: var(--space-2); }
+  .head { padding-bottom: var(--space-2); flex-direction: column; align-items: stretch; gap: 2px; }
+  .title { flex: none; }
+  .meta { flex-wrap: wrap; row-gap: 0; }
+  .meta :deep(svg) { display: none; }
+  .lbl { display: inline; margin-right: 2px; }
+  .meta > span + span::before { content: '·'; margin-right: var(--space-2); color: var(--text-muted); }
   .name { font-size: var(--font-md); line-height: var(--line-md); }
   .metrics { display: none; }
   .compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-2) 0; }
