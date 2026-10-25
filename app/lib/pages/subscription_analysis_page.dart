@@ -62,11 +62,11 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('每月折合（人民币）', style: muted),
+              Text('月均折算（人民币）', style: muted),
               const SizedBox(height: 2),
               Text(_money(a.monthly), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
               const SizedBox(height: 4),
-              Text('每年约 ${_money(a.monthly * 12)} · ${a.count} 个订阅 · 平均每个 ${_money(a.count == 0 ? 0 : (a.monthly / a.count).round())}/月',
+              Text('每年约 ${_money(a.monthly * 12)} · ${a.count} 个按周期扣费的订阅 · 平均每个 ${_money(a.count == 0 ? 0 : (a.monthly / a.count).round())}/月',
                   style: muted),
             ]),
           ),
@@ -151,6 +151,7 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
           padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
           child: Text(
             [
+              '月均折算是按周期摊到每月的成本，不等于本月扣款：年付、季付只在扣费的月份扣款。',
               '每周 × 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12 折算为每月；已结束的不计入。',
               if (a.once > 0) '一次性付费的 ${a.once} 个不计入。',
               if (a.missing.isNotEmpty) '缺少 ${a.missing.join('、')} 的汇率，这些订阅没有计入。',

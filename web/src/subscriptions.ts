@@ -212,16 +212,6 @@ export function chargeText(s: Subscription, today = new Date()): string {
 export type Money = Map<string, number>
 const add = (m: Money, cur: string, v: number) => m.set(cur, (m.get(cur) ?? 0) + v)
 
-/** 区间内的实际扣费合计（按币种） */
-export function spendBetween(list: Subscription[], from: Date, to: Date): Money {
-  const m: Money = new Map()
-  for (const s of list) {
-    const n = chargesBetween(s, from, to).length
-    if (n) add(m, s.currency, n * s.price_cents)
-  }
-  return m
-}
-
 /** t 所在月（加 offset 个月）的 1 日 */
 export const monthStart = (t: Date, offset = 0) => new Date(t.getFullYear(), t.getMonth() + offset, 1)
 
@@ -234,20 +224,17 @@ export interface CategoryStat {
   pct: number
 }
 
-/** 区间内按类别的花费（换算为人民币，修订第 223 条），金额大的在前；没有汇率的币种不计入 */
+/** 区间内按类别的花费（换算为人民币，修订第 223 条），金额大的在前；由 spendCny 的逐项金额相加，合计与概览一致（修订第 225 条） */
 export function byCategory(list: Subscription[], rates: Rates, from: Date, to: Date): CategoryStat[] {
+  const sp = spendCny(list, rates, from, to)
   const m = new Map<SubCategory, { cents: number; count: number }>()
-  for (const s of list) {
-    const n = chargesBetween(s, from, to).length
-    const cny = n ? toCny(n * s.price_cents, s.currency, rates) : null
-    if (cny == null) continue
+  for (const { s, cents } of sp.items) {
     const x = m.get(s.category) ?? { cents: 0, count: 0 }
-    x.cents += cny
+    x.cents += cents
     x.count++
     m.set(s.category, x)
   }
-  const total = [...m.values()].reduce((a, x) => a + x.cents, 0)
-  return [...m.entries()].map(([category, x]) => ({ category, ...x, pct: total ? (x.cents / total) * 100 : 0 }))
+  return [...m.entries()].map(([category, x]) => ({ category, ...x, pct: sp.cents ? (x.cents / sp.cents) * 100 : 0 }))
     .sort((a, b) => b.cents - a.cents)
 }
 
@@ -277,16 +264,33 @@ export function toCny(cents: number, currency: string, rates: Rates): number | n
   return r ? Math.round(cents * r) : null
 }
 
-/** 按币种的金额换算后的人民币合计，以及缺少汇率的币种 */
-export function cnyTotal(m: Money, rates: Rates): { cents: number; missing: string[] } {
-  let cents = 0
-  const missing: string[] = []
-  for (const [cur, v] of m) {
-    const x = toCny(v, cur, rates)
-    if (x == null) missing.push(cur)
-    else cents += x
+/** 区间内的扣费换算为人民币 */
+export interface CnySpend {
+  /** 合计（分） */
+  cents: number
+  /** 每个有扣费的订阅：区间内的扣费按原币合计后换算、舍入到分 */
+  items: { s: Subscription; cents: number }[]
+  /** 缺少汇率、没有计入合计的部分（按原币种） */
+  missing: Money
+}
+
+/** 区间 [from, to) 内的扣费换算为人民币（修订第 225 条）：唯一的舍入点是每个订阅的区间扣费换算成人民币分；
+ *  概览、统计各类别、每月柱状图的合计都由这些逐项金额相加，同一范围在各处一分不差 */
+export function spendCny(list: Subscription[], rates: Rates, from: Date, to: Date): CnySpend {
+  const out: CnySpend = { cents: 0, items: [], missing: new Map() }
+  for (const s of list) {
+    const n = chargesBetween(s, from, to).length
+    if (!n) continue
+    const cents = toCny(n * s.price_cents, s.currency, rates)
+    if (cents == null) {
+      add(out.missing, s.currency, n * s.price_cents)
+      continue
+    }
+    out.cents += cents
+    out.items.push({ s, cents })
   }
-  return { cents, missing }
+  out.items.sort((a, b) => b.cents - a.cents)
+  return out
 }
 
 /** 一组的折算月费 */

@@ -21,8 +21,8 @@ import { fmtMoney } from '../format'
 import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
-  analyze, byCategory, catalog, categoryColors, categoryNames, chargeText, cnyTotal, cycleNames, currencies, defaultCountry, monthlyCents,
-  monthStart, paymentNames, remindOptions, spendBetween, toCny, trialOptions, ymd, type CatalogItem, type Money, type Rates, type SubCategory,
+  analyze, byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, defaultCountry, monthlyCents,
+  monthStart, paymentNames, remindOptions, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend, type Rates, type SubCategory,
 } from '../subscriptions'
 
 const route = useRoute()
@@ -76,13 +76,10 @@ const now = new Date()
 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 const active = computed(() => list.value.filter((s) => !s.ended))
 const cur = 'CNY' // 统计一律按人民币（修订第 223 条）
-// 主币种大字显示，其他币种在下一行（金额按币种分别统计，不换算）
-const mainText = (m: Money) => fmtMoney(cnyTotal(m, rates.value).cents, cur)
+// 人民币合计（spendCny：与统计页同一舍入，修订第 225 条）
+const mainText = (m: CnySpend) => fmtMoney(m.cents, cur)
 // 缺少汇率、没有计入人民币合计的部分按原币种列出
-const otherText = (m: Money) => {
-  const { missing } = cnyTotal(m, rates.value)
-  return missing.map((c) => `+ ${fmtMoney(m.get(c) ?? 0, c)}`).join(' ')
-}
+const otherText = (m: CnySpend) => [...m.missing].map(([c, v]) => `+ ${fmtMoney(v, c)}`).join(' ')
 /** 外币价格约合人民币：“≈ ¥52.30”；人民币或没有汇率时为空 */
 const cnyText = (cents: number, currency: string) => {
   if (currency === 'CNY') return ''
@@ -93,10 +90,10 @@ const rateDate = computed(() => (fx.value?.as_of ? ymd(new Date(fx.value.as_of *
 // 列表中用到的外币及其汇率：“1 USD = ¥7.12”
 const usedRates = computed(() => [...new Set(list.value.map((s) => s.currency))].filter((c) => c !== 'CNY')
   .map((c) => ({ c, v: rates.value[c] })))
-const thisMonth = computed(() => spendBetween(list.value, monthStart(today), monthStart(today, 1)))
+const thisMonth = computed(() => spendCny(list.value, rates.value, monthStart(today), monthStart(today, 1)))
 const spentSoFar = computed(() => {
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-  return spendBetween(list.value, new Date(2000, 0, 1), tomorrow)
+  return spendCny(list.value, rates.value, new Date(2000, 0, 1), tomorrow)
 })
 const next = computed(() => list.value.find((s) => s.next_charge))
 
@@ -111,7 +108,10 @@ const rangeBounds = computed<[Date, Date]>(() => {
 })
 const cats = computed(() => byCategory(list.value, rates.value, ...rangeBounds.value))
 const catTotal = computed(() => cats.value.reduce((a, c) => a + c.cents, 0))
-const rangeLabel = computed(() => t({ month: '本月预计花费', year: '本年预计花费', all: '累计已花费' }[range.value]))
+const rangeLabel = computed(() => t({ month: '本月预计扣款', year: '本年预计扣款', all: '累计已扣款' }[range.value]))
+const rangeMissing = computed(() => otherText(spendCny(list.value, rates.value, ...rangeBounds.value)))
+const catCount = computed(() => cats.value.reduce((a, c) => a + c.count, 0))
+const ended = computed(() => list.value.length - active.value.length)
 // 环形图：半径 70，线宽 22；各段之间留 2 的空隙
 const R = 70
 const C = 2 * Math.PI * R
@@ -130,7 +130,7 @@ const bars = computed(() => {
   const out = []
   for (let i = -4; i <= 4; i++) {
     const from = monthStart(today, i)
-    const v = cnyTotal(spendBetween(list.value, from, monthStart(today, i + 1)), rates.value).cents
+    const v = spendCny(list.value, rates.value, from, monthStart(today, i + 1)).cents
     out.push({ key: i, label: from.getMonth() === 0 ? String(from.getFullYear()) : from.toLocaleString(locale.value === 'en' ? 'en' : 'zh-CN', { month: 'short' }), cents: v, current: i === 0, future: i > 0 })
   }
   return out
@@ -514,17 +514,17 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <!-- 概览 -->
         <div class="panel strip">
           <div class="item">
-            <span class="label">{{ t('本月预计花费') }}</span>
+            <span class="label">{{ t('本月预计扣款') }}</span>
             <span class="big num">{{ mainText(thisMonth) }}</span>
-            <span v-if="otherText(thisMonth)" class="sub muted num">{{ otherText(thisMonth) }}</span>
+            <span class="sub muted num">{{ t('{n} 个订阅本月扣费', { n: thisMonth.items.length }) }} {{ otherText(thisMonth) }}</span>
           </div>
           <div class="item">
             <span class="label">{{ t('订阅中') }}</span>
             <span class="big num">{{ active.length }}<small> {{ t('个') }}</small></span>
-            <span class="sub muted">{{ t('共记录 {n} 个', { n: list.length }) }}</span>
+            <span class="sub muted">{{ ended ? t('共记录 {n} 个，已结束 {e} 个', { n: list.length, e: ended }) : t('共记录 {n} 个', { n: list.length }) }}</span>
           </div>
           <div class="item">
-            <span class="label">{{ t('截至目前已花费') }}</span>
+            <span class="label">{{ t('截至目前已扣款') }}</span>
             <span class="big num">{{ mainText(spentSoFar) }}</span>
             <span v-if="otherText(spentSoFar)" class="sub muted num">{{ otherText(spentSoFar) }}</span>
           </div>
@@ -574,9 +574,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <section v-else-if="view === 'analysis'" class="panel stats">
           <div class="ana-head">
             <div>
-              <span class="label">{{ t('每月折合') }}</span>
+              <span class="label">{{ t('月均折算') }}</span>
               <span class="big num">{{ fmtMoney(ana.monthly, 'CNY') }}</span>
-              <span class="sub muted num">{{ t('每年约 {v} · {n} 个订阅 · 平均每个 {avg}/月', {
+              <span class="sub muted num">{{ t('每年约 {v} · {n} 个按周期扣费的订阅 · 平均每个 {avg}/月', {
                 v: fmtMoney(ana.monthly * 12, 'CNY'), n: ana.count, avg: fmtMoney(ana.count ? Math.round(ana.monthly / ana.count) : 0, 'CNY') }) }}</span>
             </div>
             <div class="segmented" role="group" :aria-label="t('分组')">
@@ -613,6 +613,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </li>
           </ol>
           <p class="small muted rate-note">
+            {{ t('月均折算是按周期摊到每月的成本，不等于本月扣款：年付、季付只在扣费的月份计入本月扣款。') }}
             {{ t('每周按 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12 折算为每月；已结束的不计入。') }}
             <template v-if="ana.once">{{ t('一次性付费的 {n} 个不计入。', { n: ana.once }) }}</template>
             <template v-if="ana.missing.length">{{ t('缺少 {c} 的汇率，这些订阅没有计入。', { c: ana.missing.join('、') }) }}</template>
@@ -649,6 +650,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                 </span>
               </li>
               <li v-if="!cats.length" class="muted small">{{ t('这段时间没有扣费。') }}</li>
+              <li v-else class="muted small">{{ t('这段时间有扣费的 {n} 个订阅（各类别相加与合计一致）', { n: catCount }) }}<template v-if="rangeMissing"> · {{ t('缺少汇率未计入：{v}', { v: rangeMissing }) }}</template></li>
             </ul>
           </div>
 
