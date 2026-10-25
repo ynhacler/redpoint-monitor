@@ -857,6 +857,8 @@ function expireTone(i: CloudInstance): string {
 .danger-text { color: var(--bad); }
 @media (max-width: 640px) {
   .account { padding: var(--space-4); }
+  /* 触控区域不小于 44px（修订第 270 条，M-05） */
+  .acts > button, .more-btn, .cost-info summary, .detail-toggle { min-height: 44px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .list li { grid-template-columns: minmax(0, 1fr) auto; }
   .list .traffic { grid-column: 1 / -1; }
