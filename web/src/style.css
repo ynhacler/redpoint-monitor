@@ -93,6 +93,13 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 .segmented button + button { border-left: 1px solid var(--border); }
 .segmented button.active { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
 
+/* 电脑侧边栏（修订第 238 条，App.vue）：≥ 1100px 时页面右移侧边栏的宽度 */
+:root { --sidebar-w: 208px; }
+html.sidebar-collapsed { --sidebar-w: 60px; }
+@media (min-width: 1100px) {
+  html.has-sidebar body { padding-left: var(--sidebar-w); }
+}
+
 @media (max-width: 600px) {
   .page { padding: var(--space-3) var(--space-3) var(--space-6); }
   .panel { padding: var(--space-4); }

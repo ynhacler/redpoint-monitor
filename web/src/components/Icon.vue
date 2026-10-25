@@ -5,6 +5,7 @@ import {
   Activity, AlignLeft, Cloud, CreditCard, Globe, LayoutDashboard, Settings, ArrowDown, ArrowDownUp, ArrowLeft, ArrowUp, CalendarClock, ChartLine, Clock, Cpu, Eye, EyeOff, GripVertical, HardDrive,
   Layers, LogOut, MemoryStick, Monitor, Moon, Pencil, Plug, Plus, Power, Radio, Search, SquareActivity,
   Sun, Terminal, Thermometer, User, KeyRound, LockKeyhole, ShieldCheck, Smartphone, Users, ChevronRight, Bell, Download, ScrollText,
+  PanelLeftClose, PanelLeftOpen,
 } from '@lucide/vue'
 
 const icons = {
@@ -19,6 +20,8 @@ const icons = {
   key: KeyRound, lock: LockKeyhole, shield: ShieldCheck, smartphone: Smartphone, users: Users,
   // 手机“系统”菜单（修订第 231 条）
   'chevron-right': ChevronRight, bell: Bell, download: Download, logs: ScrollText,
+  // 电脑侧边栏（修订第 238 条）
+  'panel-close': PanelLeftClose, 'panel-open': PanelLeftOpen,
 }
 
 export type IconName = keyof typeof icons
