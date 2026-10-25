@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 代理程序（修订第 169 条）：只给管理员。按进程名识别，协议、端口、传输方式与 TLS 类型来自可读的配置文件（不含任何密钥），
 // 并核对端口是否在监听。曾经运行、现在没有运行的列在顶部，主动停用或卸载后可点“不再提醒”。
+// 每个程序一个折叠分组，入站为四列紧凑行，正常监听不再用绿色标签（修订第 252 条）。
 import { computed, ref } from 'vue'
 import { errorText, forgetProxies, type ServerView } from '../api'
 import { fmtTime } from '../format'
@@ -42,6 +43,7 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
       <h3>{{ t('代理') }}</h3>
       <span class="muted small">{{ t('仅管理员可见') }}</span>
     </div>
+    <p class="muted small note top">ⓘ {{ t('按进程名识别，协议与端口来自可读的配置文件；不读取也不上传任何密钥、UUID 或密码。') }}</p>
     <p v-if="error" class="small bad">{{ error }}</p>
     <ul v-if="missing.length" class="missing">
       <li v-for="m in missing" :key="m.name">
@@ -51,29 +53,30 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
         <button type="button" class="text small" :title="t('主动停用或卸载时点这里')" @click="forget(m.name)">{{ t('不再提醒') }}</button>
       </li>
     </ul>
-    <div v-for="p in proxies" :key="p.name" class="proxy">
-      <div class="proxy-head">
+    <!-- 每个程序一个折叠分组（修订第 252 条，UI-011）：标题只显示一次状态；有问题的默认展开，正常的收起 -->
+    <details v-for="p in proxies" :key="p.name" class="proxy" :open="!p.running || hasDown(p) || proxies.length === 1">
+      <summary class="proxy-head">
         <strong>{{ names[p.name] ? t(names[p.name]) : p.name }}</strong>
         <span class="tag" :class="p.running ? (hasDown(p) ? 'warn' : 'on') : 'off'">
           {{ p.running ? (hasDown(p) ? t('运行中 · 有端口没在监听') : (p.name === 'wireguard' ? t('{n} 个接口', { n: p.procs }) : t('运行中'))) : t('已安装 · 未运行') }}
         </span>
-        <span v-if="p.config" class="muted small path">{{ p.config }}</span>
-      </div>
+        <span v-if="p.inbounds?.length" class="muted small count">{{ t('{n} 个入站', { n: p.inbounds.length }) }}</span>
+      </summary>
       <p v-if="p.config_no === 'unreadable'" class="muted small note">{{ t('配置只有 root 可读：只能确认是否在运行，看不到协议与端口。') }}</p>
       <p v-else-if="p.config_no === 'invalid'" class="muted small note">{{ t('配置格式无法识别。') }}</p>
       <p v-else-if="!p.inbounds?.length && p.name !== 'x-ui'" class="muted small note">{{ t('没有找到配置或入站。') }}</p>
+      <!-- 入站：协议、端口 / 网络、传输与安全、监听状态四列；正常监听为中性文字，只有异常才用醒目标签 -->
       <ul v-if="p.inbounds?.length" class="inbounds">
         <li v-for="(i, k) in p.inbounds" :key="k">
           <span class="proto">{{ protoNames[i.protocol] ? t(protoNames[i.protocol]) : i.protocol }}</span>
-          <span class="num">{{ i.port }}/{{ i.network ?? 'tcp' }}</span>
-          <span v-if="i.transport" class="muted small">{{ i.transport }}</span>
-          <span v-if="i.security && i.security !== 'none'" class="muted small">{{ i.security === 'reality' ? 'Reality' : i.security.toUpperCase() }}</span>
-          <span v-if="i.local" class="tag off">{{ t('仅本机') }}</span>
-          <span class="tag" :class="i.listening ? 'on' : (i.local || !p.running ? 'off' : 'bad')">{{ i.listening ? t('监听中') : t('未监听') }}</span>
+          <span class="num port">{{ i.port }}/{{ i.network ?? 'tcp' }}</span>
+          <span class="muted small tr">{{ [i.transport, i.security && i.security !== 'none' ? (i.security === 'reality' ? 'Reality' : i.security.toUpperCase()) : ''].filter(Boolean).join(' · ') || '—' }}</span>
+          <span v-if="i.listening" class="small st">{{ i.local ? t('仅本机') : t('监听中') }}</span>
+          <span v-else class="tag st" :class="i.local || !p.running ? 'off' : 'bad'">{{ t('未监听') }}</span>
         </li>
       </ul>
-    </div>
-    <p class="muted small note">{{ t('按进程名识别，协议与端口来自可读的配置文件；不读取也不上传任何密钥、UUID 或密码。') }}</p>
+      <p v-if="p.config" class="muted small path">{{ t('配置：{path}', { path: p.config }) }}</p>
+    </details>
   </section>
 </template>
 
@@ -86,12 +89,20 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
 .missing li { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .missing button { margin-left: auto; padding: 0; }
 .proxy { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
-.proxy-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.path { overflow-wrap: anywhere; }
+.proxy-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; cursor: pointer; list-style: none; min-height: 36px; }
+.proxy-head::-webkit-details-marker { display: none; }
+.proxy-head::before { content: '›'; color: var(--text-muted); transition: transform .15s; display: inline-block; width: 10px; }
+.proxy[open] > .proxy-head::before { transform: rotate(90deg); }
+.count { margin-left: auto; }
+.note.top { margin: var(--space-1) 0 0; }
+.path { overflow-wrap: anywhere; margin: var(--space-2) 0 0; }
 .note { margin: var(--space-2) 0 0; }
 .inbounds { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.inbounds li { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; font-size: var(--font-sm); }
-.proto { font-weight: var(--weight-strong); min-width: 6em; }
+.inbounds li { display: grid; grid-template-columns: minmax(5.5em, auto) auto minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3);
+  font-size: var(--font-sm); }
+.proto { font-weight: var(--weight-strong); }
+.tr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { justify-self: end; color: var(--text-muted); }
 .tag { font-size: var(--font-xs); padding: 1px var(--space-2); border-radius: var(--radius-full); }
 .tag.on { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
 .tag.off { background: var(--surface-2); color: var(--text-muted); }
