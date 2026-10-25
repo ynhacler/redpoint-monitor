@@ -611,7 +611,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
         opacity: t.enabled ? 1 : 0.45, // 这台节点已不再测：只是之前的数据
         child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(lat == null ? '不可达' : fmtLatency(lat), style: TextStyle(fontSize: 13, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
-          Text(fmtPct(t.loss), style: small),
+          Text(fmtLoss(t.loss), style: small),
         ]),
       );
     }

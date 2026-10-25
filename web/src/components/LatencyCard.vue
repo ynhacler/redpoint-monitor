@@ -4,7 +4,7 @@
 // 境外目标（修订第 122 条）单独一张表：每行一个城市。点击一行查看该地区三网（或该境外城市）的 24 小时 / 7 天曲线。Agent 按“系统 → 监测”中的频率测量（默认 5 分钟），这里每分钟刷新。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getLatency, type LatencyTarget, type LatencyView } from '../api'
-import { DASH, fmtLatency, fmtPct, fmtTime } from '../format'
+import { DASH, fmtLatency, fmtLoss, fmtTime } from '../format'
 import { t } from '../i18n'
 import { isViewer } from '../store'
 import Chart, { type Series } from './Chart.vue'
@@ -134,7 +134,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
                 :title="cellTitle(r.cells[isp.key])">
                 <template v-if="r.cells[isp.key]?.loss != null">
                   <b class="num">{{ r.cells[isp.key]!.latency_ms == null ? t('不可达') : fmtLatency(r.cells[isp.key]!.latency_ms) }}</b>
-                  <small>{{ fmtPct(r.cells[isp.key]!.loss) }}</small>
+                  <small>{{ fmtLoss(r.cells[isp.key]!.loss) }}</small>
                 </template>
                 <span v-else class="muted">{{ DASH }}</span>
               </td>
@@ -156,7 +156,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
               <td :class="[level(tg), { stale: !tg.enabled }]" :title="cellTitle(tg)">
                 <template v-if="tg.loss != null">
                   <b class="num">{{ tg.latency_ms == null ? t('不可达') : fmtLatency(tg.latency_ms) }}</b>
-                  <small>{{ fmtPct(tg.loss) }}</small>
+                  <small>{{ fmtLoss(tg.loss) }}</small>
                 </template>
                 <span v-else class="muted">{{ DASH }}</span>
               </td>
@@ -166,7 +166,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
       </div>
       <div v-if="hasData && series.lat.length" class="charts">
         <Chart :title="`${selectedName} · ${t('延迟')}`" :series="series.lat" :format="fmtLatency" />
-        <Chart :title="`${selectedName} · ${t('丢包率')}`" :series="series.loss" :format="fmtPct" :max="100" />
+        <Chart :title="`${selectedName} · ${t('丢包率')}`" :series="series.loss" :format="fmtLoss" :max="100" />
       </div>
       <p v-if="hasData" class="small muted foot">{{ t('数值为最近 1 小时的中位数与丢包率；从这台 VPS 出发测量，点击一行查看曲线。') }}</p>
     </template>

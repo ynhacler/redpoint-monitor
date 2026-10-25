@@ -61,6 +61,18 @@ String fmtAgo(int unix, {DateTime? now}) {
   return '${s ~/ 86400} 天前';
 }
 
+/// 丢包率（修订第 260 条，与 Web 的 fmtLoss 相同）：不用“<1%”合并小数值；0 为“0%”，<0.01 为“<0.01%”，
+/// 小于 1% 保留到两位小数（去掉末尾 0），小于 10% 保留一位，其余取整；null 为“—”（未检测，不当作 0）
+String fmtLoss(num? p) {
+  if (p == null || p.isNaN) return dash;
+  if (p == 0) return '0%';
+  if (p < 0.01) return '<0.01%';
+  String trim(String s) => s.replaceFirst(RegExp(r'\.?0+$'), '');
+  if (p < 1) return '${trim(p.toStringAsFixed(2))}%';
+  if (p < 10) return '${trim(p.toStringAsFixed(1))}%';
+  return '${p.round()}%';
+}
+
 /// 精细百分比（修订第 228 条）：小于 1% 时保留两位小数，更小时为 “<0.01%”；其余同 fmtPct
 String fmtPctFine(num? p) {
   if (p == null || p.isNaN) return dash;

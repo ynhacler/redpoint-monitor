@@ -66,6 +66,18 @@ export function fmtAgo(unix: number, now = Date.now() / 1000): string {
   return t('{n} 天前', { n: Math.floor(s / 86400) })
 }
 
+/** 丢包率（修订第 260 条，第二轮 UI2-001）：不用“<1%”合并小数值——坐标轴 0 / 0.25 / 0.5 / 0.75 / 1% 各自可辨；
+ *  0 为“0%”，小于 1% 保留到两位小数（去掉末尾 0），小于 10% 保留一位，其余取整；null 为“—”（未检测，不当作 0） */
+export function fmtLoss(p: number | null | undefined): string {
+  if (p == null || Number.isNaN(p)) return DASH
+  if (p === 0) return '0%'
+  if (p < 0.01) return '<0.01%' // 不能舍入成“0%”
+  const trim = (s: string) => s.replace(/\.?0+$/, '')
+  if (p < 1) return `${trim(p.toFixed(2))}%`
+  if (p < 10) return `${trim(p.toFixed(1))}%`
+  return `${Math.round(p)}%`
+}
+
 /** 精细百分比（修订第 228 条）：小于 1% 时保留两位小数（“0.05%”），更小时为 “<0.01%”；其余同 fmtPct */
 export function fmtPctFine(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return DASH
