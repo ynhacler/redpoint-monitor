@@ -1,4 +1,6 @@
 // 从节点数据派生的指标与健康判断：与 web/src/metrics.ts 同一规则，同一节点在 Web 与 App 上结论一致。
+import 'dart:math' as math;
+
 import 'models.dart';
 
 /// 健康级别：正常、警告、严重
@@ -151,3 +153,14 @@ FleetStats fleetStats(List<ServerView> items) {
   }
   return FleetStats(live: live, rx: rx, tx: tx, cpu: live > 0 ? cpu / live : null, mem: live > 0 ? mem / live : null, trafficUsed: used);
 }
+
+/// 历史的数据覆盖（修订第 254 条，与 Web 相同）：有数据的时长（秒）不到所选范围的 90% 时返回该时长，否则为 null。
+/// 粒度取相邻点间隔的中位数；有数据的时长按“点数 × 粒度”估算，中间断开的时段不算。
+int? historyCoverage(List<int> times, int rangeSeconds) {
+  if (times.length < 2) return null;
+  final gaps = [for (var i = 1; i < times.length; i++) times[i] - times[i - 1]]..sort();
+  final step = gaps[gaps.length ~/ 2].clamp(1, 1 << 30);
+  final covered = math.min(times.length * step, times.last - times.first + step);
+  return covered < rangeSeconds * 0.9 ? covered : null;
+}
+

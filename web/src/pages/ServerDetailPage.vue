@@ -23,7 +23,7 @@ import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
 import UnlockCard from '../components/UnlockCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
-import { fmtBytes, fmtTime } from '../format'
+import { fmtBytes, fmtDuration, fmtTime } from '../format'
 import { t } from '../i18n'
 import { displayStatus, isLive, issues, type LiveSample } from '../metrics'
 import { alertsOn, isViewer, serverById, state } from '../store'
@@ -210,6 +210,20 @@ watch([sid, range], () => {
 onBeforeUnmount(() => timer && clearInterval(timer))
 
 const pts = computed(() => history.value?.items ?? [])
+// 数据覆盖（修订第 254 条，UI 精修 3.4）：所选范围内实际有数据的时长不到范围的 90% 时注明“仅有 N 的历史”，
+// 不让 24H / 7D / 30D 暗示已有完整历史（节点新接入、Agent 停过）；缺失的时段不补 0
+// 3 天以内按小时（四舍五入），更长按天，避免“约 1 天”与“约 2 天”这类粗略取整
+const coverageText = (sec: number) => (sec < 3 * 86400 ? t('{n} 小时', { n: Math.max(1, Math.round(sec / 3600)) }) : fmtDuration(sec))
+const rangeSeconds: Record<HistoryRange, number> = { '1h': 3600, '6h': 6 * 3600, '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400 }
+const coverage = computed(() => {
+  const list = pts.value
+  if (list.length < 2) return null
+  const res = Math.max(history.value?.resolution ?? 10, s.value?.report_interval_s || 10)
+  // 按点数 × 粒度估算有数据的时长（中间断开的时段不算）
+  const covered = Math.min(list.length * res, list[list.length - 1].ts - list[0].ts + res)
+  const want = rangeSeconds[range.value]
+  return covered < want * 0.9 ? covered : null
+})
 const coarse = computed(() => (history.value?.resolution ?? 10) > 10) // 聚合数据才有“峰值”
 // 相邻两点间隔超过 3 个粒度视为没有数据（面板或 Agent 停机），插入 null 断开曲线，
 // 否则图表会用直线把缺口连起来，看起来像真实数据。原始粒度按节点的采样间隔计（设计 4.2）
@@ -337,6 +351,7 @@ const charts = computed(() => [
             </div>
           </div>
           <p v-if="historyError" class="banner">{{ historyError }}</p>
+          <p v-else-if="coverage != null" class="small muted coverage">{{ t('所选 {range} 内仅有约 {d} 的数据，缺失的时段不画线（不是 0）', { range: range.toUpperCase(), d: coverageText(coverage) }) }}</p>
           <p v-else-if="history && !pts.length" class="muted">{{ t('这个时间范围内还没有数据。') }}</p>
           <div v-else class="charts">
             <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
@@ -389,6 +404,7 @@ const charts = computed(() => [
 </template>
 
 <style scoped>
+.coverage { margin: 0 0 var(--space-2); }
 .section-tight { margin-bottom: var(--space-3); }
 .nav-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .actions-row { display: flex; gap: var(--space-2); }

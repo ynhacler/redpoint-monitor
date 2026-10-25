@@ -122,4 +122,17 @@ void main() {
     expect([for (final (s, _) in got) s.name], ['gone', 'soon', 'month']);
     expect(got.first.$2.text, '已过期');
   });
+
+  test('历史数据覆盖（修订第 254 条）：不到范围的 90% 时返回有数据的时长', () {
+    // 每 60 秒一个点，共 40 个（约 40 分钟），选 24 小时
+    final t40 = [for (var i = 0; i < 40; i++) 1000 + i * 60];
+    expect(historyCoverage(t40, 86400), 2400);
+    // 1 小时范围内几乎满的数据：不提示
+    final full = [for (var i = 0; i < 360; i++) 1000 + i * 10];
+    expect(historyCoverage(full, 3600), isNull);
+    // 中间断开 10 小时：只算有点的时长
+    final gap = [...[for (var i = 0; i < 60; i++) i * 60], ...[for (var i = 0; i < 60; i++) 40000 + i * 60]];
+    expect(historyCoverage(gap, 86400), 7200);
+    expect(historyCoverage([1], 3600), isNull);
+  });
 }

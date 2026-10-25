@@ -2,6 +2,8 @@
 // 每 10 秒刷新；网络不可用时显示缓存与最后更新时间（设计 1.5.10）。
 import 'dart:async';
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../widgets/stale_banner.dart';
@@ -37,6 +39,7 @@ class ServerDetailPage extends StatefulWidget {
 }
 
 const _ranges = ['1h', '6h', '24h', '7d', '30d'];
+const _rangeSeconds = {'1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800, '30d': 2592000};
 
 class _ServerDetailPageState extends State<ServerDetailPage> {
   late ServerView _s = widget.initial;
@@ -736,6 +739,13 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       ]),
       const SizedBox(height: 12),
       // 百分比按数据取整（10%～100%），低负载时也能看清起伏
+      // 数据覆盖不到所选范围时注明（修订第 254 条）
+      if (historyCoverage(times, _rangeSeconds[_range] ?? 3600) case final cov?)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text('所选 ${_range.toUpperCase()} 内仅有约 ${cov < 3 * 86400 ? '${math.max(1, (cov / 3600).round())} 小时' : fmtDuration(cov)}的数据，缺失的时段不画线（不是 0）',
+              style: TextStyle(fontSize: 12, color: appColors(context).textMuted)),
+        ),
       LineChart(times: times, series: series, formatY: fmt, capMax: max, minMax: max == null ? null : 10),
       if (_historyStale && _historyAt != null)
         Padding(
