@@ -370,15 +370,19 @@ async function remove() {
     saving.value = false
   }
 }
-const startText = (s: Subscription) => `${s.start_date.replaceAll('-', '.')} ${s.category === 'vps' ? t('购买') : t('开始订阅')}`
-// VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
-function vpsSpec(v: Subscription['vps']) {
-  const gb = (n: number) => (n >= 1024 && n % 1024 === 0 ? `${n / 1024} TB` : `${n} GB`)
-  return [
-    v.cpu ? t('{n} 核', { n: v.cpu }) : '', v.memory_gb ? `${v.memory_gb} GB` : '', v.disk_gb ? gb(v.disk_gb) : '',
-    v.traffic_gb ? t('{v}/月', { v: gb(v.traffic_gb) }) : '', v.bandwidth_mbps ? `${v.bandwidth_mbps} Mbps` : '',
-  ].filter(Boolean).join(' · ')
+// 列表主金额（修订第 253 条）：人民币（外币按汇率换算，前面加 ≈）；没有汇率时显示原币
+const mainPrice = (s: Subscription) => {
+  if (s.currency === 'CNY') return fmtMoney(s.price_cents, 'CNY')
+  const v = toCny(s.price_cents, s.currency, rates.value)
+  return v == null ? fmtMoney(s.price_cents, s.currency) : `≈ ${fmtMoney(v, 'CNY')}`
 }
+// 7 天内扣费的短标签（文字，不只靠颜色）
+const soonDays = (s: Subscription) => {
+  if (s.ended || !s.next_charge) return null
+  const d = Math.round((new Date(`${s.next_charge}T00:00:00`).getTime() - today.getTime()) / 86400000)
+  return d >= 0 && d <= 7 ? d : null
+}
+// VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
 const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
 // 号码显示：区号 + 按当地习惯分组的号码（+1 650 555 0123、+86 138 0013 8000），其他按每 4 位分组
 function fmtPhone(p: { cc: string; number: string }) {
@@ -594,27 +598,25 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           </li>
           <template v-else>
           <li v-for="s in [r.s!]" :key="s.id">
-            <button type="button" class="panel sub-row" :class="{ ended: s.ended }" @click="openEdit(s)">
+            <!-- 三层信息（修订第 253 条，UI-012）：名称 / 地区 · 支付方式 / 扣费说明；右侧人民币为主金额，原币在下一行。
+                 开始日期、VPS 规格与备注放在编辑页（悬停可看备注） -->
+            <button type="button" class="panel sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
               <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
-                <b class="ellipsis">{{ s.name }}</b>
-                <span v-if="s.phones.length" class="small num phone-line">{{ fmtPhone(s.phones[0]) }}<span v-if="s.phones.length > 1" class="muted">{{ t(' 等 {n} 个号码', { n: s.phones.length }) }}</span></span>
-                <template v-if="s.category === 'vps'">
-                  <span v-if="s.vps.ips.length" class="small mono phone-line ellipsis">{{ s.vps.ips[0] }}<span v-if="s.vps.ips.length > 1" class="muted"> +{{ s.vps.ips.length - 1 }}</span></span>
-                  <span v-if="vpsSpec(s.vps) || s.vps.location" class="small muted ellipsis">{{ [s.vps.location, vpsSpec(s.vps)].filter(Boolean).join(' · ') }}</span>
-                </template>
-                <span class="small muted">{{ startText(s) }}<template v-if="s.note"> · {{ s.note }}</template></span>
+                <b class="ellipsis">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
+                  v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
                 <span v-if="s.country || s.payment" class="small muted meta-line">
                   <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
                   {{ [s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ') }}
                 </span>
+                <span class="small muted">{{ chargeText(s, today) }}</span>
               </span>
               <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
                 @click.stop>{{ t('监控中') }}</RouterLink>
               <span class="sub-price">
-                <b class="num">{{ fmtMoney(s.price_cents, s.currency) }}</b>
-                <span v-if="cnyText(s.price_cents, s.currency)" class="small muted num">{{ cnyText(s.price_cents, s.currency) }}</span>
-                <span class="small muted">{{ chargeText(s, today) }}</span>
+                <b class="num">{{ mainPrice(s) }}<small class="muted cyc">/{{ t(cycleShort[s.cycle] ?? s.cycle) }}</small></b>
+                <span v-if="s.currency !== 'CNY'" class="small muted num">{{ fmtMoney(s.price_cents, s.currency) }}</span>
+                <span v-if="soonDays(s) != null" class="soon small">{{ soonDays(s) === 0 ? t('今天扣费') : t('{n} 天后扣费', { n: soonDays(s)! }) }}</span>
               </span>
             </button>
           </li>
@@ -651,7 +653,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </li>
             <li v-if="!anaRows.length" class="muted small">{{ t('没有进行中的按周期扣费的订阅。') }}</li>
           </ul>
-          <h3 class="bars-title">{{ t('月费排行（不是按月付费的折算为每月）') }}</h3>
+          <h3 class="bars-title">{{ t('月均成本排行（不是按月付费的折算为每月）') }}</h3>
           <ol class="ana-top">
             <li v-for="(x, i) in ana.top.slice(0, 10)" :key="x.s.id">
               <span class="rank num">{{ i + 1 }}</span>
@@ -765,6 +767,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .sub-row:hover { border-color: var(--text-muted); filter: none; }
 .sub-row.ended { opacity: .5; }
 .sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.id-inline { margin-left: var(--space-2); font-weight: normal; color: var(--text-muted); font-size: var(--font-sm); }
+.cyc { font-weight: normal; font-size: var(--font-xs); }
+.soon { white-space: nowrap; padding: 0 6px; border-radius: var(--radius-full); color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .sub-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex: 0 1 auto; max-width: 48%; min-width: 0; }
 /* 窄屏不重叠（修订第 237 条）：左侧每行超出时省略，右侧扣费说明可换行 */
 .sub-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

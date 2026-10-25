@@ -1011,6 +1011,9 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 订阅行（修订第 253 条） ----
+  '今天扣费': 'charged today',
+  '{n} 天后扣费': 'charged in {n} days',
   // ---- 代理分组（修订第 252 条） ----
   '{n} 个入站': '{n} inbounds',
   '配置：{path}': 'Config: {path}',
@@ -1262,7 +1265,7 @@ export const en: Record<string, string> = {
   '缺少汇率未计入：{v}': 'Not included (no exchange rate): {v}',
   '每年约 {v} · {n} 个按周期扣费的订阅 · 平均每个 {avg}/月': 'About {v} a year · {n} recurring subscriptions · {avg}/month on average',
   '没有进行中的按周期扣费的订阅。': 'No active recurring subscriptions.',
-  '月费排行（不是按月付费的折算为每月）': 'Monthly cost ranking (non-monthly plans converted to a monthly amount)',
+  '月均成本排行（不是按月付费的折算为每月）': 'Average monthly cost ranking (non-monthly plans converted to a monthly amount)',
   '折合 {v}/月': '{v}/month equivalent',
   '每周按 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12 折算为每月；已结束的不计入。':
     'Weekly × 52 ÷ 12, quarterly ÷ 3, semi-annual ÷ 6, annual ÷ 12 to get a monthly amount; ended subscriptions are excluded.',
