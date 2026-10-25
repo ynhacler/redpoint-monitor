@@ -572,7 +572,7 @@ export const en: Record<string, string> = {
   '连接出错': 'Connection error',
   '未检测': 'Not checked',
   '端口基线': 'Port baseline',
-  '允许对公网开放的监听端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。':
+  '允许对外监听的端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。':
     'Listening ports allowed to be public. Alerts when a port outside the baseline appears (e.g. someone starts 8080 or 3306) or a baseline port stops listening.',
   '只看本机的监听，是否真能从公网访问还取决于防火墙与安全组。':
     'Only local listeners are checked; whether they are really reachable also depends on firewalls and security groups.',
@@ -581,11 +581,11 @@ export const en: Record<string, string> = {
   '以当前为准': 'Use current',
   '取消基线': 'Remove baseline',
   '还没有设置，不检查新增端口。': 'Not set; new ports are not checked.',
-  '以当前对公网开放的 {n} 个端口为基线': 'Use the {n} currently public ports as the baseline',
+  '以当前对外监听的 {n} 个端口为基线': 'Use the {n} currently public ports as the baseline',
   '{n} 个允许的端口 · {time} 设置': '{n} allowed ports · set {time}',
   '不在基线中': 'Not in baseline',
   '未监听': 'Not listening',
-  '没有对公网开放的监听端口。': 'No public listening ports.',
+  '没有对外监听的端口。': 'No public listening ports.',
   '从面板检测公网可达': 'Check public reachability from the panel',
   '{time} 检测 {target}': 'checked {target} at {time}',
   '逐个 TCP 连接节点的公网地址（连上即断开）。“超时”多为防火墙或安全组拦截；结果反映的是从面板所在网络能否访问。':
@@ -990,6 +990,21 @@ export const en: Record<string, string> = {
   '最近 {n} 次': 'Last {n} runs',
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
+  // ---- 监听范围与外部可达（修订第 227 条） ----
+  '对外监听': 'Externally bound',
+  '全部地址': 'All addresses',
+  '公网地址': 'Public address',
+  '{scope} · 风险端口': '{scope} · risky port',
+  '监听范围：{scope} · {family}': 'Bound to: {scope} · {family}',
+  '外部可达：{v}': 'External reachability: {v}',
+  '已验证可达': 'Verified reachable',
+  '已验证不可达（被拒绝）': 'Verified unreachable (refused)',
+  '已验证不可达（超时，多为被拦截）': 'Verified unreachable (timeout, likely filtered)',
+  '未检测（UDP）': 'Not checked (UDP)',
+  '“对外监听”只表示端口绑定在全部地址或公网地址上；能否从公网访问还取决于防火墙与安全组。':
+    '“Externally bound” only means the port listens on all addresses or a public address; whether it is reachable from the internet depends on firewalls and security groups.',
+  '外部可达为面板 {time} 检测 {target} 的结果。': 'Reachability is from the panel’s check of {target} at {time}.',
+  '外部可达未检测，可在“端口基线”中从面板检测。': 'Reachability not checked yet; run a check from the panel under “Port baseline”.',
   '探测源：本浏览器（当前网络与代理）。下面的“中国 / 美国 / 全球”是目标网站所在地区，不是探测地点。':
     'Tested from: this browser (your current network and proxy). “China / US / Global” is where the target sites are, not where the test runs from.',
   '无记录': 'No result',
