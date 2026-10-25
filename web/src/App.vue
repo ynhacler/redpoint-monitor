@@ -170,7 +170,8 @@ onUnmounted(stopPolling)
 .loading { text-align: center; padding-top: var(--space-8); }
 .footer { max-width: var(--max-width); margin: var(--space-7) auto var(--space-5); padding: 0 var(--space-4); color: var(--text-muted);
   text-align: center; }
-.topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+  padding-top: env(safe-area-inset-top); } /* 从主屏幕全屏打开时避开刘海与状态栏（修订第 244 条） */
 .inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-4); height: 52px; display: flex; align-items: center; gap: var(--space-6); }
 .brand { white-space: nowrap; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-lg); text-decoration: none; }
 /* 导航可收缩并横向滚动，任何宽度都不把右侧工具区挤出屏幕（修订第 152 条） */
