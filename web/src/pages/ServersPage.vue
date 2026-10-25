@@ -40,8 +40,10 @@ function setFilter(v: StatusFilter) {
   router.replace({ query: { ...route.query, f: v === 'all' ? undefined : v } })
 }
 
-const query = ref('')
-const group = ref('')
+// 搜索与分组也写在地址中（修订第 230 条）：从节点详情返回时保持
+const query = ref(String(route.query.q ?? ''))
+const group = ref(String(route.query.g ?? ''))
+watch([query, group], ([q, g]) => router.replace({ query: { ...route.query, q: q || undefined, g: g || undefined } }))
 const sorts = [
   { v: 'abnormal', t: '异常优先' }, { v: 'cpu', t: 'CPU' }, { v: 'mem', t: '内存' },
   { v: 'disk', t: '磁盘' }, { v: 'traffic', t: '流量' }, { v: 'name', t: '名称' }, { v: 'custom', t: '自定义' },
@@ -280,8 +282,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
   .filters { gap: var(--space-2); margin-bottom: var(--space-3); }
   .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; flex-basis: 100%; }
   .chip { flex: none; padding: 3px var(--space-3); }
-  .filters .search { flex: 1 1 0; max-width: none; min-width: 0; }
-  .filters select { flex: none; width: auto; max-width: 132px; }
+  /* 搜索独占一行，分组与排序在下一行平分，文字不截断（修订第 230 条） */
+  .filters .search { flex: 1 1 100%; max-width: none; min-width: 0; }
+  .filters select { flex: 1 1 0; width: auto; min-width: 0; max-width: none; }
   .filters .btn.secondary { display: none; }
   .grid.server-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
