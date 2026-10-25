@@ -10,6 +10,7 @@ import {
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
 import EmptyState from '../components/EmptyState.vue'
+import Icon from '../components/Icon.vue'
 import UsageBar from '../components/UsageBar.vue'
 import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime, fmtTraffic } from '../format'
 import { t } from '../i18n'
@@ -414,7 +415,8 @@ function expireTone(i: CloudInstance): string {
   <main class="page">
     <div class="page-head">
       <h1>{{ t('云平台') }}</h1>
-      <button v-if="editing === null" type="button" @click="openNew">{{ t('添加账户') }}</button>
+      <!-- 与“添加订阅”“新建节点”同一样式：主按钮 + 加号图标（修订第 259 条） -->
+      <button v-if="editing === null" type="button" class="btn" @click="openNew"><Icon name="plus" />{{ t('添加账户') }}</button>
     </div>
     <!-- 已有账户后不再显示介绍（修订第 185 条） -->
     <p v-if="loaded && !accounts.length" class="muted small intro">
@@ -564,7 +566,7 @@ function expireTone(i: CloudInstance): string {
     </form>
 
     <EmptyState v-if="loaded && !accounts.length && editing === null" :text="t('还没有云账户。添加后面板会定时同步费用、实例与流量包用量。')">
-      <button type="button" @click="openNew">{{ t('添加账户') }}</button>
+      <button type="button" class="btn" @click="openNew"><Icon name="plus" />{{ t('添加账户') }}</button>
     </EmptyState>
 
     <!-- 账户 -->
