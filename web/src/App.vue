@@ -27,6 +27,29 @@ const currentItem = computed(() => (group.value ? group.value.items.find((x) => 
 // 二级页面（节点详情、编辑、安装命令，修订第 230 条）：手机上不显示底部标签栏，由页面自己的返回与吸顶标签栏导航，内容不被两层导航挤占
 const secondLevel = computed(() => ['server', 'server-edit', 'server-install'].includes(String(route.name)))
 watch(secondLevel, (v) => document.documentElement.classList.toggle('no-tabbar', v), { immediate: true })
+// 电脑侧边栏（修订第 238 条，需求说明书 WEB-01）：宽度 ≥ 1100px 时分组导航放在左侧，可收起为图标（记在本机）；
+// “系统”下的各页直接列在侧边栏中，不再用顶栏的二级导航。手机与较窄的窗口不变（顶栏分组 / 底部标签栏）
+const collapsed = ref(readCollapsed())
+function readCollapsed() {
+  try {
+    return localStorage.getItem('vpsmon.sidebar') === 'collapsed'
+  } catch {
+    return false
+  }
+}
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+  try {
+    localStorage.setItem('vpsmon.sidebar', collapsed.value ? 'collapsed' : 'open')
+  } catch {
+    /* 隐私模式等不可用时只在本页生效 */
+  }
+}
+watch([signedIn, collapsed], ([on, c]) => {
+  document.documentElement.classList.toggle('has-sidebar', on)
+  document.documentElement.classList.toggle('sidebar-collapsed', c)
+}, { immediate: true })
+const pageTitle = computed(() => (currentItem.value && group.value && group.value.items.length > 1 ? t(currentItem.value.name) : group.value ? t(group.value.name) : ''))
 // 顶栏（含二级导航）的实际高度写入 --topbar-h，页面中吸顶的元素贴在它下面
 const topbar = ref<HTMLElement | null>(null)
 let topbarObs: ResizeObserver | null = null
@@ -58,9 +81,34 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
+  <!-- 电脑侧边栏（修订第 238 条）：≥ 1100px 显示 -->
+  <aside v-if="signedIn" class="sidebar" :class="{ collapsed }" :aria-label="t('分组')">
+    <RouterLink to="/" class="sb-brand" :title="site.app_name">{{ collapsed ? site.app_name.slice(0, 1) : site.app_name }}</RouterLink>
+    <nav class="sb-nav">
+      <template v-for="g in groups" :key="g.key">
+        <template v-if="g.mobileTo">
+          <div class="sb-section">
+            <Icon :name="g.icon" :size="18" /><span class="sb-text">{{ t(g.name) }}</span>
+          </div>
+          <RouterLink v-for="x in g.items" :key="x.to" :to="x.to" class="sb-item sub" :class="{ active: group?.key === g.key && itemActive(x, route, g) }"
+            :title="collapsed ? t(x.name) : undefined">
+            <Icon :name="x.icon ?? 'settings'" :size="16" /><span class="sb-text">{{ t(x.name) }}</span>
+            <span v-if="x.to === '/alerts' && alertCount" class="badge num">{{ alertCount }}</span>
+          </RouterLink>
+        </template>
+        <RouterLink v-else :to="g.items[0].to" class="sb-item" :class="{ active: group?.key === g.key }" :title="collapsed ? t(g.name) : undefined">
+          <Icon :name="g.icon" :size="18" /><span class="sb-text">{{ t(g.key === 'dashboard' ? g.short : g.name) }}</span>
+        </RouterLink>
+      </template>
+    </nav>
+    <button type="button" class="text sb-toggle" :title="collapsed ? t('展开侧边栏') : t('收起侧边栏')" :aria-expanded="!collapsed" @click="toggleSidebar">
+      <Icon :name="collapsed ? 'panel-open' : 'panel-close'" :size="18" /><span class="sb-text">{{ t('收起') }}</span>
+    </button>
+  </aside>
   <header ref="topbar" class="topbar">
     <div class="inner">
       <RouterLink to="/" class="brand">{{ site.app_name }}</RouterLink>
+      <span v-if="signedIn && pageTitle" class="page-title">{{ pageTitle }}</span>
       <nav v-if="signedIn" class="groups">
         <!-- 仪表板即首页（统计 + 节点列表）；节点详情、编辑、安装命令也属于“仪表板” -->
         <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key, 'with-badge': g.key === 'alerts' }">
@@ -147,6 +195,31 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
 .user:hover { color: var(--text); text-decoration: none; }
 .banner-wrap { padding-bottom: 0; }
 .banner-wrap .banner { margin: 0; }
+/* 电脑侧边栏（修订第 238 条）：≥ 1100px 显示，固定在左侧；页面整体右移侧边栏的宽度（style.css 中 html.has-sidebar） */
+.sidebar, .page-title { display: none; }
+@media (min-width: 1100px) {
+  .sidebar { display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w); z-index: 11;
+    background: var(--surface); border-right: 1px solid var(--border); padding: 0 var(--space-2) var(--space-3); overflow-y: auto; }
+  .sb-brand { height: 52px; display: flex; align-items: center; padding: 0 var(--space-3); color: var(--text); font-weight: var(--weight-strong);
+    font-size: var(--font-lg); text-decoration: none; white-space: nowrap; overflow: hidden; flex: none; }
+  .sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .sb-item, .sb-section, .sb-toggle { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; white-space: nowrap; min-height: 36px; }
+  .sb-item:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+  .sb-item.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
+  .sb-item.active :deep(svg) { color: var(--accent); }
+  .sb-section { margin-top: var(--space-3); font-size: var(--font-sm); }
+  .sb-item.sub { padding-left: calc(var(--space-3) + 6px); font-size: var(--font-md); }
+  .sb-item .badge { margin-left: auto; }
+  .sb-toggle { width: 100%; background: none; border: 0; font: inherit; font-size: var(--font-sm); cursor: pointer; flex: none; }
+  .sb-toggle:hover { color: var(--text); background: var(--surface-2); }
+  .sidebar.collapsed .sb-text, .sidebar.collapsed .sb-section, .sidebar.collapsed .badge { display: none; }
+  .sidebar.collapsed .sb-item, .sidebar.collapsed .sb-toggle { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar.collapsed .sb-brand { justify-content: center; padding: 0; }
+  /* 有侧边栏时顶栏只留当前页面标题与工具区；“系统”的二级导航由侧边栏代替 */
+  .brand, nav.groups, .subnav.has-menu { display: none; }
+  .page-title { display: block; font-weight: var(--weight-strong); color: var(--text); white-space: nowrap; }
+}
 /* 中等宽度（平板、窄窗口）：收紧间距，用户名只显示图标 */
 @media (max-width: 900px) {
   .inner { gap: var(--space-3); }
