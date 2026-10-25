@@ -3,31 +3,37 @@
 // 测试在 sandbox iframe（/probe.html，不带 allow-same-origin）中进行：面板页面本身的 CSP 只允许连接面板，
 // 探测页有单独的 CSP（只允许 HTTPS 请求），拿不到面板的 Cookie 与页面，结果经 postMessage 交回。
 // 每个网站显示本次延迟与最近 8 次的结果（圆点）；历史只保存在本机浏览器。
+// 状态（修订第 226 条）：检测中、未检测、成功、超时、无法连接各有文字；本次还没测时显示上次保存的结果并标“上次”；
+// 分组摘要只统计本次已完成的检测，平均延迟只算成功样本；写明探测源是本浏览器、分组是目标网站所在地区。
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { t } from '../i18n'
 import { siteIcons } from '../siteIcons'
 import { siteLogos } from '../siteLogos'
-import { HISTORY, grade, grades, siteGroups, type Grade, type Site } from '../connectivity'
+import { FAIL, HISTORY, grade, grades, siteGroups, siteState, summarize, type Grade, type Sample, type Site } from '../connectivity'
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const ready = ref(false)
-const latest = reactive<Record<string, number | null | undefined>>({}) // undefined：测试中或还没测
-const failKind = reactive<Record<string, 'timeout' | 'error'>>({}) // 最近一次失败的原因：超时 / 无法连接
+const latest = reactive<Record<string, Sample | undefined>>({}) // undefined：本次还没有结果
 const running = reactive<Record<string, boolean>>({})
-const history = reactive<Record<string, (number | null)[]>>(loadHistory())
+const history = reactive<Record<string, Sample[]>>(loadHistory())
+const testedAt = reactive<Record<string, number>>(load('vpsmon.connectivity.at')) // 分组最近一次完成检测的时间（毫秒）
 let runSeq = 0
 const runGroups = new Map<number, string[]>() // 一次测试包含的分组
 
-function loadHistory(): Record<string, (number | null)[]> {
+function load<T>(key: string): Record<string, T> {
   try {
-    return JSON.parse(localStorage.getItem('vpsmon.connectivity') ?? '{}')
+    return JSON.parse(localStorage.getItem(key) ?? '{}')
   } catch {
     return {}
   }
 }
+function loadHistory() {
+  return load<Sample[]>('vpsmon.connectivity')
+}
 function saveHistory() {
   try {
     localStorage.setItem('vpsmon.connectivity', JSON.stringify(history))
+    localStorage.setItem('vpsmon.connectivity.at', JSON.stringify(testedAt))
   } catch {
     /* 隐私模式等不可用时不保存历史 */
   }
@@ -58,12 +64,14 @@ function onMessage(e: MessageEvent) {
     ready.value = true
     runAll()
   } else if (d.type === 'result' && typeof d.id === 'string' && d.id in idSet) {
-    const ms = typeof d.ms === 'number' && Number.isFinite(d.ms) ? d.ms : null
+    const ms = typeof d.ms === 'number' && Number.isFinite(d.ms) && d.ms >= 0 ? d.ms : d.fail === 'error' ? FAIL : null
     latest[d.id] = ms
-    failKind[d.id] = d.fail === 'error' ? 'error' : 'timeout'
     history[d.id] = [...(history[d.id] ?? []), ms].slice(-HISTORY)
   } else if (d.type === 'done' && typeof d.run === 'number') {
-    for (const k of runGroups.get(d.run) ?? []) running[k] = false
+    for (const k of runGroups.get(d.run) ?? []) {
+      running[k] = false
+      testedAt[k] = Date.now()
+    }
     runGroups.delete(d.run)
     saveHistory()
   }
@@ -72,19 +80,17 @@ const idSet: Record<string, true> = Object.fromEntries(siteGroups.flatMap((g) =>
 onMounted(() => window.addEventListener('message', onMessage))
 onBeforeUnmount(() => window.removeEventListener('message', onMessage))
 
-// 分组摘要：可达数 / 总数、平均延迟（只算本次可达的）
-const summaries = computed(() => Object.fromEntries(siteGroups.map((g) => {
-  const done = g.sites.map((s) => latest[s.id]).filter((v) => v !== undefined) as (number | null)[]
-  const ok = done.filter((v): v is number => v != null)
-  return [g.key, { done: done.length, ok: ok.length, avg: ok.length ? Math.round(ok.reduce((a, b) => a + b, 0) / ok.length) : null }]
-})))
+// 分组摘要：只统计本次已完成的检测（修订第 226 条）
+const summaries = computed(() => Object.fromEntries(siteGroups.map((g) => [g.key, summarize(g.sites.map((s) => latest[s.id]))])))
+const state = (s: Site, group: string) => siteState(latest[s.id], !!running[group], history[s.id] ?? [])
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 const anyRunning = computed(() => Object.values(running).some(Boolean))
 
 const dots = (s: Site) => {
   const h = history[s.id] ?? []
   return [...Array.from({ length: HISTORY - h.length }, () => 'empty' as const), ...h.map((v) => grade(v))]
 }
-const legend: Grade[] = ['best', 'good', 'slow', 'timeout']
+const legend: Grade[] = ['best', 'good', 'slow', 'timeout', 'fail']
 const logo = (s: Site) => (s.icon ? siteIcons[s.icon] : undefined)
 // 单色标志（修订第 197 条）：品牌色图形放在同色的浅底方块中，与图片标志一样大小；
 // 品牌色很深（黑色系，如 X、TikTok、GitHub）时图形用正文色、底色用中性色，深色模式下不会看不见
@@ -99,6 +105,7 @@ function tint(hex: string) {
   <main class="page">
     <div class="page-head"><h1>{{ t('连通性测试') }}</h1></div>
     <p class="muted intro">{{ t('一键测试当前网络到各地常用网站的连通性与延迟，用来判断分流规则是否生效、线路是否通畅。测试在本浏览器中进行，不经过面板与 VPS。') }}</p>
+    <p class="small muted intro">{{ t('探测源：本浏览器（当前网络与代理）。下面的“中国 / 美国 / 全球”是目标网站所在地区，不是探测地点。') }}</p>
 
     <div class="panel bar">
       <button type="button" class="secondary" :disabled="!ready || anyRunning" @click="runAll">
@@ -109,6 +116,8 @@ function tint(hex: string) {
       </button>
       <span class="legend small">
         <span v-for="g in legend" :key="g"><i :style="{ background: grades[g].color }" />{{ t(grades[g].name) }}</span>
+        <span><i class="empty" />{{ t('无记录') }}</span>
+        <span>{{ t('圆点为最近 {n} 次，右边最新', { n: HISTORY }) }}</span>
       </span>
     </div>
 
@@ -116,9 +125,17 @@ function tint(hex: string) {
       <div class="group-head">
         <span class="flag">{{ g.flag }}</span>
         <h2>{{ t(g.name) }}</h2>
+        <span class="tag small muted">{{ t('目标网站') }}</span>
         <span class="muted small num">
-          {{ t('可达') }} <b>{{ summaries[g.key].ok }}/{{ g.sites.length }}</b>
-          <template v-if="summaries[g.key].avg != null"> · {{ t('平均') }} <b>{{ summaries[g.key].avg }}ms</b></template>
+          <template v-if="running[g.key]">{{ t('检测中 {d}/{n}', { d: summaries[g.key].done, n: summaries[g.key].total }) }}</template>
+          <template v-else-if="!summaries[g.key].done">{{ testedAt[g.key] ? t('上次检测 {time}', { time: hhmm(testedAt[g.key]) }) : t('未检测') }}</template>
+          <template v-else>
+            {{ t('成功') }} <b>{{ summaries[g.key].ok }}/{{ summaries[g.key].done }}</b>
+            <template v-if="summaries[g.key].timeout"> · {{ t('超时') }} {{ summaries[g.key].timeout }}</template>
+            <template v-if="summaries[g.key].fail"> · {{ t('无法连接') }} {{ summaries[g.key].fail }}</template>
+            · <template v-if="summaries[g.key].avg != null">{{ t('成功样本平均') }} <b>{{ summaries[g.key].avg }} ms</b></template><template v-else>{{ t('无成功样本') }}</template>
+            <template v-if="testedAt[g.key]"> · {{ hhmm(testedAt[g.key]) }}</template>
+          </template>
         </span>
         <button type="button" class="secondary small refresh" :disabled="!ready || running[g.key]" @click="run([g.key])">{{ t('刷新') }}</button>
       </div>
@@ -134,13 +151,18 @@ function tint(hex: string) {
           <span class="site-main">
             <b class="ellipsis">{{ t(s.name) }}</b>
             <span class="dots" :aria-label="t('最近 {n} 次', { n: HISTORY })">
-              <i v-for="(d, i) in dots(s)" :key="i" :style="d === 'empty' ? undefined : { background: grades[d].color }" :class="{ empty: d === 'empty' }" />
+              <i v-for="(d, i) in dots(s)" :key="i" :style="d === 'empty' ? undefined : { background: grades[d].color }" :class="{ empty: d === 'empty' }"
+                :title="d === 'empty' ? t('无记录') : t(grades[d].name)" />
             </span>
           </span>
-          <span class="ms num" :style="latest[s.id] !== undefined ? { color: grades[grade(latest[s.id]!)].color } : undefined">
-            <template v-if="latest[s.id] === undefined"><span class="muted">{{ running[g.key] ? '…' : '—' }}</span></template>
-            <template v-else-if="latest[s.id] === null">{{ failKind[s.id] === 'error' ? t('无法连接') : t('超时') }}</template>
-            <template v-else>{{ latest[s.id] }}ms</template>
+          <span v-for="st in [state(s, g.key)]" :key="st.kind" class="ms num" :class="{ stale: 'stale' in st && st.stale }"
+            :style="st.kind === 'ok' ? { color: grades[grade(st.ms)].color } : st.kind === 'timeout' || st.kind === 'fail' ? { color: 'var(--bad)' } : undefined">
+            <small v-if="'stale' in st && st.stale" class="muted">{{ t('上次') }} </small>
+            <template v-if="st.kind === 'running'"><span class="muted state">{{ t('检测中') }}</span></template>
+            <template v-else-if="st.kind === 'untested'"><span class="muted state">{{ t('未检测') }}</span></template>
+            <template v-else-if="st.kind === 'timeout'">{{ t('超时') }}</template>
+            <template v-else-if="st.kind === 'fail'">{{ t('无法连接') }}</template>
+            <template v-else-if="st.kind === 'ok'">{{ st.ms }} ms</template>
           </span>
         </li>
       </ul>
@@ -160,7 +182,12 @@ function tint(hex: string) {
 @keyframes spin { to { transform: rotate(360deg); } }
 .legend { display: flex; gap: var(--space-4); color: var(--text-muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend { flex-wrap: wrap; }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.legend i.empty { background: var(--track); }
+.tag { border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; }
+.ms.stale { opacity: 0.6; }
+.ms .state { font-size: var(--font-sm); font-weight: normal; }
 .group { margin-bottom: var(--space-6); }
 .group-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .group-head h2 { margin: 0; font-size: var(--font-xl); }

@@ -91,22 +91,58 @@ export const siteGroups: SiteGroup[] = [
   },
 ]
 
-/** 延迟等级 */
-export type Grade = 'best' | 'good' | 'slow' | 'timeout'
+/** 延迟等级；fail 为无法连接（连接被拒绝、证书或网络错误），timeout 为 5 秒内没有响应 */
+export type Grade = 'best' | 'good' | 'slow' | 'timeout' | 'fail'
 
-/** 按延迟分级；null 为超时或不可达 */
-export function grade(ms: number | null): Grade {
+/** 历史中的一次结果：毫秒数；null 为超时（也是旧版本保存的失败）；FAIL 为无法连接（修订第 226 条） */
+export type Sample = number | null
+/** 无法连接 */
+export const FAIL = -1
+
+/** 按延迟分级 */
+export function grade(ms: Sample): Grade {
   if (ms == null) return 'timeout'
+  if (ms < 0) return 'fail'
   return ms < 150 ? 'best' : ms < 400 ? 'good' : 'slow'
 }
 
-/** 等级名称与颜色（设计令牌） */
+/** 等级名称与颜色（设计令牌）；失败与超时同为红色，靠文字区分 */
 export const grades: Record<Grade, { name: string; color: string }> = {
   best: { name: '优', color: 'var(--ok)' },
   good: { name: '良', color: 'color-mix(in srgb, var(--ok) 55%, var(--surface))' },
   slow: { name: '慢', color: 'var(--warn)' },
-  timeout: { name: '超时', color: 'var(--muted-state)' },
+  timeout: { name: '超时', color: 'var(--bad)' },
+  fail: { name: '无法连接', color: 'color-mix(in srgb, var(--bad) 55%, var(--surface))' },
 }
 
 /** 每个目标保留最近的结果数（圆点个数） */
 export const HISTORY = 8
+
+/** 一个目标当前的状态（修订第 226 条）：检测中、未检测、成功（毫秒）、超时、无法连接、上次的结果（本页还没测，显示上次保存的） */
+export type SiteState =
+  | { kind: 'running' }
+  | { kind: 'untested' }
+  | { kind: 'ok'; ms: number; stale: boolean }
+  | { kind: 'timeout' | 'fail'; stale: boolean }
+
+/** 由本次结果（undefined 为本次还没有）、是否在测与历史得出状态；本次没有结果时沿用历史最后一次并标为“上次” */
+export function siteState(latest: Sample | undefined, running: boolean, history: Sample[]): SiteState {
+  if (latest === undefined && running) return { kind: 'running' }
+  const stale = latest === undefined
+  const v = stale ? history[history.length - 1] : latest
+  if (v === undefined) return { kind: 'untested' }
+  if (v == null) return { kind: 'timeout', stale }
+  if (v < 0) return { kind: 'fail', stale }
+  return { kind: 'ok', ms: v, stale }
+}
+
+/** 分组摘要（修订第 226 条）：只统计本次已完成的检测；平均延迟只算成功的样本，没有成功样本时为 null（不显示 0 ms） */
+export function summarize(latest: (Sample | undefined)[]): { total: number; done: number; ok: number; timeout: number; fail: number; avg: number | null } {
+  const done = latest.filter((v): v is Sample => v !== undefined)
+  const ok = done.filter((v): v is number => v != null && v >= 0)
+  return {
+    total: latest.length, done: done.length, ok: ok.length,
+    timeout: done.filter((v) => v == null).length, fail: done.filter((v) => v != null && v < 0).length,
+    avg: ok.length ? Math.round(ok.reduce((a, b) => a + b, 0) / ok.length) : null,
+  }
+}
