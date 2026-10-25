@@ -98,6 +98,8 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
   .panel { padding: var(--space-4); }
   /* 底部标签栏（App.vue，修订第 199 条）的高度：内容不被遮住 */
   body { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+  /* 二级页面不显示标签栏（修订第 230 条），只留出主屏幕指示条的安全区 */
+  html.no-tabbar body { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* 自动填充检测（autofill.ts，修订第 173 条）：浏览器自动填充时触发这个空动画，脚本据此把值同步到页面状态 */

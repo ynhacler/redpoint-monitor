@@ -990,6 +990,7 @@ export const en: Record<string, string> = {
   '最近 {n} 次': 'Last {n} runs',
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
+  '{name}（点击回到顶部查看概况）': '{name} (click to scroll to the overview)',
   // ---- 保存状态（修订第 229 条） ----
   '有未保存的修改': 'Unsaved changes',
   '已保存 {time}': 'Saved at {time}',

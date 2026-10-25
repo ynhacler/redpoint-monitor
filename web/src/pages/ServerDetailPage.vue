@@ -18,13 +18,14 @@ import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
 import QuickTiles from '../components/QuickTiles.vue'
 import ServerSummary from '../components/ServerSummary.vue'
+import StatusDot from '../components/StatusDot.vue'
 import SilenceControls from '../components/SilenceControls.vue'
 import TrafficCard from '../components/TrafficCard.vue'
 import UnlockCard from '../components/UnlockCard.vue'
 import TrafficHistory from '../components/TrafficHistory.vue'
 import { fmtBytes, fmtTime } from '../format'
 import { t } from '../i18n'
-import { isLive, issues, type LiveSample } from '../metrics'
+import { displayStatus, isLive, issues, type LiveSample } from '../metrics'
 import { alertsOn, isViewer, serverById, state } from '../store'
 
 // ---- 分页（修订第 172 条） ----
@@ -75,12 +76,29 @@ const tab = computed<TabKey>(() => {
 })
 // 切换标签（修订第 184 条）：页面已滚过标签栏时，回到标签栏（紧贴吸顶的顶栏之下），而不是停在新页内容的中间或跳回顶端
 const tabsEl = ref<HTMLElement | null>(null)
+const tabsAnchor = ref<HTMLElement | null>(null) // 标签栏原来的位置（标签栏吸顶后用它判断与定位）
+const topbarH = () => document.querySelector('.topbar')?.clientHeight ?? 0
 function setTab(k: TabKey) {
   router.replace({ query: { ...route.query, tab: k === 'monitor' ? undefined : k } })
-  const el = tabsEl.value
+  const el = tabsAnchor.value
   if (!el) return
-  const top = (document.querySelector('.topbar')?.clientHeight ?? 0) + 8
+  const top = topbarH()
   if (el.getBoundingClientRect().top < top) window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - top })
+}
+
+// 节点上下文（修订第 230 条）：标签栏吸顶；滚过概况后在标签栏上方显示 ← 返回、节点名称与状态，切换任何分页都知道是哪台节点
+const stuck = ref(false)
+function onScroll() {
+  stuck.value = !!tabsAnchor.value && tabsAnchor.value.getBoundingClientRect().top < topbarH() + 1
+}
+window.addEventListener('scroll', onScroll, { passive: true })
+onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
+const toTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
+// 返回列表：从列表进来时用浏览器后退，恢复列表的滚动位置与筛选；直接打开详情时回到首页
+function goBack() {
+  const back = (window.history.state as { back?: string } | null)?.back
+  if (back && (back === '/' || back.startsWith('/?'))) router.back()
+  else router.push('/')
 }
 
 // ---- 实时采样：速览卡片的迷你折线与实时网速图 ----
@@ -243,7 +261,7 @@ const charts = computed(() => [
 <template>
   <main class="page">
     <div class="nav-row">
-      <RouterLink to="/" class="back muted small"><Icon name="arrow-left" :size="14" />{{ t('仪表板') }}</RouterLink>
+      <a href="/" class="back muted small" @click.prevent="goBack"><Icon name="arrow-left" :size="14" />{{ t('仪表板') }}</a>
       <div v-if="s && !isViewer" class="actions-row">
         <RouterLink :to="`/servers/${s.id}/install`" class="btn secondary setup-only"><Icon name="terminal" />{{ s.status === 'pending' ? t('安装命令') : t('重新安装') }}</RouterLink>
         <RouterLink :to="`/servers/${s.id}/edit`" class="btn secondary" :title="t('编辑')"><Icon name="edit" /><span class="btn-text">{{ t('编辑') }}</span></RouterLink>
@@ -273,12 +291,20 @@ const charts = computed(() => [
       <HealthCard v-if="s.status !== 'pending'" :server-id="s.id" class="section" />
 
       <!-- 分页（修订第 172 条）：概况与健康摘要之下按主题分页，地址带 ?tab=，刷新与分享后保持；未打开的页不加载 -->
-      <nav ref="tabsEl" class="tabs" role="tablist" :aria-label="t('节点详情')">
-        <button v-for="tb in tabs" :key="tb.key" type="button" role="tab" :aria-selected="tab === tb.key" :class="{ active: tab === tb.key }"
-          @click="setTab(tb.key)">
-          {{ tb.name }}<span v-if="tb.badge" class="badge num" :class="tb.badgeLevel">{{ tb.badge }}</span><i v-else-if="tb.dot" class="dot" />
-        </button>
-      </nav>
+      <div ref="tabsAnchor" />
+      <div class="tabs-bar" :class="{ stuck }">
+        <div v-if="stuck" class="ctx">
+          <a href="/" class="ctx-back" :aria-label="t('返回列表')" @click.prevent="goBack"><Icon name="arrow-left" :size="16" /></a>
+          <button type="button" class="ctx-name" :title="t('{name}（点击回到顶部查看概况）', { name: s.name })" @click="toTop">{{ s.name }}</button>
+          <StatusDot :status="displayStatus(s)" />
+        </div>
+        <nav ref="tabsEl" class="tabs" role="tablist" :aria-label="t('节点详情')">
+          <button v-for="tb in tabs" :key="tb.key" type="button" role="tab" :aria-selected="tab === tb.key" :class="{ active: tab === tb.key }"
+            @click="setTab(tb.key)">
+            {{ tb.name }}<span v-if="tb.badge" class="badge num" :class="tb.badgeLevel">{{ tb.badge }}</span><i v-else-if="tb.dot" class="dot" />
+          </button>
+        </nav>
+      </div>
 
       <!-- 各页内容至少一屏高（修订第 184 条）：切到内容较短或仍在加载的页时页面不会变矮，浏览器不会把滚动位置截回顶部 -->
       <div class="tab-body">
@@ -374,7 +400,15 @@ const charts = computed(() => [
   .charts { grid-template-columns: 1fr; }
 }
 .tab-body { min-height: 100vh; }
-.tabs { display: flex; gap: var(--space-1); margin: var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--border);
+/* 标签栏吸顶在顶栏之下（--topbar-h 由 App.vue 测量）；吸住后上方显示节点上下文（修订第 230 条） */
+.tabs-bar { position: sticky; top: var(--topbar-h, 52px); z-index: 5; background: var(--bg); margin: var(--space-4) calc(-1 * var(--space-4)) var(--space-3);
+  padding: 0 var(--space-4); }
+.tabs-bar.stuck { border-bottom: 1px solid var(--border); }
+.ctx { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); min-width: 0; }
+.ctx-back { display: inline-grid; place-items: center; width: 32px; height: 32px; margin-left: -6px; color: var(--text); flex: none; }
+.ctx-name { background: none; border: 0; padding: 0; color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-md);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; cursor: pointer; }
+.tabs { display: flex; gap: var(--space-1); margin: 0; border-bottom: 1px solid var(--border);
   overflow-x: auto; scrollbar-width: none; }
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted);
   padding: var(--space-2) var(--space-3); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-1); }
@@ -389,7 +423,7 @@ const charts = computed(() => [
   /* 手机主要用来查看（修订第 199 条）：重新安装在电脑上进行，编辑只留图标 */
   .setup-only { display: none; }
   .btn-text { display: none; }
-  .tabs { margin-top: var(--space-3); }
+  .tabs-bar { margin: var(--space-3) calc(-1 * var(--space-3)) var(--space-3); padding: 0 var(--space-3); }
 }
 .collect-errors { padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); }
 .collect-errors ul { margin: var(--space-2) 0 0; padding-left: var(--space-4); }

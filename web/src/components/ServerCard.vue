@@ -162,9 +162,10 @@ const diskTip = computed(() => {
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
 
-.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+/* 名称至少留约 8 个字的宽度；放不下时右侧信息换到下一行，不再把名称挤成“tok…”（修订第 230 条） */
+.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-3); flex-wrap: wrap;
   padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
-.title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 8em; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 18px; }
 .meta { display: flex; align-items: center; gap: var(--space-3); color: var(--text-muted); font-size: var(--font-md); line-height: var(--line-md); white-space: nowrap; flex: none; }

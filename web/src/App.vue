@@ -23,6 +23,20 @@ const alertCount = computed(() => activeAlertCount(state.servers))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
 const groups = computed(() => groupsFor(isViewer.value))
 const group = computed(() => activeGroup(route, groups.value))
+// 二级页面（节点详情、编辑、安装命令，修订第 230 条）：手机上不显示底部标签栏，由页面自己的返回与吸顶标签栏导航，内容不被两层导航挤占
+const secondLevel = computed(() => ['server', 'server-edit', 'server-install'].includes(String(route.name)))
+watch(secondLevel, (v) => document.documentElement.classList.toggle('no-tabbar', v), { immediate: true })
+// 顶栏（含二级导航）的实际高度写入 --topbar-h，页面中吸顶的元素贴在它下面
+const topbar = ref<HTMLElement | null>(null)
+let topbarObs: ResizeObserver | null = null
+const setTopbarH = () => document.documentElement.style.setProperty('--topbar-h', `${topbar.value?.offsetHeight ?? 52}px`)
+onMounted(() => {
+  setTopbarH()
+  if (!topbar.value || typeof ResizeObserver === 'undefined') return
+  topbarObs = new ResizeObserver(setTopbarH)
+  topbarObs.observe(topbar.value)
+})
+onUnmounted(() => topbarObs?.disconnect())
 
 // 面板版本显示在页脚（登录后读取一次）；git describe 的形式如 v0.4.1、v0.4.1-3-gabc123
 const panelVersion = ref('')
@@ -43,7 +57,7 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
-  <header class="topbar">
+  <header ref="topbar" class="topbar">
     <div class="inner">
       <RouterLink to="/" class="brand">{{ site.app_name }}</RouterLink>
       <nav v-if="signedIn" class="groups">
@@ -87,7 +101,7 @@ onUnmounted(stopPolling)
     {{ site.app_name }} {{ t('面板') }} <span class="num" :title="t('面板版本（Agent 版本见“Agent 升级”页）')">{{ panelVersion }}</span>
   </footer>
   <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
-  <nav v-if="signedIn" class="tabbar" :aria-label="t('分组')">
+  <nav v-if="signedIn && !secondLevel" class="tabbar" :aria-label="t('分组')">
     <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key }">
       <Icon :name="g.icon" :size="22" />
       <span>{{ t(g.short) }}</span>
