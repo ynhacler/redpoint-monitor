@@ -1002,6 +1002,11 @@ export const en: Record<string, string> = {
   '异常': 'Error',
   '云厂商状态：{s}': 'Provider state: {s}',
   '（可能已过期）': ' (may be outdated)',
+  // ---- 图表纵轴与统计（修订第 234 条） ----
+  '纵轴': 'Y axis',
+  '自动': 'Auto',
+  '平均 {avg} · 峰值 {max}': 'avg {avg} · peak {max}',
+  '（本区间）': '(this range)',
   // ---- 系统菜单（修订第 231 条） ----
   '通用': 'General',
   '监测与告警': 'Monitoring & alerts',
