@@ -35,6 +35,8 @@ export const router = createRouter({
     { path: '/connectivity', name: 'connectivity', component: () => import('./pages/ConnectivityPage.vue'), meta: { viewer: true, title: '连通性测试' } },
     { path: '/cloud', name: 'cloud', component: () => import('./pages/CloudPage.vue'), meta: { title: '云平台' } },
     { path: '/logs', name: 'logs', component: () => import('./pages/LogsPage.vue'), meta: { title: '日志' } },
+    // 手机“系统”菜单（修订第 231 条）
+    { path: '/system', name: 'system', component: () => import('./pages/SystemMenuPage.vue'), meta: { viewer: true, title: '系统' } },
     // 总览与节点列表合并为首页（修订记录第 30 条）；旧地址 /servers 保留跳转，书签不失效
     { path: '/', name: 'servers', component: () => import('./pages/ServersPage.vue'), meta: { viewer: true, title: '仪表板' } },
     { path: '/servers', redirect: (to) => ({ path: '/', query: to.query }) },

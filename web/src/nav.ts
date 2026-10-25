@@ -9,6 +9,10 @@ export interface NavItem {
   to: string
   /** 查看者（只读账号，修订第 161 条）也能打开 */
   viewer?: boolean
+  /** 手机“系统”菜单（修订第 231 条）：所在小组、图标与一行说明 */
+  section?: string
+  icon?: 'settings' | 'pulse' | 'bell' | 'user' | 'smartphone' | 'download' | 'logs'
+  desc?: string
 }
 
 /** 顶栏的一个分组；items 只有一项时不显示二级导航 */
@@ -21,6 +25,8 @@ export interface NavGroup {
   items: NavItem[]
   /** 属于本分组但不出现在二级导航中的地址前缀（如节点详情、新建节点） */
   extra?: string[]
+  /** 手机底部标签栏的目标（默认第一项）；“系统”为菜单页 /system（修订第 231 条） */
+  mobileTo?: string
 }
 
 /** 顶栏分组：仪表板、云平台、订阅（修订第 189 条）、系统（修订第 176 条）；告警与监测是“系统”下的页面，测速对比与费用统计不再显示 */
@@ -30,14 +36,15 @@ export const navGroups: NavGroup[] = [
   { key: 'subscriptions', name: '订阅', short: '订阅', icon: 'card', items: [{ name: '订阅', to: '/subscriptions' }] }, // 设计 47
   { key: 'connectivity', name: '连通性测试', short: '连通性', icon: 'globe', items: [{ name: '连通性测试', to: '/connectivity', viewer: true }] }, // 设计 48
   {
-    key: 'system', name: '系统', short: '系统', icon: 'settings', items: [
-      { name: '网站配置', to: '/site' }, // 应用名称、语言、验证码、监听端口（设计 52）
-      { name: '监测', to: '/monitor' },
-      { name: '告警', to: '/alerts', viewer: true },
-      { name: '账号', to: '/account', viewer: true },
-      { name: 'App 接入', to: '/app' },
-      { name: 'Agent 升级', to: '/upgrades' },
-      { name: '日志', to: '/logs' },
+    key: 'system', name: '系统', short: '系统', icon: 'settings', mobileTo: '/system', extra: ['/system'], items: [
+      // 应用名称、语言、验证码、监听端口（设计 52）
+      { name: '网站配置', to: '/site', section: '通用', icon: 'settings', desc: '应用名称、语言、登录验证码、监听端口' },
+      { name: '监测', to: '/monitor', section: '监测与告警', icon: 'pulse', desc: '测速目标与频率、国内探针、服务监控' },
+      { name: '告警', to: '/alerts', viewer: true, section: '监测与告警', icon: 'bell', desc: '告警记录、规则、静音与通知渠道' },
+      { name: '账号', to: '/account', viewer: true, section: '账号与接入', icon: 'user', desc: '密码、两步验证、登录设备与 API Key' },
+      { name: 'App 接入', to: '/app', section: '账号与接入', icon: 'smartphone', desc: '配对手机 App、已接入的设备' },
+      { name: 'Agent 升级', to: '/upgrades', section: '维护', icon: 'download', desc: '各节点 Agent 版本与升级' },
+      { name: '日志', to: '/logs', section: '维护', icon: 'logs', desc: '登录日志与操作日志' },
     ],
   },
 ]
