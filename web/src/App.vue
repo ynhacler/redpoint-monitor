@@ -116,7 +116,8 @@ onUnmounted(stopPolling)
         </RouterLink>
       </nav>
       <div class="tools">
-        <button class="text" type="button" :title="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })" @click="cycleTheme">
+        <button class="text" type="button" :title="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })"
+          :aria-label="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })" @click="cycleTheme">
           <Icon :name="themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor'" />
         </button>
         <template v-if="state.me">
