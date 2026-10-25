@@ -136,7 +136,9 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
                   <b class="num">{{ r.cells[isp.key]!.latency_ms == null ? t('不可达') : fmtLatency(r.cells[isp.key]!.latency_ms) }}</b>
                   <small>{{ fmtLoss(r.cells[isp.key]!.loss) }}</small>
                 </template>
-                <span v-else class="muted">{{ DASH }}</span>
+                <!-- 没有这家运营商的目标为“未配置”（可去设置），有目标但还没有结果为“无数据”，都不当作 0%（修订第 266 条，UI2-011） -->
+                <RouterLink v-else-if="!r.cells[isp.key]" to="/monitor" class="muted unset" :title="t('这个地区还没有{isp}的测试目标，点击去设置', { isp: t(isp.name) })" @click.stop>{{ t('未配置') }}</RouterLink>
+                <span v-else class="muted">{{ t('无数据') }}</span>
               </td>
             </tr>
           </tbody>
@@ -183,7 +185,9 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
 .table-wrap + .table-wrap { margin-top: var(--space-4); }
 td.muted { color: var(--text-muted); }
 table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
-th, td { padding: var(--space-2) var(--space-3); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+/* 行高收紧（修订第 266 条，UI2-011）：约 36px */
+th, td { padding: 6px var(--space-3); line-height: 22px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.unset { font-size: var(--font-xs); text-decoration: underline dotted; }
 thead th { color: var(--text-muted); font-weight: var(--weight-regular); }
 th:first-child { text-align: left; padding-left: 0; }
 tbody th { font-weight: var(--weight-regular); }

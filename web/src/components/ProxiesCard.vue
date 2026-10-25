@@ -32,6 +32,30 @@ async function forget(name: string) {
   }
 }
 
+// 安全方式（修订第 266 条，第二轮 UI2-010）：紧凑行只为 TLS / Reality 显示徽章，缺省时留空，但提示中区分三种情况——
+// 不适用（协议自带加密或不加密）、未配置（明确为 none）、无法识别（配置中没有这一项）
+const noTlsProtocols = new Set(['shadowsocks', 'ss', 'socks', 'http', 'dokodemo-door', 'wireguard', 'openvpn', 'frp', 'brook'])
+function secInfo(i: { protocol: string; security?: string }): { badge: string; text: string } {
+  if (i.security && i.security !== 'none') {
+    const b = i.security === 'reality' ? 'Reality' : i.security.toUpperCase()
+    return { badge: b, text: t('安全：{s}', { s: b }) }
+  }
+  if (noTlsProtocols.has(i.protocol)) return { badge: '', text: t('安全：不适用（协议自带加密或不加密）') }
+  if (i.security === 'none') return { badge: '', text: t('安全：未配置 TLS') }
+  return { badge: '', text: t('安全：无法识别') }
+}
+// 复制配置路径（只复制路径，不含任何配置内容）
+const copied = ref('')
+async function copyPath(p: string) {
+  try {
+    await navigator.clipboard.writeText(p)
+    copied.value = p
+    setTimeout(() => copied.value === p && (copied.value = ''), 1500)
+  } catch {
+    /* 剪贴板不可用（非 HTTPS 等）时忽略 */
+  }
+}
+
 // 对外的入站（非回环）中有没在监听的
 const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening: boolean }[] }) =>
   p.running && (p.inbounds ?? []).some((i) => !i.local && !i.listening)
@@ -70,12 +94,14 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
         <li v-for="(i, k) in p.inbounds" :key="k">
           <span class="proto">{{ protoNames[i.protocol] ? t(protoNames[i.protocol]) : i.protocol }}</span>
           <span class="num port">{{ i.port }}/{{ i.network ?? 'tcp' }}</span>
-          <span class="muted small tr">{{ [i.transport, i.security && i.security !== 'none' ? (i.security === 'reality' ? 'Reality' : i.security.toUpperCase()) : ''].filter(Boolean).join(' · ') || '—' }}</span>
+          <span class="muted small tr" :title="secInfo(i).text">{{ i.transport || '' }}<span v-if="secInfo(i).badge" class="sec">{{ secInfo(i).badge }}</span><span class="sr-only">{{ secInfo(i).text }}</span></span>
           <span v-if="i.listening" class="small st">{{ i.local ? t('仅本机') : t('监听中') }}</span>
           <span v-else class="tag st" :class="i.local || !p.running ? 'off' : 'bad'">{{ t('未监听') }}</span>
         </li>
       </ul>
-      <p v-if="p.config" class="muted small path">{{ t('配置：{path}', { path: p.config }) }}</p>
+      <!-- 配置路径（修订第 266 条，UI2-015）：等宽内联代码，过长省略，悬停看全，可复制（只复制路径） -->
+      <p v-if="p.config" class="muted small path-line">{{ t('配置：') }}<code class="path" :title="p.config">{{ p.config }}</code>
+        <button type="button" class="text small" @click="copyPath(p.config)">{{ copied === p.config ? t('已复制') : t('复制') }}</button></p>
     </details>
   </section>
 </template>
@@ -95,7 +121,15 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
 .proxy[open] > .proxy-head::before { transform: rotate(90deg); }
 .count { margin-left: auto; }
 .note.top { margin: var(--space-1) 0 0; }
-.path { overflow-wrap: anywhere; margin: var(--space-2) 0 0; }
+.path-line { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; min-width: 0; }
+.path { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 6px; border-radius: 4px; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.sec { margin-left: var(--space-1); padding: 0 6px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text); font-size: var(--font-xs); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* 入站行（UI2-009）：约 36px 行高、行间 1px 浅分隔线 */
+.inbounds li + li { border-top: 1px solid var(--border); padding-top: var(--space-1); }
+.inbounds li { min-height: 32px; }
 .note { margin: var(--space-2) 0 0; }
 .inbounds { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .inbounds li { display: grid; grid-template-columns: minmax(5.5em, auto) auto minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3);

@@ -597,7 +597,9 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
     final sel = keys.contains(_latencySel) ? _latencySel : (keys.isEmpty ? '' : keys.first);
 
     Widget cell(LatencyTarget? t) {
-      if (t == null || t.loss == null) return Text('—', textAlign: TextAlign.right, style: small);
+      // 没有目标为“未配置”，有目标但还没有结果为“无数据”，都不当作 0%（修订第 266 条，与 Web 相同）
+      if (t == null) return Text('未配置', textAlign: TextAlign.right, style: small);
+      if (t.loss == null) return Text('无数据', textAlign: TextAlign.right, style: small);
       final colors = StatusColors.of(context);
       final lat = t.latency;
       final c = lat == null
