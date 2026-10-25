@@ -127,7 +127,8 @@ class _Painter extends CustomPainter {
         broken = false;
       }
       // 第一条系列下方浅色填充（只在连续的一段下面填充）
-      if (identical(s, series.first)) _fill(canvas, size, s, t0, span, step);
+      // 只有一条系列时浅色填充；多条为纯折线（修订第 251 条，UI-010）
+      if (series.length == 1) _fill(canvas, size, s, t0, span, step);
       canvas.drawPath(
           path,
           Paint()

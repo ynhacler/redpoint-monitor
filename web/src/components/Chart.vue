@@ -119,7 +119,8 @@ function render() {
               showSymbol: false,
               connectNulls: false,
               lineStyle: { width: 1.5 },
-              areaStyle: { opacity: 0.08 },
+              // 只有一条线时浅色填充；多条线为纯折线，避免填充重叠后颜色混浊（修订第 251 条，UI-010）
+              areaStyle: props.series.length === 1 ? { opacity: 0.08 } : undefined,
             },
       ),
     },
