@@ -1007,6 +1007,8 @@ var migrations = []string{
 		as_of      INTEGER NOT NULL,
 		fetched_at INTEGER NOT NULL
 	);`,
+	// 迁移 59：端口基线的备注（修订第 258 条）：JSON 对象，键为“端口/协议”（如 443/tcp），值为备注（如“Xray 入口”）
+	`ALTER TABLE port_baseline ADD COLUMN labels TEXT NOT NULL DEFAULT '{}';`,
 }
 
 func (s *Store) migrate() error {

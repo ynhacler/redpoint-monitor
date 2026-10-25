@@ -9,6 +9,7 @@ package server
 // “对公网开放”指监听在 0.0.0.0、:: 或公网地址；只在回环或内网（RFC 1918、CGNAT、ULA、链路本地）地址监听的不算，
 // 与 Web 的暴露范围一致（设计 4.9.1）。这是本机 Agent 看到的“监听”，是否真能从公网访问还取决于防火墙与安全组。
 // 没有设置基线的节点不评估。基线只给管理员看。
+// 修订第 258 条：基线端口可加备注（如 443/tcp “Xray 入口”），在端口列表与基线卡片中显示；备注只能属于基线中的端口。
 
 import (
 	"database/sql"
@@ -28,12 +29,16 @@ import (
 	"vpsmon/internal/protocol"
 )
 
-const maxBaselinePorts = 200
+const (
+	maxBaselinePorts = 200
+	maxPortLabel     = 40 // 端口备注的最大字符数
+)
 
 // portBaselineView 是节点详情中的端口基线。
 type portBaselineView struct {
-	Ports     []string `json:"ports"`
-	UpdatedAt int64    `json:"updated_at"`
+	Ports     []string          `json:"ports"`
+	Labels    map[string]string `json:"labels"`
+	UpdatedAt int64             `json:"updated_at"`
 }
 
 // portBaselines 缓存各节点的基线（第一次用到时从数据库读取；nil 表示没有设置）。
@@ -46,28 +51,75 @@ func newPortBaselines() *portBaselines { return &portBaselines{m: map[int64]*por
 
 // GetPortBaseline 读取节点的基线；没有设置时返回 nil。
 func (s *Store) GetPortBaseline(serverID int64) (*portBaselineView, error) {
-	var raw string
-	v := &portBaselineView{}
-	err := s.DB.QueryRow(`SELECT ports, updated_at FROM port_baseline WHERE server_id = ?`, serverID).Scan(&raw, &v.UpdatedAt)
+	var raw, labels string
+	v := &portBaselineView{Labels: map[string]string{}}
+	err := s.DB.QueryRow(`SELECT ports, labels, updated_at FROM port_baseline WHERE server_id = ?`, serverID).Scan(&raw, &labels, &v.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return v, json.Unmarshal([]byte(raw), &v.Ports)
+	if err := json.Unmarshal([]byte(raw), &v.Ports); err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(labels), &v.Labels) // 备注损坏时当作没有，不影响基线本身
+	return v, nil
 }
 
-// SetPortBaseline 保存基线；ports 为空时删除。
-func (s *Store) SetPortBaseline(serverID int64, ports []string, now time.Time) error {
+// SetPortBaseline 保存基线与备注；ports 为空时删除。
+func (s *Store) SetPortBaseline(serverID int64, ports []string, labels map[string]string, now time.Time) error {
 	if len(ports) == 0 {
 		_, err := s.DB.Exec(`DELETE FROM port_baseline WHERE server_id = ?`, serverID)
 		return err
 	}
 	b, _ := json.Marshal(ports)
-	_, err := s.DB.Exec(`INSERT INTO port_baseline (server_id, ports, updated_at) VALUES (?,?,?)
-		ON CONFLICT(server_id) DO UPDATE SET ports = excluded.ports, updated_at = excluded.updated_at`, serverID, string(b), now.Unix())
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	l, _ := json.Marshal(labels)
+	_, err := s.DB.Exec(`INSERT INTO port_baseline (server_id, ports, labels, updated_at) VALUES (?,?,?,?)
+		ON CONFLICT(server_id) DO UPDATE SET ports = excluded.ports, labels = excluded.labels, updated_at = excluded.updated_at`,
+		serverID, string(b), string(l), now.Unix())
 	return err
+}
+
+// mergePortLabels 得出保存后的备注（修订第 258 条）：在原有备注上应用本次的修改（空字符串删除），只保留新基线中的端口。
+// 备注去掉首尾空白，最多 maxPortLabel 个字符，不能含控制字符；键会规范化（443 → 443/tcp），不在基线中的键报错。
+func mergePortLabels(old map[string]string, edits map[string]string, ports []string) (map[string]string, error) {
+	in := make(map[string]bool, len(ports))
+	for _, p := range ports {
+		in[p] = true
+	}
+	out := map[string]string{}
+	for k, v := range old {
+		if in[k] {
+			out[k] = v
+		}
+	}
+	for k, v := range edits {
+		n, err := normalizePorts([]string{k})
+		if err != nil || len(n) != 1 {
+			return nil, fmt.Errorf("备注的端口 %q 格式不正确", k)
+		}
+		key := n[0]
+		if !in[key] {
+			return nil, fmt.Errorf("端口 %s 不在基线中，不能加备注", key)
+		}
+		v = strings.TrimSpace(v)
+		if strings.IndexFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return nil, fmt.Errorf("端口 %s 的备注含有控制字符", key)
+		}
+		if len([]rune(v)) > maxPortLabel {
+			return nil, fmt.Errorf("端口 %s 的备注最多 %d 个字", key, maxPortLabel)
+		}
+		if v == "" {
+			delete(out, key)
+		} else {
+			out[key] = v
+		}
+	}
+	return out, nil
 }
 
 // baselineFor 返回节点的基线（带缓存）；没有设置时为 nil。
@@ -217,7 +269,8 @@ func (s *Server) handlePortBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Ports []string `json:"ports"`
+		Ports  []string          `json:"ports"`
+		Labels map[string]string `json:"labels"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
 	dec.DisallowUnknownFields()
@@ -233,16 +286,30 @@ func (s *Server) handlePortBaseline(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "ports", Message: err.Error()}}})
 		return
 	}
-	now := time.Now()
-	if err := s.store.SetPortBaseline(id, ports, now); err != nil {
+	old, err := s.store.GetPortBaseline(id)
+	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
-	view := &portBaselineView{Ports: ports, UpdatedAt: now.Unix()}
+	var oldLabels map[string]string
+	if old != nil {
+		oldLabels = old.Labels
+	}
+	labels, err := mergePortLabels(oldLabels, body.Labels, ports)
+	if err != nil {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "labels", Message: err.Error()}}})
+		return
+	}
+	now := time.Now()
+	if err := s.store.SetPortBaseline(id, ports, labels, now); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	view := &portBaselineView{Ports: ports, Labels: labels, UpdatedAt: now.Unix()}
 	s.pbase.mu.Lock()
 	if len(ports) == 0 {
 		s.pbase.m[id] = nil
-		view = &portBaselineView{Ports: []string{}, UpdatedAt: now.Unix()}
+		view = &portBaselineView{Ports: []string{}, Labels: map[string]string{}, UpdatedAt: now.Unix()}
 	} else {
 		s.pbase.m[id] = view
 	}
