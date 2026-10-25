@@ -48,6 +48,10 @@ const hasUtil = computed(() => ioRows.value.some((x) => x.io.util != null))
 
 // 监听端口（设计 4.9.1）：高风险与公网开放的排在前面
 const ports = computed(() => (r.value.ports ? sortPorts(r.value.ports) : null))
+// 端口多时默认显示前 10 个（修订第 265 条，第二轮 UI2-014；风险与对外监听的排在前面），其余点“展开全部”
+const PORT_LIMIT = 10
+const portsOpen = ref(false)
+const shownPorts = computed(() => (portsOpen.value || !ports.value ? ports.value ?? [] : ports.value.slice(0, PORT_LIMIT)))
 const portCounts = computed(() => {
   const c = { public: 0, private: 0, local: 0 }
   for (const p of ports.value ?? []) c[exposure(p)]++
@@ -108,7 +112,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       <p v-if="!ports" class="muted small empty">{{ t('当前 Agent 未上报监听端口，升级 Agent 后显示。') }}</p>
       <p v-else-if="!ports.length" class="muted small empty">{{ t('没有监听中的端口。') }}</p>
       <ul v-else class="port-list">
-        <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }" :title="portTitle(p)">
+        <li v-for="p in shownPorts" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }" :title="portTitle(p)">
           <span class="port">{{ p.port }}<span class="proto">{{ p.proto.toUpperCase() }}</span></span>
           <!-- 端口备注（修订第 258 条，来自端口基线）优先于常见服务名 -->
           <span class="svc">{{ server.port_baseline?.labels?.[`${p.port}/${p.proto}`] || serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
@@ -118,6 +122,8 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           </span>
         </li>
       </ul>
+      <button v-if="ports && ports.length > PORT_LIMIT" type="button" class="text small info-btn" :aria-expanded="portsOpen" @click="portsOpen = !portsOpen">
+        {{ portsOpen ? t('收起') : t('展开全部 {n} 个', { n: ports.length }) }}</button>
       <p v-if="portCounts.public" class="muted small port-note">
         {{ t('“对外监听”只表示端口绑定在全部地址或公网地址上；能否从公网访问还取决于防火墙与安全组。') }}
         <template v-if="server.port_exposure">{{ t('外部可达为面板 {time} 检测 {target} 的结果。', { time: fmtTime(server.port_exposure.checked_at), target: server.port_exposure.target }) }}</template>

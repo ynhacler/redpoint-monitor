@@ -26,6 +26,7 @@ const cpuLv = computed(() => gaugeLevel(cpu(props.server), 'cpu'))
 const memLv = computed(() => gaugeLevel(mem(props.server), 'mem'))
 const diskLv = computed(() => disk.value?.level ?? 'ok')
 // 正常时用强调色（与参考一致的蓝），接近阈值时随状态变色
+const trendOk = (k: 'cpu' | 'mem') => props.samples.filter((p) => p[k] != null).length >= 2
 const color = (lv: string) => (lv === 'ok' ? 'var(--accent)' : `var(--${lv})`)
 const pct1 = (v: number | undefined) => (v == null ? '—' : v >= 10 ? String(Math.round(v * 10) / 10) : v.toFixed(1))
 
@@ -46,7 +47,9 @@ const minutes = computed(() => {
       <div class="label"><Icon name="cpu" :size="15" />CPU<span class="extra num">{{ t('{n} 核', { n: r.cpu.cores }) }}</span></div>
       <!-- 正常时数字用正文色，只在接近 / 超过阈值时着色（修订第 249 条，UI-008） -->
       <div class="big" :class="cpuLv === 'ok' ? '' : cpuLv"><Qty :v="pct1(cpu(server))" u="%" /></div>
-      <Sparkline class="edge" :values="samples.map((p) => p.cpu)" :color="color(cpuLv)" :height="36" />
+      <!-- 迷你趋势（修订第 265 条，UI2-007）：CPU 与内存同一贴底样式；少于 2 个有效样本时写“暂无趋势”，不画一条平线 -->
+      <Sparkline v-if="trendOk('cpu')" class="edge" :values="samples.map((p) => p.cpu)" :color="color(cpuLv)" :height="36" />
+      <div v-else class="muted small no-trend">{{ t('暂无趋势') }}</div>
     </div>
 
     <div class="tile">
@@ -56,14 +59,19 @@ const minutes = computed(() => {
           <div class="big" :class="diskLv"><Qty :v="disk ? Math.round(disk.usage) : '—'" u="%" /></div>
           <div class="muted small num nowrap">{{ fmtBytesShort(disk?.used) }} / {{ fmtBytesShort(disk?.total) }}</div>
         </div>
-        <Ring class="disk-ring" :pct="disk?.usage" :level="diskLv" :size="56" tinted bare :label="t('磁盘')" />
+        <!-- 环中不再重复百分比（修订第 265 条，第二轮 UI2-006），只放磁盘图标，环本身表示用量 -->
+        <span class="disk-ring-wrap">
+          <Ring class="disk-ring" :pct="disk?.usage" :level="diskLv" :size="56" tinted no-value :label="t('磁盘')" />
+          <Icon name="hard-drive" :size="18" class="ring-icon" :class="diskLv" />
+        </span>
       </div>
     </div>
 
     <div class="tile spark-tile">
       <div class="label"><Icon name="layers" :size="15" />{{ t('内存') }}<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
       <div class="big" :class="memLv === 'ok' ? '' : memLv"><Qty :v="pct1(mem(server))" u="%" /></div>
-      <Sparkline class="edge" :values="samples.map((p) => p.mem)" :color="color(memLv)" :height="36" />
+      <Sparkline v-if="trendOk('mem')" class="edge" :values="samples.map((p) => p.mem)" :color="color(memLv)" :height="36" />
+      <div v-else class="muted small no-trend">{{ t('暂无趋势') }}</div>
     </div>
 
     <div class="tile">
@@ -110,8 +118,14 @@ const minutes = computed(() => {
 .spark-tile { padding-bottom: 0; }
 .edge { margin: auto calc(-1 * var(--space-4)) 0; width: calc(100% + 2 * var(--space-4)); }
 .ring-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex: 1; }
-.counts { display: flex; justify-content: space-between; gap: var(--space-2); }
-.counts div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 连接与进程严格三等分、居中对齐（修订第 265 条，UI2-008） */
+.counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.counts div { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
+.disk-ring-wrap { position: relative; display: inline-grid; place-items: center; flex: none; }
+.ring-icon { position: absolute; color: var(--text-muted); }
+.ring-icon.warn { color: var(--warn); }
+.ring-icon.bad { color: var(--bad); }
+.no-trend { margin-top: auto; padding-bottom: var(--space-3); }
 .counts b { font-size: 24px; line-height: 30px; font-weight: 700; }
 .counts span, .values span { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-xs); color: var(--text-muted); white-space: nowrap; }
 .values span { font-size: var(--font-sm); color: var(--text); }
@@ -135,6 +149,6 @@ i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: no
   .edge { margin-left: calc(-1 * var(--space-3)); margin-right: calc(-1 * var(--space-3)); width: calc(100% + 2 * var(--space-3)); }
   .big { font-size: 26px; line-height: 32px; }
   .counts b { font-size: 20px; line-height: 26px; }
-  .disk-ring { transform: scale(.86); transform-origin: right center; margin-left: -8px; }
+  .disk-ring-wrap { transform: scale(.86); transform-origin: right center; margin-left: -8px; }
 }
 </style>

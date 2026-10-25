@@ -1012,6 +1012,8 @@ export const en: Record<string, string> = {
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
   '缓存 · {time}': 'Cached · {time}',
+  '暂无趋势': 'No trend yet',
+  '展开全部 {n} 个': 'Show all {n}',
   // ---- fail2ban 语义（修订第 264 条） ----
   '仅说明组件存在，不代表有规则生效': 'only means the component is present, not that rules are in effect',
   '已配置 · fail2ban 运行中': 'configured · fail2ban running',
