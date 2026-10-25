@@ -1,6 +1,6 @@
 // 简单折线图（设计 14“趋势”）：自绘，不引入图表库。一到两条系列，纵轴从 0 开始，
 // 上限按数据取整（留约 15% 余量，百分比不超过 100%），左侧标出上限与一半处的数值，第一条系列下方浅色填充；
-// 标出最大值与起止时间；数据为空时显示提示。
+// 标出本区间平均与峰值（修订第 243 条）与起止时间；数据为空时显示提示。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -51,8 +51,10 @@ class LineChart extends StatelessWidget {
           Text(s.label, style: labelStyle),
           const SizedBox(width: 12),
         ],
-        const Spacer(),
-        Text('最高 ${formatY(series.expand((s) => s.values).where((v) => v.isFinite).fold<double>(0, math.max))}', style: labelStyle),
+        // 本区间的平均与峰值（修订第 243 条，与 Web 图表相同）：只算有数据的点；多条系列时按第一条；窄屏省略
+        Expanded(
+          child: Text(_stats(series.first.values), style: labelStyle, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
       ]),
       const SizedBox(height: 6),
       SizedBox(
@@ -72,6 +74,14 @@ class LineChart extends StatelessWidget {
         Text(_label(times.last, times.last - times.first), style: labelStyle),
       ]),
     ]);
+  }
+
+  String _stats(List<double> values) {
+    final v = values.where((x) => x.isFinite).toList();
+    if (v.isEmpty) return '';
+    final avg = v.reduce((a, b) => a + b) / v.length;
+    final peak = v.fold<double>(0, math.max);
+    return '${series.length > 1 ? '${series.first.label} ' : ''}平均 ${formatY(avg)} · 峰值 ${formatY(peak)}';
   }
 
   static String _label(int unix, int span) {
