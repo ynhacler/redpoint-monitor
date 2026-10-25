@@ -1,4 +1,16 @@
 <script lang="ts">
+import { ref as vref } from 'vue'
+
+/** 百分比图的纵轴（修订第 234 条）：auto 按数据自动缩放（低负载时也看得清趋势），fixed 固定 0～100%；所有图表共用，记在本机 */
+export const axisMode = vref<'auto' | 'fixed'>(readAxisMode())
+function readAxisMode(): 'auto' | 'fixed' {
+  try {
+    return localStorage.getItem('vpsmon.chartAxis') === 'fixed' ? 'fixed' : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
 /** 一条曲线 */
 export interface Series {
   /** 图例名称 */
@@ -16,7 +28,8 @@ import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { t } from '../i18n'
 
 // 按需引入，只打包折线图与柱状图需要的模块
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -37,6 +50,21 @@ const props = defineProps<{
 }>()
 
 const el = ref<HTMLDivElement | null>(null)
+
+// 本区间的平均与峰值（修订第 234 条）：只算有数据的点，缺失的点不当作 0
+const stats = computed(() => props.kind === 'bar' ? [] : props.series.slice(0, 3).map((s) => {
+  const v = s.data.map((d) => d[1]).filter((x): x is number => x != null && Number.isFinite(x))
+  return { name: s.name, n: v.length, avg: v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0, max: v.length ? Math.max(...v) : 0 }
+}).filter((x) => x.n > 0))
+const fixed = computed(() => !!props.max && axisMode.value === 'fixed')
+function setAxis(m: 'auto' | 'fixed') {
+  axisMode.value = m
+  try {
+    localStorage.setItem('vpsmon.chartAxis', m)
+  } catch {
+    /* 隐私模式等不可用时只在本页生效 */
+  }
+}
 let chart: echarts.ECharts | undefined
 let observer: ResizeObserver | undefined
 let themeQuery: MediaQueryList | undefined
@@ -74,9 +102,9 @@ function render() {
       yAxis: {
         type: 'value',
         min: 0,
-        max: props.max,
-        // 网格线最多 4 条（设计 41.5）；固定上限（百分比）时按 1/4 等分，避免 90% 与 100% 两个刻度挤在一起
-        interval: props.max ? props.max / 4 : undefined,
+        // 百分比图：固定 0～100% 时按 1/4 等分（避免 90% 与 100% 挤在一起）；自动缩放时上限随数据，但不超过 max（修订第 234 条）
+        max: fixed.value ? props.max : props.max ? (v: { max: number }) => Math.min(props.max!, niceMax(v.max)) : undefined,
+        interval: fixed.value ? props.max! / 4 : undefined,
         splitNumber: 3,
         axisLabel: { color: muted, fontSize: fs, formatter: (v: number) => props.format(v) },
         splitLine: { lineStyle: { color: border, type: 'dashed' } },
@@ -116,18 +144,44 @@ onBeforeUnmount(() => {
   window.removeEventListener('vpsmon-theme', render)
   chart?.dispose()
 })
-watch(() => [props.series, props.max, props.kind], render, { deep: true })
+watch(() => [props.series, props.max, props.kind, axisMode.value], render, { deep: true })
+
+/** 自动缩放的上限：比最大值略高的整齐数（1、2、5 × 10ⁿ），至少 1，避免几乎为 0 的数据被放大成满屏噪声 */
+function niceMax(v: number): number {
+  const x = Math.max(1, v * 1.15)
+  const p = 10 ** Math.floor(Math.log10(x))
+  return ([1, 2, 5, 10].find((m) => m * p >= x) ?? 10) * p
+}
 </script>
 
 <template>
   <div class="panel chart">
-    <h3>{{ title }}</h3>
+    <div class="head">
+      <h3>{{ title }}</h3>
+      <div v-if="max" class="axis" role="group" :aria-label="t('纵轴')">
+        <button type="button" :class="{ on: !fixed }" :aria-pressed="!fixed" @click="setAxis('auto')">{{ t('自动') }}</button>
+        <button type="button" :class="{ on: fixed }" :aria-pressed="fixed" @click="setAxis('fixed')">0–{{ format(max) }}</button>
+      </div>
+    </div>
+    <p v-if="stats.length" class="stats num">
+      <span v-for="x in stats" :key="x.name">
+        <template v-if="stats.length > 1 || series.length > 1">{{ x.name }}：</template>{{ t('平均 {avg} · 峰值 {max}', { avg: format(x.avg), max: format(x.max) }) }}
+      </span>
+      <span class="muted">{{ t('（本区间）') }}</span>
+    </p>
     <div ref="el" class="canvas" />
   </div>
 </template>
 
 <style scoped>
 .chart { padding: var(--space-4); min-width: 0; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.axis { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.axis button { background: transparent; border: 0; border-radius: 0; padding: 0 var(--space-2); font-size: var(--font-xs); line-height: 20px;
+  color: var(--text-muted); }
+.axis button + button { border-left: 1px solid var(--border); }
+.axis button.on { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
+.stats { margin: 2px 0 0; font-size: var(--font-xs); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0 var(--space-3); }
 .chart h3 { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); font-weight: var(--weight-strong); }
 .canvas { height: 180px; margin-top: var(--space-2); }
 </style>
