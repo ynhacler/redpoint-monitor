@@ -191,7 +191,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Netflix'), findsOneWidget);
-    expect(find.text('每月约'), findsOneWidget);
+    expect(find.text('月均折算'), findsOneWidget);
     expect(find.textContaining('每月 5 日扣费'), findsOneWidget);
     await tester.tap(find.text('云平台'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));

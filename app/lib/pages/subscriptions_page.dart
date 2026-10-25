@@ -223,9 +223,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text('每月约', style: muted),
-            const Spacer(),
-            Text('${list.where((s) => !s.ended).length} 个订阅${soon > 0 ? ' · 快到期 $soon 个' : ''}', style: muted),
+            Text('月均折算', style: muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('订阅中 ${list.where((s) => !s.ended).length} / 共 ${list.length} 个${soon > 0 ? ' · 快到期 $soon 个' : ''}',
+                  style: muted, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
             const SizedBox(width: 8),
           ]),
           const SizedBox(height: 2),
