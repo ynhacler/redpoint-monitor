@@ -52,6 +52,15 @@ String fmtTrafficLeft(num left, num limit, String unit) {
   return '${(left / pow(j)).floor()} ${units[j]}';
 }
 
+/// 相对时间（修订第 236 条，与 Web 的 fmtAgo 相同）：刚刚、12 分钟前、3 小时前、2 天前
+String fmtAgo(int unix, {DateTime? now}) {
+  final s = ((now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000 - unix).clamp(0, 1 << 40);
+  if (s < 60) return '刚刚';
+  if (s < 3600) return '${s ~/ 60} 分钟前';
+  if (s < 86400) return '${s ~/ 3600} 小时前';
+  return '${s ~/ 86400} 天前';
+}
+
 /// 精细百分比（修订第 228 条）：小于 1% 时保留两位小数，更小时为 “<0.01%”；其余同 fmtPct
 String fmtPctFine(num? p) {
   if (p == null || p.isNaN) return dash;

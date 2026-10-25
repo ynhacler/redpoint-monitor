@@ -57,6 +57,15 @@ export function fmtTrafficLeft(left: number, limit: number, unit: 'decimal' | 'b
   return `${Math.floor(left / base ** j)} ${units[j]}` // 2 TB 额度：1999 GB
 }
 
+/** 相对时间（修订第 236 条）：“刚刚”“12 分钟前”“3 小时前”“2 天前”，用于说明结果有多旧 */
+export function fmtAgo(unix: number, now = Date.now() / 1000): string {
+  const s = Math.max(0, now - unix)
+  if (s < 60) return t('刚刚')
+  if (s < 3600) return t('{n} 分钟前', { n: Math.floor(s / 60) })
+  if (s < 86400) return t('{n} 小时前', { n: Math.floor(s / 3600) })
+  return t('{n} 天前', { n: Math.floor(s / 86400) })
+}
+
 /** 精细百分比（修订第 228 条）：小于 1% 时保留两位小数（“0.05%”），更小时为 “<0.01%”；其余同 fmtPct */
 export function fmtPctFine(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return DASH
