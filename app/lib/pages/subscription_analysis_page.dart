@@ -39,6 +39,48 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
 
   List<Color> _palette(AppColors c, StatusColors s) => [c.accent, s.ok, c.series2, c.series3, s.warn, s.bad];
 
+  Widget _cashflow(BuildContext context, int monthly) {
+    final c = appColors(context);
+    final muted = TextStyle(fontSize: 12, color: c.textMuted);
+    final cf = cashflow(widget.items, widget.fx);
+    final max = cf.months.fold<int>(1, (a, m) => m.$2 > a ? m.$2 : a);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('合计 ${_money(cf.total)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+          const SizedBox(height: 2),
+          Text('月均折算 × 12 为 ${_money(monthly * 12)}；差异来自年付、季付落在哪个月，以及中途开始或结束的订阅'
+              '${cf.missing.isEmpty ? '' : '；缺少 ${cf.missing.join('、')} 的汇率未计入'}', style: muted),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              for (final (i, m) in cf.months.indexed)
+                Expanded(
+                  child: Tooltip(
+                    message: '${m.$1.year}-${m.$1.month.toString().padLeft(2, '0')} ${_money(m.$2)} · ${m.$3} 个订阅',
+                    child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                      Container(
+                        height: 72 * (m.$2 / max).clamp(0.04, 1.0),
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: i == 0 ? c.accent : c.accent.withValues(alpha: 0.45),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(m.$1.month == 1 ? '${m.$1.year % 100}年' : '${m.$1.month}月', style: const TextStyle(fontSize: 10), maxLines: 1),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = appColors(context);
@@ -114,6 +156,9 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
             ]),
           ),
         ),
+        // 未来 12 个月预计扣款（修订第 240 条）：现金流，按扣费日排期，与月均折算 × 12 不同
+        Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 6), child: Text('未来 12 个月预计扣款', style: muted)),
+        _cashflow(context, a.monthly),
         Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 6), child: Text('月费排行（不是按月付费的折算为每月）', style: muted)),
         Card(
           clipBehavior: Clip.antiAlias,

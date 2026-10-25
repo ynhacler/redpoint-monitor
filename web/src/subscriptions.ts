@@ -294,6 +294,30 @@ export function spendCny(list: Subscription[], rates: Rates, from: Date, to: Dat
   return out
 }
 
+/** 一个月的预计扣款 */
+export interface CashMonth {
+  /** 该月 1 日（本地时间） */
+  month: Date
+  /** 人民币合计（分），与概览、统计同一口径（spendCny） */
+  cents: number
+  /** 该月有扣费的订阅数 */
+  count: number
+}
+
+/** 未来 n 个月（从本月起）每月的预计扣款（修订第 240 条）：按实际扣费日排期，年付、季付只在扣费的月份计入；
+ *  这是现金流，与“月均折算 × 12”不同。缺少汇率的币种不计入（missing 中列出） */
+export function cashflow(list: Subscription[], rates: Rates, today: Date, n = 12): { months: CashMonth[]; total: number; missing: string[] } {
+  const months: CashMonth[] = []
+  const missing = new Set<string>()
+  for (let i = 0; i < n; i++) {
+    const from = monthStart(today, i)
+    const sp = spendCny(list, rates, from, monthStart(today, i + 1))
+    for (const c of sp.missing.keys()) missing.add(c)
+    months.push({ month: from, cents: sp.cents, count: sp.items.length })
+  }
+  return { months, total: months.reduce((a, m) => a + m.cents, 0), missing: [...missing] }
+}
+
 /** 一组的折算月费 */
 export interface Share {
   key: string
