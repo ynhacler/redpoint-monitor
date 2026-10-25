@@ -21,7 +21,14 @@ import 'subscription_analysis_page.dart';
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
   /// 创建订阅页
-  const SubscriptionsPage({super.key, required this.api, required this.onRevoked, this.privacy = false, this.embedded = false});
+  const SubscriptionsPage(
+      {super.key, required this.api, required this.onRevoked, this.privacy = false, this.embedded = false, this.grouped = false, this.onGrouped});
+
+  /// 按类别分组显示（修订第 237 条）；为 false 时不分类
+  final bool grouped;
+
+  /// 切换排列方式；为空时不显示切换按钮
+  final ValueChanged<bool>? onGrouped;
 
   /// 嵌在“工具”页的分页中，不显示自己的标题栏（修订第 216 条）
   final bool embedded;
@@ -165,32 +172,48 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           if (items != null && items.isNotEmpty) ...[
             _summary(context, shown, soon),
             if (cats.length > 1)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(children: [
-                  for (final k in ['', ...cats])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(k.isEmpty ? '全部' : categoryNames[k]!),
-                        selected: _category == k,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (_) => setState(() => _category = k),
-                      ),
-                    ),
+              Row(children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      for (final k in ['', ...cats])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: Text(k.isEmpty ? '全部' : categoryNames[k]!),
+                            selected: _category == k,
+                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) => setState(() => _category = k),
+                          ),
+                        ),
+                    ]),
+                  ),
+                ),
+                // 排列方式（修订第 237 条）：不分类 / 按类别，记在本机；选了某个类别时只有一组，不需要分组
+                if (widget.onGrouped != null && _category.isEmpty)
+                  TextButton.icon(
+                    key: const ValueKey('sub-grouping'),
+                    onPressed: () => widget.onGrouped!(!widget.grouped),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    icon: Icon(widget.grouped ? Icons.view_agenda_outlined : Icons.list, size: 18),
+                    label: Text(widget.grouped ? '按类别' : '不分类'),
+                  ),
+              ]),
+            if (widget.grouped && _category.isEmpty && cats.length > 1)
+              ..._groupedList(context, active, shown, colors)
+            else
+              Card(
+                margin: const EdgeInsets.only(top: 4),
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (final (i, s) in active.indexed) ...[
+                    if (i > 0) Divider(height: 1, indent: 64, color: c.border),
+                    _row(context, s, colors),
+                  ],
                 ]),
               ),
-            Card(
-              margin: const EdgeInsets.only(top: 4),
-              clipBehavior: Clip.antiAlias,
-              child: Column(children: [
-                for (final (i, s) in active.indexed) ...[
-                  if (i > 0) Divider(height: 1, indent: 64, color: c.border),
-                  _row(context, s, colors),
-                ],
-              ]),
-            ),
             if (ended.isNotEmpty) ...[
               Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text('已结束', style: muted)),
               Opacity(
@@ -251,6 +274,40 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
         ]),
       ),
     );
+  }
+
+  // 按类别分组（修订第 237 条）：类别按目录顺序，组头为类别颜色、名称、数量与月均折算（人民币），组内顺序与不分类时相同
+  List<Widget> _groupedList(BuildContext context, List<Subscription> active, List<Subscription> shown, StatusColors colors) {
+    final c = appColors(context);
+    final muted = TextStyle(fontSize: 12, color: c.textMuted);
+    final monthly = {for (final x in analyze(shown, _fx).byCategory) x.key: x.cents};
+    return [
+      for (final k in categoryNames.keys)
+        if (active.any((s) => s.category == k)) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Row(children: [
+              Container(width: 10, height: 10, decoration: BoxDecoration(color: categoryColor(c, k), shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text(categoryNames[k]!, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Text('${active.where((s) => s.category == k).length} 个', style: muted),
+              const Spacer(),
+              if ((monthly[k] ?? 0) > 0) Text('月均 ${widget.privacy ? '***' : fmtMoney(monthly[k]!, 'CNY')}', style: muted),
+            ]),
+          ),
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: [
+              for (final (i, s) in active.where((s) => s.category == k).indexed) ...[
+                if (i > 0) Divider(height: 1, indent: 64, color: c.border),
+                _row(context, s, colors),
+              ],
+            ]),
+          ),
+        ],
+    ];
   }
 
   Widget _row(BuildContext context, Subscription s, StatusColors colors) {

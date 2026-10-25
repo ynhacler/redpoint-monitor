@@ -260,6 +260,10 @@ class _AppShellState extends State<AppShell> {
       // 第一次切到这个标签时才创建：打开 App 不自动查询 IP 或开始测试
       _visited.contains(1) ? NetworkPage(privacy: _prefs.privacy) : const SizedBox.shrink(),
       ToolsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy, cloud: _cloud,
+          subGrouped: _prefs.subGrouped, onSubGrouped: (v) {
+        setState(() => _prefs.subGrouped = v);
+        _savePrefs();
+      },
           serverNames: {for (final s in _items) s.id: s.name}, onOpenServer: (id) {
         final s = _items.where((x) => x.id == id).firstOrNull;
         if (s != null) _open(s);

@@ -11,7 +11,7 @@ import 'subscriptions_page.dart';
 class ToolsPage extends StatelessWidget {
   /// 创建工具页
   const ToolsPage({super.key, required this.api, required this.onRevoked, this.privacy = false, this.cloud,
-      this.serverNames = const {}, this.onOpenServer});
+      this.serverNames = const {}, this.onOpenServer, this.subGrouped = false, this.onSubGrouped});
 
   /// 当前监控中心
   final ApiClient api;
@@ -31,6 +31,12 @@ class ToolsPage extends StatelessWidget {
   /// 点云实例关联的节点时打开详情
   final ValueChanged<int>? onOpenServer;
 
+  /// 订阅列表按类别分组（修订第 237 条，本机偏好）
+  final bool subGrouped;
+
+  /// 切换订阅列表的排列方式
+  final ValueChanged<bool>? onSubGrouped;
+
   @override
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
@@ -40,7 +46,7 @@ class ToolsPage extends StatelessWidget {
             bottom: const TabBar(tabs: [Tab(text: '订阅'), Tab(text: '云平台')]),
           ),
           body: TabBarView(children: [
-            SubscriptionsPage(api: api, onRevoked: onRevoked, privacy: privacy, embedded: true),
+            SubscriptionsPage(api: api, onRevoked: onRevoked, privacy: privacy, embedded: true, grouped: subGrouped, onGrouped: onSubGrouped),
             CloudPage(api: api, onRevoked: onRevoked, initial: cloud, serverNames: serverNames, onOpenServer: onOpenServer, embedded: true),
           ]),
         ),
