@@ -299,7 +299,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 .chips { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px var(--space-3); border-radius: var(--radius-full);
   background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); font-size: var(--font-sm); text-decoration: none; }
-.chip:hover { color: var(--text); border-color: var(--text-muted); text-decoration: none; filter: none; }
+@media (hover: hover) { .chip:hover { color: var(--text); border-color: var(--text-muted); text-decoration: none; filter: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
 .chip.active { color: var(--text); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .chip b { color: var(--text); font-weight: var(--weight-strong); }
 .chip b.ok { color: var(--ok); }

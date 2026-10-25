@@ -764,7 +764,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .subs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .sub-row { width: 100%; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); text-align: left;
   color: var(--text); font: inherit; cursor: pointer; }
-.sub-row:hover { border-color: var(--text-muted); filter: none; }
+@media (hover: hover) { .sub-row:hover { border-color: var(--text-muted); filter: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
 .sub-row.ended { opacity: .5; }
 .sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .id-inline { margin-left: var(--space-2); font-weight: normal; color: var(--text-muted); font-size: var(--font-sm); }
