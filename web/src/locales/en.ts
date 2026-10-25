@@ -1012,6 +1012,11 @@ export const en: Record<string, string> = {
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
   '缓存 · {time}': 'Cached · {time}',
+  // ---- fail2ban 语义（修订第 264 条） ----
+  '仅说明组件存在，不代表有规则生效': 'only means the component is present, not that rules are in effect',
+  '已配置 · fail2ban 运行中': 'configured · fail2ban running',
+  '已配置 · fail2ban 未运行，不在防护': 'configured · fail2ban not running, not protecting',
+  '当前封禁 IP：未知（读取运行状态需要 root，在主机上查看：': 'Currently banned IPs: unknown (reading runtime state needs root; check on the host: ',
   // ---- 端口基线状态与确认（修订第 263 条） ----
   '端口基线：未启用': 'Port baseline: off',
   '当前发现 {n} 个对外监听端口': '{n} externally bound ports now',
