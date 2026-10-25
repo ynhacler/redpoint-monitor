@@ -991,6 +991,17 @@ export const en: Record<string, string> = {
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
   '{name}（点击回到顶部查看概况）': '{name} (click to scroll to the overview)',
+  // ---- 云实例状态（修订第 232 条） ----
+  '启动中': 'Starting',
+  '停止中': 'Stopping',
+  '创建中': 'Creating',
+  '重启中': 'Restarting',
+  '已到期 / 停用': 'Expired / disabled',
+  '已冻结': 'Frozen',
+  '释放中': 'Releasing',
+  '异常': 'Error',
+  '云厂商状态：{s}': 'Provider state: {s}',
+  '（可能已过期）': ' (may be outdated)',
   // ---- 系统菜单（修订第 231 条） ----
   '通用': 'General',
   '监测与告警': 'Monitoring & alerts',

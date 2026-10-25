@@ -12,6 +12,7 @@ import EmptyState from '../components/EmptyState.vue'
 import UsageBar from '../components/UsageBar.vue'
 import { DASH, fmtBytes, fmtDate, fmtMoney, fmtTime, fmtTraffic } from '../format'
 import { t } from '../i18n'
+import { cloudState } from '../cloudState'
 import { state } from '../store'
 
 const accounts = ref<CloudAccount[]>([])
@@ -644,7 +645,7 @@ function expireTone(i: CloudInstance): string {
             <div class="muted small ellipsis mono">{{ [i.public_ipv4, i.public_ipv6].filter(Boolean).join(' / ') || t('无公网 IP') }}</div>
           </div>
           <span class="small state">
-            <span :class="i.state.toLowerCase() === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
+            <span class="cstate" :class="cloudState(i).tone" :title="cloudState(i).title">{{ cloudState(i).text }}<small v-if="cloudState(i).stale" class="muted">{{ t('（可能已过期）') }}</small></span>
             <span v-if="i.expire_at" class="expire" :class="expireTone(i)">{{ t('到期') }} {{ fmtDate(i.expire_at) }}</span>
           </span>
           <div v-if="i.traffic_limit_bytes" class="traffic">

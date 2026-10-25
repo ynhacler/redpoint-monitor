@@ -635,16 +635,29 @@ class CloudAccountBrief {
   }
 }
 
+/// 云实例归一化状态的中文名（修订第 232 条，与 Web 的 cloudState.ts 相同）
+const cloudStateNames = {
+  'running': '运行中', 'stopped': '已停止', 'starting': '启动中', 'stopping': '停止中', 'pending': '创建中', 'rebooting': '重启中',
+  'expired': '已到期 / 停用', 'frozen': '已冻结', 'deleting': '释放中', 'error': '异常', 'unknown': '未知',
+};
+
 /// 云实例的只读摘要（设计 44.8）
 class CloudInstanceBrief {
   CloudInstanceBrief({required this.id, required this.accountId, required this.name, required this.region, required this.kind,
-      required this.state, required this.plan, required this.expireAt, required this.trafficUsed, required this.trafficLimit, this.serverId});
+      required this.state, required this.plan, required this.expireAt, required this.trafficUsed, required this.trafficLimit, this.serverId,
+      this.stateNorm = '', this.stateAt = 0});
   final int id;
   final int accountId;
   final String name;
   final String region;
   final String kind;
   final String state;
+
+  /// 面板归一化的状态（修订第 232 条）；旧版面板为空
+  final String stateNorm;
+
+  /// 状态的同步时间（Unix 秒）；0 为尚未同步或旧版面板
+  final int stateAt;
   final String plan;
   final int expireAt;
   final int trafficUsed;
@@ -658,6 +671,8 @@ class CloudInstanceBrief {
         region: (j['region'] as String?) ?? '',
         kind: (j['kind'] as String?) ?? '',
         state: (j['state'] as String?) ?? '',
+        stateNorm: (j['state_norm'] as String?) ?? '',
+        stateAt: (j['state_at'] as int?) ?? 0,
         plan: (j['plan'] as String?) ?? '',
         expireAt: (j['expire_at'] as int?) ?? 0,
         trafficUsed: (j['traffic_used_bytes'] as int?) ?? 0,

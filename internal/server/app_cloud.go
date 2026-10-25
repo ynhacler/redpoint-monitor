@@ -45,6 +45,8 @@ type appCloudInstance struct {
 	Region            string `json:"region"`
 	Kind              string `json:"kind"`
 	State             string `json:"state"`
+	StateNorm         string `json:"state_norm"`
+	StateAt           int64  `json:"state_at"`
 	Plan              string `json:"plan"`
 	ExpireAt          int64  `json:"expire_at"`
 	TrafficUsedBytes  int64  `json:"traffic_used_bytes"`
@@ -104,7 +106,7 @@ func (s *Server) handleAppCloud(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, in := range insts {
 		out.Instances = append(out.Instances, appCloudInstance{ID: in.ID, AccountID: in.AccountID, Name: in.Name, Region: in.Region,
-			Kind: in.Kind, State: in.State, Plan: in.Plan, ExpireAt: in.ExpireAt, TrafficUsedBytes: in.TrafficUsedBytes,
+			Kind: in.Kind, State: in.State, StateNorm: in.StateNorm, StateAt: in.StateAt, Plan: in.Plan, ExpireAt: in.ExpireAt, TrafficUsedBytes: in.TrafficUsedBytes,
 			TrafficLimitBytes: in.TrafficLimitBytes, ServerID: in.ServerID})
 	}
 	writeJSON(w, out)

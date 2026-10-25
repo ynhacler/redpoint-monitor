@@ -3897,7 +3897,7 @@ components:
 
     CloudInstance:
       type: object
-      required: [id, account_id, account_name, provider, instance_id, name, region, kind, state, public_ipv4, public_ipv6, plan,
+      required: [id, account_id, account_name, provider, instance_id, name, region, kind, state, state_norm, state_at, public_ipv4, public_ipv6, plan,
                  expire_at, renew_price_cents, traffic_limit_bytes, traffic_used_bytes, traffic_period_start, server_id, updated_at,
                  suggested_server_id, auto_calibrate, calibrated_at, calibrate_status, cdt_pool]
       properties:
@@ -3910,6 +3910,8 @@ components:
         region: { type: string }
         kind: { type: string, description: ec2 / lightsail / ecs / swas（阿里云轻量）/ cvm / lighthouse（腾讯云轻量）/ oci / oci_egress（Oracle 租户每月出站流量） }
         state: { type: string, description: 云厂商原样，如 running / stopped }
+        state_norm: { type: string, enum: [running, stopped, starting, stopping, pending, rebooting, expired, frozen, deleting, error, unknown], description: '修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错' }
+        state_at: { type: integer, description: '状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期' }
         public_ipv4: { type: string }
         public_ipv6: { type: string }
         plan: { type: string, description: 规格（EC2 实例类型、Lightsail 套餐） }
@@ -4078,7 +4080,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, account_id, name, region, kind, state, plan, expire_at, traffic_used_bytes, traffic_limit_bytes, server_id]
+            required: [id, account_id, name, region, kind, state, state_norm, state_at, plan, expire_at, traffic_used_bytes, traffic_limit_bytes, server_id]
             properties:
               id: { type: integer }
               account_id: { type: integer }
@@ -4086,6 +4088,8 @@ components:
               region: { type: string }
               kind: { type: string, description: 'ec2 / lightsail / ecs / swas / cvm / lighthouse / oci 等' }
               state: { type: string }
+              state_norm: { type: string, enum: [running, stopped, starting, stopping, pending, rebooting, expired, frozen, deleting, error, unknown], description: '修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错' }
+              state_at: { type: integer, description: '状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期' }
               plan: { type: string }
               expire_at: { type: integer, description: 到期时间；0 为按量或没有到期 }
               traffic_used_bytes: { type: integer }

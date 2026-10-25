@@ -12145,6 +12145,8 @@
           "region",
           "kind",
           "state",
+          "state_norm",
+          "state_at",
           "public_ipv4",
           "public_ipv6",
           "plan",
@@ -12190,6 +12192,27 @@
           "state": {
             "type": "string",
             "description": "云厂商原样，如 running / stopped"
+          },
+          "state_norm": {
+            "type": "string",
+            "enum": [
+              "running",
+              "stopped",
+              "starting",
+              "stopping",
+              "pending",
+              "rebooting",
+              "expired",
+              "frozen",
+              "deleting",
+              "error",
+              "unknown"
+            ],
+            "description": "修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错"
+          },
+          "state_at": {
+            "type": "integer",
+            "description": "状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期"
           },
           "public_ipv4": {
             "type": "string"
@@ -12826,6 +12849,8 @@
                 "region",
                 "kind",
                 "state",
+                "state_norm",
+                "state_at",
                 "plan",
                 "expire_at",
                 "traffic_used_bytes",
@@ -12851,6 +12876,27 @@
                 },
                 "state": {
                   "type": "string"
+                },
+                "state_norm": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "stopped",
+                    "starting",
+                    "stopping",
+                    "pending",
+                    "rebooting",
+                    "expired",
+                    "frozen",
+                    "deleting",
+                    "error",
+                    "unknown"
+                  ],
+                  "description": "修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错"
+                },
+                "state_at": {
+                  "type": "integer",
+                  "description": "状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期"
                 },
                 "plan": {
                   "type": "string"
