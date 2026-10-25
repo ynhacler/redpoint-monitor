@@ -112,3 +112,11 @@ html.sidebar-collapsed { --sidebar-w: 60px; }
 /* 自动填充检测（autofill.ts，修订第 173 条）：浏览器自动填充时触发这个空动画，脚本据此把值同步到页面状态 */
 @keyframes vpsmon-autofill { from { opacity: 1; } to { opacity: 1; } }
 input:-webkit-autofill { animation-name: vpsmon-autofill; animation-duration: 1ms; }
+
+/* 减少动态效果（修订第 257 条，UI 精修 UI-017）：系统设置了“减少动态效果”时关闭过渡与循环动画（进度条、旋转图标、展开箭头）；
+   输入框除外——自动填充检测依赖上面的 1ms 动画 */
+@media (prefers-reduced-motion: reduce) {
+  *:not(input), *:not(input)::before, *:not(input)::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}

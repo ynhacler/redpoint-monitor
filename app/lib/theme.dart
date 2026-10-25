@@ -52,7 +52,7 @@ class StatusColors {
   Color status(String s) => switch (s) { 'online' => c.ok, 'unknown' => c.warn, 'offline' => c.bad, _ => c.mutedState };
 }
 
-const statusText = {'online': '在线', 'unknown': '上报延迟', 'offline': '离线', 'pending': '待安装'};
+const statusText = {'online': '在线', 'unknown': '上报延迟', 'offline': '离线', 'pending': '待安装', 'maintenance': '维护中'};
 
 /// 图表的系列颜色（accent、series-2）
 Color seriesColor(BuildContext context, int i) {

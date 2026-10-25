@@ -141,7 +141,8 @@ async function saveCalibrate() {
 
     <dl class="facts">
       <div><dt>{{ t('剩余') }}</dt><dd class="num">{{ tf.limit ? fmtTrafficLeft(Math.max(0, tf.limit - tf.used), tf.limit, tf.unit) : DASH }}</dd></div>
-      <div><dt>{{ t('距离重置') }}</dt><dd class="num">{{ t('{n} 天', { n: left }) }}</dd></div>
+      <!-- 重置日（修订第 257 条，UI 精修 3.5）：天数之外写出具体日期 -->
+      <div><dt>{{ t('距离重置') }}</dt><dd class="num">{{ t('{n} 天', { n: left }) }}<small v-if="tf.cycle_end" class="muted"> {{ tf.cycle_end.slice(5) }}</small></dd></div>
       <div :title="t('周期满 7 天后按最近 7 天计算')"><dt>{{ t('日均') }}</dt><dd class="num">{{ tf.forecast ? fmt(tf.forecast.daily) : DASH }}</dd></div>
       <div :title="tf.forecast ? t('按日均估算到周期结束') : t('周期开始不足 3 天，暂不预测')">
         <dt>{{ t('预计周期结束') }}</dt>
