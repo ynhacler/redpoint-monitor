@@ -9,7 +9,7 @@ import 'sorting.dart';
 
 /// 本机界面偏好：收藏、排序方式与自定义顺序、隐私模式
 class Prefs {
-  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order})
+  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order, this.subGrouped = false})
       : favorites = favorites ?? {},
         order = order ?? [];
   final Set<int> favorites;
@@ -19,13 +19,18 @@ class Prefs {
   SortBy sortBy;
   bool privacy;
 
-  Map<String, dynamic> toJson() => {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy, 'order': order};
+  /// 订阅列表按类别分组显示（修订第 237 条）；默认不分类
+  bool subGrouped;
+
+  Map<String, dynamic> toJson() =>
+      {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy, 'order': order, 'sub_grouped': subGrouped};
 
   factory Prefs.fromJson(Map<String, dynamic> j) => Prefs(
         favorites: {for (final x in (j['favorites'] as List<dynamic>? ?? const [])) (x as num).toInt()},
         sortBy: SortBy.values.where((v) => v.name == j['sort_by']).firstOrNull ?? SortBy.smart,
         privacy: (j['privacy'] as bool?) ?? false,
         order: [for (final x in (j['order'] as List<dynamic>? ?? const [])) (x as num).toInt()],
+        subGrouped: (j['sub_grouped'] as bool?) ?? false,
       );
 }
 

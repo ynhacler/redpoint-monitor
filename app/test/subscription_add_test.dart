@@ -185,4 +185,40 @@ void main() {
     expect(calls, contains('POST /api/v1/app/subscriptions/7/renew'));
     expect(find.textContaining('已顺延到 2027-11-02'), findsOneWidget);
   });
+
+  testWidgets('订阅列表排列（修订第 237 条）：按类别时有类别组头，切换按钮回调新的值', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 1400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    Map<String, dynamic> sub(int id, String name, String category) => {
+          'id': id, 'name': name, 'brand': '', 'category': category, 'price_cents': 1000, 'currency': 'CNY', 'cycle': 'monthly',
+          'trial_days': 0, 'start_date': '2026-01-01', 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [],
+          'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
+          'next_charge': '2099-01-0$id', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0,
+        };
+    final client = MockClient((req) async => http.Response.bytes(utf8.encode(jsonEncode(
+        {'limited': false, 'items': [sub(1, '甲影音', 'video'), sub(2, '乙主机', 'vps'), sub(3, '丙影音', 'video')]})), 200));
+    final api = ApiClient(_session(subs: false), MemorySessionStore(), client: client);
+    bool? toggled;
+    Future<void> show(bool grouped) async {
+      await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: api, onRevoked: () {}, grouped: grouped, onGrouped: (v) => toggled = v)));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await show(false);
+    expect(find.text('2 个'), findsNothing);
+    expect(find.widgetWithText(TextButton, '不分类'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sub-grouping')));
+    expect(toggled, true);
+
+    await show(true);
+    // 组头：类别名称旁的数量与月均；影音 2 个在 VPS 1 个之前（目录顺序）
+    expect(find.text('2 个'), findsOneWidget);
+    expect(find.text('1 个'), findsOneWidget);
+    expect(find.text('月均 ¥20.00'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('丙影音')).dy, lessThan(tester.getTopLeft(find.text('乙主机')).dy));
+    await tester.tap(find.byKey(const ValueKey('sub-grouping')));
+    expect(toggled, false);
+  });
 }

@@ -139,6 +139,37 @@ const barMax = computed(() => Math.max(1, ...bars.value.map((b) => b.cents)))
 
 // ---- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） ----
 const ana = computed(() => analyze(list.value, rates.value))
+
+// ---- 列表排列（修订第 237 条）：不分类（按下次扣费日）/ 按类别（类别按目录顺序，组内顺序不变，组头为数量与月均折算） ----
+const grouped = ref(readGrouped())
+function readGrouped() {
+  try {
+    return localStorage.getItem('vpsmon.subGrouped') === '1'
+  } catch {
+    return false
+  }
+}
+function setGrouped(v: boolean) {
+  grouped.value = v
+  try {
+    localStorage.setItem('vpsmon.subGrouped', v ? '1' : '0')
+  } catch {
+    /* 隐私模式等不可用时只在本页生效 */
+  }
+}
+type ListRow = { key: string; s?: Subscription; cat?: SubCategory; count?: number; monthly?: number }
+const listRows = computed<ListRow[]>(() => {
+  if (!grouped.value) return list.value.map((s) => ({ key: `s${s.id}`, s }))
+  const monthly = new Map(ana.value.byCategory.map((x) => [x.key, x.cents]))
+  const out: ListRow[] = []
+  for (const cat of Object.keys(categoryNames) as SubCategory[]) {
+    const xs = list.value.filter((s) => s.category === cat)
+    if (!xs.length) continue
+    out.push({ key: `c${cat}`, cat, count: xs.length, monthly: monthly.get(cat) ?? 0 })
+    for (const s of xs) out.push({ key: `s${s.id}`, s })
+  }
+  return out
+})
 const anaGroup = ref<'category' | 'country' | 'payment'>('category')
 const anaRows = computed(() => {
   const a = ana.value
@@ -535,15 +566,30 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           </div>
         </div>
 
-        <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
-          <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
-          <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
-          <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
+        <div class="view-bar">
+          <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
+            <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
+            <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
+            <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
+          </div>
+          <!-- 列表排列（修订第 237 条）：不分类 / 按类别，记在本机 -->
+          <div v-if="view === 'list'" class="segmented" role="group" :aria-label="t('排列方式')">
+            <button type="button" :class="{ active: !grouped }" :aria-pressed="!grouped" @click="setGrouped(false)">{{ t('不分类') }}</button>
+            <button type="button" :class="{ active: grouped }" :aria-pressed="grouped" @click="setGrouped(true)">{{ t('按类别') }}</button>
+          </div>
         </div>
 
         <!-- 列表 -->
         <ul v-if="view === 'list'" class="subs">
-          <li v-for="s in list" :key="s.id">
+          <template v-for="r in listRows" :key="r.key">
+          <li v-if="r.cat" class="cat-head">
+            <i :style="{ background: categoryColors[r.cat] }" />
+            <b>{{ t(categoryNames[r.cat]) }}</b>
+            <span class="muted small">{{ t('{n} 个', { n: r.count }) }}</span>
+            <span v-if="r.monthly" class="muted small num cat-sum">{{ t('月均 {v}', { v: fmtMoney(r.monthly, 'CNY') }) }}</span>
+          </li>
+          <template v-else>
+          <li v-for="s in [r.s!]" :key="s.id">
             <button type="button" class="panel sub-row" :class="{ ended: s.ended }" @click="openEdit(s)">
               <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
@@ -568,6 +614,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               </span>
             </button>
           </li>
+          </template>
+          </template>
         </ul>
 
         <!-- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） -->
@@ -687,13 +735,22 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .view-tabs { margin-bottom: var(--space-3); }
 
 /* 列表 */
+.view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.view-bar .view-tabs { margin-bottom: 0; }
+.cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-1) 0; }
+.cat-head:first-child { padding-top: 0; }
+.cat-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.cat-head .cat-sum { margin-left: auto; }
 .subs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .sub-row { width: 100%; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); text-align: left;
   color: var(--text); font: inherit; cursor: pointer; }
 .sub-row:hover { border-color: var(--text-muted); filter: none; }
 .sub-row.ended { opacity: .5; }
 .sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sub-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex: none; }
+.sub-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex: 0 1 auto; max-width: 48%; min-width: 0; }
+/* 窄屏不重叠（修订第 237 条）：左侧每行超出时省略，右侧扣费说明可换行 */
+.sub-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-price > span { white-space: normal; overflow-wrap: anywhere; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 统计 */
