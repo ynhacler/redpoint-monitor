@@ -376,6 +376,9 @@ const mainPrice = (s: Subscription) => {
   const v = toCny(s.price_cents, s.currency, rates.value)
   return v == null ? fmtMoney(s.price_cents, s.currency) : `≈ ${fmtMoney(v, 'CNY')}`
 }
+// 电脑宽度名称下的一行（修订第 269 条）：类别与备注；按类别排列时类别已在分组标题中，只写备注
+const descText = (s: Subscription) =>
+  [grouped.value ? '' : t(categoryNames[s.category] ?? s.category), s.note.split('\n')[0]].filter(Boolean).join(' · ')
 // 7 天内扣费的短标签（文字，不只靠颜色）
 const soonDays = (s: Subscription) => {
   if (s.ended || !s.next_charge) return null
@@ -599,17 +602,19 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           <template v-else>
           <li v-for="s in [r.s!]" :key="s.id">
             <!-- 三层信息（修订第 253 条，UI-012）：名称 / 地区 · 支付方式 / 扣费说明；右侧人民币为主金额，原币在下一行。
-                 开始日期、VPS 规格与备注放在编辑页（悬停可看备注） -->
+                 开始日期、VPS 规格与备注放在编辑页（悬停可看备注）。
+                 电脑宽度（修订第 269 条，PC 轻量优化 S-02）：同一组元素按列表实际宽度排成“服务信息 / 付款与日期 / 金额”三段，手机仍是上下三层 -->
             <button type="button" class="panel sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
               <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
               <span class="sub-main">
-                <b class="ellipsis">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
-                  v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
-                <span v-if="s.country || s.payment" class="small muted meta-line">
-                  <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
-                  {{ [s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ') }}
-                </span>
-                <span class="small muted">{{ chargeText(s, today) }}</span>
+              <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
+                v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
+              <span v-if="descText(s)" class="sub-desc small muted">{{ descText(s) }}</span>
+              <span v-if="s.country || s.payment" class="small muted meta-line">
+                <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
+                <span class="ellipsis">{{ [s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ') }}</span>
+              </span>
+              <span class="sub-charge small muted">{{ chargeText(s, today) }}</span>
               </span>
               <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
                 @click.stop>{{ t('监控中') }}</RouterLink>
@@ -758,13 +763,30 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .cash-sum { margin: 0 0 var(--space-2); }
 .view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .view-bar .view-tabs { margin-bottom: 0; }
-.cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-1) 0; }
+.cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) 0 0; } /* 分类标题与下方卡片左右边界对齐（修订第 269 条，S-04） */
 .cat-head:first-child { padding-top: 0; }
 .cat-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .cat-head .cat-sum { margin-left: auto; }
 .subs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+/* 订阅行（修订第 269 条）。手机与较窄的列表：图标 | 名称、地区 · 支付方式、扣费说明上下三层 | 金额（与之前相同）；
+   列表宽度 ≥ 720px（按列表实际宽度判断，不按窗口，侧边栏展开时也不挤）：服务信息 / 付款与日期 / 金额三段，行更矮、中间不再空着。
+   两种排列用同一组元素：宽时 .sub-main 不再成块（display: contents），其中各行直接放进网格的对应位置 */
+.subs { container: subs / inline-size; }
 .sub-row { width: 100%; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); text-align: left;
   color: var(--text); font: inherit; cursor: pointer; }
+.sub-desc { display: none; }
+@container subs (min-width: 720px) {
+  .sub-row { display: grid; grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 1fr) auto minmax(132px, auto); gap: 2px var(--space-5);
+    grid-template-areas: "av name meta link price" "av desc charge link price"; align-content: center; padding: var(--space-3) var(--space-5); min-height: 76px; }
+  .sub-row .sub-main { display: contents; }
+  .sub-row > .sub-avatar { grid-area: av; }
+  .sub-name { grid-area: name; font-size: var(--font-lg); line-height: var(--line-lg); min-width: 0; }
+  .sub-desc { grid-area: desc; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .meta-line { grid-area: meta; }
+  .sub-charge { grid-area: charge; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .node-link { grid-area: link; }
+  .sub-row .sub-price { grid-area: price; max-width: none; }
+}
 @media (hover: hover) { .sub-row:hover { border-color: var(--text-muted); filter: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
 .sub-row.ended { opacity: .5; }
 .sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

@@ -161,6 +161,8 @@ function budgetPct(a: CloudAccount): number | null {
 }
 
 const syncMsg = ref<Record<number, string>>({})
+// 状态原因是否展开（按账户）
+const detailOpen = ref<Record<number, boolean>>({})
 async function syncNow(a: CloudAccount) {
   try {
     await syncCloudAccount(a.id)
@@ -596,14 +598,16 @@ function expireTone(i: CloudInstance): string {
             </details>
           </div>
         </div>
+        <!-- 状态一行（修订第 269 条，PC 轻量优化 C-06）：标签 + 上次成功时间 + “查看详情”开关在同一行，原因展开在下方 -->
         <div class="state-row small">
           <span class="badge" :class="badge(a).tone">{{ badge(a).text }}</span>
           <span v-if="syncedAt(a)" class="muted">{{ t('上次成功 {time}', { time: fmtTime(syncedAt(a)) }) }}</span>
+          <button v-if="badge(a).detail" type="button" class="text small detail-toggle" :aria-expanded="!!detailOpen[a.id]"
+            @click="detailOpen[a.id] = !detailOpen[a.id]">
+            {{ t('查看详情') }}<Icon name="chevron-right" :size="12" class="chev" :class="{ open: detailOpen[a.id] }" />
+          </button>
         </div>
-        <details v-if="badge(a).detail" class="state-detail small" :class="badge(a).tone">
-          <summary>{{ t('查看详情') }}</summary>
-          <p>{{ badge(a).detail }}</p>
-        </details>
+        <p v-if="badge(a).detail && detailOpen[a.id]" class="state-detail small" :class="badge(a).tone">{{ badge(a).detail }}</p>
         <p v-if="syncMsg[a.id]" class="small err">{{ syncMsg[a.id] }}</p>
         <div v-if="checks[a.id] && (checks[a.id].items.length || checks[a.id].error)" class="check">
           <div class="check-head">
@@ -645,7 +649,7 @@ function expireTone(i: CloudInstance): string {
           </div>
           <div>
             <div class="muted small">{{ t('预算') }}</div>
-            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? providerOf(a.provider).currency) : t('未设') }}</div>
+            <div class="big num">{{ a.budget_cents ? fmtMoney(a.budget_cents, a.current_cost?.currency ?? providerOf(a.provider).currency) : t('未设置') }}</div>
           </div>
           <div>
             <div class="muted small">{{ t('实例') }}</div>
@@ -757,7 +761,7 @@ function expireTone(i: CloudInstance): string {
 </template>
 
 <style scoped>
-.cost-info { margin-top: var(--space-2); }
+.cost-info { margin-top: var(--space-1); }
 .cost-info summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; list-style: none; }
 .cost-info summary::-webkit-details-marker { display: none; }
 .cost-info p { margin: var(--space-1) 0 0; }
@@ -782,8 +786,10 @@ function expireTone(i: CloudInstance): string {
 .state-detail { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
 .state-detail.warn { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .state-detail.bad { background: color-mix(in srgb, var(--bad) 8%, transparent); }
-.state-detail summary { cursor: pointer; color: var(--text-muted); }
-.state-detail p { margin: var(--space-1) 0 0; word-break: break-word; }
+.state-detail { margin-bottom: 0; word-break: break-word; }
+.detail-toggle { display: inline-flex; align-items: center; gap: 2px; min-height: 28px; }
+.detail-toggle .chev { transition: transform .15s; }
+.detail-toggle .chev.open { transform: rotate(90deg); }
 .inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .intro { margin: 0 0 var(--space-4); max-width: 72ch; }
 .editor { margin-bottom: var(--space-4); }
@@ -804,6 +810,9 @@ function expireTone(i: CloudInstance): string {
 .err { color: var(--bad); }
 .mono { font-family: var(--font-mono); }
 .accounts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+/* 账户卡片收紧（修订第 269 条，C-03）：上下内边距与区块间距减小，仍是单列 */
+.account { padding: var(--space-4) var(--space-5); }
+.title b { font-size: var(--font-lg); line-height: var(--line-lg); }
 .account.off { opacity: .7; }
 .head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
 .title { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; flex: 1; flex-wrap: wrap; }
@@ -819,7 +828,7 @@ function expireTone(i: CloudInstance): string {
 .check .mark.bad { color: var(--bad); }
 .check .detail { word-break: break-word; }
 .check > p { margin: 0; }
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 var(--space-2); }
 .big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); }
 .budget { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 .budget > :first-child { flex: 1; }
@@ -847,6 +856,7 @@ function expireTone(i: CloudInstance): string {
 .traffic { display: flex; flex-direction: column; gap: var(--space-1); }
 .danger-text { color: var(--bad); }
 @media (max-width: 640px) {
+  .account { padding: var(--space-4); }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .list li { grid-template-columns: minmax(0, 1fr) auto; }
   .list .traffic { grid-column: 1 / -1; }
