@@ -68,7 +68,7 @@ void main() {
     expect(await measureSite(['a', 'b'], fake({'a': ['timeout']})), (ms: null, fail: 'timeout'));
     expect(calls, ['a']);
     expect(await measureSite(['a'], fake({'a': ['error']})), (ms: null, fail: 'error'));
-    expect([gradeOf(149), gradeOf(150), gradeOf(400), gradeOf(null)], ['best', 'good', 'slow', 'timeout']);
+    expect([gradeOf(149), gradeOf(150), gradeOf(400), gradeOf(null), gradeOf(probeFail)], ['best', 'good', 'slow', 'timeout', 'fail']);
   });
 
   test('汇率换算与分析（修订第 223 条）：折算月费、换算人民币、分组、排行、缺汇率与一次性', () {

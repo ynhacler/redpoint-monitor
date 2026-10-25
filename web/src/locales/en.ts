@@ -990,6 +990,18 @@ export const en: Record<string, string> = {
   '最近 {n} 次': 'Last {n} runs',
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
+  '探测源：本浏览器（当前网络与代理）。下面的“中国 / 美国 / 全球”是目标网站所在地区，不是探测地点。':
+    'Tested from: this browser (your current network and proxy). “China / US / Global” is where the target sites are, not where the test runs from.',
+  '无记录': 'No result',
+  '圆点为最近 {n} 次，右边最新': 'Dots are the last {n} runs, newest on the right',
+  '目标网站': 'Target sites',
+  '检测中 {d}/{n}': 'Testing {d}/{n}',
+  '上次检测 {time}': 'Last tested {time}',
+  '成功': 'OK',
+  '成功样本平均': 'Average of successful',
+  '无成功样本': 'No successful samples',
+  '上次': 'Last',
+  '检测中': 'Testing',
   // ==== 账号页（修订第 207 条） ====
   '1 年': '1 year',
   '30 天': '30 days',

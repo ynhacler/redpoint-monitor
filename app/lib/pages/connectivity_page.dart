@@ -26,10 +26,13 @@ Future<ProbeResult> measureSite(List<String> urls, Future<Object> Function(Strin
   return (ms: null, fail: 'error');
 }
 
-/// 延迟等级：优 < 150 ms，良 < 400 ms，慢 ≥ 400 ms，超时（与 Web 相同）
-String gradeOf(int? ms) => ms == null ? 'timeout' : (ms < 150 ? 'best' : (ms < 400 ? 'good' : 'slow'));
+/// 历史中表示“无法连接”的值（null 为超时，修订第 226 条）
+const probeFail = -1;
 
-const _gradeNames = {'best': '优', 'good': '良', 'slow': '慢', 'timeout': '超时'};
+/// 延迟等级：优 < 150 ms，良 < 400 ms，慢 ≥ 400 ms，超时，无法连接（与 Web 相同）
+String gradeOf(int? ms) => ms == null ? 'timeout' : (ms < 0 ? 'fail' : (ms < 150 ? 'best' : (ms < 400 ? 'good' : 'slow')));
+
+const _gradeNames = {'best': '优', 'good': '良', 'slow': '慢', 'timeout': '超时', 'fail': '无法连接'};
 
 /// 每个目标保留最近的结果数（圆点个数）
 const historyLen = 8;
@@ -37,6 +40,7 @@ const historyLen = 8;
 // 结果保存在内存中：切换标签或重新打开页面时仍显示上次的圆点
 final _history = <String, List<int?>>{};
 final _latest = <String, ProbeResult>{};
+final _testedAt = <String, DateTime>{}; // 分组最近一次完成检测的时间
 
 /// 连通性测试页
 class ConnectivityPage extends StatefulWidget {
@@ -99,7 +103,7 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
         setState(() {
           _latest[s.id] = r;
           final h = _history.putIfAbsent(s.id, () => []);
-          h.add(r.ms);
+          h.add(r.ms ?? (r.fail == 'error' ? probeFail : null));
           if (h.length > historyLen) h.removeAt(0);
         });
       }
@@ -107,7 +111,14 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
 
     await Future.wait(List.generate(6, (_) => worker()));
     client.close(force: true);
-    if (mounted) setState(() => _running.removeAll(groups));
+    if (mounted) {
+      setState(() {
+        _running.removeAll(groups);
+        for (final g in groups) {
+          _testedAt[g] = DateTime.now();
+        }
+      });
+    }
   }
 
   Color _gradeColor(BuildContext context, String g) {
@@ -117,6 +128,8 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
       'best' => colors.ok,
       'good' => Color.lerp(colors.ok, c.surface, 0.45)!,
       'slow' => colors.warn,
+      'timeout' => colors.bad,
+      'fail' => Color.lerp(colors.bad, c.surface, 0.45)!,
       _ => colors.muted,
     };
   }
@@ -130,15 +143,24 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
       appBar: widget.embedded ? null : AppBar(title: const Text('连通性测试')),
       body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
         Text('测试手机当前网络到各地常用网站的连通性与延迟，用来判断分流规则是否生效。测试在本机进行，不经过面板与 VPS。', style: muted),
+        const SizedBox(height: 2),
+        Text('探测源：本机（当前网络与代理）；“中国 / 美国 / 全球”是目标网站所在地区。', style: muted),
         const SizedBox(height: 8),
         Row(children: [
-          for (final g in ['best', 'good', 'slow', 'timeout']) ...[
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: _gradeColor(context, g), shape: BoxShape.circle)),
-            const SizedBox(width: 4),
-            Text(_gradeNames[g]!, style: muted),
-            const SizedBox(width: 12),
-          ],
-          const Spacer(),
+          Expanded(
+            child: Wrap(spacing: 10, runSpacing: 4, children: [
+              for (final g in ['best', 'good', 'slow', 'timeout', 'fail', 'none'])
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: g == 'none' ? c.border : _gradeColor(context, g), shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  Text(_gradeNames[g] ?? '无记录', style: muted),
+                ]),
+            ]),
+          ),
+          const SizedBox(width: 8),
           FilledButton.tonalIcon(
             onPressed: any ? null : () => _run(siteGroups.map((g) => g.key).toSet()),
             style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -154,9 +176,27 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
   Widget _group(BuildContext context, SiteGroup g) {
     final c = appColors(context);
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
-    final done = [for (final s in g.sites) _latest[s.id]].whereType<ProbeResult>();
+    // 摘要只统计本次已完成的检测；平均延迟只算成功样本（修订第 226 条）
+    final done = [for (final s in g.sites) _latest[s.id]].whereType<ProbeResult>().toList();
     final ok = done.where((r) => r.ms != null).toList();
+    final timeout = done.where((r) => r.ms == null && r.fail != 'error').length;
+    final fail = done.length - ok.length - timeout;
     final avg = ok.isEmpty ? null : (ok.fold<int>(0, (a, r) => a + r.ms!) / ok.length).round();
+    final at = _testedAt[g.key];
+    final String summary;
+    if (_running.contains(g.key)) {
+      summary = '检测中 ${done.length}/${g.sites.length}';
+    } else if (done.isEmpty) {
+      summary = '未检测';
+    } else {
+      summary = [
+        '成功 ${ok.length}/${done.length}',
+        if (timeout > 0) '超时 $timeout',
+        if (fail > 0) '无法连接 $fail',
+        avg != null ? '平均 $avg ms' : '无成功样本',
+        if (at != null) '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}',
+      ].join(' · ');
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(4, 16, 0, 6),
@@ -166,7 +206,7 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
           Text(g.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('可达 ${ok.length}/${g.sites.length}${avg != null ? ' · 平均 ${avg}ms' : ''}', style: muted, overflow: TextOverflow.ellipsis),
+            child: Text(summary, style: muted, overflow: TextOverflow.ellipsis),
           ),
           TextButton(
             onPressed: _running.contains(g.key) ? null : () => _run({g.key}),
@@ -190,12 +230,12 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
     final String text;
     Color? color;
     if (r == null) {
-      text = _running.contains(group) ? '…' : '—';
+      text = _running.contains(group) ? '检测中' : '未检测';
     } else if (r.ms == null) {
       text = r.fail == 'error' ? '无法连接' : '超时';
-      color = StatusColors.of(context).muted;
+      color = StatusColors.of(context).bad;
     } else {
-      text = '${r.ms}ms';
+      text = '${r.ms} ms';
       color = _gradeColor(context, gradeOf(r.ms));
     }
     return Container(
