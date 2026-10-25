@@ -216,7 +216,8 @@ class _ConnectivityPageState extends State<ConnectivityPage> {
         ]),
       ),
       LayoutBuilder(builder: (context, box) {
-        final cols = box.maxWidth >= 560 ? 3 : 2;
+        // 手机默认紧凑单列（修订第 255 条，UI-014）：网站名、延迟与最近 8 次圆点不再挤在半宽的格子里；平板两列、更宽三列
+        final cols = box.maxWidth >= 900 ? 3 : (box.maxWidth >= 560 ? 2 : 1);
         final w = (box.maxWidth - (cols - 1) * 8) / cols;
         return Wrap(spacing: 8, runSpacing: 8, children: [for (final s in g.sites) SizedBox(width: w, child: _tile(context, s, g.key))]);
       }),
