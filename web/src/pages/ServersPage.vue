@@ -14,6 +14,7 @@ import Flag from '../components/Flag.vue'
 import { countryName } from '../countries'
 import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
+import ServerTable from '../components/ServerTable.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { t } from '../i18n'
@@ -59,6 +60,26 @@ function loadSort(): SortKey {
   }
 }
 const sortBy = ref<SortKey>(loadSort())
+// 卡片 / 表格（修订第 239 条）：表格只在宽度 ≥ 900px 时可选并显示，手机始终为卡片；选择记在本机
+const layout = ref<'cards' | 'table'>(readLayout())
+function readLayout(): 'cards' | 'table' {
+  try {
+    return localStorage.getItem('vpsmon.serversLayout') === 'table' ? 'table' : 'cards'
+  } catch {
+    return 'cards'
+  }
+}
+function setLayout(v: 'cards' | 'table') {
+  layout.value = v
+  try {
+    localStorage.setItem('vpsmon.serversLayout', v)
+  } catch {
+    // 无痕模式等：只是不记住
+  }
+}
+const sortFromTable = (k: string) => {
+  if (sorts.some((x) => x.v === k)) sortBy.value = k as SortKey
+}
 watch(sortBy, (v) => {
   try {
     localStorage.setItem(sortKey, v)
@@ -190,6 +211,10 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
         <option value="">{{ t('全部分组') }}</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
       </select>
+      <div class="segmented layout-switch wide-only" role="group" :aria-label="t('显示方式')">
+        <button type="button" :class="{ active: layout === 'cards' }" :aria-pressed="layout === 'cards'" @click="setLayout('cards')">{{ t('卡片') }}</button>
+        <button type="button" :class="{ active: layout === 'table' }" :aria-pressed="layout === 'table'" @click="setLayout('table')">{{ t('表格') }}</button>
+      </div>
       <select v-model="sortBy" :aria-label="t('排序')">
         <option v-for="o in sorts" :key="o.v" :value="o.v">{{ t('排序：{name}', { name: t(o.t) }) }}</option>
       </select>
@@ -230,9 +255,12 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <RouterLink to="/servers/new" class="btn"><Icon name="plus" />{{ t('新建节点') }}</RouterLink>
     </EmptyState>
     <template v-else>
-      <div v-if="sorted.length" class="grid server-grid">
-        <ServerCard v-for="s in sorted" :key="s.id" :server="s" />
-      </div>
+      <template v-if="sorted.length">
+        <ServerTable v-if="layout === 'table'" class="wide-only" :servers="sorted" :sort-by="sortBy" @sort="sortFromTable" />
+        <div class="grid server-grid" :class="{ 'narrow-only': layout === 'table' }">
+          <ServerCard v-for="s in sorted" :key="s.id" :server="s" />
+        </div>
+      </template>
       <p v-else-if="installed.length" class="muted empty-filter">
         {{ statusFilter === 'all' ? t('没有匹配的节点。') : t('没有“{name}”的节点。', { name: t(filters.find((x) => x.v === statusFilter)!.t) }) }}
         <button v-if="statusFilter !== 'all'" type="button" class="text" @click="setFilter('all')">{{ t('查看全部') }}</button>
@@ -260,6 +288,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 </template>
 
 <style scoped>
+/* 表格视图只在宽屏（修订第 239 条） */
+@media (max-width: 899px) { .wide-only { display: none !important; } }
+@media (min-width: 900px) { .narrow-only { display: none !important; } }
 /* 统计：一行等宽，窄屏横向滚动而不是换行，保持紧凑 */
 .updated { margin-left: auto; margin-right: var(--space-3); }
 .chips { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
