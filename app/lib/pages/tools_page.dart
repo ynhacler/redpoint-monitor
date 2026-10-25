@@ -10,8 +10,11 @@ import 'subscriptions_page.dart';
 /// 工具页：订阅 / 云平台
 class ToolsPage extends StatelessWidget {
   /// 创建工具页
-  const ToolsPage({super.key, required this.api, required this.onRevoked, this.privacy = false, this.cloud,
+  const ToolsPage({super.key, this.initialTab = 0, required this.api, required this.onRevoked, this.privacy = false, this.cloud,
       this.serverNames = const {}, this.onOpenServer, this.subGrouped = false, this.onSubGrouped});
+
+  /// 打开时的分页：0 订阅、1 云平台（修订第 242 条，从首页待处理跳转）
+  final int initialTab;
 
   /// 当前监控中心
   final ApiClient api;
@@ -40,6 +43,7 @@ class ToolsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
+        initialIndex: initialTab,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('工具'),

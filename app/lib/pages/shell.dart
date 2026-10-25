@@ -20,6 +20,8 @@ import '../sorting.dart';
 import '../theme.dart';
 import '../widgets/fleet.dart';
 import '../widgets/server_card.dart';
+import '../widgets/todo.dart';
+import '../subscriptions.dart';
 import 'network_page.dart';
 import 'events_page.dart';
 import 'latency_compare_page.dart';
@@ -68,6 +70,8 @@ class _AppShellState extends State<AppShell> {
 
   // 云账户摘要（设计 44.8）：首页一行，每 5 分钟刷新；旧版面板或读取失败时不显示
   CloudSummary? _cloud;
+  List<Subscription> _subs = const []; // 待处理中的订阅事项（修订第 242 条）；授权不是“全部节点”时为空
+  int _toolsTab = 0; // 工具页打开时的分页：0 订阅、1 云平台（从待处理跳转时设置）
   Timer? _cloudTimer;
 
   // 桌面小组件快照（设计 1.5.4）
@@ -122,6 +126,7 @@ class _AppShellState extends State<AppShell> {
     _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
     _syncPush();
     _loadCloud();
+    _loadSubs();
     _cloudTimer = Timer.periodic(const Duration(minutes: 5), (_) => _loadCloud());
     if (widget.centers.length > 1) {
       _refreshOthers();
@@ -145,6 +150,34 @@ class _AppShellState extends State<AppShell> {
       _revoked();
     } catch (e) {
       if (mounted) setState(() => _error = describeError(e)); // 保留上次的数据
+    }
+  }
+
+  Future<void> _loadSubs() async {
+    try {
+      final (limited, items) = await widget.api.subscriptions();
+      if (mounted) setState(() => _subs = limited ? const [] : items);
+    } on DeviceRevoked {
+      _revoked();
+    } catch (_) {
+      // 旧版面板或网络失败：待处理中不列订阅
+    }
+  }
+
+  // 待处理（修订第 242 条）：点一行打开节点、事件页或工具中的订阅 / 云平台
+  void _openTodo(Todo x) {
+    switch (x.target) {
+      case TodoTarget.server:
+        final s = _items.where((s) => s.id == x.serverId).firstOrNull;
+        if (s != null) _open(s);
+      case TodoTarget.events:
+        _openEvents();
+      case TodoTarget.subscriptions || TodoTarget.cloud:
+        setState(() {
+          _toolsTab = x.target == TodoTarget.cloud ? 1 : 0;
+          _tab = 2;
+          _visited.add(2);
+        });
     }
   }
 
@@ -241,9 +274,11 @@ class _AppShellState extends State<AppShell> {
     final pages = [
       _ServersTab(items: _items, prefs: _prefs, updated: _updated, error: _error, host: centerLabel(widget.api.session.server),
           onRefresh: () async {
-            await Future.wait([_refresh(), _refreshOthers()]);
+            await Future.wait([_refresh(), _refreshOthers(), _loadSubs()]);
           },
-          card: _card, offline: _offlineBanner, onCompare: _openCompare, onEvents: _openEvents,
+          card: _card, offline: _offlineBanner, onCompare: _openCompare, onEvents: _openEvents, onTodo: _openTodo,
+          todos: buildTodos(_items, subs: _subs, unlinked: _cloud?.instances.where((i) => i.serverId == null).length ?? 0,
+              alerts: _items.fold(0, (a, s) => a + s.alerts.length)),
           attention: attention, onReorder: _reorder,
           centers: [
             if (widget.centers.length > 1)
@@ -259,7 +294,7 @@ class _AppShellState extends State<AppShell> {
           }),
       // 第一次切到这个标签时才创建：打开 App 不自动查询 IP 或开始测试
       _visited.contains(1) ? NetworkPage(privacy: _prefs.privacy) : const SizedBox.shrink(),
-      ToolsPage(api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy, cloud: _cloud,
+      ToolsPage(key: ValueKey('tools$_toolsTab'), initialTab: _toolsTab, api: widget.api, onRevoked: _revoked, privacy: _prefs.privacy, cloud: _cloud,
           subGrouped: _prefs.subGrouped, onSubGrouped: (v) {
         setState(() => _prefs.subGrouped = v);
         _savePrefs();
@@ -308,6 +343,7 @@ class _AppShellState extends State<AppShell> {
 class _ServersTab extends StatefulWidget {
   const _ServersTab({required this.items, required this.prefs, required this.updated, required this.error, required this.host,
       required this.onRefresh, required this.card, required this.offline, required this.onSort, required this.onCompare,
+      this.todos = const [], this.onTodo,
       required this.onReorder, required this.onEvents, required this.attention,
       this.centers = const [], this.onSwitch});
   final List<ServerView> items;
@@ -322,6 +358,8 @@ class _ServersTab extends StatefulWidget {
   final VoidCallback onCompare;
   final VoidCallback onReorder;
   final VoidCallback onEvents;
+  final List<Todo> todos;
+  final ValueChanged<Todo>? onTodo;
 
   /// 需要关注的节点数（铃铛上的角标）
   final int attention;
@@ -433,6 +471,8 @@ class _ServersTabState extends State<_ServersTab> {
             _Count('流量≥80%', heavy, heavy > 0 ? colors.warn : null),
           ]),
           if (widget.error != null) widget.offline(),
+          // 待处理（修订第 242 条）
+          if (items.isNotEmpty && widget.onTodo != null) TodoCard(items: widget.todos, onOpen: widget.onTodo!),
           if (items.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: FleetSummaryCard(items: items, allOk: widget.attention == 0)),
           const SizedBox(height: 8),
           TextField(
