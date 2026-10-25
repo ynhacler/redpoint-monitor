@@ -1011,6 +1011,7 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  '缓存 · {time}': 'Cached · {time}',
   // ---- 端口备注（修订第 258 条） ----
   '如 Xray 入口': 'e.g. Xray inbound',
   '{port} 的备注': 'Note for {port}',

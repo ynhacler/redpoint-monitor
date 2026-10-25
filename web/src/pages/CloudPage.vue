@@ -147,6 +147,9 @@ function costText(a: CloudAccount, cents: number | null | undefined): string {
   if (cents === 0 && costUnconfirmed(a)) return DASH
   return fmtMoney(cents, a.current_cost.currency)
 }
+// 第二轮 UI2-004 / CLD-01（修订第 261 条）：费用分三种——已核实金额、历史缓存（最近一次同步失败时，注明是哪次同步的）、待确认
+const costPending = (a: CloudAccount) => a.enabled && costText(a, a.current_cost?.amount_cents) === DASH
+const costCached = (a: CloudAccount) => !!a.current_cost && (!!a.last_error || a.auth_failed) && a.cost_synced_at > 0
 // 更多菜单（<details>）：点了菜单项后收起
 const closeMenu = (e: Event) => (e.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
 
@@ -623,7 +626,9 @@ function expireTone(i: CloudInstance): string {
         <div class="stats">
           <div>
             <div class="muted small">{{ t('本月已产生') }}</div>
-            <div class="big num">{{ costText(a, a.current_cost?.amount_cents) }}<small v-if="costText(a, a.current_cost?.amount_cents) === DASH && a.enabled" class="muted"> {{ t('待确认') }}</small></div>
+            <div v-if="costPending(a)" class="big pending">{{ t('待确认') }}</div>
+            <div v-else class="big num">{{ costText(a, a.current_cost?.amount_cents) }}</div>
+            <div v-if="costCached(a)" class="muted small">{{ t('缓存 · {time}', { time: fmtTime(a.cost_synced_at) }) }}</div>
           </div>
           <!-- 阿里云没有费用预测，显示账户余额 -->
           <div v-if="a.current_cost?.balance_cents != null">
@@ -635,7 +640,8 @@ function expireTone(i: CloudInstance): string {
           </div>
           <div v-else>
             <div class="muted small">{{ t('本月预估') }}</div>
-            <div class="big num">{{ costText(a, a.current_cost?.forecast_cents) }}</div>
+            <div v-if="costPending(a)" class="big pending">{{ t('待确认') }}</div>
+            <div v-else class="big num">{{ costText(a, a.current_cost?.forecast_cents) }}</div>
           </div>
           <div>
             <div class="muted small">{{ t('预算') }}</div>
@@ -747,6 +753,7 @@ function expireTone(i: CloudInstance): string {
 </template>
 
 <style scoped>
+.big.pending { color: var(--text-muted); font-weight: var(--weight-regular); font-size: var(--font-md); }
 /* 账户卡片（修订第 245 条）：同步 + 更多菜单、状态标签、可展开的说明 */
 .more { position: relative; }
 .more-btn { list-style: none; cursor: pointer; min-width: 44px; min-height: 36px; display: grid; place-items: center; border-radius: var(--radius-sm);
