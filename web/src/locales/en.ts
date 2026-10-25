@@ -1013,6 +1013,7 @@ export const en: Record<string, string> = {
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
   '缓存 · {time}': 'Cached · {time}',
   '暂无趋势': 'No trend yet',
+  '费用说明': 'About costs',
   '这个地区还没有{isp}的测试目标，点击去设置': 'No {isp} target for this region yet — click to set one up',
   '未配置': 'Not set',
   '无数据': 'No data',

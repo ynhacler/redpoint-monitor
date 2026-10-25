@@ -668,11 +668,15 @@ function expireTone(i: CloudInstance): string {
         </div>
         <p v-if="a.pool_warning" class="small warn">{{ a.pool_warning }}</p>
         <p v-if="a.cost_warning" class="small warn">{{ a.cost_warning }}</p>
-        <p class="muted small">
-          {{ a.regions.length ? t('区域：{list}', { list: a.regions.join(t('、')) }) : t('全部已启用的区域') }} ·
-          {{ t('费用每 {n} 小时', { n: a.cost_interval_h }) }}{{ a.sync_cost ? '' : t('（已关闭）') }} ·
-          {{ t('{tz}，数据有数小时延迟', { tz: t(providerOf(a.provider).billingTZ) }) }}
-        </p>
+        <!-- 共性说明收进“ⓘ 费用说明”（修订第 267 条，第二轮 UI2-012）；影响判断的问题由状态标签与“待确认”常驻显示 -->
+        <details class="cost-info small">
+          <summary class="muted">ⓘ {{ t('费用说明') }}</summary>
+          <p class="muted">
+            {{ a.regions.length ? t('区域：{list}', { list: a.regions.join(t('、')) }) : t('全部已启用的区域') }} ·
+            {{ t('费用每 {n} 小时', { n: a.cost_interval_h }) }}{{ a.sync_cost ? '' : t('（已关闭）') }} ·
+            {{ t('{tz}，数据有数小时延迟', { tz: t(providerOf(a.provider).billingTZ) }) }}
+          </p>
+        </details>
 
         <form v-if="deleting === a.id" class="confirm" @submit.prevent="remove(a)">
           <span class="small">{{ t('删除账户及同步的费用、实例数据（不影响云上的资源）。输入当前登录密码确认：') }}</span>
@@ -753,6 +757,10 @@ function expireTone(i: CloudInstance): string {
 </template>
 
 <style scoped>
+.cost-info { margin-top: var(--space-2); }
+.cost-info summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; list-style: none; }
+.cost-info summary::-webkit-details-marker { display: none; }
+.cost-info p { margin: var(--space-1) 0 0; }
 .big.pending { color: var(--text-muted); font-weight: var(--weight-regular); font-size: var(--font-md); }
 /* 账户卡片（修订第 245 条）：同步 + 更多菜单、状态标签、可展开的说明 */
 .more { position: relative; }

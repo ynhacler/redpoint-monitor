@@ -701,7 +701,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                 <circle v-for="(a, i) in arcs" :key="i" cx="90" cy="90" :r="R" fill="none" :stroke="a.color" stroke-width="22"
                   :stroke-dasharray="a.dash" :stroke-dashoffset="a.offset" />
               </g>
-              <text x="90" y="88" text-anchor="middle" class="donut-total">{{ fmtMoney(catTotal, cur) }}</text>
+              <!-- 中心金额不换行、不出环（修订第 267 条，UI2-016）：长金额缩小字号 -->
+              <text x="90" y="88" text-anchor="middle" class="donut-total" :style="{ fontSize: `${fmtMoney(catTotal, cur).length > 11 ? 15 : 18}px` }">{{ fmtMoney(catTotal, cur) }}</text>
               <text x="90" y="110" text-anchor="middle" class="donut-label">{{ rangeLabel }}</text>
             </svg>
             <ul class="legend">
@@ -811,7 +812,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .rate-note { margin: var(--space-3) 0 0; }
 .rate { margin-right: var(--space-3); }
 .flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; }
-.meta-line { display: inline-flex; align-items: center; gap: 4px; }
+.meta-line { display: flex; align-items: center; gap: 4px; min-width: 0; } /* 国旗、地区与支付方式同一基线居中（修订第 267 条，UI2-013） */
+.meta-line .flag { flex: none; vertical-align: middle; }
 
 /* 选择与填写 */
 .editor { padding: var(--space-4) var(--space-5); margin-bottom: var(--space-4); }
