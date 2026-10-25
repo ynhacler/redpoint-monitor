@@ -1011,6 +1011,9 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 健康摘要（修订第 256 条） ----
+  '{names}均正常': '{names}: all normal',
+  '详情（{n} 项）': 'Details ({n})',
   // ---- 历史覆盖（修订第 254 条） ----
   '所选 {range} 内仅有约 {d} 的数据，缺失的时段不画线（不是 0）': 'Only about {d} of data in the selected {range}; gaps are left blank (not zero)',
   // ---- 订阅行（修订第 253 条） ----
