@@ -136,7 +136,7 @@ ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gr
   ul { grid-template-columns: minmax(0, 1fr); }
   /* 收成一行（修订第 248 条） */
   .wide-only, ul.closed { display: none; }
-  .peek { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; padding: 0; min-height: 36px; color: var(--text);
+  .peek { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; padding: 0; min-height: 44px; color: var(--text);
     font: inherit; text-align: left; }
   .peek .go { transition: transform .15s; }
   .peek .go.open { transform: rotate(90deg); }

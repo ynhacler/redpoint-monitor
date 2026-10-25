@@ -107,6 +107,8 @@ html.sidebar-collapsed { --sidebar-w: 60px; }
 @media (max-width: 600px) {
   .page { padding: var(--space-3) var(--space-3) var(--space-6); }
   .panel { padding: var(--space-4); }
+  /* 分段选择的触控高度不小于 44px（修订第 270 条，M-05） */
+  .segmented button { min-height: 44px; }
   /* 底部标签栏（App.vue，修订第 199 条）的高度：内容不被遮住 */
   body { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
   /* 二级页面不显示标签栏（修订第 230 条），只留出主屏幕指示条的安全区 */

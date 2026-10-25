@@ -45,6 +45,25 @@ function toggleSidebar() {
     /* 隐私模式等不可用时只在本页生效 */
   }
 }
+// 侧边栏中可收起的分组（“系统”，修订第 270 条）：收起状态记在本机；当前页属于该分组时总是展开
+const closedSections = ref<string[]>(readClosedSections())
+function readClosedSections(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem('vpsmon.sidebar.closed') ?? '[]')
+  } catch {
+    return []
+  }
+}
+const sectionClosed = (key: string) => group.value?.key !== key && closedSections.value.includes(key)
+function toggleSection(key: string) {
+  if (group.value?.key === key) return
+  closedSections.value = closedSections.value.includes(key) ? closedSections.value.filter((k) => k !== key) : [...closedSections.value, key]
+  try {
+    localStorage.setItem('vpsmon.sidebar.closed', JSON.stringify(closedSections.value))
+  } catch {
+    /* 隐私模式等不可用时只在本页生效 */
+  }
+}
 watch([signedIn, collapsed], ([on, c]) => {
   document.documentElement.classList.toggle('has-sidebar', on)
   document.documentElement.classList.toggle('sidebar-collapsed', c)
@@ -87,12 +106,16 @@ onUnmounted(stopPolling)
     <nav class="sb-nav">
       <template v-for="g in groups" :key="g.key">
         <template v-if="g.mobileTo">
-          <div class="sb-section">
+          <!-- 一级与二级的层级（修订第 270 条，PC 轻量优化 4.2）：父级可收起并带箭头，当前子页在其中时父级文字加深；
+               子项缩进约 22px、文字与图标更浅。侧边栏收成图标时不分层级，子项照常显示 -->
+          <button type="button" class="sb-section" :class="{ current: group?.key === g.key }" :aria-expanded="!sectionClosed(g.key)"
+            @click="toggleSection(g.key)">
             <Icon :name="g.icon" :size="18" /><span class="sb-text">{{ t(g.name) }}</span>
-          </div>
-          <RouterLink v-for="x in g.items" :key="x.to" :to="x.to" class="sb-item sub" :class="{ active: group?.key === g.key && itemActive(x, route, g) }"
-            :title="collapsed ? t(x.name) : undefined">
-            <Icon :name="x.icon ?? 'settings'" :size="16" /><span class="sb-text">{{ t(x.name) }}</span>
+            <Icon name="chevron-right" :size="14" class="sb-chev" :class="{ open: !sectionClosed(g.key) }" />
+          </button>
+          <RouterLink v-for="x in g.items" v-show="collapsed || !sectionClosed(g.key)" :key="x.to" :to="x.to" class="sb-item sub"
+            :class="{ active: group?.key === g.key && itemActive(x, route, g) }" :title="collapsed ? t(x.name) : undefined">
+            <Icon :name="x.icon ?? 'settings'" :size="15" /><span class="sb-text">{{ t(x.name) }}</span>
             <span v-if="x.to === '/alerts' && alertCount" class="badge num">{{ alertCount }}</span>
           </RouterLink>
         </template>
@@ -206,13 +229,24 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
   .sb-brand { height: 52px; display: flex; align-items: center; padding: 0 var(--space-3); color: var(--text); font-weight: var(--weight-strong);
     font-size: var(--font-lg); text-decoration: none; white-space: nowrap; overflow: hidden; flex: none; }
   .sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-  .sb-item, .sb-section, .sb-toggle { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3);
+  .sb-item, .sb-section, .sb-toggle { display: flex; width: 100%; background: none; border: 0; font: inherit; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; white-space: nowrap; min-height: 36px; }
   .sb-item:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
   .sb-item.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
   .sb-item.active :deep(svg) { color: var(--accent); }
-  .sb-section { margin-top: var(--space-3); font-size: var(--font-sm); }
-  .sb-item.sub { padding-left: calc(var(--space-3) + 6px); font-size: var(--font-md); }
+  /* 一级项文字为正文色，二级项缩进、文字与图标更浅（修订第 270 条） */
+  .sb-item:not(.sub), .sb-section { color: var(--text); }
+  .sb-item:not(.sub) :deep(svg), .sb-section :deep(svg) { color: var(--text-muted); }
+  .sb-section { margin-top: var(--space-3); cursor: pointer; }
+  .sb-section:hover { background: var(--surface-2); filter: none; }
+  .sb-section.current { font-weight: var(--weight-strong); }
+  .sb-chev { margin-left: auto; transition: transform .15s; }
+  .sb-chev.open { transform: rotate(90deg); }
+  .sb-item.sub { padding-left: calc(var(--space-3) + 22px); font-size: var(--font-md); color: var(--text-muted); }
+  .sb-item.sub :deep(svg) { opacity: .75; }
+  .sb-item.sub.active { color: var(--text); }
+  .sb-item.sub.active :deep(svg) { opacity: 1; }
+  .sb-item.active:not(.sub) :deep(svg) { color: var(--accent); }
   .sb-item .badge { margin-left: auto; }
   .sb-toggle { width: 100%; background: none; border: 0; font: inherit; font-size: var(--font-sm); cursor: pointer; flex: none; }
   .sb-toggle:hover { color: var(--text); background: var(--surface-2); }
@@ -236,7 +270,9 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
 @media (max-width: 600px) {
   .inner { gap: var(--space-2); height: 46px; }
   .brand { font-size: var(--font-md); }
-  .tools { gap: var(--space-1); }
+  .tools { gap: 0; }
+  /* 触控区域不小于 44 × 44（修订第 270 条，PC 轻量优化 M-05） */
+  .tools button, .tools .user { min-width: 44px; min-height: 44px; justify-content: center; }
   nav.groups { display: none; }
   /* “系统”等有菜单页的分组：不显示横向滚动的二级导航，改为返回菜单的一行；退出登录在菜单页中（修订第 231 条） */
   .subnav.has-menu { display: none; }
