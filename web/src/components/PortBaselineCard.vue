@@ -91,7 +91,23 @@ async function saveLabel() {
     saving.value = false
   }
 }
-const useCurrent = () => save(exposed.value.map((p) => p.key))
+// 设为当前基线须确认（修订第 263 条，第二轮 UI2-002）：先列出将要保存的端口与比较规则，确认后才保存
+const confirming = ref<string[] | null>(null)
+const confirmClear = ref(false)
+const useCurrent = () => { confirming.value = exposed.value.map((p) => p.key) }
+async function confirmSave() {
+  const ports = confirming.value
+  if (!ports) return
+  await save(ports)
+  if (!error.value) confirming.value = null
+}
+async function clearBaseline() {
+  await save([])
+  confirmClear.value = false
+}
+// 编辑表单中的“以当前为准”只填入输入框，由“保存”提交
+const fillCurrent = () => { draft.value = exposed.value.map((p) => p.key).join(', ') }
+const changes = computed(() => (baseline.value ? unknown.value.length + gone.value.length : 0))
 </script>
 
 <template>
@@ -112,18 +128,35 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
       <p v-if="error" class="small bad">{{ error }}</p>
       <div class="actions">
         <button type="submit" :disabled="saving">{{ t('保存') }}</button>
-        <button type="button" class="secondary" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前为准') }}</button>
-        <button v-if="baseline" type="button" class="text danger-text" :disabled="saving" @click="save([])">{{ t('取消基线') }}</button>
+        <button type="button" class="secondary" :disabled="saving || !exposed.length" @click="fillCurrent">{{ t('以当前为准') }}</button>
+        <button v-if="baseline && !confirmClear" type="button" class="text danger-text" :disabled="saving" @click="confirmClear = true">{{ t('取消基线') }}</button>
+        <span v-if="confirmClear" class="small">{{ t('取消后不再检查新增与停止监听的端口。') }}
+          <button type="button" class="text danger-text" :disabled="saving" @click="clearBaseline">{{ t('确认取消') }}</button>
+          <button type="button" class="text" @click="confirmClear = false">{{ t('不取消') }}</button></span>
         <button type="button" class="text" @click="editing = false">{{ t('取消') }}</button>
       </div>
     </form>
 
     <template v-else>
-      <p v-if="!baseline" class="small">
-        {{ t('还没有设置，不检查新增端口。') }}
-        <button type="button" class="text small" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前对外监听的 {n} 个端口为基线', { n: exposed.length }) }}</button>
-      </p>
-      <p v-else class="muted small">{{ t('{n} 个允许的端口 · {time} 设置', { n: baseline.ports.length, time: fmtTime(baseline.updated_at) }) }}</p>
+      <!-- 状态（修订第 263 条）：未启用 / 已启用（共 N 项、更新时间、变化数） -->
+      <div v-if="!baseline" class="state-line small">
+        <span class="state off">{{ t('端口基线：未启用') }}</span>
+        <span class="muted">{{ t('当前发现 {n} 个对外监听端口', { n: exposed.length }) }}</span>
+        <button v-if="!confirming" type="button" class="small" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('设为当前基线（{n}）', { n: exposed.length }) }}</button>
+      </div>
+      <div v-else class="state-line small">
+        <span class="state on">{{ t('基线已启用') }}</span>
+        <span class="muted">{{ t('共 {n} 项 · 更新于 {time}', { n: baseline.ports.length, time: fmtTime(baseline.updated_at) }) }}</span>
+        <span v-if="changes" class="warn">{{ t('{n} 项变化', { n: changes }) }}</span>
+      </div>
+      <div v-if="confirming" class="confirm-box small" role="dialog" :aria-label="t('确认端口基线')">
+        <p>{{ t('将以下 {n} 个端口设为基线：', { n: confirming.length }) }}<span class="num">{{ confirming.join(t('、')) }}</span></p>
+        <p class="muted">{{ t('只比较监听在全部地址或公网地址的端口，仅本机 / 内网监听的不算；保存后从下一次端口刷新（约 1 分钟内）开始比较，新增或停止监听的端口会告警。') }}</p>
+        <div class="actions">
+          <button type="button" :disabled="saving" @click="confirmSave">{{ saving ? t('保存中…') : t('确认设为基线') }}</button>
+          <button type="button" class="secondary" :disabled="saving" @click="confirming = null">{{ t('取消') }}</button>
+        </div>
+      </div>
       <p v-if="error" class="small bad">{{ error }}</p>
       <ul class="ports">
         <li v-for="p in exposed" :key="p.key" :class="baseline ? (allowed.has(p.key) ? 'ok' : 'unknown') : ''">
@@ -156,6 +189,13 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
 </template>
 
 <style scoped>
+.state-line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 0; }
+.state { padding: 1px 8px; border-radius: var(--radius-full); }
+.state.off { background: var(--surface-2); color: var(--text-muted); }
+.state.on { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.state-line .warn { color: var(--warn); }
+.confirm-box { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); margin: var(--space-2) 0; background: var(--surface-2); }
+.confirm-box p { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
 .label-text { font-size: var(--font-sm); }
 .label-btn { padding: 0 var(--space-1); margin-left: auto; }
 .label-input { flex: 1; min-width: 8em; max-width: 16em; padding: 2px var(--space-2); font-size: var(--font-sm); }

@@ -1012,6 +1012,21 @@ export const en: Record<string, string> = {
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
   '缓存 · {time}': 'Cached · {time}',
+  // ---- 端口基线状态与确认（修订第 263 条） ----
+  '端口基线：未启用': 'Port baseline: off',
+  '当前发现 {n} 个对外监听端口': '{n} externally bound ports now',
+  '设为当前基线（{n}）': 'Use current as baseline ({n})',
+  '基线已启用': 'Baseline on',
+  '共 {n} 项 · 更新于 {time}': '{n} ports · updated {time}',
+  '{n} 项变化': '{n} changed',
+  '确认端口基线': 'Confirm port baseline',
+  '将以下 {n} 个端口设为基线：': 'Set these {n} ports as the baseline: ',
+  '只比较监听在全部地址或公网地址的端口，仅本机 / 内网监听的不算；保存后从下一次端口刷新（约 1 分钟内）开始比较，新增或停止监听的端口会告警。':
+    'Only ports bound to all addresses or a public address are compared (local / private-only ports are not). Comparison starts with the next port refresh (within about a minute); new or stopped ports raise alerts.',
+  '确认设为基线': 'Set as baseline',
+  '取消后不再检查新增与停止监听的端口。': 'Without a baseline, new and stopped ports are no longer checked.',
+  '确认取消': 'Remove baseline',
+  '不取消': 'Keep',
   // ---- 端口备注（修订第 258 条） ----
   '如 Xray 入口': 'e.g. Xray inbound',
   '{port} 的备注': 'Note for {port}',
