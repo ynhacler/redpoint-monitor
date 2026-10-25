@@ -990,6 +990,12 @@ export const en: Record<string, string> = {
   '最近 {n} 次': 'Last {n} runs',
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
+  // ---- 保存状态（修订第 229 条） ----
+  '有未保存的修改': 'Unsaved changes',
+  '已保存 {time}': 'Saved at {time}',
+  '保存失败：{e}': 'Save failed: {e}',
+  '没有修改': 'No changes',
+  '请检查标出的项': 'Check the highlighted fields',
   '使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”；悬停查看各项。':
     'Usage matches df: used ÷ (used + available). Space reserved for root is not available, so this differs from used ÷ total; hover for details.',
   '总容量 {v}': 'Total {v}',

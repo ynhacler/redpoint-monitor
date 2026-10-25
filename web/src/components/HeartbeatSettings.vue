@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // 面板心跳（设计 1.10.3，修订第 159 条）：面板按间隔请求外部监控服务给的地址；面板停止或断网时心跳中断，由那边告警。
 // 地址中常含令牌：保存后只显示协议与主机，输入框留空表示保留原地址。
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, errorText, getHeartbeat, saveHeartbeat, testHeartbeat, type HeartbeatView } from '../api'
 import { fmtDateTime } from '../format'
+import SaveState, { saveStatus } from './SaveState.vue'
 
 const intervals = [1, 2, 5, 10, 15, 30, 60]
 const view = ref<HeartbeatView | null>(null)
@@ -16,7 +17,12 @@ const error = ref('')
 function fill(v: HeartbeatView) {
   view.value = v
   Object.assign(form, { enabled: v.enabled, url: '', minutes: Math.round(v.interval / 60) })
+  snap.value = JSON.stringify(form)
 }
+// 保存状态（修订第 229 条）：与上次载入 / 保存的值比较
+const snap = ref('')
+const dirty = computed(() => !!snap.value && JSON.stringify(form) !== snap.value)
+const fieldError = computed(() => (Object.keys(errors.value).length ? '请检查标出的项' : ''))
 
 onMounted(async () => {
   try {
@@ -74,11 +80,11 @@ async function run(kind: 'save' | 'test') {
     <p v-if="view?.last_error" class="err small">最近一次：{{ view.last_error }}</p>
     <p v-if="error" class="err small">{{ error }}</p>
     <div class="actions">
-      <button type="submit" :disabled="!!busy">{{ busy === 'save' ? '保存中…' : '保存' }}</button>
+      <button type="submit" :disabled="!!busy || !dirty" :title="!dirty ? '没有修改' : undefined">{{ busy === 'save' ? '保存中…' : '保存' }}</button>
       <button type="button" class="secondary" :disabled="!!busy || (!view?.url_set && !form.url)" @click="run('test')">
         {{ busy === 'test' ? '发送中…' : '立即发送' }}
       </button>
-      <span v-if="saved" class="ok small">已保存</span>
+      <SaveState :state="saveStatus({ saving: busy === 'save', error: error || fieldError, dirty, saved })" :error="(error || fieldError) || undefined" />
     </div>
   </form>
 </template>

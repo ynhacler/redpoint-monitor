@@ -4,6 +4,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ApiError, errorText, putSite } from '../api'
 import ListenSettings from '../components/ListenSettings.vue'
+import SaveState, { saveStatus } from '../components/SaveState.vue'
 import { localeNames, t, type Locale } from '../i18n'
 import { applySite, site } from '../site'
 
@@ -14,6 +15,10 @@ const error = ref('')
 const saving = ref(false)
 const saved = ref(false)
 const dirty = computed(() => form.app_name !== site.app_name || form.language !== site.language || form.captcha !== site.captcha)
+const savedAt = ref(0)
+// 保存状态（修订第 229 条）；字段错误也算保存失败
+const saveError = computed(() => error.value || (Object.keys(fieldErrors.value).length ? t('请检查标出的项') : ''))
+const status = computed(() => saveStatus({ saving: saving.value, error: saveError.value, dirty: dirty.value, saved: saved.value }))
 
 async function save() {
   saving.value = true
@@ -23,6 +28,7 @@ async function save() {
   try {
     applySite(await putSite({ ...form }))
     saved.value = true
+    savedAt.value = Date.now()
   } catch (e) {
     if (e instanceof ApiError && e.details.length) fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
     else error.value = errorText(e, t('保存失败'))
@@ -42,7 +48,10 @@ async function save() {
           <h2>{{ t('基本设置') }}</h2>
           <p class="small muted">{{ t('应用名称、界面语言与登录验证码，保存后立即生效') }}</p>
         </div>
-        <button type="submit" :disabled="saving || !dirty">{{ saving ? t('保存中…') : t('保存配置') }}</button>
+        <div class="save">
+          <SaveState :state="status" :error="saveError || undefined" :saved-at="savedAt" />
+          <button type="submit" :disabled="saving || !dirty" :title="!dirty ? t('没有修改') : undefined">{{ saving ? t('保存中…') : t('保存配置') }}</button>
+        </div>
       </div>
 
       <div class="field">
@@ -72,8 +81,6 @@ async function save() {
         <small v-if="site.captcha_forced_off" class="muted">{{ t('启动参数 --no-login-captcha 已关闭验证码，这里不能打开') }}</small>
       </div>
 
-      <p v-if="saved && !dirty" class="small ok">{{ t('已保存') }}</p>
-      <p v-if="error" class="small bad">{{ error }}</p>
     </form>
 
     <section class="listen-wrap">
@@ -84,6 +91,7 @@ async function save() {
 </template>
 
 <style scoped>
+.save { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; }
 .card { padding: 0; margin-bottom: var(--space-6); }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border); }

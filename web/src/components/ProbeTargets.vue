@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import ProbeTargetHint from './ProbeTargetHint.vue'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
 import ReachProbes from './ReachProbes.vue'
+import SaveState from './SaveState.vue'
 import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
   type ProbeSettings, type ProbeTarget, type ProbeTargetInput,
@@ -27,6 +28,8 @@ const busy = ref<number | null>(null)
 const intervals: ProbeSettings['interval_s'][] = [60, 120, 300, 600, 900, 1800]
 const interval = ref<ProbeSettings['interval_s']>(300)
 const savingInterval = ref(false)
+const intervalSaved = ref(false) // 改动即保存（修订第 229 条：旁边显示保存中 / 已保存 / 失败）
+const intervalError = ref('')
 // 每个样本的超时（最大等待）与样本间隔（修订第 133 条）：0 为默认 4 秒、1 秒
 const timingOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 const timeout = ref(0)
@@ -47,14 +50,16 @@ async function load() {
 
 async function saveInterval() {
   savingInterval.value = true
+  intervalSaved.value = false
+  intervalError.value = ''
   try {
     const r = await putProbeSettings({ interval_s: interval.value, timeout_s: timeout.value, gap_s: gap.value })
     interval.value = r.interval_s
     timeout.value = r.timeout_s ?? 0
     gap.value = r.gap_s ?? 0
-    error.value = ''
+    intervalSaved.value = true
   } catch (e) {
-    error.value = errorText(e)
+    intervalError.value = errorText(e)
     await load()
   } finally {
     savingInterval.value = false
@@ -125,7 +130,7 @@ async function remove(t: ProbeTarget) {
   <div>
     <!-- 说明精简为一句（修订第 185 条）；细节放在 title 中 -->
     <p class="muted small intro" title="TCP 连接（不发送数据）或 ICMP；目标为公网 IPv4 / IPv6 或域名，域名由 Agent 每轮解析、只连接公网地址；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测">
-      各节点定时测到这些地址的延迟与丢包（从 VPS 出发，反映回程质量），结果在节点详情的“网络”页，保留 7 天。
+      各节点定时测到这些地址的往返延迟与丢包（VPS → 目标，TCP 连接或 ICMP），结果在节点详情的“网络”页，保留 7 天。目标不响应 ICMP 不代表线路断开。
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-if="deadCount" class="banner warn small">{{ deadCount }} 个目标最近 24 小时几乎全部失败，疑似失效（地址变更或被拦截），建议在下方更换或删除。</p>
@@ -151,6 +156,8 @@ async function remove(t: ProbeTarget) {
         </label>
         <span class="muted">每个目标每轮 5 个样本：超时为每个样本最多等多久，超过算丢包；样本间隔为两个样本之间等多久</span>
       </details>
+      <SaveState v-if="items.length && (savingInterval || intervalSaved || intervalError)"
+        :state="savingInterval ? 'saving' : intervalError ? 'error' : 'saved'" :error="intervalError || undefined" />
       <span v-if="items.length" class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
       <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加目标' }}</button>
     </div>
