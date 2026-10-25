@@ -137,7 +137,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           </div>
           <span class="bar" :title="fmtPct(d.usage)"><span :class="gaugeLevel(d.usage, 'disk')" :style="{ width: `${Math.max(2, d.usage)}%` }" /></span>
           <span class="cap"><Qty :text="fmtBytesShort(d.used)" /><span class="slash">/</span><Qty :text="fmtBytesShort(d.total)" /></span>
-          <span class="pct" :class="gaugeLevel(d.usage, 'disk')">{{ fmtPct(d.usage) }}</span>
+          <span class="pct" :class="gaugeLevel(d.usage, 'disk') === 'ok' ? '' : gaugeLevel(d.usage, 'disk')">{{ fmtPct(d.usage) }}</span>
         </li>
       </ul>
       <p v-if="hasReserved" class="muted small port-note">{{ t('使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”；悬停查看各项。') }}</p>

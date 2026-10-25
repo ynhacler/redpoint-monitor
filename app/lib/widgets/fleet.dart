@@ -27,7 +27,7 @@ class FleetSummaryCard extends StatelessWidget {
           ]),
         );
     Widget pct(double? v, String kind) =>
-        Text(fmtPct(v), style: num.copyWith(color: v == null ? null : StatusColors.of(context).level(gaugeLevel(v, kind))));
+        Text(fmtPct(v), style: num.copyWith(color: v == null ? null : StatusColors.of(context).text(gaugeLevel(v, kind))));
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -89,9 +89,9 @@ class MiniServerRow extends StatelessWidget {
       right = Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
         Text.rich(TextSpan(style: small, children: [
           const TextSpan(text: 'CPU '),
-          TextSpan(text: fmtPct(r.cpu), style: TextStyle(color: colors.level(gaugeLevel(r.cpu, 'cpu')))),
+          TextSpan(text: fmtPct(r.cpu), style: TextStyle(color: colors.text(gaugeLevel(r.cpu, 'cpu')))),
           const TextSpan(text: '  内存 '),
-          TextSpan(text: fmtPct(r.mem), style: TextStyle(color: colors.level(gaugeLevel(r.mem, 'mem')))),
+          TextSpan(text: fmtPct(r.mem), style: TextStyle(color: colors.text(gaugeLevel(r.mem, 'mem')))),
         ])),
         Text('↑${fmtBytesShort(r.tx, perSec: true)}  ↓${fmtBytesShort(r.rx, perSec: true)}', style: small),
       ]);

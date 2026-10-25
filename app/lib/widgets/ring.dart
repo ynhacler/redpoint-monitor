@@ -8,11 +8,14 @@ import '../format.dart';
 
 /// 环形使用率（CPU / 内存 / 磁盘）
 class Ring extends StatelessWidget {
-  const Ring({super.key, required this.pct, required this.color, this.size = 52, this.label = ''});
+  const Ring({super.key, required this.pct, required this.color, this.size = 52, this.label = '', this.textColor});
+
+  /// 中间数字的颜色（修订第 249 条）：为空时用正文色，绿色只留给环本身
 
   /// 0～100；没有数据时为 null，显示 “—”
   final double? pct;
   final Color color;
+  final Color? textColor;
   final double size;
 
   /// 无障碍名称，如 “CPU”
@@ -30,7 +33,7 @@ class Ring extends StatelessWidget {
           painter: _RingPainter(pct: pct, color: color, stroke: stroke),
           child: Center(
             child: Text(fmtPct(pct),
-                style: TextStyle(fontSize: size * 0.25, fontWeight: FontWeight.w600, color: color,
+                style: TextStyle(fontSize: size * 0.25, fontWeight: FontWeight.w600, color: textColor,
                     fontFeatures: const [FontFeature.tabularFigures()])),
           ),
         ),

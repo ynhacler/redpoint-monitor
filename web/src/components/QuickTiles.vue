@@ -44,7 +44,8 @@ const minutes = computed(() => {
   <div class="quick">
     <div class="tile spark-tile">
       <div class="label"><Icon name="cpu" :size="15" />CPU<span class="extra num">{{ t('{n} 核', { n: r.cpu.cores }) }}</span></div>
-      <div class="big" :class="cpuLv"><Qty :v="pct1(cpu(server))" u="%" /></div>
+      <!-- 正常时数字用正文色，只在接近 / 超过阈值时着色（修订第 249 条，UI-008） -->
+      <div class="big" :class="cpuLv === 'ok' ? '' : cpuLv"><Qty :v="pct1(cpu(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.cpu)" :color="color(cpuLv)" :height="36" />
     </div>
 
@@ -61,7 +62,7 @@ const minutes = computed(() => {
 
     <div class="tile spark-tile">
       <div class="label"><Icon name="layers" :size="15" />{{ t('内存') }}<span v-if="swapPct != null" class="extra num">Swap {{ fmtPct(swapPct) }}</span></div>
-      <div class="big" :class="memLv"><Qty :v="pct1(mem(server))" u="%" /></div>
+      <div class="big" :class="memLv === 'ok' ? '' : memLv"><Qty :v="pct1(mem(server))" u="%" /></div>
       <Sparkline class="edge" :values="samples.map((p) => p.mem)" :color="color(memLv)" :height="36" />
     </div>
 
