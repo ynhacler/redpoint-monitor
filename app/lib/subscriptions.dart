@@ -207,6 +207,63 @@ DateTime? _date(String s) {
   return DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
 }
 
+const _cycleMonths = {'monthly': 1, 'quarterly': 3, 'semiannually': 6, 'annually': 12};
+
+DateTime _addMonthsClamped(DateTime a, int n) {
+  final first = DateTime(a.year, a.month + n, 1);
+  final last = DateTime(first.year, first.month + 1, 0).day;
+  return DateTime(first.year, first.month, a.day < last ? a.day : last);
+}
+
+/// 区间 [from, to)（本地日期）内的全部扣费日（与 Web 的 chargesBetween 相同）
+List<DateTime> chargesBetween(Subscription s, DateTime from, DateTime to) {
+  final start = _date(s.startDate);
+  if (start == null) return const [];
+  final first = DateTime(start.year, start.month, start.day + s.trialDays);
+  final end = _date(s.endDate);
+  final out = <DateTime>[];
+  for (var k = 0; k < 10000; k++) {
+    final DateTime t;
+    if (s.cycle == 'once') {
+      if (k > 0) break;
+      t = first;
+    } else if (s.cycle == 'weekly') {
+      t = DateTime(first.year, first.month, first.day + 7 * k);
+    } else {
+      t = _addMonthsClamped(first, k * (_cycleMonths[s.cycle] ?? 1));
+    }
+    if (!t.isBefore(to) || (end != null && !t.isBefore(end))) break;
+    if (!t.isBefore(from)) out.add(t);
+  }
+  return out;
+}
+
+/// 未来 n 个月每月的预计扣款（修订第 240 条，与 Web 的 cashflow 相同）：按扣费日排期，换算人民币的舍入点为每个订阅的当月扣费
+({List<(DateTime, int, int)> months, int total, List<String> missing}) cashflow(Iterable<Subscription> list, FxRates fx,
+    {DateTime? today, int n = 12}) {
+  final now = today ?? DateTime.now();
+  final months = <(DateTime, int, int)>[];
+  final missing = <String>{};
+  for (var i = 0; i < n; i++) {
+    final from = DateTime(now.year, now.month + i, 1);
+    final to = DateTime(now.year, now.month + i + 1, 1);
+    var cents = 0, count = 0;
+    for (final s in list) {
+      final k = chargesBetween(s, from, to).length;
+      if (k == 0) continue;
+      final v = fx.toCny(k * s.priceCents, s.currency);
+      if (v == null) {
+        missing.add(s.currency);
+        continue;
+      }
+      cents += v;
+      count++;
+    }
+    months.add((from, cents, count));
+  }
+  return (months: months, total: months.fold(0, (a, m) => a + m.$2), missing: missing.toList()..sort());
+}
+
 /// 距下次扣费的天数（今天为 0）；没有下次扣费时为 null
 int? daysUntilCharge(Subscription s, {DateTime? now}) {
   final d = _date(s.nextCharge);

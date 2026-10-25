@@ -1011,6 +1011,10 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 未来 12 个月预计扣款（修订第 240 条） ----
+  '未来 12 个月预计扣款': 'Expected charges, next 12 months',
+  '合计 {v}（月均折算 × 12 为 {m}；差异来自年付、季付落在哪个月，以及中途开始或结束的订阅）':
+    'Total {v} (monthly average × 12 is {m}; the difference comes from which months yearly and quarterly plans fall in, and plans starting or ending mid-way)',
   // ---- 节点表格（修订第 239 条） ----
   '显示方式': 'View',
   '卡片': 'Cards',

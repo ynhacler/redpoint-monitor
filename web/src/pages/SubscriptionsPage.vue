@@ -21,7 +21,7 @@ import { fmtMoney, fmtPct } from '../format'
 import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
-  analyze, byCategory, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, defaultCountry, monthlyCents,
+  analyze, byCategory, cashflow, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, defaultCountry, monthlyCents,
   monthStart, paymentNames, remindOptions, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend, type Rates, type SubCategory,
 } from '../subscriptions'
 
@@ -139,6 +139,10 @@ const barMax = computed(() => Math.max(1, ...bars.value.map((b) => b.cents)))
 
 // ---- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） ----
 const ana = computed(() => analyze(list.value, rates.value))
+// 未来 12 个月预计扣款（修订第 240 条）：现金流，按扣费日排期
+const cash = computed(() => cashflow(list.value, rates.value, today))
+const cashMax = computed(() => Math.max(1, ...cash.value.months.map((m) => m.cents)))
+const monthLabel = (d: Date) => (d.getMonth() === 0 ? String(d.getFullYear()) : d.toLocaleString(locale.value === 'en' ? 'en' : 'zh-CN', { month: 'short' }))
 
 // ---- 列表排列（修订第 237 条）：不分类（按下次扣费日）/ 按类别（类别按目录顺序，组内顺序不变，组头为数量与月均折算） ----
 const grouped = ref(readGrouped())
@@ -660,6 +664,19 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <b class="num">{{ fmtMoney(x.cents, 'CNY') }}</b>
             </li>
           </ol>
+          <!-- 未来 12 个月预计扣款（修订第 240 条） -->
+          <h3 class="bars-title">{{ t('未来 12 个月预计扣款') }}</h3>
+          <p class="small muted cash-sum num">
+            {{ t('合计 {v}（月均折算 × 12 为 {m}；差异来自年付、季付落在哪个月，以及中途开始或结束的订阅）', { v: fmtMoney(cash.total, 'CNY'), m: fmtMoney(ana.monthly * 12, 'CNY') }) }}
+            <template v-if="cash.missing.length">{{ t('缺少 {c} 的汇率，这些订阅没有计入。', { c: cash.missing.join('、') }) }}</template>
+          </p>
+          <div class="bars">
+            <div v-for="(m, i) in cash.months" :key="i" class="bar-col" :title="`${monthLabel(m.month)} ${fmtMoney(m.cents, 'CNY')} · ${t('{n} 个订阅', { n: m.count })}`">
+              <span v-if="m.cents === cashMax" class="bar-tip num">{{ fmtMoney(m.cents, 'CNY') }}</span>
+              <span class="bar-fill" :class="{ current: i === 0, future: i > 0 }" :style="{ height: `${Math.max(3, (m.cents / cashMax) * 100)}%` }" />
+              <span class="bar-label small muted">{{ monthLabel(m.month) }}</span>
+            </div>
+          </div>
           <p class="small muted rate-note">
             {{ t('月均折算是按周期摊到每月的成本，不等于本月扣款：年付、季付只在扣费的月份计入本月扣款。') }}
             {{ t('每周按 52 ÷ 12、每季 ÷ 3、每半年 ÷ 6、每年 ÷ 12 折算为每月；已结束的不计入。') }}
@@ -735,6 +752,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .view-tabs { margin-bottom: var(--space-3); }
 
 /* 列表 */
+.cash-sum { margin: 0 0 var(--space-2); }
 .view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .view-bar .view-tabs { margin-bottom: 0; }
 .cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-1) 0; }

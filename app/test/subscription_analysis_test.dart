@@ -31,4 +31,22 @@ void main() {
     await tester.scrollUntilVisible(find.textContaining('1 USD = ¥7.00'), 200);
     expect(tester.takeException(), isNull);
   });
+
+  test('未来 12 个月预计扣款（修订第 240 条）：年付只在扣费月，月付每月，结束后不再计入，外币换算', () {
+    const fx = FxRates(rates: {'CNY': 1, 'USD': 7.0});
+    const items = [
+      Subscription(id: 1, name: '年付', category: 'cloud', priceCents: 12000, currency: 'CNY', cycle: 'annually', startDate: '2025-03-15'),
+      Subscription(id: 2, name: '月付', category: 'tools', priceCents: 1000, currency: 'USD', cycle: 'monthly', startDate: '2026-01-31'),
+      Subscription(id: 3, name: '已结束', category: 'video', priceCents: 500, currency: 'CNY', cycle: 'monthly', startDate: '2026-01-05',
+          endDate: '2026-12-01'),
+    ];
+    final cf = cashflow(items, fx, today: DateTime(2026, 10, 25));
+    expect(cf.months.length, 12);
+    expect(cf.months.first.$1, DateTime(2026, 10, 1));
+    // 10、11 月：月付 70 元 + 未结束的 5 元；12 月起只有月付；次年 3 月加上年付 120 元
+    expect([for (final m in cf.months.take(6)) m.$2], [7500, 7500, 7000, 7000, 7000, 19000]);
+    expect(cf.total, 7500 * 2 + 7000 * 10 + 12000);
+    // 1 月 31 日起的月付在 2 月按月末扣费
+    expect(chargesBetween(items[1], DateTime(2027, 2, 1), DateTime(2027, 3, 1)), [DateTime(2027, 2, 28)]);
+  });
 }
