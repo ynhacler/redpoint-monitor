@@ -49,9 +49,23 @@ async function loadDaily() {
 }
 onMounted(loadDaily)
 watch(() => props.server.id, loadDaily)
+// 修订第 235 条：没有上报的日期（hours 为 0）不画柱（null），不当作零流量；旧版面板没有 hours 时按原样
+const unreported = (d: TrafficDay) => d.hours === 0 && d.used === 0
 const dailySeries = computed<Series[]>(() => [
-  { name: t('已计流量'), data: days.value.map((d) => [new Date(d.day + 'T00:00:00').getTime(), d.used]) },
+  { name: t('已计流量'), data: days.value.map((d) => [new Date(d.day + 'T00:00:00').getTime(), unreported(d) ? null : d.used]) },
 ])
+const todayKey = computed(() => days.value[days.value.length - 1]?.day)
+const dailyNote = computed(() => {
+  if (days.value.every((d) => d.hours === undefined)) return ''
+  const missing = days.value.filter(unreported).length
+  const partial = days.value.filter((d) => d.day !== todayKey.value && d.hours > 0 && d.hours < 23).length
+  if (!missing && !partial) return ''
+  return [
+    t('{n} 天中 {k} 天有上报', { n: days.value.length, k: days.value.length - missing }),
+    missing ? t('没有上报的 {m} 天不画柱（不是零流量）', { m: missing }) : '',
+    partial ? t('{p} 天只有部分时段的数据', { p: partial }) : '',
+  ].filter(Boolean).join('；')
+})
 const hasDaily = computed(() => days.value.some((d) => d.used > 0))
 
 // 手动校准：填写服务商面板显示的已用量，面板记录偏差并只作用于本周期（设计 5.7）
@@ -138,10 +152,12 @@ async function saveCalibrate() {
 
     <p v-if="dailyError" class="muted small daily">{{ dailyError }}</p>
     <Chart v-else-if="hasDaily" class="daily" :title="t('最近 30 天每日流量')" kind="bar" :series="dailySeries" :format="fmt" />
+    <p v-if="!dailyError && hasDaily && dailyNote" class="muted small daily-note">{{ dailyNote }}</p>
   </div>
 </template>
 
 <style scoped>
+.daily-note { margin: var(--space-1) 0 0; }
 .top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .big { font-size: var(--font-num); line-height: var(--line-num); margin: var(--space-3) 0; display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .big .muted { font-size: var(--font-lg); }

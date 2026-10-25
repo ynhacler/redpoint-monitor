@@ -2365,7 +2365,7 @@ paths:
     get:
       security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
       tags: [traffic]
-      summary: 最近 N 天每日流量，按日期升序，无数据的日期补 0
+      summary: 最近 N 天每日流量，按日期升序，无数据的日期补 0；hours 为当天有上报的小时数，用来区分零流量与未上报
       parameters:
         - { $ref: '#/components/parameters/ServerID' }
         - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 400, default: 30 } }
@@ -2383,12 +2383,13 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [day, rx, tx, used]
+                      required: [day, rx, tx, used, hours]
                       properties:
                         day: { type: string, format: date }
                         rx: { type: integer }
                         tx: { type: integer }
                         used: { type: integer, description: 按计费模式取值并乘以系数；不含校准 }
+                        hours: { type: integer, minimum: 0, maximum: 24, description: '修订第 235 条：当天（流量时区）有上报的小时数；0 表示当天没有上报，流量 0 不是“零流量”。今天为截至目前' }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }

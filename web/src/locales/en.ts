@@ -1007,6 +1007,10 @@ export const en: Record<string, string> = {
   '自动': 'Auto',
   '平均 {avg} · 峰值 {max}': 'avg {avg} · peak {max}',
   '（本区间）': '(this range)',
+  // ---- 每日流量缺失（修订第 235 条） ----
+  '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
+  '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
+  '{p} 天只有部分时段的数据': '{p} days have only partial data',
   // ---- 系统菜单（修订第 231 条） ----
   '通用': 'General',
   '监测与告警': 'Monitoring & alerts',

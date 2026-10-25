@@ -142,10 +142,14 @@ type dailyItem struct {
 	Rx   uint64 `json:"rx"`
 	Tx   uint64 `json:"tx"`
 	Used uint64 `json:"used"` // 按计费模式取值并乘以系数；校准只作用于整个周期，不分摊到天
+	// Hours：当天有上报的小时数（修订第 235 条）。traffic_daily 只在有流量时写入，没有行可能是零流量也可能是没有上报，
+	// 由这一项区分：0 为未上报，1～23 为部分时段（今天为截至目前）
+	Hours int `json:"hours"`
 }
 
 // handleTrafficDaily：GET /api/v1/servers/{id}/traffic/daily?days=30，admin。
-// 返回最近 days 天（含今天，1～400，默认 30）的每日流量，按日期升序，没有数据的日期补 0，便于直接画柱状图。
+// 返回最近 days 天（含今天，1～400，默认 30）的每日流量，按日期升序，没有数据的日期补 0，便于直接画柱状图；
+// hours 为当天有上报的小时数，界面据此把“未上报”与“零流量”分开（修订第 235 条）。
 func (s *Server) handleTrafficDaily(w http.ResponseWriter, r *http.Request) {
 	days, ok := s.intQuery(w, r, "days", 30, 1, 400)
 	if !ok {
@@ -162,6 +166,12 @@ func (s *Server) handleTrafficDaily(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, internalError(err))
 		return
 	}
+	loc := trafficLocation(*row)
+	hours, err := s.store.ReportedHours(row.ID, from, today.AddDate(0, 0, 1), loc)
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
 	byDay := make(map[string]DayTraffic, len(rows))
 	for _, d := range rows {
 		byDay[d.Day] = d
@@ -171,7 +181,7 @@ func (s *Server) handleTrafficDaily(w http.ResponseWriter, r *http.Request) {
 		key := d.Format("2006-01-02")
 		t := byDay[key]
 		items = append(items, dailyItem{Day: key, Rx: t.Rx, Tx: t.Tx,
-			Used: EffectiveUsed(CountedBytes(row.CountMode, t.Rx, t.Tx), row.TrafficFactor, 0)})
+			Used: EffectiveUsed(CountedBytes(row.CountMode, t.Rx, t.Tx), row.TrafficFactor, 0), Hours: hours[key]})
 	}
 	writeList(w, items, "", nil)
 }
