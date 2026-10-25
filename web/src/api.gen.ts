@@ -1402,6 +1402,10 @@ export interface CloudInstance {
   kind: string
   /** 云厂商原样，如 running / stopped */
   state: string
+  /** 修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错 */
+  state_norm: 'running' | 'stopped' | 'starting' | 'stopping' | 'pending' | 'rebooting' | 'expired' | 'frozen' | 'deleting' | 'error' | 'unknown'
+  /** 状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期 */
+  state_at: number
   public_ipv4: string
   public_ipv6: string
   /** 规格（EC2 实例类型、Lightsail 套餐） */
@@ -1598,6 +1602,10 @@ export interface AppCloud {
     /** ec2 / lightsail / ecs / swas / cvm / lighthouse / oci 等 */
     kind: string
     state: string
+    /** 修订第 232 条：由 state 归一化的状态（面板统一计算，Web 与 App 按它显示中文）；state 保留原样供排错 */
+    state_norm: 'running' | 'stopped' | 'starting' | 'stopping' | 'pending' | 'rebooting' | 'expired' | 'frozen' | 'deleting' | 'error' | 'unknown'
+    /** 状态的同步时间（账户最近一次成功同步实例列表，Unix 秒；0 为尚未同步）。超过 12 小时（两个同步周期）视为状态可能已过期 */
+    state_at: number
     plan: string
     /** 到期时间；0 为按量或没有到期 */
     expire_at: number

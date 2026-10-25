@@ -6,6 +6,7 @@ import { applyCloudExpire, errorText, listCloudInstances, type CloudInstance, ty
 import { fmtBytes, fmtDate, fmtTime } from '../format'
 import { refresh } from '../store'
 import { t } from '../i18n'
+import { cloudState } from '../cloudState'
 import UsageBar from './UsageBar.vue'
 
 const props = defineProps<{ server: ServerView }>()
@@ -61,7 +62,7 @@ const updated = computed(() => Math.max(0, ...insts.value.map((i) => i.updated_a
     <div v-for="i in insts" :key="i.id" class="inst">
       <div class="row">
         <span><b>{{ providerNames[i.provider] ? t(providerNames[i.provider]) : i.provider }}</b> · {{ i.account_name }}</span>
-        <span class="small" :class="i.state.toLowerCase() === 'running' ? 'ok' : 'muted'">{{ i.state }}</span>
+        <span class="small cstate" :class="cloudState(i).tone" :title="cloudState(i).title">{{ cloudState(i).text }}<small v-if="cloudState(i).stale" class="muted">{{ t('（可能已过期）') }}</small></span>
       </div>
       <div class="small muted">{{ kindNames[i.kind] ? t(kindNames[i.kind]) : i.kind }} · {{ i.region }} · {{ i.plan || '—' }} · {{ i.instance_id }}</div>
       <div v-if="i.expire_at" class="row small">

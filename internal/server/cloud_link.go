@@ -20,14 +20,15 @@ func (s *Store) CloudInstanceByID(id int64) (CloudInstance, error) {
 	var c CloudInstance
 	err := s.DB.QueryRow(`SELECT i.id, i.account_id, a.name, a.provider, i.instance_id, i.name, i.region, i.kind, i.state,
 		i.public_ipv4, i.public_ipv6, i.plan, i.expire_at, i.renew_price_cents, i.traffic_limit_bytes, i.traffic_used_bytes,
-		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status
+		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status, a.instances_synced_at
 		FROM cloud_instances i JOIN cloud_accounts a ON a.id = i.account_id WHERE i.id = ?`, id).Scan(
 		&c.ID, &c.AccountID, &c.AccountName, &c.Provider, &c.InstanceID, &c.Name, &c.Region, &c.Kind, &c.State,
 		&c.PublicIPv4, &c.PublicIPv6, &c.Plan, &c.ExpireAt, &c.RenewPriceCents, &c.TrafficLimitBytes, &c.TrafficUsedBytes,
-		&c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt, &c.CalibrateStatus)
+		&c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt, &c.CalibrateStatus, &c.StateAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, errNoCloudInstance
 	}
+	c.StateNorm = normalizeCloudState(c.State)
 	return c, err
 }
 

@@ -212,11 +212,20 @@ class _InstanceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = appColors(context);
     final small = TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()]);
-    // 状态是服务商原样（Running / RUNNING / running…）：运行中绿，已停止或不适用（Oracle 出站流量为 “-”）灰，其他（启动中、过期等）黄
-    final st = i.state.toLowerCase();
-    final dot = const {'running', 'active'}.contains(st)
-        ? c.ok
-        : (const {'stopped', 'terminated', 'shutoff', '-', ''}.contains(st) ? c.mutedState : c.warn);
+    // 状态（修订第 232 条）：按面板归一化的 state_norm 显示中文，原样状态在提示中；旧版面板没有 state_norm 时按原样判断。
+    // 运行中绿，已停止或不适用（Oracle 出站流量为 “-”）灰，到期 / 冻结 / 异常红，其他（启动中等）黄；同步超过 12 小时为“可能已过期”，灰色
+    final st = i.stateNorm.isNotEmpty ? i.stateNorm : i.state.toLowerCase();
+    final stale = i.stateAt > 0 && DateTime.now().millisecondsSinceEpoch ~/ 1000 - i.stateAt > 12 * 3600;
+    final stateText = i.state == '-' ? null : '${cloudStateNames[st] ?? i.state}${stale ? '（可能已过期）' : ''}';
+    final dot = stale
+        ? c.mutedState
+        : const {'running', 'active'}.contains(st)
+            ? c.ok
+            : const {'stopped', 'terminated', 'shutoff', '-', '', 'unknown'}.contains(st)
+                ? c.mutedState
+                : const {'expired', 'frozen', 'deleting', 'error'}.contains(st)
+                    ? c.bad
+                    : c.warn;
     String? expiry;
     Color? expColor;
     if (i.expireAt > 0) {
@@ -228,13 +237,18 @@ class _InstanceRow extends StatelessWidget {
       }
     }
     final linked = i.serverId == null ? null : serverNames[i.serverId];
-    final sub = [if (i.region.isNotEmpty) i.region, if (i.kind.isNotEmpty) cloudKindNames[i.kind] ?? i.kind, if (i.plan.isNotEmpty) i.plan];
+    final sub = [
+      if (stateText != null) stateText,
+      if (i.region.isNotEmpty) i.region,
+      if (i.kind.isNotEmpty) cloudKindNames[i.kind] ?? i.kind,
+      if (i.plan.isNotEmpty) i.plan,
+    ];
     return InkWell(
       onTap: linked == null || onOpenServer == null ? null : () => onOpenServer!(i.serverId!),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(children: [
-          Tooltip(message: i.state, child: Icon(Icons.circle, size: 8, color: dot)),
+          Tooltip(message: '云厂商状态：${i.state}', child: Icon(Icons.circle, size: 8, color: dot)),
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -212,6 +212,8 @@ type CloudInstance struct {
 	Region             string `json:"region"`
 	Kind               string `json:"kind"`
 	State              string `json:"state"`
+	StateNorm          string `json:"state_norm"` // 归一化的状态（修订第 232 条），由 State 计算，不入库
+	StateAt            int64  `json:"state_at"`   // 状态的同步时间：账户最近一次成功同步实例列表
 	PublicIPv4         string `json:"public_ipv4"`
 	PublicIPv6         string `json:"public_ipv6"`
 	Plan               string `json:"plan"`
@@ -298,7 +300,8 @@ func (s *Store) SaveCloudTraffic(accountID int64, insts []cloud.Instance, now ti
 func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 	rows, err := s.DB.Query(`SELECT i.id, i.account_id, a.name, a.provider, i.instance_id, i.name, i.region, i.kind, i.state,
 		i.public_ipv4, i.public_ipv6, i.plan, i.expire_at, i.renew_price_cents, i.traffic_limit_bytes, i.traffic_used_bytes,
-		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status, i.cdt_pool
+		i.traffic_period_start, i.server_id, i.updated_at, i.auto_calibrate, i.calibrated_at, i.calibrate_status, i.cdt_pool,
+		a.instances_synced_at
 		FROM cloud_instances i JOIN cloud_accounts a ON a.id = i.account_id
 		WHERE ? = 0 OR i.account_id = ? ORDER BY a.name, i.kind, i.region, i.name, i.instance_id`, accountID, accountID)
 	if err != nil {
@@ -311,9 +314,10 @@ func (s *Store) CloudInstances(accountID int64) ([]CloudInstance, error) {
 		if err := rows.Scan(&c.ID, &c.AccountID, &c.AccountName, &c.Provider, &c.InstanceID, &c.Name, &c.Region, &c.Kind,
 			&c.State, &c.PublicIPv4, &c.PublicIPv6, &c.Plan, &c.ExpireAt, &c.RenewPriceCents, &c.TrafficLimitBytes,
 			&c.TrafficUsedBytes, &c.TrafficPeriodStart, &c.ServerID, &c.UpdatedAt, &c.AutoCalibrate, &c.CalibratedAt,
-			&c.CalibrateStatus, &c.CDTPool); err != nil {
+			&c.CalibrateStatus, &c.CDTPool, &c.StateAt); err != nil {
 			return nil, err
 		}
+		c.StateNorm = normalizeCloudState(c.State)
 		out = append(out, c)
 	}
 	return out, rows.Err()
