@@ -97,7 +97,7 @@ class ServerCard extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()]),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (r.tempC != null && r.tempC! > 0) ...[
-                        _meta(Icons.thermostat, '${r.tempC!.round()}℃', r.tempC! >= 90 ? c.bad : r.tempC! >= 75 ? c.warn : c.ok),
+                        _meta(Icons.thermostat, '${r.tempC!.round()}℃', r.tempC! >= 90 ? c.bad : r.tempC! >= 75 ? c.warn : null),
                         const SizedBox(width: 8),
                       ],
                       _meta(Icons.power_settings_new, fmtUptimeShort(r.uptime), null),
@@ -123,9 +123,9 @@ class ServerCard extends StatelessWidget {
                   final ring = (box.maxWidth / 5 - 22).clamp(38.0, 44.0);
                   final disk = diskSummary(s);
                   return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _ringCol('CPU', r.cpu, colors.level(gaugeLevel(r.cpu, 'cpu')), '${r.cores}核', ring),
-                    _ringCol('Mem', r.mem, colors.level(gaugeLevel(r.mem, 'mem')), fmtBytesShort(r.memTotal), ring),
-                    _ringCol('Disk', disk?.usage, colors.level(disk?.level ?? Level.ok), fmtBytesShort(disk?.total), ring),
+                    _ringCol('CPU', r.cpu, gaugeLevel(r.cpu, 'cpu'), '${r.cores}核', ring, colors),
+                    _ringCol('Mem', r.mem, gaugeLevel(r.mem, 'mem'), fmtBytesShort(r.memTotal), ring, colors),
+                    _ringCol('Disk', disk?.usage, disk?.level ?? Level.ok, fmtBytesShort(disk?.total), ring, colors),
                     _flowCol('Net', r.tx, r.txTotal, r.rx, r.rxTotal, ring, c),
                     r.io == null
                         ? _flowCol('I/O', null, null, null, null, ring, c)
@@ -187,9 +187,10 @@ class ServerCard extends StatelessWidget {
       ]);
 
   // 环在上，下面一行“CPU 4核”：名称与容量合为一行，比上下各一行省一行高度
-  Widget _ringCol(String label, double? pct, Color color, String cap, double size) => Expanded(
+  // 环按级别着色，中间数字正常时用正文色（修订第 249 条）
+  Widget _ringCol(String label, double? pct, Level lv, String cap, double size, StatusColors colors) => Expanded(
         child: Column(children: [
-          Ring(pct: pct, color: color, size: size, label: label),
+          Ring(pct: pct, color: colors.level(lv), textColor: colors.text(lv), size: size, label: label),
           const SizedBox(height: 2),
           _caption(label, cap),
         ]),

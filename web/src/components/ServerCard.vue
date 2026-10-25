@@ -36,7 +36,7 @@ const expiry = computed(() => fmtExpiry(s.value.expire_date, s.value.billing_per
 const load1 = computed(() => (r.value ? r.value.cpu.load1.toFixed(r.value.cpu.load1 < 10 ? 2 : 1) : DASH))
 const tempLv = computed(() => {
   const t = r.value?.cpu.temp_c ?? 0
-  return t >= 90 ? 'bad' : t >= 75 ? 'warn' : 'ok'
+  return t >= 90 ? 'bad' : t >= 75 ? 'warn' : '' // 正常温度不着绿色（修订第 249 条）
 })
 
 // 网络：速率 + 开机以来累计；IO：读写速率 + 累计（各磁盘之和）

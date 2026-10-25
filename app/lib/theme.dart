@@ -45,6 +45,9 @@ class StatusColors {
 
   Color level(Level l) => switch (l) { Level.ok => c.ok, Level.warn => c.warn, Level.bad => c.bad };
 
+  /// 数字的颜色（修订第 249 条，UI-008）：正常时为 null（正文色），接近 / 超过阈值时为警告 / 严重色；绿色只用于状态
+  Color? text(Level l) => l == Level.ok ? null : level(l);
+
   /// 在线状态的颜色：在线绿、未知橙、离线红、待安装灰（设计 22）
   Color status(String s) => switch (s) { 'online' => c.ok, 'unknown' => c.warn, 'offline' => c.bad, _ => c.mutedState };
 }
