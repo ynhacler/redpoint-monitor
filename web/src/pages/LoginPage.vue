@@ -13,12 +13,16 @@ import { login, loginTotp, state } from '../store'
 
 const route = useRoute()
 const router = useRouter()
-const username = ref('admin')
+// 不预填用户名（修订第 247 条，UI 精修 3.12）：浏览器 / 密码管理器自动填充照常可用
+const username = ref('')
 const password = ref('')
 const remember = ref(false)
 const showPassword = ref(false) // 密码明文显示开关（修订第 188 条）
 const error = ref('')
 const busy = ref(false)
+// 字段错误显示在对应输入框下（修订第 247 条）
+const fieldErr = ref<{ username?: string; password?: string }>({})
+const helpOpen = ref(false)
 // 滑动验证码（设计 17.4）：完成后才能登录；每次登录尝试后重新获取（一次性）
 const captchaOn = ref(true)
 const answer = ref<CaptchaAnswer>()
@@ -73,8 +77,12 @@ async function submitCode() {
 }
 
 async function submit() {
-  if (!username.value.trim() || !password.value) {
-    error.value = t('请输入用户名和密码')
+  fieldErr.value = {
+    username: username.value.trim() ? undefined : t('请输入用户名'),
+    password: password.value ? undefined : t('请输入密码'),
+  }
+  if (fieldErr.value.username || fieldErr.value.password) {
+    error.value = ''
     return
   }
   if (captchaOn.value && !answer.value) {
@@ -125,31 +133,39 @@ async function submit() {
     </form>
     <form v-else class="login" novalidate @submit.prevent="submit">
       <header class="head">
-        <img class="logo" src="/favicon.svg" alt="" width="44" height="44" />
-        <h1>{{ t('登录 {name}', { name: site.app_name }) }}</h1>
-        <p class="small muted">{{ t('输入账号与密码以继续') }}</p>
+        <!-- 顶栏已有产品名，这里不再重复（修订第 247 条） -->
+        <img class="logo" src="/favicon.svg" alt="" width="52" height="52" />
+        <h1>{{ t('登录账号') }}</h1>
+        <p class="small muted">{{ t('使用账号密码安全登录') }}</p>
       </header>
       <label class="field">
         <span class="label">{{ t('用户名') }}</span>
-        <input v-model="username" autocomplete="username" autocapitalize="off" spellcheck="false" />
+        <input v-model="username" autocomplete="username" autocapitalize="off" spellcheck="false" :placeholder="t('请输入用户名')" autofocus
+          :aria-invalid="!!fieldErr.username" @input="fieldErr.username = undefined" />
+        <small v-if="fieldErr.username" class="bad" role="alert">{{ fieldErr.username }}</small>
       </label>
       <label class="field">
         <span class="label">{{ t('密码') }}</span>
         <span class="pw">
-          <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus />
+          <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" :placeholder="t('请输入密码')"
+            :aria-invalid="!!fieldErr.password" @input="fieldErr.password = undefined" />
           <button type="button" class="text eye" :aria-label="showPassword ? t('隐藏密码') : t('显示密码')" :aria-pressed="showPassword"
-            @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" :size="16" /></button>
+            @click="showPassword = !showPassword"><Icon :name="showPassword ? 'eye-off' : 'eye'" :size="18" /></button>
         </span>
+        <small v-if="fieldErr.password" class="bad" role="alert">{{ fieldErr.password }}</small>
       </label>
-      <label class="remember small">
-        <input v-model="remember" type="checkbox" />
-        {{ t('记住登录（7 天）') }}
-      </label>
+      <div class="row">
+        <label class="remember small" :title="t('保存的是登录会话，不是密码；退出登录后失效')">
+          <input v-model="remember" type="checkbox" />
+          {{ t('记住登录（7 天）') }}
+        </label>
+        <button type="button" class="text small help-link" :aria-expanded="helpOpen" @click="helpOpen = !helpOpen">{{ t('无法登录？') }}</button>
+      </div>
       <SliderCaptcha v-if="captchaOn" ref="captchaRef" @done="(a) => (answer = a)" @disabled="captchaOn = false" />
       <p v-if="error" class="banner" role="alert">{{ error }}</p>
       <button type="submit" class="submit" :disabled="busy">{{ busy ? t('登录中…') : t('登录') }}</button>
-      <!-- 恢复命令不展示给未登录的访客（修订第 173 条）：见文档与 vpsmon-server --help -->
-      <p class="small muted hint">{{ t('忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。') }}</p>
+      <!-- 恢复命令不展示给未登录的访客（修订第 173 条）：见文档与 vpsmon-server --help；默认收起（修订第 247 条） -->
+      <p v-if="helpOpen" class="small muted hint help">{{ t('忘记密码或丢失两步验证设备：由服务器管理员在面板主机上用命令行恢复。') }}</p>
     </form>
   </main>
 </template>
@@ -160,17 +176,24 @@ async function submit() {
   padding: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 8%, transparent); }
 .head { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; margin-bottom: var(--space-2); }
-.head h1 { margin: var(--space-1) 0 0; font-size: var(--font-xl); line-height: var(--line-xl); }
+.head h1 { margin: var(--space-1) 0 0; font-size: 22px; line-height: 30px; }
 .head p { margin: 0; }
 .logo { display: block; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
 .label { font-size: var(--font-sm); font-weight: var(--weight-strong); color: var(--text); }
 .pw { position: relative; display: block; }
-.pw input { width: 100%; padding-right: 40px; }
-.eye { position: absolute; right: var(--space-1); top: 50%; transform: translateY(-50%); padding: var(--space-1) var(--space-2); }
+/* 输入框约 48px 高、圆角 10px；显示密码按钮触控区 44 × 44（修订第 247 条） */
+.login input:not([type='checkbox']) { min-height: 48px; border-radius: 10px; font-size: 16px; scroll-margin: 120px 0; }
+.login input[aria-invalid='true'] { border-color: var(--bad); }
+.field .bad { color: var(--bad); font-size: var(--font-sm); }
+.pw input { width: 100%; padding-right: 48px; }
+.eye { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; padding: 0; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.help-link { padding: var(--space-2) 0; min-height: 44px; }
+.help { text-align: left; }
 .remember { display: flex; align-items: center; gap: var(--space-2); color: var(--text-muted); }
 .remember input { width: auto; }
-.submit { justify-content: center; width: 100%; padding-top: var(--space-3); padding-bottom: var(--space-3); font-weight: var(--weight-strong); }
+.submit { justify-content: center; width: 100%; min-height: 48px; border-radius: 10px; font-weight: var(--weight-strong); }
 .login .banner { margin: 0; }
 .login :deep(.captcha) { align-self: center; }
 .hint { margin: 0; text-align: center; }

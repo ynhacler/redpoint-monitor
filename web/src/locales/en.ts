@@ -1011,6 +1011,12 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 登录页（修订第 247 条） ----
+  '登录账号': 'Sign in',
+  '使用账号密码安全登录': 'Sign in with your username and password',
+  '请输入密码': 'Enter your password',
+  '无法登录？': 'Can’t sign in?',
+  '保存的是登录会话，不是密码；退出登录后失效': 'Keeps the session, not your password; ends when you sign out',
   // ---- 云账户卡片（修订第 245 条） ----
   '同步成功': 'Synced',
   '已运行': 'Up',
