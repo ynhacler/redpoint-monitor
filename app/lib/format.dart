@@ -32,6 +32,34 @@ String fmtTraffic(num? n, String unit) {
   return '${i == 0 ? v.round() : _num(v)} ${units[i]}';
 }
 
+/// 剩余流量（修订第 228 条，与 Web 的 fmtTrafficLeft 相同）：舍入后不能显示成与额度相同，
+/// 如额度 2 TB、已用 1 GB 时显示 “1999 GB”，额度 200 GB 时显示 “199.9 GB”；剩余量宁少勿多。
+String fmtTrafficLeft(num left, num limit, String unit) {
+  final s = fmtTraffic(left, unit);
+  final base = unit == 'binary' ? 1024 : 1000;
+  final units = unit == 'binary' ? const ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] : const ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  final parts = s.split(' ');
+  num pow(int e) => List.filled(e, base).fold<num>(1, (a, b) => a * b);
+  final shown = (double.tryParse(parts[0]) ?? 0) * pow(units.indexOf(parts.length > 1 ? parts[1] : 'B'));
+  if (left >= limit || shown < limit) return s;
+  var i = 0;
+  while (limit >= pow(i + 1) && i < units.length - 1) {
+    i++;
+  }
+  final x = left / pow(i);
+  if (x >= 100) return '${((x * 10).floor() / 10).toStringAsFixed(1)} ${units[i]}';
+  final j = i > 0 ? i - 1 : 0;
+  return '${(left / pow(j)).floor()} ${units[j]}';
+}
+
+/// 精细百分比（修订第 228 条）：小于 1% 时保留两位小数，更小时为 “<0.01%”；其余同 fmtPct
+String fmtPctFine(num? p) {
+  if (p == null || p.isNaN) return dash;
+  if (p > 0 && p < 0.01) return '<0.01%';
+  if (p > 0 && p < 1) return '${p.toStringAsFixed(2)}%';
+  return fmtPct(p);
+}
+
 /// 百分比取整，小于 1% 显示 “<1%”。
 String fmtPct(num? p) {
   if (p == null || p.isNaN) return dash;

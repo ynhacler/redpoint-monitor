@@ -990,6 +990,13 @@ export const en: Record<string, string> = {
   '最近 {n} 次': 'Last {n} runs',
   '无法连接': 'Cannot connect',
   '连通性探测': 'Connectivity probe',
+  '使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”；悬停查看各项。':
+    'Usage matches df: used ÷ (used + available). Space reserved for root is not available, so this differs from used ÷ total; hover for details.',
+  '总容量 {v}': 'Total {v}',
+  '已用 {v}': 'Used {v}',
+  '可用 {v}': 'Available {v}',
+  '保留 {v}（root 专用）': 'Reserved {v} (root only)',
+  '使用率 {v}': 'Usage {v}',
   // ---- 监听范围与外部可达（修订第 227 条） ----
   '对外监听': 'Externally bound',
   '全部地址': 'All addresses',

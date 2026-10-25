@@ -5,7 +5,7 @@
 // IOPS、IO 等待等为可选字段（设计 4.7），旧版 Agent 不上报时对应部分不显示。
 import { computed } from 'vue'
 import type { DiskInfo, ServerView } from '../api'
-import { DASH, fmtBytesShort, fmtPct } from '../format'
+import { DASH, fmtBytes, fmtBytesShort, fmtPct } from '../format'
 import { t } from '../i18n'
 import { gaugeLevel, ioForDisk } from '../metrics'
 import { exposure, exposureNames, family, isRisky, publicKind, reachNames, serviceName, sortPorts } from '../ports'
@@ -33,6 +33,15 @@ const ioRows = computed(() => {
   }
   return [...rows.values()]
 })
+// 磁盘口径（修订第 228 条）：总容量、已用（含 root 保留块）、普通用户可用、保留空间；使用率 = 已用 ÷（已用 + 可用），与 df 一致
+const reservedOf = (d: DiskInfo) => (d.available ? Math.max(0, d.total - d.used - d.available) : 0)
+const hasReserved = computed(() => r.value.disk.some((d) => reservedOf(d) > d.total * 0.005))
+const diskTitle = (d: DiskInfo) => [
+  t('总容量 {v}', { v: fmtBytes(d.total) }), t('已用 {v}', { v: fmtBytes(d.used) }),
+  d.available ? t('可用 {v}', { v: fmtBytes(d.available) }) : '',
+  reservedOf(d) ? t('保留 {v}（root 专用）', { v: fmtBytes(reservedOf(d)) }) : '',
+  t('使用率 {v}', { v: fmtPct(d.usage) }),
+].filter(Boolean).join(' · ')
 const hasAwait = computed(() => ioRows.value.some((x) => x.io.await_ms != null))
 const hasUtil = computed(() => ioRows.value.some((x) => x.io.util != null))
 
@@ -121,7 +130,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
         <span v-if="r.disk.length > 1" class="title-extra">{{ t('挂载点') }} <b>{{ r.disk.length }}</b></span>
       </h3>
       <ul class="mounts">
-        <li v-for="d in r.disk" :key="d.mount">
+        <li v-for="d in r.disk" :key="d.mount" :title="diskTitle(d)">
           <div class="m-name">
             <span class="mount" :title="d.mount">{{ d.mount }}</span>
             <span class="muted dev">{{ [d.device, d.fstype].filter(Boolean).join(' · ') || DASH }}</span>
@@ -131,6 +140,7 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           <span class="pct" :class="gaugeLevel(d.usage, 'disk')">{{ fmtPct(d.usage) }}</span>
         </li>
       </ul>
+      <p v-if="hasReserved" class="muted small port-note">{{ t('使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”；悬停查看各项。') }}</p>
       <div v-if="ioRows.length" class="io-wrap">
         <table class="io">
           <thead>
