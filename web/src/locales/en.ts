@@ -770,7 +770,6 @@ export const en: Record<string, string> = {
   '低于 {amount} 时提醒': 'alert below {amount}',
   '本月预估': 'Forecast this month',
   '预算': 'Budget',
-  '未设': 'Not set',
   '实例': 'Instances',
   '预估占预算 {n}%': 'Forecast is {n}% of budget',
   '已产生占预算 {n}%': 'Spent {n}% of budget',
