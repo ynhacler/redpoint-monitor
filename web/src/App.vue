@@ -23,6 +23,7 @@ const alertCount = computed(() => activeAlertCount(state.servers))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password)
 const groups = computed(() => groupsFor(isViewer.value))
 const group = computed(() => activeGroup(route, groups.value))
+const currentItem = computed(() => (group.value ? group.value.items.find((x) => itemActive(x, route, group.value!)) : undefined))
 // 二级页面（节点详情、编辑、安装命令，修订第 230 条）：手机上不显示底部标签栏，由页面自己的返回与吸顶标签栏导航，内容不被两层导航挤占
 const secondLevel = computed(() => ['server', 'server-edit', 'server-install'].includes(String(route.name)))
 watch(secondLevel, (v) => document.documentElement.classList.toggle('no-tabbar', v), { immediate: true })
@@ -74,17 +75,21 @@ onUnmounted(stopPolling)
           <RouterLink to="/account" class="user small" :title="t('账号与密码')">
             <Icon name="user" /><span class="username">{{ state.me.username }}</span>
           </RouterLink>
-          <button class="text" type="button" :title="t('退出登录')" @click="logout">
+          <button class="text logout" type="button" :title="t('退出登录')" @click="logout">
             <Icon name="logout" />
           </button>
         </template>
       </div>
     </div>
-    <!-- 二级导航：当前分组有多个页面时显示 -->
-    <nav v-if="signedIn && group && group.items.length > 1" class="subnav" :aria-label="t(group.name)">
+    <!-- 二级导航：当前分组有多个页面时显示；手机上有菜单页的分组（系统）改为“← 系统 · 当前页”（修订第 231 条） -->
+    <nav v-if="signedIn && group && group.items.length > 1" class="subnav" :class="{ 'has-menu': !!group.mobileTo }" :aria-label="t(group.name)">
       <div class="sub-inner">
         <RouterLink v-for="x in group.items" :key="x.to" :to="x.to" :class="{ active: itemActive(x, route, group) }">{{ t(x.name) }}</RouterLink>
       </div>
+    </nav>
+    <nav v-if="signedIn && group?.mobileTo && route.path !== group.mobileTo" class="menu-back" :aria-label="t(group.name)">
+      <RouterLink :to="group.mobileTo"><Icon name="arrow-left" :size="16" />{{ t(group.name) }}</RouterLink>
+      <span v-if="currentItem" class="muted">· {{ t(currentItem.name) }}</span>
     </nav>
   </header>
 
@@ -102,7 +107,7 @@ onUnmounted(stopPolling)
   </footer>
   <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
   <nav v-if="signedIn && !secondLevel" class="tabbar" :aria-label="t('分组')">
-    <RouterLink v-for="g in groups" :key="g.key" :to="g.items[0].to" :class="{ active: group?.key === g.key }">
+    <RouterLink v-for="g in groups" :key="g.key" :to="g.mobileTo ?? g.items[0].to" :class="{ active: group?.key === g.key }">
       <Icon :name="g.icon" :size="22" />
       <span>{{ t(g.short) }}</span>
     </RouterLink>
@@ -151,11 +156,18 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
 }
 /* 底部标签栏（修订第 199 条）：只在手机宽度显示；固定在底部，避开 iPhone 的主屏幕指示条 */
 .tabbar { display: none; }
+.menu-back { display: none; }
 @media (max-width: 600px) {
   .inner { gap: var(--space-2); height: 46px; }
   .brand { font-size: var(--font-md); }
   .tools { gap: var(--space-1); }
   nav.groups { display: none; }
+  /* “系统”等有菜单页的分组：不显示横向滚动的二级导航，改为返回菜单的一行；退出登录在菜单页中（修订第 231 条） */
+  .subnav.has-menu { display: none; }
+  .menu-back { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--border); padding: 0 var(--space-3);
+    height: 40px; font-size: var(--font-md); }
+  .menu-back a { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text); text-decoration: none; min-height: 40px; }
+  .tools .logout { display: none; }
   .tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
