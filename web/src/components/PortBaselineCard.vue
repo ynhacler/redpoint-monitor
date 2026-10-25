@@ -67,6 +67,30 @@ async function save(ports: string[]) {
 }
 
 const saveDraft = () => save(draft.value.split(/[\s,，、]+/).filter(Boolean))
+
+// 端口备注（修订第 258 条）：基线中的端口可加一句备注（如“Xray 入口”），点“备注”就地编辑，回车或失焦保存
+const labelOf = (k: string) => baseline.value?.labels?.[k] ?? ''
+const labelEditing = ref('')
+const labelDraft = ref('')
+function editLabel(k: string) {
+  labelEditing.value = k
+  labelDraft.value = labelOf(k)
+}
+async function saveLabel() {
+  const k = labelEditing.value
+  if (!k || !baseline.value) return
+  labelEditing.value = ''
+  if (labelDraft.value.trim() === labelOf(k)) return
+  saving.value = true
+  error.value = ''
+  try {
+    baseline.value = await putPortBaseline(props.server.id, baseline.value.ports, { [k]: labelDraft.value.trim() })
+  } catch (e) {
+    error.value = e instanceof ApiError && e.details.length ? e.details[0].message : errorText(e, t('保存失败'))
+  } finally {
+    saving.value = false
+  }
+}
 const useCurrent = () => save(exposed.value.map((p) => p.key))
 </script>
 
@@ -106,9 +130,17 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
           <span class="num">{{ p.key }}</span><span v-if="p.service" class="muted small">{{ p.service }}</span>
           <span v-if="baseline && !allowed.has(p.key)" class="tag warn">{{ t('不在基线中') }}</span>
           <span v-if="reach.get(p.key)" class="tag" :class="'r-' + reach.get(p.key)!.state">{{ t(stateNames[reach.get(p.key)!.state] ?? '') || reach.get(p.key)!.state }}</span>
+          <template v-if="baseline && allowed.has(p.key)">
+            <input v-if="labelEditing === p.key" v-model="labelDraft" class="label-input" maxlength="40" :placeholder="t('如 Xray 入口')" :aria-label="t('{port} 的备注', { port: p.key })"
+              autofocus @keydown.enter.prevent="saveLabel" @keydown.esc="labelEditing = ''" @blur="saveLabel" />
+            <template v-else>
+              <span v-if="labelOf(p.key)" class="label-text">{{ labelOf(p.key) }}</span>
+              <button type="button" class="text small label-btn" :disabled="saving" @click="editLabel(p.key)">{{ labelOf(p.key) ? t('改备注') : t('备注') }}</button>
+            </template>
+          </template>
         </li>
         <li v-for="k in gone" :key="'g' + k" class="gone">
-          <span class="num">{{ k }}</span><span class="tag bad">{{ t('未监听') }}</span>
+          <span class="num">{{ k }}</span><span v-if="labelOf(k)" class="label-text">{{ labelOf(k) }}</span><span class="tag bad">{{ t('未监听') }}</span>
         </li>
       </ul>
       <p v-if="!exposed.length && !gone.length" class="muted small">{{ t('没有对外监听的端口。') }}</p>
@@ -124,6 +156,9 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
 </template>
 
 <style scoped>
+.label-text { font-size: var(--font-sm); }
+.label-btn { padding: 0 var(--space-1); margin-left: auto; }
+.label-input { flex: 1; min-width: 8em; max-width: 16em; padding: 2px var(--space-2); font-size: var(--font-sm); }
 .baseline { padding: var(--space-4) var(--space-5); }
 .head { display: flex; align-items: baseline; gap: var(--space-2); }
 .head h3 { margin: 0; }

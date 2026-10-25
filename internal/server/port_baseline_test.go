@@ -132,3 +132,26 @@ func TestPortBaselineAlerts(t *testing.T) {
 		t.Fatal("取消后缓存也应清除")
 	}
 }
+
+// 端口备注（修订第 258 条）：合并、删除、只保留基线中的端口、键规范化与校验
+func TestMergePortLabels(t *testing.T) {
+	ports := []string{"22/tcp", "443/tcp"}
+	got, err := mergePortLabels(map[string]string{"22/tcp": "SSH", "8080/tcp": "旧端口"}, map[string]string{"443": " Xray 入口 "}, ports)
+	if err != nil || len(got) != 2 || got["22/tcp"] != "SSH" || got["443/tcp"] != "Xray 入口" {
+		t.Fatalf("合并：%v %v", got, err)
+	}
+	got, err = mergePortLabels(got, map[string]string{"22/tcp": ""}, ports)
+	if _, ok := got["22/tcp"]; err != nil || ok || len(got) != 1 {
+		t.Fatalf("空字符串应删除备注：%v %v", got, err)
+	}
+	for _, bad := range []map[string]string{
+		{"3306/tcp": "不在基线"},
+		{"abc": "格式"},
+		{"443/tcp": strings.Repeat("长", maxPortLabel+1)},
+		{"443/tcp": "换\n行"},
+	} {
+		if _, err := mergePortLabels(nil, bad, ports); err == nil {
+			t.Errorf("应拒绝 %v", bad)
+		}
+	}
+}

@@ -551,6 +551,8 @@ export interface ServerView {
   port_baseline?: {
     /** 如 22/tcp、443/tcp、51820/udp */
     ports: string[]
+    /** 修订第 258 条：端口备注，如 {"443/tcp": "Xray 入口"}；没有时为空对象 */
+    labels: Record<string, string>
     updated_at: number
   }
   /** 曾经运行、现在没有运行的代理程序（修订第 169 条）；只在管理员的节点详情中返回，没有时省略 */
@@ -3146,9 +3148,12 @@ export interface Paths {
       body: {
         /** 端口/协议，如 22/tcp；只写端口时为 tcp */
         ports: string[]
+        /** 修订第 258 条：基线端口的备注，键为规范化后的“端口/协议”（如 443/tcp），只能是 ports 中的端口；省略时保留原有备注（不在新 ports 中的丢弃），空字符串删除该备注 */
+        labels?: Record<string, string>
       }
       response: {
         ports: string[]
+        labels: Record<string, string>
         updated_at: number
       }
     }

@@ -110,7 +110,8 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       <ul v-else class="port-list">
         <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }" :title="portTitle(p)">
           <span class="port">{{ p.port }}<span class="proto">{{ p.proto.toUpperCase() }}</span></span>
-          <span class="svc">{{ serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
+          <!-- 端口备注（修订第 258 条，来自端口基线）优先于常见服务名 -->
+          <span class="svc">{{ server.port_baseline?.labels?.[`${p.port}/${p.proto}`] || serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
           <span class="exp-col">
             <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? t('{scope} · 风险端口', { scope: scopeText(p) }) : scopeText(p) }}</span>
             <small v-if="exposure(p) === 'public' && reachOf(p)" class="reach" :class="reachOf(p)!.state">{{ t(reachNames[reachOf(p)!.state]) }}</small>

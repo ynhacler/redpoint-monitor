@@ -346,9 +346,10 @@ export function forgetProxies(id: number, name?: string) {
   return request('post', '/servers/{id}/proxies/forget', { params: { id }, body: name ? { name } : {} })
 }
 
-/** 设置端口基线（允许对公网开放的监听端口，如 22/tcp）；空数组表示取消（修订第 170 条） */
-export function putPortBaseline(id: number, ports: string[]) {
-  return request('put', '/servers/{id}/port-baseline', { params: { id }, body: { ports } })
+/** 设置端口基线（允许对公网开放的监听端口，如 22/tcp）；空数组表示取消（修订第 170 条）。
+ *  labels 为要修改的端口备注（修订第 258 条，空字符串删除）；省略时保留原有备注 */
+export function putPortBaseline(id: number, ports: string[], labels?: Record<string, string>) {
+  return request('put', '/servers/{id}/port-baseline', { params: { id }, body: labels ? { ports, labels } : { ports } })
 }
 
 /** 从面板检测公网可达：TCP 连接节点公网地址上它报告的监听端口（修订第 171 条） */
