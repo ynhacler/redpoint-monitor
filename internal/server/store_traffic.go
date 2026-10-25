@@ -98,6 +98,33 @@ func (s *Store) DailyTraffic(serverID int64, from, to time.Time) ([]DayTraffic, 
 	return out, rows.Err()
 }
 
+// ReportedHours 返回 [from, to) 内每天（loc 时区的日期）有上报的小时数（修订第 235 条）。
+// 小时级数据保留一年；最近一两个小时还没有汇总到 metrics_1h，再看 metrics_5m，两者按小时合并。
+func (s *Store) ReportedHours(serverID int64, from, to time.Time, loc *time.Location) (map[string]int, error) {
+	rows, err := s.DB.Query(`SELECT ts FROM metrics_1h WHERE server_id = ? AND ts >= ? AND ts < ?
+		UNION SELECT (ts / 3600) * 3600 FROM metrics_5m WHERE server_id = ? AND ts >= ? AND ts < ?`,
+		serverID, from.Unix(), to.Unix(), serverID, from.Unix(), to.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	seen := map[int64]bool{}
+	out := map[string]int{}
+	for rows.Next() {
+		var ts int64
+		if err := rows.Scan(&ts); err != nil {
+			return nil, err
+		}
+		h := ts - ts%3600
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		out[time.Unix(h, 0).In(loc).Format("2006-01-02")]++
+	}
+	return out, rows.Err()
+}
+
 // TrafficBetween 汇总 [from, to) 的收发字节。
 func (s *Store) TrafficBetween(serverID int64, from, to time.Time) (rx, tx uint64, err error) {
 	err = s.DB.QueryRow(`SELECT COALESCE(SUM(rx),0), COALESCE(SUM(tx),0) FROM traffic_daily

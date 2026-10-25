@@ -380,6 +380,7 @@
 | 10 | 新增商业模式章节 | 1.12 |
 | 11 | 重新划定第一阶段（MVP）与第二阶段范围；灰度升级、Widget、多中心聚合移至第二阶段 | 35、36 |
 | 12 | 修正章节编号错乱（33.x / 32.x / 34.x） | 32～34 |
+| 235 | 每日流量区分零流量与未上报：/traffic/daily 增加 hours（当天有上报的小时数）；Web 柱状图没有上报的日期不画柱，下方说明有上报的天数与部分时段的天数 | 19.8 |
 | 234 | 历史图表：百分比图可切换纵轴“自动 / 0–100%”（默认自动，记在本机）；每张折线图显示本区间平均与峰值（缺失点不计入） | 41.5 |
 | 233 | 订阅类别固定颜色：design/tokens.json 新增 cat-*（10 个容易区分的颜色），Web 统计 / 分析与 App 分析页同一类别同一颜色；统计图例去掉与环形图重复的进度条 | 41.2.1、47.2 |
 | 232 | 云实例状态归一化：面板把各厂商的状态（running / RUNNING / SHUTDOWN 等）归一为固定的 state_norm，并返回状态同步时间 state_at；Web 与 App 显示中文状态，原样状态在提示中，同步超过 12 小时标“可能已过期” | 44.8 |
@@ -6089,7 +6090,8 @@ range=30d
 
 ```http
 GET  /api/v1/servers/{id}/traffic/current        本周期：统计值、校准偏差、展示值、预测（同节点中的 traffic 字段）
-GET  /api/v1/servers/{id}/traffic/daily?days=30  每日流量，无数据的日期补 0
+GET  /api/v1/servers/{id}/traffic/daily?days=30  每日流量，无数据的日期补 0；hours 为当天有上报的小时数（修订第 235 条，
+                                                 metrics_1h 与 metrics_5m 按小时合并），0 表示未上报而不是零流量
 GET  /api/v1/servers/{id}/traffic/monthly?cycles=12
 POST /api/v1/servers/{id}/traffic/calibrate      手动校准（见 5.7），请求 {"used_gb", "note"}
 GET  /api/v1/servers/{id}/traffic/adjustments    校准历史

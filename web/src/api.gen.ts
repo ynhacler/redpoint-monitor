@@ -3195,7 +3195,7 @@ export interface Paths {
     }
   }
   '/servers/{id}/traffic/daily': {
-    /** 最近 N 天每日流量，按日期升序，无数据的日期补 0 */
+    /** 最近 N 天每日流量，按日期升序，无数据的日期补 0；hours 为当天有上报的小时数，用来区分零流量与未上报 */
     get: {
       params: {
         id: number
@@ -3212,6 +3212,8 @@ export interface Paths {
           tx: number
           /** 按计费模式取值并乘以系数；不含校准 */
           used: number
+          /** 修订第 235 条：当天（流量时区）有上报的小时数；0 表示当天没有上报，流量 0 不是“零流量”。今天为截至目前 */
+          hours: number
         }[]
       }
     }
