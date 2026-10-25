@@ -151,7 +151,7 @@ class _AccountCardState extends State<_AccountCard> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: small),
             cents == null || (cents == 0 && cloudCostUnconfirmed(a))
-                ? Text.rich(TextSpan(children: [const TextSpan(text: dash, style: num), TextSpan(text: ' 待确认', style: small)]))
+                ? Text('待确认', style: TextStyle(fontSize: 14, color: c.textMuted)) // 未确认的费用显示文字，不用“—”（修订第 261 条）
                 : Text(fmtMoney(cents, cost!.currency), style: num),
           ]),
         );
