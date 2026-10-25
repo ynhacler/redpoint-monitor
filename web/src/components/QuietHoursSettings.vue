@@ -2,6 +2,7 @@
 // 免打扰时段（设计 16.5）：严重告警默认仍通知；警告暂存，结束后汇总为一条；提示不发送。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, errorText, getQuietHours, saveQuietHours, type QuietHoursView } from '../api'
+import SaveState, { saveStatus } from './SaveState.vue'
 
 
 const view = ref<QuietHoursView | null>(null)
@@ -20,7 +21,12 @@ const zones = computed<string[]>(() => {
 function fill(v: QuietHoursView) {
   view.value = v
   Object.assign(form, { enabled: v.enabled, start: v.start, end: v.end, timezone: v.timezone, critical: v.critical })
+  snap.value = JSON.stringify(form)
 }
+// 保存状态（修订第 229 条）：与上次载入 / 保存的值比较
+const snap = ref('')
+const dirty = computed(() => !!snap.value && JSON.stringify(form) !== snap.value)
+const fieldError = computed(() => (Object.keys(errors.value).length ? '请检查标出的项' : ''))
 
 onMounted(async () => {
   try {
@@ -82,8 +88,8 @@ const crossesMidnight = computed(() => form.start > form.end)
     </div>
     <p v-if="error" class="err small">{{ error }}</p>
     <div class="actions">
-      <button type="submit" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
-      <span v-if="saved" class="ok small">已保存</span>
+      <button type="submit" :disabled="saving || !dirty" :title="!dirty ? '没有修改' : undefined">{{ saving ? '保存中…' : '保存' }}</button>
+      <SaveState :state="saveStatus({ saving, error: error || fieldError, dirty, saved })" :error="(error || fieldError) || undefined" />
     </div>
   </form>
 </template>

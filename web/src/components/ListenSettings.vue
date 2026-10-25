@@ -4,6 +4,7 @@
 // 反向代理模式下两个地址都只能是本机地址，对外的 HTTPS 由反向代理（如 Caddy）负责，所以要同时修改反向代理的配置。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, closeOldListen, errorText, getListenSetting, putListenSetting, type ListenSetting } from '../api'
+import SaveState, { saveStatus } from './SaveState.vue'
 import { t } from '../i18n'
 
 const cur = ref<ListenSetting | null>(null)
@@ -27,6 +28,7 @@ onMounted(async () => {
 
 const proxy = computed(() => cur.value?.mode === 'proxy')
 const port = (addr: string) => addr.slice(addr.lastIndexOf(':') + 1)
+const saveError = computed(() => error.value || (Object.keys(fieldErrors.value).length ? t('请检查标出的项') : ''))
 const dirty = computed(() => !!cur.value && (form.web !== cur.value.web || form.agent !== cur.value.agent || form.agent_url !== cur.value.agent_url))
 
 async function save() {
@@ -90,9 +92,8 @@ async function closeOld() {
           <small v-else class="muted">{{ t('写进新节点的安装命令。') }}<template v-if="proxy">{{ t('填反向代理转发到 Agent 端口的 https 地址。') }}</template></small>
         </label>
         <div class="wide actions">
-          <button type="submit" :disabled="saving || !dirty">{{ saving ? t('保存中…') : t('保存并生效') }}</button>
-          <span v-if="saved && !dirty" class="small ok">{{ t('已生效') }}</span>
-          <span v-if="error" class="small bad">{{ error }}</span>
+          <button type="submit" :disabled="saving || !dirty" :title="!dirty ? t('没有修改') : undefined">{{ saving ? t('保存中…') : t('保存并生效') }}</button>
+          <SaveState :state="saveStatus({ saving, error: saveError, dirty, saved })" :error="saveError || undefined" />
         </div>
       </form>
 

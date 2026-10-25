@@ -4,6 +4,7 @@
 // 每台探针每轮最多 64 项（Agent 上限，含它自己的测速目标）：节点多时只覆盖前面的节点。
 import { computed, onMounted, ref } from 'vue'
 import { errorText, getReachProbes, putReachProbes, type ReachProbe, type ReachProbes } from '../api'
+import SaveState, { saveStatus } from './SaveState.vue'
 import { installed } from '../store'
 
 const isps = [
@@ -50,7 +51,7 @@ async function save() {
   try {
     saved.value = await putReachProbes(rows.value.map((r) => ({ server_id: r.server_id, isp: r.isp, ports: parsePorts(r.ports), icmp: r.icmp })))
     rows.value = toRows(saved.value)
-    done.value = '已保存，随探针的下一份上报生效'
+    done.value = '已保存'
   } catch (e) {
     error.value = errorText(e, '保存失败')
   } finally {
@@ -93,11 +94,12 @@ async function save() {
         <button type="button" class="btn text small remove" :aria-label="`移除探针 ${i + 1}`" @click="rows.splice(i, 1)">移除</button>
       </div>
     </div>
-    <p v-else-if="saved" class="small muted">还没有国内探针。</p>
+    <p v-else-if="saved" class="sc-empty-note small muted">还没有国内探针：点“添加探针”，把一台国内的节点设为探针。</p>
     <div class="actions">
       <button type="button" class="btn secondary" :disabled="rows.length >= 10 || rows.length >= installed.length" @click="add">添加探针</button>
-      <button type="button" class="btn" :disabled="saving || !dirty" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
-      <span v-if="done && !dirty" class="small ok">{{ done }}</span>
+      <button type="button" class="btn" :disabled="saving || !dirty" :title="!dirty ? '没有修改' : undefined" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+      <SaveState :state="saveStatus({ saving, error, dirty: !!dirty, saved: !!done })" :error="error || undefined" />
+      <span v-if="done && !dirty" class="small muted">随探针的下一份上报生效</span>
     </div>
   </section>
 </template>
