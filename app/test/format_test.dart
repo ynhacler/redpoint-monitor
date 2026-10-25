@@ -141,4 +141,13 @@ void main() {
     expect(fmtProbeWhere('tcp', 80, '1.2.3.4'), 'TCP 80 → 1.2.3.4');
     expect(fmtProbeWhere('icmp', 0, 'speed.example.cn'), 'ICMP → speed.example.cn');
   });
+
+  test('剩余流量不舍入成与额度相同，小百分比保留两位（修订第 228 条）', () {
+    expect(fmtTrafficLeft(2e12 - 1e9, 2e12, 'decimal'), '1999 GB');
+    expect(fmtTrafficLeft(1.5e12, 2e12, 'decimal'), '1.5 TB');
+    expect(fmtTrafficLeft(200e9 - 50e6, 200e9, 'decimal'), '199.9 GB');
+    expect(fmtTrafficLeft(2 * 1099511627776 - 1073741824, 2 * 1099511627776, 'binary'), '2047 GiB');
+    expect(fmtTrafficLeft(2e12, 2e12, 'decimal'), '2 TB');
+    expect([fmtPctFine(0.05), fmtPctFine(0.004), fmtPctFine(42.4)], ['0.05%', '<0.01%', '42%']);
+  });
 }

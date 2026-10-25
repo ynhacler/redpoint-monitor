@@ -245,7 +245,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('detail-tab-net')));
     await tester.pump();
     await tester.scrollUntilVisible(find.text('638 GB / 1 TB'), 200, scrollable: detail);
-    expect(find.textContaining('已使用 63.8%'), findsOneWidget);
+    expect(find.textContaining('已使用 64%'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('流媒体与网站解锁'), 200, scrollable: detail);
     expect(find.text('Netflix'), findsOneWidget);
     expect(find.text('当地服务 · 🇯🇵 JP'), findsOneWidget);

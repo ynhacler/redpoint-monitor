@@ -3,7 +3,7 @@
 // 和最近 30 天每日流量。已用、预计都由面板计算（含系数与校准），这里只负责显示，App 与 Web 口径一致。
 import { computed, onMounted, ref, watch } from 'vue'
 import { calibrateTraffic, errorText, getTrafficDaily, type ServerView, type TrafficDay } from '../api'
-import { countModeNames, DASH, fmtPct, fmtTraffic } from '../format'
+import { countModeNames, DASH, fmtPctFine, fmtTraffic, fmtTrafficLeft } from '../format'
 import { t } from '../i18n'
 import { daysToReset, trafficPct } from '../metrics'
 import { isViewer, refresh } from '../store'
@@ -97,7 +97,7 @@ async function saveCalibrate() {
     </div>
     <div class="big num">
       {{ fmt(tf.used) }}<span class="muted"> / {{ tf.limit ? fmt(tf.limit) : t('不限') }}</span>
-      <span v-if="pct != null" class="pct" :class="{ warn: pct >= 80, bad: pct >= 95 }">{{ fmtPct(pct) }}</span>
+      <span v-if="pct != null" class="pct" :class="{ warn: pct >= 80, bad: pct >= 95 }">{{ fmtPctFine(pct) }}</span>
     </div>
     <UsageBar v-if="pct != null" :pct="pct" />
     <div class="cal small">
@@ -126,7 +126,7 @@ async function saveCalibrate() {
     </form>
 
     <dl class="facts">
-      <div><dt>{{ t('剩余') }}</dt><dd class="num">{{ tf.limit ? fmt(Math.max(0, tf.limit - tf.used)) : DASH }}</dd></div>
+      <div><dt>{{ t('剩余') }}</dt><dd class="num">{{ tf.limit ? fmtTrafficLeft(Math.max(0, tf.limit - tf.used), tf.limit, tf.unit) : DASH }}</dd></div>
       <div><dt>{{ t('距离重置') }}</dt><dd class="num">{{ t('{n} 天', { n: left }) }}</dd></div>
       <div :title="t('周期满 7 天后按最近 7 天计算')"><dt>{{ t('日均') }}</dt><dd class="num">{{ tf.forecast ? fmt(tf.forecast.daily) : DASH }}</dd></div>
       <div :title="tf.forecast ? t('按日均估算到周期结束') : t('周期开始不足 3 天，暂不预测')">

@@ -753,7 +753,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
         LinearProgressIndicator(
             value: (pct / 100).clamp(0.0, 1.0), color: pct >= 95 ? colors.bad : (pct >= 80 ? colors.warn : null)),
         const SizedBox(height: 8),
-        Text('已使用 ${pct.toStringAsFixed(1)}% · 剩余 ${fmtTraffic((t.limit - t.used).clamp(0, t.limit), t.unit)}', style: muted),
+        Text('已使用 ${fmtPctFine(pct)} · 剩余 ${fmtTrafficLeft((t.limit - t.used).clamp(0, t.limit), t.limit, t.unit)}', style: muted),
       ],
       const SizedBox(height: 4),
       Text('距离重置 $days 天（${t.cycleEnd}）', style: muted),

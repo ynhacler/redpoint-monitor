@@ -39,6 +39,32 @@ export function fmtTraffic(n: number | null | undefined, unit: 'decimal' | 'bina
   return `${i === 0 ? Math.round(n) : num(n)} ${units[i]}`
 }
 
+/**
+ * 剩余流量（修订第 228 条）：舍入后不能显示成与额度相同，如额度 2 TB、已用 1 GB 时显示 “1999 GB” 而不是 “2.0 TB”；
+ * 这时降一级单位并向下取整（剩余量宁少勿多）。
+ */
+export function fmtTrafficLeft(left: number, limit: number, unit: 'decimal' | 'binary' = 'decimal'): string {
+  const s = fmtTraffic(left, unit)
+  const base = unit === 'binary' ? 1024 : 1000
+  const units = unit === 'binary' ? ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] : ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const [v, u] = s.split(' ')
+  if (left >= limit || Number(v) * base ** units.indexOf(u) < limit) return s // 舍入后仍小于额度
+  let i = 0
+  while (limit >= base ** (i + 1) && i < units.length - 1) i++
+  const x = left / base ** i
+  if (x >= 100) return `${(Math.floor(x * 10) / 10).toFixed(1)} ${units[i]}` // 200 GB 额度：199.9 GB
+  const j = Math.max(0, i - 1)
+  return `${Math.floor(left / base ** j)} ${units[j]}` // 2 TB 额度：1999 GB
+}
+
+/** 精细百分比（修订第 228 条）：小于 1% 时保留两位小数（“0.05%”），更小时为 “<0.01%”；其余同 fmtPct */
+export function fmtPctFine(p: number | null | undefined): string {
+  if (p == null || Number.isNaN(p)) return DASH
+  if (p > 0 && p < 0.01) return '<0.01%'
+  if (p > 0 && p < 1) return `${p.toFixed(2)}%`
+  return fmtPct(p)
+}
+
 /** 字节 → GB / GiB 数值（表单回填用） */
 export const bytesToGB = (n: number, unit: 'decimal' | 'binary' = 'decimal') => n / (unit === 'binary' ? 2 ** 30 : 1e9)
 
