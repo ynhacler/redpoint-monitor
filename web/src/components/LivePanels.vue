@@ -3,7 +3,7 @@
 // CPU、内存、网络与连接在上方的速览卡片中（修订第 182 条：恢复速览卡片，这里不再重复这三项）。
 // 版式规则：标签用中文、次要色、小号；数值用等宽字体，单位缩小一档并用次要色（Qty）。
 // IOPS、IO 等待等为可选字段（设计 4.7），旧版 Agent 不上报时对应部分不显示。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { DiskInfo, ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtPct } from '../format'
 import { t } from '../i18n'
@@ -42,6 +42,7 @@ const diskTitle = (d: DiskInfo) => [
   reservedOf(d) ? t('保留 {v}（root 专用）', { v: fmtBytes(reservedOf(d)) }) : '',
   t('使用率 {v}', { v: fmtPct(d.usage) }),
 ].filter(Boolean).join(' · ')
+const dfOpen = ref(false)
 const hasAwait = computed(() => ioRows.value.some((x) => x.io.await_ms != null))
 const hasUtil = computed(() => ioRows.value.some((x) => x.io.util != null))
 
@@ -140,7 +141,10 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           <span class="pct" :class="gaugeLevel(d.usage, 'disk') === 'ok' ? '' : gaugeLevel(d.usage, 'disk')">{{ fmtPct(d.usage) }}</span>
         </li>
       </ul>
-      <p v-if="hasReserved" class="muted small port-note">{{ t('使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”；悬停查看各项。') }}</p>
+      <!-- 口径说明默认收起，点 ⓘ 展开（修订第 250 条：手机不依赖悬停） -->
+      <button v-if="hasReserved" type="button" class="text small info-btn" :aria-expanded="dfOpen" @click="dfOpen = !dfOpen">ⓘ {{ t('使用率口径') }}</button>
+      <p v-if="hasReserved && dfOpen" class="muted small port-note">{{ t('使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”。') }}
+        <template v-for="d in r.disk" :key="d.mount"><br />{{ d.mount }}：{{ diskTitle(d) }}</template></p>
       <div v-if="ioRows.length" class="io-wrap">
         <table class="io">
           <thead>
@@ -163,6 +167,20 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
           </tbody>
         </table>
       </div>
+      <!-- 手机：每块盘一张小卡片，指标换行排列，不横向滚动（修订第 250 条，UI-009） -->
+      <ul v-if="ioRows.length" class="io-cards">
+        <li v-for="x in ioRows" :key="x.io.device">
+          <div class="io-dev"><span class="mono">{{ x.io.device }}</span><small class="muted">{{ x.mounts.join(' ') }}</small></div>
+          <dl>
+            <div><dt>{{ t('读') }}</dt><dd><Qty :text="fmtBytesShort(x.io.read_speed, true)" /></dd></div>
+            <div><dt>{{ t('写') }}</dt><dd><Qty :text="fmtBytesShort(x.io.write_speed, true)" /></dd></div>
+            <div><dt>{{ t('IOPS 读 / 写') }}</dt><dd>{{ iops(x.io.read_iops) }} / {{ iops(x.io.write_iops) }}</dd></div>
+            <div v-if="hasAwait"><dt>{{ t('延迟') }}</dt><dd><Qty :v="x.io.await_ms != null ? x.io.await_ms.toFixed(1) : DASH" :u="x.io.await_ms != null ? 'ms' : ''" /></dd></div>
+            <div v-if="hasUtil"><dt>{{ t('繁忙') }}</dt><dd>{{ x.io.util != null ? fmtPct(x.io.util) : DASH }}</dd></div>
+            <div><dt>{{ t('累计读 / 写') }}</dt><dd><Qty :text="fmtBytesShort(x.io.read_bytes)" /> / <Qty :text="fmtBytesShort(x.io.write_bytes)" /></dd></div>
+          </dl>
+        </li>
+      </ul>
     </section>
   </div>
 </template>
@@ -207,6 +225,19 @@ dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 .pct.warn { color: var(--warn); }
 .pct.bad { color: var(--bad); }
 .slash { color: var(--text-muted); margin: 0 2px; }
+.io-cards { display: none; }
+.info-btn { margin-top: var(--space-2); padding: var(--space-1) 0; min-height: 32px; color: var(--text-muted); }
+@media (max-width: 600px) {
+  .io-wrap { display: none; }
+  .io-cards { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: var(--space-3) 0 0; padding: var(--space-3) 0 0;
+    border-top: 1px solid var(--border); }
+  .io-dev { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+  .io-dev small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .io-cards dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2) var(--space-3); margin: var(--space-1) 0 0; }
+  .io-cards dt { font-size: var(--font-xs); color: var(--text-muted); }
+  .io-cards dd { margin: 0; font-family: var(--font-family); font-size: var(--font-md); line-height: var(--line-md); font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere; }
+}
 .io-wrap { overflow-x: auto; margin-top: var(--space-3); border-top: 1px solid var(--border); }
 .io { width: 100%; border-collapse: collapse; }
 .io th, .io td { padding: 4px 0 4px var(--space-4); text-align: right; font-weight: var(--weight-regular); white-space: nowrap; }

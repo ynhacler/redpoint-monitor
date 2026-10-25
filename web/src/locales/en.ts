@@ -1011,6 +1011,10 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 磁盘 IO 卡片（修订第 250 条） ----
+  '使用率口径': 'How usage is measured',
+  '使用率与 df 一致：已用 ÷（已用 + 可用）。root 保留空间不算可用，所以不等于“已用 ÷ 总容量”。':
+    'Usage matches df: used ÷ (used + available). Space reserved for root is not available, so it differs from used ÷ total.',
   // ---- 登录页（修订第 247 条） ----
   '登录账号': 'Sign in',
   '使用账号密码安全登录': 'Sign in with your username and password',
