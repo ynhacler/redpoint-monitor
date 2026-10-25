@@ -6,6 +6,7 @@
 // 所有浏览器与（本机没有自己顺序的）App 共用。
 import NotifyWarning from '../components/NotifyWarning.vue'
 import FleetCards from '../components/FleetCards.vue'
+import TodoCard from '../components/TodoCard.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorText, putServerOrder, type ServerView } from '../api'
@@ -191,6 +192,8 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
     <NotifyWarning v-if="installed.length && alertsOn" />
 
     <!-- 舰队总览：剩余流量与先用完的节点、每月总成本、30 天内到期（修订第 174 条） -->
+    <!-- 待处理（修订第 241 条） -->
+    <TodoCard />
     <FleetCards v-if="installed.length" />
 
     <div v-if="state.servers.length" class="filters">

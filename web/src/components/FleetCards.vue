@@ -69,7 +69,7 @@ function dueText(days: number) {
       <span class="big num">{{ money(cost.lines[0].nodes + cost.lines[0].cloud, cost.lines[0].currency) }}<small> / {{ t('月') }}</small></span>
       <span v-if="cost.lines.length > 1" class="sub muted num">+ {{ cost.lines.slice(1).map((l) => money(l.nodes + l.cloud, l.currency)).join(' + ') }}</span>
       <span v-else-if="cost.unpriced" class="sub warn">{{ t('{n} 台没填价格', { n: cost.unpriced }) }}</span>
-      <span v-else-if="unlinked" class="sub"><RouterLink to="/cloud">{{ t('{n} 个云实例未关联', { n: unlinked }) }}</RouterLink></span>
+      <span v-else-if="unlinked" class="sub"><RouterLink to="/cloud?unlinked=1#instances">{{ t('{n} 个云实例未关联', { n: unlinked }) }}</RouterLink></span>
       <span v-else class="sub muted">{{ t('节点续费 + 云账单') }}</span>
     </div>
 
