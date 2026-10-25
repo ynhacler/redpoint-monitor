@@ -43,16 +43,18 @@ void main() {
     expect(todos.last.target, TodoTarget.cloud);
   });
 
-  testWidgets('待处理卡片：没有事项时一行说明，多于 5 项可展开', (tester) async {
+  testWidgets('待处理卡片：没有事项时一行说明；默认收成一行显示最紧急的一项，点开看全部（修订第 248 条）', (tester) async {
     Todo row(int i) => Todo('info', '事项 $i', TodoTarget.subscriptions);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: TodoCard(items: const [], onOpen: (_) {}))));
     expect(find.text('没有待处理的事项'), findsOneWidget);
     Todo? opened;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: TodoCard(items: [for (var i = 1; i <= 7; i++) row(i)], onOpen: (x) => opened = x)))));
-    expect(find.text('事项 6'), findsNothing);
-    await tester.tap(find.text('全部 7'));
+    expect(find.text('事项 1'), findsOneWidget);
+    expect(find.text('事项 2'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('todo-toggle')));
     await tester.pump();
     expect(find.text('事项 7'), findsOneWidget);
+    expect(opened, isNull);
     await tester.tap(find.text('事项 2'));
     expect(opened?.text, '事项 2');
   });

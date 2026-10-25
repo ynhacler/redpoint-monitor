@@ -151,7 +151,8 @@ onUnmounted(stopPolling)
     <RouterView v-if="state.authChecked" />
     <main v-else class="page loading muted small">{{ t('加载中…') }}</main>
   </ErrorBoundary>
-  <footer v-if="signedIn && panelVersion" class="footer small">
+  <!-- 版本页脚：手机上只在“系统”菜单页显示（修订第 248 条，UI 精修 3.1：版本信息放在“关于”，节点首页不留大段空白） -->
+  <footer v-if="signedIn && panelVersion" class="footer small" :class="{ 'phone-hide': route.name !== 'system' }">
     {{ site.app_name }} {{ t('面板') }} <span class="num" :title="t('面板版本（Agent 版本见“Agent 升级”页）')">{{ panelVersion }}</span>
   </footer>
   <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
@@ -250,5 +251,6 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
     font-size: 10px; line-height: 12px; text-decoration: none; }
   .tabbar a.active { color: var(--accent); font-weight: var(--weight-strong); }
   .footer { margin: var(--space-5) auto var(--space-3); }
+  .footer.phone-hide { display: none; }
 }
 </style>

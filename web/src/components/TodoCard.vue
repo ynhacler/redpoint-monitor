@@ -76,7 +76,9 @@ const items = computed<Todo[]>(() => {
 
 const LIMIT = 5
 const expanded = ref(false)
-const shown = computed(() => (expanded.value ? items.value : items.value.slice(0, LIMIT)))
+const mobileOpen = ref(false)
+// 手机展开后显示全部；电脑默认 5 项
+const shown = computed(() => (expanded.value || mobileOpen.value ? items.value : items.value.slice(0, LIMIT)))
 const levelName: Record<Level, string> = { bad: '严重', warn: '注意', info: '提示' }
 </script>
 
@@ -86,11 +88,17 @@ const levelName: Record<Level, string> = { bad: '严重', warn: '注意', info: 
       <h2>{{ t('待处理') }}</h2>
       <span v-if="items.length" class="count num">{{ items.length }}</span>
       <span v-else class="ok small"><Icon name="shield" :size="14" />{{ t('没有待处理的事项') }}</span>
-      <button v-if="items.length > LIMIT" type="button" class="text small more" @click="expanded = !expanded">
+      <button v-if="items.length > LIMIT" type="button" class="text small more wide-only" @click="expanded = !expanded">
         {{ expanded ? t('收起') : t('全部 {n}', { n: items.length }) }}
       </button>
+      <!-- 手机（修订第 248 条，UI-007）：默认收成一行，显示最紧急的一项，点开看全部；节点卡片更早出现在首屏 -->
+      <button v-if="items.length" type="button" class="text peek" :aria-expanded="mobileOpen" @click="mobileOpen = !mobileOpen">
+        <i class="dot" :class="items[0].level" />
+        <span class="txt">{{ mobileOpen ? t('收起') : items[0].text }}</span>
+        <Icon name="chevron-right" :size="14" class="go" :class="{ open: mobileOpen }" />
+      </button>
     </div>
-    <ul v-if="items.length">
+    <ul v-if="items.length" :class="{ closed: !mobileOpen }">
       <li v-for="x in shown" :key="x.key">
         <RouterLink :to="x.to" class="row">
           <i class="dot" :class="x.level" :title="t(levelName[x.level])" />
@@ -122,8 +130,15 @@ ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gr
 .dot.warn { background: var(--warn); }
 .go { color: var(--text-muted); flex: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.peek { display: none; }
 @media (max-width: 600px) {
   .todo { padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
   ul { grid-template-columns: minmax(0, 1fr); }
+  /* 收成一行（修订第 248 条） */
+  .wide-only, ul.closed { display: none; }
+  .peek { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; padding: 0; min-height: 36px; color: var(--text);
+    font: inherit; text-align: left; }
+  .peek .go { transition: transform .15s; }
+  .peek .go.open { transform: rotate(90deg); }
 }
 </style>

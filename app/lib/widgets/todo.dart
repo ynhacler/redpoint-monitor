@@ -88,7 +88,8 @@ List<Todo> buildTodos(List<ServerView> servers, {List<Subscription> subs = const
   }
   if (unlinked > 0) out.add(Todo('info', '$unlinked 个云实例未关联节点', TodoTarget.cloud));
   const rank = {'bad': 0, 'warn': 1, 'info': 2};
-  final indexed = out.indexed.toList()..sort((a, b) => rank[a.$2.level]! - rank[b.$2.level]! != 0 ? rank[a.$2.level]! - rank[b.$2.level]! : a.$1 - b.$1);
+  final indexed = out.indexed.toList()
+    ..sort((a, b) => rank[a.$2.level]! - rank[b.$2.level]! != 0 ? rank[a.$2.level]! - rank[b.$2.level]! : a.$1 - b.$1);
   return [for (final x in indexed) x.$2];
 }
 
@@ -108,7 +109,7 @@ class TodoCard extends StatefulWidget {
 }
 
 class _TodoCardState extends State<TodoCard> {
-  static const _limit = 5;
+  // 默认收成一行（修订第 248 条，UI 精修 UI-007）：只显示数量与最紧急的一项，点开看全部，节点卡片更早出现在首屏
   bool _expanded = false;
 
   @override
@@ -116,44 +117,53 @@ class _TodoCardState extends State<TodoCard> {
     final c = appColors(context);
     final colors = StatusColors.of(context);
     final items = widget.items;
-    final shown = _expanded ? items : items.take(_limit).toList();
     Color dot(String l) => switch (l) { 'bad' => colors.bad, 'warn' => colors.warn, _ => c.accent };
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 6, 6),
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Text('待处理', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(width: 8),
-            if (items.isEmpty)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.check_circle, size: 14, color: c.ok),
-                const SizedBox(width: 4),
-                Text('没有待处理的事项', style: TextStyle(fontSize: 12, color: c.ok)),
-              ])
-            else
-              Text('${items.length}', style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
-            const Spacer(),
-            if (items.length > _limit)
-              TextButton(
-                onPressed: () => setState(() => _expanded = !_expanded),
-                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                child: Text(_expanded ? '收起' : '全部 ${items.length}'),
-              ),
-          ]),
-          for (final x in shown)
-            InkWell(
-              onTap: () => widget.onOpen(x),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(children: [
-                  Container(width: 8, height: 8, decoration: BoxDecoration(color: dot(x.level), shape: BoxShape.circle)),
+          InkWell(
+            key: const ValueKey('todo-toggle'),
+            onTap: items.isEmpty ? null : () => setState(() => _expanded = !_expanded),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: Row(children: [
+                const Text('待处理', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                if (items.isEmpty) ...[
+                  Icon(Icons.check_circle, size: 14, color: c.ok),
+                  const SizedBox(width: 4),
+                  Text('没有待处理的事项', style: TextStyle(fontSize: 12, color: c.ok)),
+                ] else ...[
+                  Text('${items.length}', style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(x.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
-                  Icon(Icons.chevron_right, size: 18, color: c.textMuted),
-                ]),
-              ),
+                  if (!_expanded) ...[
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: dot(items.first.level), shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child:
+                        Text(_expanded ? '' : items.first.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                  ),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: c.textMuted),
+                ],
+              ]),
             ),
+          ),
+          if (_expanded)
+            for (final x in items)
+              InkWell(
+                onTap: () => widget.onOpen(x),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: dot(x.level), shape: BoxShape.circle)),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(x.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                    Icon(Icons.chevron_right, size: 18, color: c.textMuted),
+                  ]),
+                ),
+              ),
         ]),
       ),
     );
