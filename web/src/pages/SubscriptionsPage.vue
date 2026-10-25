@@ -17,7 +17,7 @@ import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
 import { countryName, countryOptions, flagUrl } from '../countries'
-import { fmtMoney } from '../format'
+import { fmtMoney, fmtPct } from '../format'
 import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
@@ -640,9 +640,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <ul class="legend">
               <li v-for="c in cats" :key="c.category">
                 <i :style="{ background: categoryColors[c.category] }" />
+                <!-- 修订第 233 条：环形图已经表示占比，这里不再重复进度条，只列名称、占比、金额与订阅数 -->
                 <span class="legend-main">
-                  <span>{{ t(categoryNames[c.category]) }} <b class="num">{{ Math.round(c.pct) }}%</b></span>
-                  <span class="bar"><span :style="{ width: `${c.pct}%`, background: categoryColors[c.category] }" /></span>
+                  <span>{{ t(categoryNames[c.category]) }} <b class="num">{{ fmtPct(c.pct) }}</b></span>
                 </span>
                 <span class="legend-amt">
                   <b class="num">{{ fmtMoney(c.cents, cur) }}</b>
