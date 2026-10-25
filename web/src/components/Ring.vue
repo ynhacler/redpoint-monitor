@@ -29,6 +29,8 @@ const props = defineProps<{
   tinted?: boolean
   /** 中间只显示数字、不带 %（旁边已有大号百分比时） */
   bare?: boolean
+  /** 中间不显示数字（旁边已有同一个百分比，修订第 265 条：不重复；调用方可在中间放图标） */
+  noValue?: boolean
 }>()
 
 const levelColor = computed(() => `var(--${props.level ?? 'ok'})`)
@@ -64,7 +66,7 @@ const arcs = computed(() => {
         <circle v-for="(a, i) in arcs" :key="i" :cx="d / 2" :cy="d / 2" :r="r" :stroke="a.color"
           :stroke-dasharray="a.dash" :stroke-dashoffset="a.offset" :stroke-linecap="segments ? 'butt' : 'round'" />
       </g>
-      <text v-if="pct != null || !segments" :x="d / 2" :y="d / 2" text-anchor="middle" dominant-baseline="central" class="pct"
+      <text v-if="!noValue && (pct != null || !segments)" :x="d / 2" :y="d / 2" text-anchor="middle" dominant-baseline="central" class="pct"
         :class="[segments ? '' : level, { tinted: tinted && !segments }]" :style="{ fontSize: `${Math.round(d / (bare ? 3.4 : 4.6))}px` }">{{ bare && pct != null ? Math.round(pct) : fmtPct(pct) }}</text>
     </svg>
     <figcaption v-if="caption" class="caption num">{{ caption }}</figcaption>
