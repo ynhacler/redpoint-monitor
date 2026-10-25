@@ -349,10 +349,18 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('AWS 主账号'), findsOneWidget);
-    expect(find.textContaining('部分区域已跳过'), findsOneWidget);
+    // 状态为固定的标签，原因点“查看详情”展开（修订第 245 条）
+    expect(find.text('部分同步'), findsOneWidget);
+    expect(find.text('凭证失效'), findsOneWidget);
+    expect(find.textContaining('部分区域已跳过'), findsNothing);
     expect(find.text('\$3.21'), findsOneWidget);
     expect(find.text('\$12.79'), findsOneWidget);
     expect(find.text('128%'), findsOneWidget); // 预估超预算
+    await tester.tap(find.text('查看详情').first);
+    await tester.pump();
+    expect(find.textContaining('部分区域已跳过'), findsOneWidget);
+    await tester.tap(find.text('查看详情').first);
+    await tester.pump();
     expect(find.textContaining('凭证失效或权限不足'), findsOneWidget);
     await tester.tap(find.text('实例（2）'));
     await tester.pumpAndSettle();

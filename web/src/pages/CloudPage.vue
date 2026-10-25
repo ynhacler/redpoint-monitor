@@ -127,6 +127,28 @@ function status(a: CloudAccount): { tone: string; text: string } {
   return last ? { tone: 'muted', text: t('已同步 {time}', { time: fmtTime(last) }) } : { tone: 'muted', text: t('等待首次同步') }
 }
 
+// 状态标签（修订第 245 条，UI 精修 UI-003）：固定几种文字，详细原因放在可展开的说明中，不占满整张卡片
+function badge(a: CloudAccount): { tone: string; text: string; detail: string } {
+  const st = status(a)
+  if (a.syncing) return { tone: 'muted', text: t('同步中'), detail: '' }
+  if (!a.enabled) return { tone: 'muted', text: t('已停用'), detail: '' }
+  if (a.auth_failed) return { tone: 'bad', text: t('凭证失效'), detail: st.text }
+  if (a.last_error) return { tone: 'bad', text: t('同步失败'), detail: st.text }
+  if (a.last_warning) return { tone: 'warn', text: t('部分同步'), detail: st.text }
+  const last = Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
+  return last ? { tone: 'ok', text: t('同步成功'), detail: '' } : { tone: 'muted', text: t('等待首次同步'), detail: '' }
+}
+const syncedAt = (a: CloudAccount) => Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
+// 费用是否已确认（UI-004）：还没同步过费用、没有账单权限、或部分同步时，0 不当作“确认是 0”
+const costUnconfirmed = (a: CloudAccount) => !a.cost_synced_at || !!a.cost_warning || !!a.last_warning || !!a.last_error
+function costText(a: CloudAccount, cents: number | null | undefined): string {
+  if (!a.current_cost || cents == null) return DASH
+  if (cents === 0 && costUnconfirmed(a)) return DASH
+  return fmtMoney(cents, a.current_cost.currency)
+}
+// 更多菜单（<details>）：点了菜单项后收起
+const closeMenu = (e: Event) => (e.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
+
 /** 预算用量：优先按本月预估，没有预估时按已产生 */
 function budgetPct(a: CloudAccount): number | null {
   if (!a.budget_cents || !a.current_cost) return null
@@ -553,17 +575,30 @@ function expireTone(i: CloudInstance): string {
             <span class="type">{{ t(providerOf(a.provider).label) }}</span><b>{{ a.name }}</b>
             <span class="muted small mono">{{ a.credential_hint }}</span>
           </div>
+          <!-- 操作（修订第 245 条，UI-003）：只留“同步”，其余放在更多菜单中，各家账户的卡片不再因按钮多少而换行错位 -->
           <div class="acts">
-            <button type="button" class="secondary" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">{{ t('立即同步') }}</button>
-            <button v-if="isAliyun(a)" type="button" class="text" :disabled="checks[a.id]?.busy" @click="checkNow(a)">
-              {{ checks[a.id]?.busy ? t('检查中…') : t('检查权限') }}
-            </button>
-            <button type="button" class="text" @click="toggle(a)">{{ a.enabled ? t('停用') : t('启用') }}</button>
-            <button type="button" class="text" @click="openEdit(a)">{{ t('编辑') }}</button>
-            <button type="button" class="text danger-text" @click="deleting = deleting === a.id ? null : a.id; deleteError = ''">{{ t('删除') }}</button>
+            <button type="button" class="secondary small" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">{{ a.syncing ? t('同步中…') : t('同步') }}</button>
+            <details class="more">
+              <summary class="more-btn" :aria-label="t('更多操作')" :title="t('更多操作')">···</summary>
+              <div class="menu" role="menu">
+                <button v-if="isAliyun(a)" type="button" role="menuitem" :disabled="checks[a.id]?.busy" @click="checkNow(a); closeMenu($event)">
+                  {{ checks[a.id]?.busy ? t('检查中…') : t('检查权限') }}
+                </button>
+                <button type="button" role="menuitem" @click="toggle(a); closeMenu($event)">{{ a.enabled ? t('停用') : t('启用') }}</button>
+                <button type="button" role="menuitem" @click="openEdit(a); closeMenu($event)">{{ t('编辑') }}</button>
+                <button type="button" role="menuitem" class="danger-text" @click="deleting = deleting === a.id ? null : a.id; deleteError = ''; closeMenu($event)">{{ t('删除') }}</button>
+              </div>
+            </details>
           </div>
         </div>
-        <p class="small status" :class="status(a).tone">{{ status(a).text }}</p>
+        <div class="state-row small">
+          <span class="badge" :class="badge(a).tone">{{ badge(a).text }}</span>
+          <span v-if="syncedAt(a)" class="muted">{{ t('上次成功 {time}', { time: fmtTime(syncedAt(a)) }) }}</span>
+        </div>
+        <details v-if="badge(a).detail" class="state-detail small" :class="badge(a).tone">
+          <summary>{{ t('查看详情') }}</summary>
+          <p>{{ badge(a).detail }}</p>
+        </details>
         <p v-if="syncMsg[a.id]" class="small err">{{ syncMsg[a.id] }}</p>
         <div v-if="checks[a.id] && (checks[a.id].items.length || checks[a.id].error)" class="check">
           <div class="check-head">
@@ -586,7 +621,7 @@ function expireTone(i: CloudInstance): string {
         <div class="stats">
           <div>
             <div class="muted small">{{ t('本月已产生') }}</div>
-            <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.amount_cents, a.current_cost.currency) : DASH }}</div>
+            <div class="big num">{{ costText(a, a.current_cost?.amount_cents) }}<small v-if="costText(a, a.current_cost?.amount_cents) === DASH && a.enabled" class="muted"> {{ t('待确认') }}</small></div>
           </div>
           <!-- 阿里云没有费用预测，显示账户余额 -->
           <div v-if="a.current_cost?.balance_cents != null">
@@ -598,7 +633,7 @@ function expireTone(i: CloudInstance): string {
           </div>
           <div v-else>
             <div class="muted small">{{ t('本月预估') }}</div>
-            <div class="big num">{{ a.current_cost ? fmtMoney(a.current_cost.forecast_cents, a.current_cost.currency) : DASH }}</div>
+            <div class="big num">{{ costText(a, a.current_cost?.forecast_cents) }}</div>
           </div>
           <div>
             <div class="muted small">{{ t('预算') }}</div>
@@ -710,6 +745,28 @@ function expireTone(i: CloudInstance): string {
 </template>
 
 <style scoped>
+/* 账户卡片（修订第 245 条）：同步 + 更多菜单、状态标签、可展开的说明 */
+.more { position: relative; }
+.more-btn { list-style: none; cursor: pointer; min-width: 44px; min-height: 36px; display: grid; place-items: center; border-radius: var(--radius-sm);
+  color: var(--text-muted); font-weight: var(--weight-strong); letter-spacing: 1px; }
+.more-btn::-webkit-details-marker { display: none; }
+.more-btn:hover, .more[open] .more-btn { background: var(--surface-2); color: var(--text); }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 140px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(15, 23, 42, .12); padding: 4px; display: flex; flex-direction: column; }
+.menu button { background: none; border: 0; text-align: left; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--text);
+  font: inherit; min-height: 40px; cursor: pointer; }
+.menu button:hover { background: var(--surface-2); }
+.menu .danger-text { color: var(--bad); }
+.state-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 0 0; }
+.badge { padding: 1px 8px; border-radius: var(--radius-full); background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
+.badge.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.badge.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.badge.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.state-detail { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.state-detail.warn { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.state-detail.bad { background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.state-detail summary { cursor: pointer; color: var(--text-muted); }
+.state-detail p { margin: var(--space-1) 0 0; word-break: break-word; }
 .inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .intro { margin: 0 0 var(--space-4); max-width: 72ch; }
 .editor { margin-bottom: var(--space-4); }
@@ -731,10 +788,10 @@ function expireTone(i: CloudInstance): string {
 .mono { font-family: var(--font-mono); }
 .accounts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
 .account.off { opacity: .7; }
-.head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.title { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
+.head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.title { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; flex: 1; flex-wrap: wrap; }
 .type { font-size: var(--font-xs); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--space-1); color: var(--text-muted); }
-.acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.acts { display: flex; gap: var(--space-1); align-items: center; flex: none; }
 .status { margin: var(--space-2) 0; word-break: break-word; }
 .check { margin: var(--space-2) 0 var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
 .check-head { display: flex; justify-content: space-between; align-items: center; }

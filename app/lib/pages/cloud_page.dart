@@ -105,7 +105,20 @@ class _CloudPageState extends State<CloudPage> {
   return ('', a.syncedAt > 0 ? '已同步 ${fmtTime(a.syncedAt)}' : '等待首次同步');
 }
 
-class _AccountCard extends StatelessWidget {
+/// 状态标签（修订第 245 条，与 Web 相同）：同步成功 / 部分同步 / 同步中 / 同步失败 / 凭证失效 / 已停用 / 等待首次同步
+(String, String) cloudBadge(CloudAccountBrief a) {
+  if (a.syncing) return ('', '同步中');
+  if (!a.enabled) return ('', '已停用');
+  if (a.authFailed) return ('bad', '凭证失效');
+  if (a.lastError.isNotEmpty) return ('bad', '同步失败');
+  if (a.lastWarning.isNotEmpty) return ('warn', '部分同步');
+  return a.syncedAt > 0 ? ('ok', '同步成功') : ('', '等待首次同步');
+}
+
+/// 费用是否已确认（修订第 245 条）：部分同步或同步失败时，0 不当作“确认是 0”
+bool cloudCostUnconfirmed(CloudAccountBrief a) => a.lastWarning.isNotEmpty || a.lastError.isNotEmpty;
+
+class _AccountCard extends StatefulWidget {
   const _AccountCard(this.a, this.instances, this.serverNames, this.onOpenServer);
   final CloudAccountBrief a;
   final List<CloudInstanceBrief> instances;
@@ -113,10 +126,23 @@ class _AccountCard extends StatelessWidget {
   final ValueChanged<int>? onOpenServer;
 
   @override
+  State<_AccountCard> createState() => _AccountCardState();
+}
+
+class _AccountCardState extends State<_AccountCard> {
+  bool _detail = false;
+
+  @override
   Widget build(BuildContext context) {
+    final a = widget.a;
+    final instances = widget.instances;
+    final serverNames = widget.serverNames;
+    final onOpenServer = widget.onOpenServer;
     final c = appColors(context);
-    Color? tone(String l) => switch (l) { 'bad' => c.bad, 'warn' => c.warn, _ => null };
+    Color? tone(String l) => switch (l) { 'bad' => c.bad, 'warn' => c.warn, 'ok' => c.ok, _ => null };
     final (lv, text) = cloudStatus(a);
+    final (blv, btext) = cloudBadge(a);
+    final hasDetail = blv == 'warn' || blv == 'bad';
     final small = TextStyle(fontSize: 12, color: c.textMuted);
     const num = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()]);
     final cost = a.cost;
@@ -124,7 +150,9 @@ class _AccountCard extends StatelessWidget {
     Widget money(String label, int? cents) => Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: small),
-            Text(cents == null ? dash : fmtMoney(cents, cost!.currency), style: num),
+            cents == null || (cents == 0 && cloudCostUnconfirmed(a))
+                ? Text.rich(TextSpan(children: [const TextSpan(text: dash, style: num), TextSpan(text: ' 待确认', style: small)]))
+                : Text(fmtMoney(cents, cost!.currency), style: num),
           ]),
         );
     return Card(
@@ -140,7 +168,25 @@ class _AccountCard extends StatelessWidget {
               Text('${a.instanceCount} 台实例', style: small),
             ]),
             const SizedBox(height: 6),
-            Text(text, style: TextStyle(fontSize: 12, color: tone(lv) ?? c.textMuted)),
+            // 状态标签 + 上次成功时间；原因可展开（修订第 245 条）
+            InkWell(
+              onTap: hasDetail ? () => setState(() => _detail = !_detail) : null,
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                  decoration: BoxDecoration(color: (tone(blv) ?? c.textMuted).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(99)),
+                  child: Text(btext, style: TextStyle(fontSize: 12, color: tone(blv) ?? c.textMuted)),
+                ),
+                const SizedBox(width: 8),
+                if (a.syncedAt > 0) Text('上次成功 ${fmtTime(a.syncedAt)}', style: small),
+                if (hasDetail) ...[
+                  const Spacer(),
+                  Text(_detail ? '收起' : '查看详情', style: TextStyle(fontSize: 12, color: c.accent)),
+                ],
+              ]),
+            ),
+            if (hasDetail && _detail)
+              Padding(padding: const EdgeInsets.only(top: 6), child: Text(text, style: TextStyle(fontSize: 12, color: tone(lv) ?? c.textMuted))),
             if (cost != null) ...[
               const SizedBox(height: 10),
               Row(children: [

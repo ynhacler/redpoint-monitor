@@ -1011,6 +1011,17 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 云账户卡片（修订第 245 条） ----
+  '同步成功': 'Synced',
+  '同步中': 'Syncing',
+  '部分同步': 'Partly synced',
+  '同步失败': 'Sync failed',
+  '凭证失效': 'Credentials invalid',
+  '同步': 'Sync',
+  '更多操作': 'More actions',
+  '上次成功 {time}': 'Last success {time}',
+  '查看详情': 'Details',
+  '待确认': 'unconfirmed',
   // ---- 待处理（修订第 241 条） ----
   '待处理': 'To do',
   '没有待处理的事项': 'Nothing needs attention',
