@@ -1011,6 +1011,12 @@ export const en: Record<string, string> = {
   '{n} 天中 {k} 天有上报': '{k} of {n} days have reports',
   '没有上报的 {m} 天不画柱（不是零流量）': '{m} days without reports show no bar (not zero traffic)',
   '{p} 天只有部分时段的数据': '{p} days have only partial data',
+  // ---- 节点表格（修订第 239 条） ----
+  '显示方式': 'View',
+  '卡片': 'Cards',
+  '表格': 'Table',
+  '按{name}排序': 'Sort by {name}',
+  '下行 / 上行': 'Down / Up',
   // ---- 电脑侧边栏（修订第 238 条） ----
   '展开侧边栏': 'Expand sidebar',
   '收起侧边栏': 'Collapse sidebar',
