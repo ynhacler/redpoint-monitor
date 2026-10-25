@@ -8,7 +8,8 @@ import type { DiskInfo, ServerView } from '../api'
 import { DASH, fmtBytesShort, fmtPct } from '../format'
 import { t } from '../i18n'
 import { gaugeLevel, ioForDisk } from '../metrics'
-import { exposure, exposureNames, isRisky, serviceName, sortPorts } from '../ports'
+import { exposure, exposureNames, family, isRisky, publicKind, reachNames, serviceName, sortPorts } from '../ports'
+import { fmtTime } from '../format'
 import Qty from './Qty.vue'
 
 const props = defineProps<{
@@ -42,6 +43,17 @@ const portCounts = computed(() => {
   for (const p of ports.value ?? []) c[exposure(p)]++
   return c
 })
+// 面板检测公网可达的结果（修订第 171 条，只有管理员的详情中有）；监听范围与是否可达分开显示（修订第 227 条）
+const reach = computed(() => new Map((props.server.port_exposure?.results ?? []).map((x) => [`${x.proto}/${x.port}`, x])))
+const reachOf = (p: { proto: string; port: number }) => reach.value.get(`${p.proto}/${p.port}`)
+const scopeText = (p: Parameters<typeof exposure>[0]) =>
+  exposure(p) === 'public' ? t(publicKind(p) === 'all' ? '全部地址' : '公网地址') : t(exposureNames[exposure(p)])
+const portTitle = (p: Parameters<typeof exposure>[0]) => [
+  t('{proto} {port} 监听于 {addrs}', { proto: p.proto.toUpperCase(), port: p.port, addrs: addrText(p.addrs) }),
+  t('监听范围：{scope} · {family}', { scope: scopeText(p), family: family(p) }),
+  t('外部可达：{v}', { v: reachOf(p) ? t(reachNames[reachOf(p)!.state]) : t('未检测') }),
+  isRisky(p) ? t('此类端口通常不应对公网开放，建议改为只监听 127.0.0.1 或用防火墙限制来源') : '',
+].filter(Boolean).join('\n')
 // 关注的进程（设计 33.5.1）：按节点设置的顺序列出；Agent 还没上报（刚修改、或旧版 Agent）时计数为 null
 const procs = computed(() => {
   const counts = new Map((r.value.watch_procs ?? []).map((p) => [p.name, p.count]))
@@ -78,21 +90,28 @@ const iops = (v: number | undefined) => (v == null ? DASH : v >= 100 ? String(Ma
       <h3 class="title">
         {{ t('监听端口') }}
         <span v-if="ports?.length" class="title-extra">
-          <span v-if="portCounts.public">{{ t('公网') }} <b>{{ portCounts.public }}</b></span>
+          <span v-if="portCounts.public">{{ t('对外监听') }} <b>{{ portCounts.public }}</b></span>
           <span v-if="portCounts.private">{{ t('内网') }} <b>{{ portCounts.private }}</b></span>
-          <span v-if="portCounts.local">{{ t('本机') }} <b>{{ portCounts.local }}</b></span>
+          <span v-if="portCounts.local">{{ t('仅本机') }} <b>{{ portCounts.local }}</b></span>
         </span>
       </h3>
       <p v-if="!ports" class="muted small empty">{{ t('当前 Agent 未上报监听端口，升级 Agent 后显示。') }}</p>
       <p v-else-if="!ports.length" class="muted small empty">{{ t('没有监听中的端口。') }}</p>
       <ul v-else class="port-list">
-        <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }"
-          :title="t('{proto} {port} 监听于 {addrs}', { proto: p.proto.toUpperCase(), port: p.port, addrs: addrText(p.addrs) }) + (isRisky(p) ? '\n' + t('此类端口通常不应对公网开放，建议改为只监听 127.0.0.1 或用防火墙限制来源') : '')">
+        <li v-for="p in ports" :key="`${p.proto}/${p.port}`" :class="{ risky: isRisky(p) }" :title="portTitle(p)">
           <span class="port">{{ p.port }}<span class="proto">{{ p.proto.toUpperCase() }}</span></span>
           <span class="svc">{{ serviceName(p) || DASH }}<small>{{ p.addrs.join('  ') }}</small></span>
-          <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? t('公网 · 风险') : t(exposureNames[exposure(p)]) }}</span>
+          <span class="exp-col">
+            <span class="exp" :class="isRisky(p) ? 'bad' : exposure(p)">{{ isRisky(p) ? t('{scope} · 风险端口', { scope: scopeText(p) }) : scopeText(p) }}</span>
+            <small v-if="exposure(p) === 'public' && reachOf(p)" class="reach" :class="reachOf(p)!.state">{{ t(reachNames[reachOf(p)!.state]) }}</small>
+          </span>
         </li>
       </ul>
+      <p v-if="portCounts.public" class="muted small port-note">
+        {{ t('“对外监听”只表示端口绑定在全部地址或公网地址上；能否从公网访问还取决于防火墙与安全组。') }}
+        <template v-if="server.port_exposure">{{ t('外部可达为面板 {time} 检测 {target} 的结果。', { time: fmtTime(server.port_exposure.checked_at), target: server.port_exposure.target }) }}</template>
+        <template v-else>{{ t('外部可达未检测，可在“端口基线”中从面板检测。') }}</template>
+      </p>
     </section>
 
     <!-- 磁盘（设计 4.6、4.7）：所有挂载点一块（修订第 195 条） -->
@@ -202,6 +221,11 @@ dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 .svc { font-size: var(--font-sm); min-width: 0; display: flex; flex-direction: column; }
 .svc, .svc small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .svc small { font-size: var(--font-xs); color: var(--text-muted); font-family: var(--font-mono); }
+.exp-col { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+.reach { font-size: var(--font-xs); color: var(--text-muted); white-space: nowrap; }
+.reach.open { color: var(--warn); }
+.reach.refused, .reach.timeout { color: var(--ok); }
+.port-note { margin: var(--space-2) 0 0; }
 .exp { font-size: var(--font-xs); padding: 1px var(--space-2); border-radius: 99px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
 .exp.public { color: var(--accent); }
 .exp.private { color: var(--ok); }

@@ -7,13 +7,13 @@ import { computed, ref, watch } from 'vue'
 import { ApiError, checkExposure, errorText, putPortBaseline, type ServerView } from '../api'
 import { fmtTime } from '../format'
 import { t } from '../i18n'
-import { exposure, serviceName } from '../ports'
+import { exposure, reachNames, serviceName } from '../ports'
 
 const props = defineProps<{ server: ServerView }>()
 const baseline = ref(props.server.port_baseline ?? null)
 
 const keyOf = (p: { port: number; proto: string }) => `${p.port}/${p.proto}`
-// 当前对公网开放的监听端口（按端口排序）
+// 当前对外监听的端口（按端口排序）
 const exposed = computed(() => (props.server.latest?.ports ?? []).filter((p) => exposure(p) === 'public')
   .map((p) => ({ key: keyOf(p), service: serviceName(p) }))
   .sort((a, b) => parseInt(a.key) - parseInt(b.key) || a.key.localeCompare(b.key)))
@@ -25,7 +25,7 @@ const gone = computed(() => (baseline.value?.ports ?? []).filter((k) => !exposed
 const exposureRes = ref(props.server.port_exposure ?? null)
 const checking = ref(false)
 const reach = computed(() => new Map((exposureRes.value?.results ?? []).map((r) => [`${r.port}/${r.proto}`, r])))
-const stateNames: Record<string, string> = { open: '公网可达', refused: '被拒绝', timeout: '超时（被拦截）', error: '连接出错', skipped: '未检测' }
+const stateNames = reachNames
 
 async function runCheck() {
   checking.value = true
@@ -78,7 +78,7 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
       <button v-if="!editing" type="button" class="secondary small edit" @click="edit">{{ baseline ? t('编辑') : t('设置') }}</button>
     </div>
     <p class="muted small note">
-      {{ t('允许对公网开放的监听端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。') }}
+      {{ t('允许对外监听的端口。出现不在基线中的端口（如有人启动了 8080、3306）、或基线端口不再监听时告警。') }}
       {{ t('只看本机的监听，是否真能从公网访问还取决于防火墙与安全组。') }}
     </p>
 
@@ -97,7 +97,7 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
     <template v-else>
       <p v-if="!baseline" class="small">
         {{ t('还没有设置，不检查新增端口。') }}
-        <button type="button" class="text small" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前对公网开放的 {n} 个端口为基线', { n: exposed.length }) }}</button>
+        <button type="button" class="text small" :disabled="saving || !exposed.length" @click="useCurrent">{{ t('以当前对外监听的 {n} 个端口为基线', { n: exposed.length }) }}</button>
       </p>
       <p v-else class="muted small">{{ t('{n} 个允许的端口 · {time} 设置', { n: baseline.ports.length, time: fmtTime(baseline.updated_at) }) }}</p>
       <p v-if="error" class="small bad">{{ error }}</p>
@@ -111,7 +111,7 @@ const useCurrent = () => save(exposed.value.map((p) => p.key))
           <span class="num">{{ k }}</span><span class="tag bad">{{ t('未监听') }}</span>
         </li>
       </ul>
-      <p v-if="!exposed.length && !gone.length" class="muted small">{{ t('没有对公网开放的监听端口。') }}</p>
+      <p v-if="!exposed.length && !gone.length" class="muted small">{{ t('没有对外监听的端口。') }}</p>
       <div v-if="exposed.length" class="check">
         <button type="button" class="secondary small" :disabled="checking" @click="runCheck">{{ checking ? t('检测中…') : t('从面板检测公网可达') }}</button>
         <span v-if="exposureRes" class="muted small">{{ t('{time} 检测 {target}', { time: fmtTime(exposureRes.checked_at), target: exposureRes.target }) }}</span>
