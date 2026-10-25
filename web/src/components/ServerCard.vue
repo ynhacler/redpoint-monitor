@@ -156,7 +156,7 @@ const diskTip = computed(() => {
   /* 环 52px + 间距 4px + 说明 18px：网络与 IO 的四行均分这个高度，与环和说明上下对齐 */
   --body-h: 74px;
 }
-.card:hover { border-color: var(--text-muted); text-decoration: none; }
+@media (hover: hover) { .card:hover { border-color: var(--text-muted); text-decoration: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
 .card.offline { border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
 .card.unknown { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
 .ok { color: var(--ok); }

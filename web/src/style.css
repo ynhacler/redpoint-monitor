@@ -65,6 +65,10 @@ select {
   background-repeat: no-repeat;
   text-overflow: ellipsis;
 }
+/* 焦点（修订第 262 条，第二轮 UI2-005）：键盘与辅助设备导航时显示清晰的品牌蓝描边；鼠标、触摸点击后不留描边。
+   不全局清除 outline——只去掉“非 :focus-visible”的焦点装饰；输入框沿用下面自己的焦点样式 */
+:focus:not(:focus-visible) { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: -1px; border-color: var(--accent); }
 
 /* 按钮：主 / 次 / 文字 / 危险四种（设计 41.3）；同一页面最多一个主按钮（设计 41.2.1） */
@@ -76,7 +80,7 @@ button, .btn {
 }
 button:hover, .btn:hover { text-decoration: none; filter: brightness(1.05); }
 button.secondary, .btn.secondary { background: transparent; color: var(--text); border-color: var(--border); }
-button.secondary:hover, .btn.secondary:hover { border-color: var(--text-muted); }
+@media (hover: hover) { button.secondary:hover, .btn.secondary:hover { border-color: var(--text-muted); } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
 button.text, .btn.text { background: none; color: var(--text-muted); padding: 0 var(--space-1); border: 0; }
 button.text:hover, .btn.text:hover { color: var(--accent); }
 button.danger { background: var(--bad); }
