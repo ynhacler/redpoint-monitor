@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 防火墙（修订第 168 条）：只给管理员。Agent 不以 root 运行，读不到内核中的实时规则：规则来自可读的配置文件，
 // 不一定等于实际生效的规则；配置文件只有 root 可读时只显示状态，并提示在主机上查看的命令。
+// 修订第 264 条：fail2ban 的 jail 显示为“已配置”与进程状态，不再写“封禁 sshd”；封禁 IP 数未知（需要 root）；内核模块已加载不代表规则生效。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { t } from '../i18n'
@@ -48,12 +49,23 @@ function target(r: { proto?: string; port?: string; service?: string }) {
           <strong>{{ toolNames[tool.name] ?? tool.name }}</strong>
           <span class="tag" :class="tool.active ? 'on' : 'off'">{{ activeText(tool.name, tool.active) }}</span>
           <span v-if="tool.policy" class="tag" :class="tool.policy === 'deny' ? 'on' : 'warn'">{{ tool.policy === 'deny' ? t('入站默认拒绝') : t('入站默认允许') }}</span>
+          <span v-if="tool.active && (tool.name === 'nftables' || tool.name === 'iptables')" class="muted small">{{ t('仅说明组件存在，不代表有规则生效') }}</span>
           <span v-if="tool.source" class="muted small source">{{ tool.source }}</span>
         </div>
         <p v-if="!tool.rules_readable" class="muted small note">
           {{ t('规则配置只有 root 可读，在主机上查看：') }}<code>{{ showCmd[tool.name] }}</code>
         </p>
         <p v-else-if="!tool.rules?.length" class="muted small note">{{ tool.name === 'fail2ban' ? t('配置中没有启用的 jail。') : t('配置中没有按端口的规则。') }}</p>
+        <!-- fail2ban（修订第 264 条，第二轮 UI2-003）：配置中启用的 jail ≠ 正在封禁；Agent 不是 root，读不到运行中的 jail 与封禁列表 -->
+        <template v-else-if="tool.name === 'fail2ban'">
+          <ul class="rules">
+            <li v-for="(r, i) in tool.rules" :key="i">
+              <span class="num jail">{{ r.service || target(r) }}</span>
+              <span class="muted small">{{ tool.active ? t('已配置 · fail2ban 运行中') : t('已配置 · fail2ban 未运行，不在防护') }}</span>
+            </li>
+          </ul>
+          <p class="muted small note">{{ t('当前封禁 IP：未知（读取运行状态需要 root，在主机上查看：') }}<code>sudo fail2ban-client status {{ tool.rules?.[0]?.service || '' }}</code>）</p>
+        </template>
         <ul v-else class="rules">
           <li v-for="(r, i) in tool.rules" :key="i">
             <span class="act" :class="r.action">{{ actionNames[r.action] ? t(actionNames[r.action]) : r.action }}</span>
@@ -68,6 +80,7 @@ function target(r: { proto?: string; port?: string; service?: string }) {
 </template>
 
 <style scoped>
+.jail { font-weight: var(--weight-strong); }
 .firewall { padding: var(--space-4) var(--space-5); }
 .head { display: flex; align-items: baseline; gap: var(--space-2); }
 .head h3 { margin: 0; }
