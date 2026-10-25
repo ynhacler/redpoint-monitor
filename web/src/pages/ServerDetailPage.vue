@@ -222,7 +222,7 @@ const coverage = computed(() => {
   // 按点数 × 粒度估算有数据的时长（中间断开的时段不算）
   const covered = Math.min(list.length * res, list[list.length - 1].ts - list[0].ts + res)
   const want = rangeSeconds[range.value]
-  return covered < want * 0.9 ? covered : null
+  return covered < want * 0.9 && want - covered >= 1800 ? covered : null // 至少缺 30 分钟才提示
 })
 const coarse = computed(() => (history.value?.resolution ?? 10) > 10) // 聚合数据才有“峰值”
 // 相邻两点间隔超过 3 个粒度视为没有数据（面板或 Agent 停机），插入 null 断开曲线，

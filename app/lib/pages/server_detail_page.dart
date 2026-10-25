@@ -13,6 +13,7 @@ import '../app_lock.dart';
 import '../cache.dart';
 import '../format.dart';
 import '../metrics.dart';
+import '../ports.dart';
 import '../models.dart';
 import '../privacy.dart';
 import '../theme.dart';
@@ -48,7 +49,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
   Timer? _timer;
 
   String _range = '1h';
-  bool _healthAll = false; // 健康摘要展开全部（修订第 256 条）
+  bool _healthAll = false;
+  bool _portsAll = false; // 监听端口展开全部（修订第 268 条） // 健康摘要展开全部（修订第 256 条）
   String _metric = 'cpu';
   List<MetricPoint> _history = [];
   DateTime? _historyAt;
@@ -268,6 +270,8 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
                     _Gauge('磁盘', disk?.usage, disk?.level ?? Level.ok, disk == null ? dash : '${fmtBytes(disk.used)} / ${fmtBytes(disk.total)}'),
                   ]),
                   _netCard(context),
+                  // 监听端口（修订第 268 条，与 Web 同一规则）：旧版 Agent 没有该字段时不显示
+                  if (ListenPort.of(s) case final ports? when ports.isNotEmpty) _section(context, '监听端口', _portsView(context, ports)),
                 ] else
                   _empty(context, s.status == 'pending' ? '待安装：在 Web 中复制安装命令到主机执行' : '节点离线，不显示实时数值；历史曲线见下方。'),
                 _section(context, '历史', _trend(context)),
@@ -566,6 +570,52 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
           style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
           child: Text(_healthAll ? '收起' : '详情（${h.items.length} 项）'),
         ),
+    ]);
+  }
+
+  // 监听端口：对外监听 / 内网 / 仅本机计数，风险与对外监听在前，默认 8 个可展开；不写“公网”（未经检测不能说可从公网访问）
+  Widget _portsView(BuildContext context, List<ListenPort> list) {
+    final c = appColors(context);
+    final colors = StatusColors.of(context);
+    final small = TextStyle(fontSize: 12, color: c.textMuted);
+    final sorted = sortPorts(list);
+    final shown = _portsAll ? sorted : sorted.take(8).toList();
+    int count(String e) => list.where((p) => exposure(p) == e).length;
+    final counts = [
+      if (count('public') > 0) '对外监听 ${count('public')}',
+      if (count('private') > 0) '内网 ${count('private')}',
+      if (count('local') > 0) '仅本机 ${count('local')}',
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(counts.join(' · '), style: small),
+      for (final p in shown)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            SizedBox(
+              width: 72,
+              child: Text.rich(TextSpan(children: [
+                TextSpan(text: '${p.port}', style: TextStyle(fontWeight: FontWeight.w600, color: isRisky(p) ? colors.bad : null)),
+                TextSpan(text: '/${p.proto}', style: small),
+              ])),
+            ),
+            Expanded(
+              child: Text(serviceName(p).isEmpty ? p.addrs.join(' ') : '${serviceName(p)} · ${p.addrs.join(' ')}',
+                  style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
+            Text(isRisky(p) ? '${scopeText(p)} · 风险端口' : scopeText(p),
+                style: TextStyle(fontSize: 12, color: isRisky(p) ? colors.bad : c.textMuted)),
+          ]),
+        ),
+      if (sorted.length > 8)
+        TextButton(
+          onPressed: () => setState(() => _portsAll = !_portsAll),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+          child: Text(_portsAll ? '收起' : '展开全部 ${sorted.length} 个'),
+        ),
+      if (count('public') > 0)
+        Padding(padding: const EdgeInsets.only(top: 4), child: Text('“对外监听”只表示端口绑定在全部地址或公网地址上；能否从公网访问还取决于防火墙与安全组。', style: small)),
     ]);
   }
 

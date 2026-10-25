@@ -134,5 +134,7 @@ void main() {
     final gap = [...[for (var i = 0; i < 60; i++) i * 60], ...[for (var i = 0; i < 60; i++) 40000 + i * 60]];
     expect(historyCoverage(gap, 86400), 7200);
     expect(historyCoverage([1], 3600), isNull);
+    // 1H 内只差几分钟：不提示
+    expect(historyCoverage([for (var i = 0; i < 320; i++) 1000 + i * 10], 3600), isNull);
   });
 }
