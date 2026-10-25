@@ -332,30 +332,31 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
+              // 三层信息（修订第 253 条，与 Web 一致）：名称 / 地区 · 支付方式 / 类别 · 扣费说明
+              Text(
+                [
+                  if (s.country.isNotEmpty) '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim(),
+                  if (s.payment.isNotEmpty) paymentNames[s.payment] ?? s.payment,
+                ].join(' · ')._orDash,
+                style: TextStyle(fontSize: 12, color: c.textMuted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               Text('${categoryNames[s.category] ?? s.category} · ${chargeText(s)}',
                   style: TextStyle(fontSize: 12, color: c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
-              if (s.country.isNotEmpty || s.payment.isNotEmpty)
-                Text(
-                  [
-                    if (s.country.isNotEmpty) '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim(),
-                    if (s.payment.isNotEmpty) paymentNames[s.payment] ?? s.payment,
-                  ].join(' · '),
-                  style: TextStyle(fontSize: 12, color: c.textMuted),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
             ]),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text.rich(
               TextSpan(children: [
-                TextSpan(text: _price(s), style: const TextStyle(fontWeight: FontWeight.w600)),
+                // 人民币为主金额，原币在下一行（修订第 253 条）
+                TextSpan(text: _cnyText(s) ?? _price(s), style: const TextStyle(fontWeight: FontWeight.w600)),
                 TextSpan(text: cycleSuffix[s.cycle] ?? '', style: TextStyle(fontSize: 11, color: c.textMuted)),
               ]),
               style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
             ),
-            if (_cnyText(s) case final t?) Text(t, style: TextStyle(fontSize: 11, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
+            if (_cnyText(s) != null) Text(_price(s), style: TextStyle(fontSize: 11, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
             if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: soon ? colors.bad : dueColor)),
           ]),
         ]),
@@ -500,4 +501,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       ),
     );
   }
+}
+
+/// 订阅行的小工具（修订第 253 条）
+extension on String {
+  /// 空字符串显示为“—”
+  String get _orDash => isEmpty ? '—' : this;
 }

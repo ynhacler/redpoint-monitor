@@ -159,7 +159,7 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
         // 未来 12 个月预计扣款（修订第 240 条）：现金流，按扣费日排期，与月均折算 × 12 不同
         Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 6), child: Text('未来 12 个月预计扣款', style: muted)),
         _cashflow(context, a.monthly),
-        Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 6), child: Text('月费排行（不是按月付费的折算为每月）', style: muted)),
+        Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 6), child: Text('月均成本排行（不是按月付费的折算为每月）', style: muted)),
         Card(
           clipBehavior: Clip.antiAlias,
           child: Column(children: [
