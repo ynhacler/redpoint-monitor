@@ -1,7 +1,7 @@
 name: vpsmon_app
 description: VPS Monitor — App-first client for your self-hosted vpsmon-server.
 publish_to: 'none'
-version: 0.3.2+5
+version: 0.3.3+6
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
