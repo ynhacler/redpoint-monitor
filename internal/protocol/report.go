@@ -30,6 +30,11 @@ type Report struct {
 	// 可选：代理程序（修订第 169 条）：按进程名识别，协议与端口来自可读的配置文件（不含任何密钥）；
 	// 每分钟刷新一次。没有检测到时省略。面板只返回给管理员
 	Proxies []Proxy `json:"proxies,omitempty"`
+	// 可选：账号与权限组（修订第 274 条）：能登录的账号、UID 为 0 的账号与 sudo / wheel / admin 组成员，取自 /etc/passwd 与 /etc/group。
+	// 每分钟刷新一次。面板只用来记录变更（设计 4.9.5），不在任何接口中返回
+	Accounts *Accounts `json:"accounts,omitempty"`
+	// 可选：重要配置文件的元数据与摘要（修订第 274 条），不含文件内容。每分钟刷新一次。面板只用来记录变更，不在任何接口中返回
+	ConfigFiles []ConfigFile `json:"config_files,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -40,7 +45,7 @@ type Report struct {
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
 	// 可选：扩展指标（设计 4.10）。面板保存在实时状态中、随接口返回，暂不入库也不展示
 	Extra *Extra `json:"extra,omitempty"`
-	// 可选：与上一份被面板接受的上报完全相同、因而省略的字段名（UnchangedFields 中的 ports / firewall / proxies，修订第 271 条）。
+	// 可选：与上一份被面板接受的上报完全相同、因而省略的字段名（UnchangedFields 中的字段，修订第 271、274 条）。
 	// 只在面板以 X-Report-Features: unchanged 声明支持后使用；面板从实时状态中补全，没有上一份时返回 409，Agent 改发完整上报
 	Unchanged []string `json:"unchanged,omitempty"`
 }
@@ -52,7 +57,8 @@ const (
 )
 
 // UnchangedFields 是可以因未变化而省略的字段（JSON 名）。
-var UnchangedFields = []string{"ports", "firewall", "proxies"}
+// 面板不认识的名称忽略即可（旧版面板不使用 accounts / config_files）。
+var UnchangedFields = []string{"ports", "firewall", "proxies", "accounts", "config_files"}
 
 // Extra 是扩展指标（设计 4.10）：都来自无需特权的只读来源，读不到的项省略。
 // 速率为与上一次采样之间的平均值，首次采样时省略。
@@ -204,6 +210,36 @@ type FirewallRule struct {
 	Port    string `json:"port,omitempty"`    // 22、8000:9000；空表示全部端口
 	From    string `json:"from,omitempty"`    // 来源地址；空表示任意
 	Service string `json:"service,omitempty"` // 服务名（firewalld 服务、fail2ban jail）
+}
+
+// Accounts 是本机的账号与权限组（修订第 274 条）。只有账号名、UID、登录 shell 与组成员，不含密码哈希等任何凭据
+// （/etc/shadow 不读）。列表按名称排序，各最多 maxAccounts 项。
+type Accounts struct {
+	Users  []AccountUser  `json:"users"`  // 能登录（shell 不是 nologin / false 等）或 UID 为 0 的账号
+	Groups []AccountGroup `json:"groups"` // 存在的 sudo / wheel / admin 组
+}
+
+// AccountUser 是一个账号。
+type AccountUser struct {
+	Name  string `json:"name"`
+	UID   int    `json:"uid"`
+	Shell string `json:"shell,omitempty"`
+}
+
+// AccountGroup 是一个管理员组及其成员（包括以它为主组的账号）。
+type AccountGroup struct {
+	Name    string   `json:"name"`
+	Members []string `json:"members"`
+}
+
+// ConfigFile 是一个重要配置文件（或目录）的元数据（修订第 274 条）。【安全】只有大小、修改时间与 SHA-256 摘要，
+// 不上报内容；Agent 读不到内容（如 sudoers 只有 root 可读）时只有大小与修改时间；不存在的文件省略。
+type ConfigFile struct {
+	Path   string `json:"path"`
+	Dir    bool   `json:"dir,omitempty"` // 读不到其中文件的目录：只看目录的修改时间（增删文件会改变它）
+	Size   int64  `json:"size,omitempty"`
+	MTime  int64  `json:"mtime,omitempty"`  // Unix 秒
+	SHA256 string `json:"sha256,omitempty"` // 内容摘要；读不到或超过 1 MiB 时省略
 }
 
 // Proxy 是一个代理程序（修订第 169 条）。只读进程名与配置文件中的协议、端口、传输方式与 TLS 类型；

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 变更记录（修订第 273 条，设计 4.9.5）：节点上与安全有关的配置的变化，最新在前，保留 180 天。
-// 目前比较防火墙（启用 / 停用、入站默认策略、规则增删）；第一次看到时只记录现状，不算变化。只给管理员看（安全页）。
+// 比较防火墙、账号与权限组、重要文件（修订第 274 条）；第一次看到时只记录现状，不算变化。只给管理员看（安全页）。
 import { onMounted, ref, watch } from 'vue'
 import { errorText, listServerChanges, type SystemEvent } from '../api'
 import { fmtDateTime } from '../format'
@@ -35,7 +35,7 @@ watch(() => props.serverId, () => load())
       <h3>{{ t('变更记录') }}</h3>
       <span class="muted small">{{ t('仅管理员可见') }}</span>
     </div>
-    <p class="muted small intro">{{ t('防火墙的启用与停用、入站默认策略、规则增删；有变化时记一条并按告警设置通知（通知中不含规则细节）。保留 180 天。') }}</p>
+    <p class="muted small intro">{{ t('防火墙（启用与停用、入站默认策略、规则增删）、可登录账号与 sudo 等管理员组、SSH / sudo / 定时任务等重要文件（只比较摘要，不上传内容）；有变化时记一条并按告警设置通知（通知中不含细节）。保留 180 天。') }}</p>
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-else-if="!loading && !items.length" class="muted small">{{ t('还没有变更。') }}</p>
     <ul v-if="items.length" class="list">

@@ -1,7 +1,8 @@
 package server
 
-// 变更记录（修订第 273 条，设计 4.9.5）：把节点上与安全有关、平时不该变的配置的变化记为系统事件（kind=change），并按告警的
-// 总开关、维护与静音发送通知。第一项是防火墙（Report.firewall 已有，不需要升级 Agent）：启用 / 停用、入站默认策略、规则增删。
+// 变更记录（修订第 273、274 条，设计 4.9.5）：把节点上与安全有关、平时不该变的配置的变化记为系统事件（kind=change），并按告警的
+// 总开关、维护与静音发送通知。防火墙（Report.firewall，不需要升级 Agent）：启用 / 停用、入站默认策略、规则增删；
+// 账号与权限组（Report.accounts）：可登录账号、UID 0、管理员组成员的增删；重要文件（Report.config_files）：新出现、删除、修改。
 // 上一次的状态存在 change_state 表（面板重启后不会把现状当作变化）；第一次看到某一项时只记录，不产生事件。
 //
 // 【安全】防火墙等只给管理员看（设计 4.9.2）：事件正文中的细节只返回给 Web 管理员；通知只写“有几项变化”，
@@ -26,8 +27,10 @@ const NotifyChange = "change"
 const (
 	eventChange   = "change"   // 系统事件种类：节点配置变更
 	changeFW      = "firewall" // change_state.item
-	ruleKeyChange = "change"   // 静音时使用的规则键：静音“变更记录”即不再通知
-	maxChangeList = 5          // 每一类变化在事件正文中最多列出的条数
+	changeAcct    = "accounts"
+	changeFiles   = "files"
+	ruleKeyChange = "change" // 静音时使用的规则键：静音“变更记录”即不再通知
+	maxChangeList = 5        // 每一类变化在事件正文中最多列出的条数
 )
 
 // changeWatch 缓存各节点各项最近一次的状态（JSON），状态没变时不读写数据库。
@@ -86,17 +89,7 @@ func diffFirewall(old, cur map[string]fwToolState) ([]string, string) {
 	var lines []string
 	sev := SeverityInfo
 	warn := func(s string) { lines, sev = append(lines, s), SeverityWarning }
-	names := make([]string, 0, len(old)+len(cur))
-	for n := range old {
-		names = append(names, n)
-	}
-	for n := range cur {
-		if _, ok := old[n]; !ok {
-			names = append(names, n)
-		}
-	}
-	slices.Sort(names)
-	for _, n := range names {
+	for _, n := range sortedKeys(old, cur) {
 		o, had := old[n]
 		c, has := cur[n]
 		switch {
@@ -169,24 +162,171 @@ func listBrief(list []string) string {
 
 // trackChanges 由实时上报调用（补发的旧数据不调用）。没有某一项（旧版 Agent、本轮采集失败）时不比较，不当作被删除。
 func (s *Server) trackChanges(sid int64, rep protocol.Report, now time.Time) {
-	if rep.Firewall == nil {
-		return
+	if rep.Firewall != nil {
+		trackItem(s, sid, changeFW, "防火墙", firewallState(rep.Firewall), diffFirewall, now)
 	}
-	cur := firewallState(rep.Firewall)
+	if rep.Accounts != nil {
+		trackItem(s, sid, changeAcct, "账号与权限组", accountState(rep.Accounts), diffAccounts, now)
+	}
+	if rep.ConfigFiles != nil {
+		trackItem(s, sid, changeFiles, "重要文件", fileState(rep.ConfigFiles), diffFiles, now)
+	}
+}
+
+// trackItem 保存某一项规范化后的状态，与上一次不同时比较并记录变更。
+func trackItem[T any](s *Server, sid int64, item, what string, cur T, diff func(old, cur T) ([]string, string), now time.Time) {
 	b, _ := json.Marshal(cur)
-	prev, ok := s.changeSwap(sid, changeFW, string(b), now)
+	prev, ok := s.changeSwap(sid, item, string(b), now)
 	if !ok {
 		return // 没有变化，或第一次看到
 	}
-	var old map[string]fwToolState
+	var old T
 	if err := json.Unmarshal([]byte(prev), &old); err != nil {
 		return
 	}
-	lines, sev := diffFirewall(old, cur)
+	lines, sev := diff(old, cur)
 	if len(lines) == 0 {
-		return // 只有规则顺序、可读性等不影响判断的变化
+		return // 只有顺序、可读性等不影响判断的变化
 	}
-	s.recordChange(sid, "防火墙", lines, sev, now)
+	s.recordChange(sid, what, lines, sev, now)
+}
+
+// acctState 是账号与权限组用于比较的状态：账号名 → UID 与 shell，组名 → 成员。
+type acctState struct {
+	Users  map[string]protocol.AccountUser `json:"users"`
+	Groups map[string][]string             `json:"groups"`
+}
+
+func accountState(a *protocol.Accounts) acctState {
+	st := acctState{Users: map[string]protocol.AccountUser{}, Groups: map[string][]string{}}
+	for _, u := range a.Users {
+		st.Users[u.Name] = u
+	}
+	for _, g := range a.Groups {
+		m := slices.Clone(g.Members)
+		slices.Sort(m)
+		st.Groups[g.Name] = m
+	}
+	return st
+}
+
+// diffAccounts：新增 UID 0 账号、已有账号的 UID 变为 0、管理员组新增成员为警告，其余（新增 / 删除可登录账号、shell 变化、
+// 组成员减少）为提示。
+func diffAccounts(old, cur acctState) ([]string, string) {
+	var lines []string
+	sev := SeverityInfo
+	warn := func(s string) { lines, sev = append(lines, s), SeverityWarning }
+	for _, n := range sortedKeys(old.Users, cur.Users) {
+		o, had := old.Users[n]
+		c, has := cur.Users[n]
+		switch {
+		case !had:
+			s := fmt.Sprintf("新增可登录账号 %s（UID %d）", n, c.UID)
+			if c.UID == 0 {
+				warn(s)
+			} else {
+				lines = append(lines, s)
+			}
+		case !has:
+			lines = append(lines, "账号 "+n+" 已删除或不能再登录")
+		case o.UID != c.UID:
+			s := fmt.Sprintf("账号 %s 的 UID %d → %d", n, o.UID, c.UID)
+			if c.UID == 0 {
+				warn(s)
+			} else {
+				lines = append(lines, s)
+			}
+		case o.Shell != c.Shell:
+			lines = append(lines, "账号 "+n+" 的登录 shell "+shellText(o.Shell)+" → "+shellText(c.Shell))
+		}
+	}
+	for _, g := range sortedKeys(old.Groups, cur.Groups) {
+		added, removed := setDiff(old.Groups[g], cur.Groups[g])
+		if len(added) > 0 {
+			warn(g + " 组新增成员：" + listBrief(added))
+		}
+		if len(removed) > 0 {
+			lines = append(lines, g+" 组移除成员："+listBrief(removed))
+		}
+	}
+	return lines, sev
+}
+
+// fileMeta 是重要文件用于比较的状态。
+type fileMeta struct {
+	Dir    bool   `json:"dir,omitempty"`
+	Size   int64  `json:"size,omitempty"`
+	MTime  int64  `json:"mtime,omitempty"`
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+func fileState(files []protocol.ConfigFile) map[string]fileMeta {
+	out := map[string]fileMeta{}
+	for _, f := range files {
+		out[f.Path] = fileMeta{Dir: f.Dir, Size: f.Size, MTime: f.MTime, SHA256: f.SHA256}
+	}
+	return out
+}
+
+// sensitiveFile：sudoers 与 ld.so.preload（常被用来劫持进程）的变化为警告级。
+func sensitiveFile(p string) bool {
+	return p == "/etc/ld.so.preload" || p == "/etc/sudoers" || strings.HasPrefix(p, "/etc/sudoers.d")
+}
+
+// diffFiles：有摘要时按内容比较（只改修改时间不算），否则按大小与修改时间；目录只看修改时间（其中有文件增删）。
+func diffFiles(old, cur map[string]fileMeta) ([]string, string) {
+	var lines []string
+	sev := SeverityInfo
+	add := func(p, s string) {
+		lines = append(lines, s)
+		if sensitiveFile(p) {
+			sev = SeverityWarning
+		}
+	}
+	for _, p := range sortedKeys(old, cur) {
+		o, had := old[p]
+		c, has := cur[p]
+		switch {
+		case !had:
+			add(p, "新出现 "+p)
+		case !has:
+			add(p, "已删除 "+p)
+		case o.Dir || c.Dir:
+			if o.MTime != c.MTime {
+				add(p, p+" 中的文件有变化")
+			}
+		case o.SHA256 != "" && c.SHA256 != "":
+			if o.SHA256 != c.SHA256 {
+				add(p, p+" 已修改")
+			}
+		case o.Size != c.Size || o.MTime != c.MTime:
+			add(p, p+" 已修改")
+		}
+	}
+	return lines, sev
+}
+
+// shellText：空的登录 shell 表示 /bin/sh。
+func shellText(s string) string {
+	if s == "" {
+		return "（默认）"
+	}
+	return s
+}
+
+// sortedKeys 返回两个 map 的键的并集，排序。
+func sortedKeys[V any](a, b map[string]V) []string {
+	keys := make([]string, 0, len(a)+len(b))
+	for k := range a {
+		keys = append(keys, k)
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 // changeSwap 保存某一项的新状态，返回之前的状态；状态没变或之前没有记录时 ok 为 false。
@@ -235,6 +375,7 @@ func (s *Server) recordChange(sid int64, what string, lines []string, sev string
 	}
 	m := notifyMessage{Kind: NotifyChange, ServerID: sid, ServerName: row.Name, RuleKey: ruleKeyChange, Type: eventChange,
 		Severity: sev, StartedAt: now, Message: fmt.Sprintf("%s有 %d 项变化（详情见 Web 节点详情 · 安全）", what, len(lines))}
+	// 【安全】账号名、文件路径与防火墙规则一样只在事件正文中（只给 Web 管理员），通知中只有类别与条数
 	if s.publicURL != "" {
 		m.Link = s.publicURL + "/servers/" + itoa64(sid) + "?tab=security"
 	}

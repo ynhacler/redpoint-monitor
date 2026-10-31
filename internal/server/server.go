@@ -538,6 +538,10 @@ func (s *Server) fillUnchanged(sid int64, rep *protocol.Report) bool {
 			rep.Firewall = snap.Report.Firewall
 		case "proxies":
 			rep.Proxies = snap.Report.Proxies
+		case "accounts":
+			rep.Accounts = snap.Report.Accounts
+		case "config_files":
+			rep.ConfigFiles = snap.Report.ConfigFiles
 		}
 	}
 	rep.Unchanged = nil
@@ -976,6 +980,8 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 		if rep.Network == nil {
 			rep.Network = []protocol.NetIface{}
 		}
+		// 【安全】账号与重要文件只用来记录变更（修订第 274 条），不在任何接口中返回，管理员也只看变更记录
+		rep.Accounts, rep.ConfigFiles = nil, nil
 		v.Latest = &rep
 		v.LastSeenAt = snap.ReceivedAt.Unix()
 	}
