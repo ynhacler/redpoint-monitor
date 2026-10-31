@@ -86,6 +86,7 @@ type Server struct {
 	health        *panelHealth    // 面板自身告警：后台任务、磁盘、写库、推送（设计 16.1）
 	cwatch        *containerWatch // 容器已停止：各节点曾经运行的容器数量（修订第 166 条）
 	pwatch        *proxyWatch     // 代理异常：各节点曾经运行的代理（修订第 169 条）
+	changes       *changeWatch    // 变更记录：各节点各项最近一次的状态（修订第 273 条）
 	pbase         *portBaselines  // 端口基线（修订第 170 条）
 	exposure      *exposureState  // 公网可达检测的最近结果（修订第 171 条）
 	routeTable    []routeSpec     // 已注册路由及其允许的主体，供权限矩阵测试枚举（设计 17.5）
@@ -153,6 +154,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
 	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
+	s.changes = newChangeWatch()
 	s.exposure = newExposureState()
 	s.ipinfoBase, s.ipinfoHTTP = "https://ipinfo.io", &http.Client{Timeout: 15 * time.Second}
 	s.fxURL, s.fxHTTP = "https://open.er-api.com/v6/latest/CNY", &http.Client{Timeout: 15 * time.Second}
@@ -513,6 +515,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	if !old {
 		s.trackContainers(sid, rep, now) // 容器已停止（修订第 166 条）
 		s.trackProxies(sid, rep, now)    // 代理异常（修订第 169 条）
+		s.trackChanges(sid, rep, now)    // 变更记录（修订第 273 条）
 		s.publishMetrics(sid, now)
 	}
 }

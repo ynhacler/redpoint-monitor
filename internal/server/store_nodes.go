@@ -165,6 +165,7 @@ func (s *Store) DeleteServer(id int64) (string, error) {
 		`DELETE FROM container_expect WHERE server_id = ?`,           // 容器已停止的记录（修订第 166 条）
 		`DELETE FROM proxy_seen WHERE server_id = ?`,                 // 代理异常的记录（修订第 169 条）
 		`DELETE FROM port_baseline WHERE server_id = ?`,              // 端口基线（修订第 170 条）
+		`DELETE FROM change_state WHERE server_id = ?`,               // 变更记录的上次状态（修订第 273 条）
 		`DELETE FROM probe_targets WHERE server_id = ?`,              // 节点自己的测试目标
 		`DELETE FROM alert_rules WHERE scope_type = 'server' AND scope_id = CAST(? AS TEXT)`,
 		`DELETE FROM servers WHERE id = ?`,

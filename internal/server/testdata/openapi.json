@@ -2256,6 +2256,29 @@
               "maximum": 200,
               "default": 50
             }
+          },
+          {
+            "name": "server_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "只看这个节点的事件（修订第 273 条）"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "upgrade",
+                "reminder",
+                "panel",
+                "change"
+              ]
+            },
+            "description": "只看这一种事件"
           }
         ],
         "responses": {
@@ -7543,9 +7566,10 @@
             "enum": [
               "upgrade",
               "reminder",
-              "panel"
+              "panel",
+              "change"
             ],
-            "description": "upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检"
+            "description": "upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检；change：节点配置变更（防火墙等，修订第 273 条）"
           },
           "severity": {
             "type": "string",
@@ -7569,7 +7593,7 @@
           },
           "message": {
             "type": "string",
-            "description": "说明，可为空"
+            "description": "说明，可为空；change 的细节（每项变化一行）只返回给 Web 管理员，其他调用方为空"
           },
           "created_at": {
             "type": "integer"

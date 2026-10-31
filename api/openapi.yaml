@@ -866,6 +866,8 @@ paths:
       parameters:
         - { name: cursor, in: query, schema: { type: string }, description: 上一页的 next_cursor }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: server_id, in: query, schema: { type: integer, minimum: 1 }, description: 只看这个节点的事件（修订第 273 条） }
+        - { name: kind, in: query, schema: { type: string, enum: [upgrade, reminder, panel, change] }, description: 只看这一种事件 }
       responses:
         '200':
           description: 事件列表
@@ -2598,12 +2600,12 @@ components:
       required: [id, kind, severity, server_id, server_name, title, message, created_at]
       properties:
         id: { type: integer }
-        kind: { type: string, enum: [upgrade, reminder, panel], description: 'upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检' }
+        kind: { type: string, enum: [upgrade, reminder, panel, change], description: 'upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检；change：节点配置变更（防火墙等，修订第 273 条）' }
         severity: { type: string, enum: [critical, warning, info] }
         server_id: { type: integer, description: 0 表示不属于某个节点 }
         server_name: { type: string, description: 节点已删除或不属于节点时为空 }
         title: { type: string, description: 一行摘要，与通知标题相同 }
-        message: { type: string, description: 说明，可为空 }
+        message: { type: string, description: 说明，可为空；change 的细节（每项变化一行）只返回给 Web 管理员，其他调用方为空 }
         created_at: { type: integer }
 
     SiteSetting:

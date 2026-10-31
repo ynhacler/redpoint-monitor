@@ -1338,4 +1338,9 @@ export const en: Record<string, string> = {
   '已续费': 'Renewed',
   '结束日期已顺延到 {date}': 'End date extended to {date}',
   '结束日期按订阅周期顺延一个周期': 'Move the end date forward by one billing cycle',
+  '变更记录': 'Change history',
+  '变更记录加载失败': 'Could not load the change history',
+  '防火墙的启用与停用、入站默认策略、规则增删；有变化时记一条并按告警设置通知（通知中不含规则细节）。保留 180 天。': 'Firewall enabled or stopped, default inbound policy, rules added or removed. Each change is recorded and notified according to your alert settings (notifications leave out rule details). Kept for 180 days.',
+  '还没有变更。': 'No changes yet.',
+  '加载更多': 'Load more',
 }
