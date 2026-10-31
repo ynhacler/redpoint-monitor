@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"compress/flate"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -18,6 +20,12 @@ import (
 // wsDial 用原始 TCP 完成握手，返回连接与读缓冲；status 为握手响应的状态码。
 func wsDial(t *testing.T, srv *httptest.Server, token, origin string) (net.Conn, *bufio.Reader, *http.Response) {
 	t.Helper()
+	return wsDialExt(t, srv, token, origin, "")
+}
+
+// wsDialExt 同 wsDial，ext 非空时带 Sec-WebSocket-Extensions 请求头。
+func wsDialExt(t *testing.T, srv *httptest.Server, token, origin, ext string) (net.Conn, *bufio.Reader, *http.Response) {
+	t.Helper()
 	conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +36,9 @@ func wsDial(t *testing.T, srv *httptest.Server, token, origin string) (net.Conn,
 		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nAccept-Encoding: gzip\r\n"
 	if origin != "" {
 		req += "Origin: " + origin + "\r\n"
+	}
+	if ext != "" {
+		req += "Sec-WebSocket-Extensions: " + ext + "\r\n"
 	}
 	if strings.HasPrefix(token, PrefixAPIKey) || strings.HasPrefix(token, PrefixDevice) {
 		req += "Authorization: Bearer " + token + "\r\n"
@@ -60,6 +71,13 @@ func wsClientFrame(op byte, payload []byte) []byte {
 
 func wsServerFrame(t *testing.T, conn net.Conn, br *bufio.Reader) (byte, []byte) {
 	t.Helper()
+	b0, p := wsServerFrameRaw(t, conn, br)
+	return b0 & 0x0F, p
+}
+
+// wsServerFrameRaw 读取一个服务端帧，返回第一个字节（FIN、RSV 与操作码）与载荷。
+func wsServerFrameRaw(t *testing.T, conn net.Conn, br *bufio.Reader) (byte, []byte) {
+	t.Helper()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	var h [2]byte
 	if _, err := io.ReadFull(br, h[:]); err != nil {
@@ -78,7 +96,7 @@ func wsServerFrame(t *testing.T, conn net.Conn, br *bufio.Reader) (byte, []byte)
 	if _, err := io.ReadFull(br, p); err != nil {
 		t.Fatal(err)
 	}
-	return h[0] & 0x0F, p
+	return h[0], p
 }
 
 func TestWebSocketHandshakeAndEvents(t *testing.T) {
@@ -362,12 +380,54 @@ func TestStatusScan(t *testing.T) {
 		t.Fatalf("应推送一次离线，得到 %d", len(c.send))
 	}
 	var ev map[string]any
-	json.Unmarshal(<-c.send, &ev)
+	json.Unmarshal((<-c.send).raw, &ev)
 	if ev["type"] != evServerOffline {
 		t.Fatalf("事件 %v", ev)
 	}
 	s.scanStatus(now.Add(10*time.Minute), last) // 没有变化：不再推送
 	if len(c.send) != 0 {
 		t.Fatal("状态不变时不应推送")
+	}
+}
+
+// 压缩（修订第 271 条）：提供 permessage-deflate 时协商双向不保留上下文；较长的事件置 RSV1 并按 RFC 7692 压缩，
+// 短事件照常发送原文；不提供或要求限制服务端窗口时不压缩。
+func TestWebSocketDeflate(t *testing.T) {
+	s, h, _ := testServer(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	admin := adminToken(t, s)
+
+	conn, br, res := wsDialExt(t, srv, admin, srv.URL, "permessage-deflate; client_max_window_bits")
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("握手状态 %d", res.StatusCode)
+	}
+	if got := res.Header.Get("Sec-WebSocket-Extensions"); got != "permessage-deflate; server_no_context_takeover; client_no_context_takeover" {
+		t.Fatalf("Sec-WebSocket-Extensions = %q", got)
+	}
+	waitFor(t, func() bool { return s.ws.count() == 1 })
+	big := strings.Repeat("server metrics ", 100)
+	s.ws.publish(wsEvent{Type: "test.big", Data: big})
+	b0, p := wsServerFrameRaw(t, conn, br)
+	if b0 != 0x80|0x40|0x1 {
+		t.Fatalf("长事件应为压缩的文本帧：%#x", b0)
+	}
+	raw, err := io.ReadAll(flate.NewReader(io.MultiReader(bytes.NewReader(p), bytes.NewReader([]byte{0, 0, 0xff, 0xff}))))
+	if err != nil && err != io.ErrUnexpectedEOF {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), big) || len(p) >= len(raw)/3 {
+		t.Fatalf("解压后 %d 字节，压缩后 %d 字节：%.80s", len(raw), len(p), raw)
+	}
+	s.ws.publish(wsEvent{Type: "test.small"})
+	if b0, p := wsServerFrameRaw(t, conn, br); b0 != 0x81 || !strings.Contains(string(p), "test.small") {
+		t.Fatalf("短事件应发送原文：%#x %s", b0, p)
+	}
+
+	for _, ext := range []string{"", "permessage-deflate; server_max_window_bits=10"} {
+		_, _, res := wsDialExt(t, srv, admin, srv.URL, ext)
+		if got := res.Header.Get("Sec-WebSocket-Extensions"); got != "" {
+			t.Errorf("提议 %q 不应协商压缩：%q", ext, got)
+		}
 	}
 }

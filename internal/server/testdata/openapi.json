@@ -1825,7 +1825,7 @@
           "agent"
         ],
         "summary": "Agent 定时上报（设计 6）",
-        "description": "只按 Token 哈希确定节点，请求体中的节点标识不可信（设计 1.6.6）。请求体上限 64 KB（压缩时原始与解压后都受限）。 响应头 Accept-Encoding: gzip 声明接受压缩；Agent 看到后以 Content-Encoding: gzip 发送（设计 6.1）。",
+        "description": "只按 Token 哈希确定节点，请求体中的节点标识不可信（设计 1.6.6）。请求体上限 64 KB（压缩时原始与解压后都受限）。 响应头 Accept-Encoding: gzip 声明接受压缩；Agent 看到后以 Content-Encoding: gzip 发送（设计 6.1）。 响应头 X-Report-Features: unchanged 声明接受省略未变化的 ports / firewall / proxies（修订第 271 条）。",
         "parameters": [
           {
             "name": "Content-Encoding",
@@ -1872,6 +1872,13 @@
                   "example": 10
                 },
                 "description": "该节点的采样间隔（秒）；Agent 只接受 5～60（设计 6.1）"
+              },
+              "X-Report-Features": {
+                "schema": {
+                  "type": "string",
+                  "example": "unchanged"
+                },
+                "description": "面板支持的上报功能，逗号分隔（修订第 271 条）"
               }
             }
           },
@@ -1879,6 +1886,9 @@
             "$ref": "#/components/responses/Error"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "413": {
@@ -11068,6 +11078,18 @@
           "sent_at": {
             "type": "integer",
             "description": "可选：发送时刻的 Agent 时钟（Unix 秒），面板据此计算时钟偏差（设计 43.5）"
+          },
+          "unchanged": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ports",
+                "firewall",
+                "proxies"
+              ]
+            },
+            "description": "可选（修订第 271 条）：与上一份被面板接受的上报相同、因而省略的字段。只在面板以响应头 X-Report-Features: unchanged 声明支持后使用；面板用实时状态补全，没有上一份时返回 409（conflict），Agent 改发完整上报（设计 6.1）"
           },
           "system": {
             "type": "object",

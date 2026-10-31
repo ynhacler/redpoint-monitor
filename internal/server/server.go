@@ -467,6 +467,8 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	sid := info(r).principalID
 	// 声明接受 gzip 压缩的上报（RFC 7694）：新版 Agent 看到后才压缩，旧版面板不声明，新旧组合都兼容（设计 6.1）
 	w.Header().Set("Accept-Encoding", "gzip")
+	// 接受省略未变化的端口、防火墙、代理（修订第 271 条）：新版 Agent 看到后才省略，旧版面板不声明
+	w.Header().Set(protocol.HeaderReportFeatures, protocol.FeatureUnchanged)
 	conf, confOK := s.nodeConfOf(sid)
 	s.setIntervalHeader(w, sid, conf, confOK)
 	s.syncProbe(w, r, sid, conf.probe)  // 三网延迟目标（设计 42.3.2）
@@ -484,6 +486,11 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	if len(rep.Unchanged) > 0 && !s.fillUnchanged(sid, &rep) {
+		// 没有上一份可以补全（如面板刚重启）：不按缺字段的上报处理，Agent 收到 409 后改发完整上报
+		s.writeError(w, r, errorf(CodeConflict, "面板没有上一份完整上报，请发送完整上报"))
 		return
 	}
 	now := time.Now()
@@ -508,6 +515,30 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.trackProxies(sid, rep, now)    // 代理异常（修订第 169 条）
 		s.publishMetrics(sid, now)
 	}
+}
+
+// fillUnchanged 用实时状态中上一份上报补全 Agent 因未变化而省略的字段（修订第 271 条），补全后的上报与完整上报相同，
+// 之后的入库、告警与实时推送都不需要区分。没有上一份时返回 false；不认识的字段名忽略（较新的 Agent 可能省略更多字段，
+// 但只会在面板声明支持后省略，这里声明的只有 protocol.UnchangedFields）。
+func (s *Server) fillUnchanged(sid int64, rep *protocol.Report) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap := s.latest[sid]
+	if snap == nil {
+		return false
+	}
+	for _, name := range rep.Unchanged {
+		switch name {
+		case "ports":
+			rep.Ports = snap.Report.Ports
+		case "firewall":
+			rep.Firewall = snap.Report.Firewall
+		case "proxies":
+			rep.Proxies = snap.Report.Proxies
+		}
+	}
+	rep.Unchanged = nil
+	return true
 }
 
 // reportBody 返回上报正文的读取器：按 Content-Encoding 解压，原始与解压后的大小都受 maxReportSize 限制，

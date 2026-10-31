@@ -177,8 +177,13 @@ func TestCloudSync(t *testing.T) {
 	var list struct{ Items []cloudAccountView }
 	json.Unmarshal(do(h, "GET", "/api/v1/cloud-accounts", admin, nil).Body.Bytes(), &list)
 	got := list.Items[0]
+	// 月末最后一天（UTC）没有剩余区间，预估即已产生（cloud/aws.go），否则为已产生 + 预测
+	wantForecast := int64(1000)
+	if u := now.UTC(); u.AddDate(0, 0, 1).Month() != u.Month() {
+		wantForecast = 321
+	}
 	if got.LastError != "" || got.InstanceCount != 2 || got.CurrentCost == nil || got.CurrentCost.AmountCents != 321 ||
-		*got.CurrentCost.ForecastCents != 1000 || got.CostSyncedAt == 0 || got.TrafficSyncedAt == 0 {
+		*got.CurrentCost.ForecastCents != wantForecast || got.CostSyncedAt == 0 || got.TrafficSyncedAt == 0 {
 		t.Fatalf("同步后 %+v cost=%+v", got, got.CurrentCost)
 	}
 	var insts struct{ Items []CloudInstance }

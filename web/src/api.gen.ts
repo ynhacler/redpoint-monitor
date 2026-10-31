@@ -1038,6 +1038,8 @@ export interface Report {
   final?: boolean
   /** 可选：发送时刻的 Agent 时钟（Unix 秒），面板据此计算时钟偏差（设计 43.5） */
   sent_at?: number
+  /** 可选（修订第 271 条）：与上一份被面板接受的上报相同、因而省略的字段。只在面板以响应头 X-Report-Features: unchanged 声明支持后使用；面板用实时状态补全，没有上一份时返回 409（conflict），Agent 改发完整上报（设计 6.1） */
+  unchanged?: ('ports' | 'firewall' | 'proxies')[]
   system: {
     hostname: string
     os: string
