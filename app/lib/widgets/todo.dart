@@ -47,7 +47,8 @@ int? _daysTo(String ymd, DateTime today) {
   final p = ymd.split('-');
   if (p.length != 3) return null;
   final d = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
-  return d.difference(DateTime(today.year, today.month, today.day)).inDays;
+  // 按 UTC 的年月日相减，跨夏令时切换也不差一天（修订第 272 条）
+  return DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(today.year, today.month, today.day)).inDays;
 }
 
 /// 由节点、订阅与未关联的云实例数得出待处理事项，严重的在前

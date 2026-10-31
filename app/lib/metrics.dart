@@ -1,6 +1,7 @@
 // 从节点数据派生的指标与健康判断：与 web/src/metrics.ts 同一规则，同一节点在 Web 与 App 上结论一致。
 import 'dart:math' as math;
 
+import 'format.dart';
 import 'models.dart';
 
 /// 健康级别：正常、警告、严重
@@ -163,5 +164,12 @@ int? historyCoverage(List<int> times, int rangeSeconds) {
   final covered = math.min(times.length * step, times.last - times.first + step);
   // 至少缺 30 分钟才提示：1H 内只差几分钟时写“仅有约 1 小时”毫无意义
   return covered < rangeSeconds * 0.9 && rangeSeconds - covered >= 1800 ? covered : null;
+}
+
+/// 有数据的时长的文字（与 Web 相同）：不到 1 小时写分钟（修订第 272 条），3 天内写小时，更长写天。
+String coverageText(int sec) {
+  if (sec < 3600) return '${math.max(1, (sec / 60).round())} 分钟';
+  if (sec < 3 * 86400) return '${(sec / 3600).round()} 小时';
+  return fmtDuration(sec);
 }
 

@@ -2,7 +2,6 @@
 // 每 10 秒刷新；网络不可用时显示缓存与最后更新时间（设计 1.5.10）。
 import 'dart:async';
 
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -810,7 +809,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (historyCoverage(times, _rangeSeconds[_range] ?? 3600) case final cov?)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text('所选 ${_range.toUpperCase()} 内仅有约 ${cov < 3 * 86400 ? '${math.max(1, (cov / 3600).round())} 小时' : fmtDuration(cov)}的数据，缺失的时段不画线（不是 0）',
+          child: Text('所选 ${_range.toUpperCase()} 内仅有约 ${coverageText(cov)}的数据，缺失的时段不画线（不是 0）',
               style: TextStyle(fontSize: 12, color: appColors(context).textMuted)),
         ),
       LineChart(times: times, series: series, formatY: fmt, capMax: max, minMax: max == null ? null : 10),
