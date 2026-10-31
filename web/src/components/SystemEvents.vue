@@ -6,7 +6,7 @@ import { errorText, listSystemEvents, type SystemEvent } from '../api'
 import { fmtDateTime } from '../format'
 import EmptyState from './EmptyState.vue'
 
-const kindNames: Record<SystemEvent['kind'], string> = { upgrade: '升级', reminder: '提醒', panel: '面板' }
+const kindNames: Record<SystemEvent['kind'], string> = { upgrade: '升级', reminder: '提醒', panel: '面板', change: '变更' }
 const items = ref<SystemEvent[]>([])
 const cursor = ref('')
 const loading = ref(false)
@@ -29,7 +29,7 @@ onMounted(() => load())
 </script>
 
 <template>
-  <p class="muted small intro">Agent 升级结果、节点 / 证书 / 云账户到期提醒、面板自身异常；保留 180 天。</p>
+  <p class="muted small intro">Agent 升级结果、节点 / 证书 / 云账户到期提醒、面板自身异常、节点配置变更；保留 180 天。</p>
   <p v-if="error" class="banner">{{ error }}</p>
   <EmptyState v-else-if="!loading && !items.length" text="还没有系统事件。" />
   <ul v-if="items.length" class="panel list">

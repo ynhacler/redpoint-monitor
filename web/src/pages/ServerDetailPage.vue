@@ -8,6 +8,7 @@ import AlertHistory from '../components/AlertHistory.vue'
 import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import ContainersCard from '../components/ContainersCard.vue'
+import ChangesCard from '../components/ChangesCard.vue'
 import FirewallCard from '../components/FirewallCard.vue'
 import PortBaselineCard from '../components/PortBaselineCard.vue'
 import ProxiesCard from '../components/ProxiesCard.vue'
@@ -395,6 +396,9 @@ const charts = computed(() => [
         </section>
         <section v-if="liveServer.latest?.firewall" class="section">
           <FirewallCard :server="liveServer" />
+        </section>
+        <section class="section">
+          <ChangesCard :server-id="liveServer.id" />
         </section>
       </template>
 

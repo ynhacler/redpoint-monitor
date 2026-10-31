@@ -1009,6 +1009,14 @@ var migrations = []string{
 	);`,
 	// 迁移 59：端口基线的备注（修订第 258 条）：JSON 对象，键为“端口/协议”（如 443/tcp），值为备注（如“Xray 入口”）
 	`ALTER TABLE port_baseline ADD COLUMN labels TEXT NOT NULL DEFAULT '{}';`,
+	// 迁移 60：变更记录（修订第 273 条）：各节点各项（firewall…）上次的状态（规范化后的 JSON），用于比较是否有变化
+	`CREATE TABLE change_state (
+		server_id  INTEGER NOT NULL,
+		item       TEXT NOT NULL,
+		state      TEXT NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (server_id, item)
+	) WITHOUT ROWID;`,
 }
 
 func (s *Store) migrate() error {

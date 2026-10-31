@@ -364,6 +364,11 @@ export function listSystemEvents(cursor?: string, limit = 50) {
   return request('get', '/system-events', { query: { cursor, limit } })
 }
 
+/** 节点的变更记录（修订第 273 条）：防火墙等配置的变化，最新在前 */
+export function listServerChanges(serverId: number, cursor?: string, limit = 20) {
+  return request('get', '/system-events', { query: { server_id: serverId, kind: 'change', cursor, limit } })
+}
+
 /** 全部告警规则（全局、分组、节点三层） */
 export async function listAlertRules() {
   return (await request('get', '/alert-rules')).items

@@ -37,8 +37,8 @@ export interface Me {
 
 export interface SystemEvent {
   id: number
-  /** upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检 */
-  kind: 'upgrade' | 'reminder' | 'panel'
+  /** upgrade：Agent 升级结果；reminder：节点 / 证书 / 云账户到期等提醒；panel：面板自身告警与自检；change：节点配置变更（防火墙等，修订第 273 条） */
+  kind: 'upgrade' | 'reminder' | 'panel' | 'change'
   severity: 'critical' | 'warning' | 'info'
   /** 0 表示不属于某个节点 */
   server_id: number
@@ -46,7 +46,7 @@ export interface SystemEvent {
   server_name: string
   /** 一行摘要，与通知标题相同 */
   title: string
-  /** 说明，可为空 */
+  /** 说明，可为空；change 的细节（每项变化一行）只返回给 Web 管理员，其他调用方为空 */
   message: string
   created_at: number
 }
@@ -2169,6 +2169,10 @@ export interface Paths {
         /** 上一页的 next_cursor */
         cursor?: string
         limit?: number
+        /** 只看这个节点的事件（修订第 273 条） */
+        server_id?: number
+        /** 只看这一种事件 */
+        kind?: 'upgrade' | 'reminder' | 'panel' | 'change'
       }
       response: {
         /** 空表示没有更多 */

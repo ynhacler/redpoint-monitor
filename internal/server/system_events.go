@@ -39,18 +39,33 @@ func (s *Store) AddSystemEvent(e SystemEvent) error {
 	return err
 }
 
+// SystemEventFilter 按节点与种类筛选系统事件；零值表示不筛选。
+type SystemEventFilter struct {
+	ServerID int64
+	Kind     string
+}
+
 // ListSystemEvents 按 ID 倒序列出 before 之前（0 为最新）的事件；keep 为 nil 表示全部可见。
 // 按范围过滤后不足一页时继续往前读，返回的 next 为下一页游标（0 表示没有更多）。
-func (s *Store) ListSystemEvents(before int64, limit int, keep func(SystemEvent) bool) ([]SystemEvent, int64, error) {
+func (s *Store) ListSystemEvents(before int64, limit int, f SystemEventFilter, keep func(SystemEvent) bool) ([]SystemEvent, int64, error) {
 	out := []SystemEvent{}
 	cur := before
 	for range 20 { // 最多读 20 批，避免授权范围很窄时扫描全表
 		q := `SELECT e.id, e.kind, e.severity, e.server_id, COALESCE(sv.name, ''), e.title, e.message, e.created_at
 			FROM system_events e LEFT JOIN servers sv ON sv.id = e.server_id`
+		var where []string
 		args := []any{}
 		if cur > 0 {
-			q += ` WHERE e.id < ?`
-			args = append(args, cur)
+			where, args = append(where, `e.id < ?`), append(args, cur)
+		}
+		if f.ServerID > 0 {
+			where, args = append(where, `e.server_id = ?`), append(args, f.ServerID)
+		}
+		if f.Kind != "" {
+			where, args = append(where, `e.kind = ?`), append(args, f.Kind)
+		}
+		if len(where) > 0 {
+			q += ` WHERE ` + strings.Join(where, ` AND `)
 		}
 		q += ` ORDER BY e.id DESC LIMIT ?`
 		args = append(args, limit+1)
@@ -162,10 +177,28 @@ func (s *Server) handleSystemEvents(w http.ResponseWriter, r *http.Request) {
 		// 【安全】范围受限时只看到范围内节点的事件；不属于节点的事件（ServerID 0）一律不返回
 		keep = func(e SystemEvent) bool { return e.ServerID != 0 && allowed[e.ServerID] }
 	}
-	items, next, err := s.store.ListSystemEvents(before, limit, keep)
+	var f SystemEventFilter
+	if v := r.URL.Query().Get("server_id"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "server_id", Message: "server_id 无效"}}})
+			return
+		}
+		f.ServerID = n
+	}
+	f.Kind = r.URL.Query().Get("kind")
+	items, next, err := s.store.ListSystemEvents(before, limit, f, keep)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
+	}
+	// 【安全】变更记录的细节（防火墙规则等）只给 Web 管理员（设计 4.9.2）：其他调用方只看到标题
+	if info(r).principal != roleAdmin {
+		for i := range items {
+			if items[i].Kind == eventChange {
+				items[i].Message = ""
+			}
+		}
 	}
 	writeList(w, items, cursorOf(next), nil)
 }
