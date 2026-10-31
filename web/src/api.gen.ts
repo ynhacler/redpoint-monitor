@@ -1039,7 +1039,7 @@ export interface Report {
   /** 可选：发送时刻的 Agent 时钟（Unix 秒），面板据此计算时钟偏差（设计 43.5） */
   sent_at?: number
   /** 可选（修订第 271 条）：与上一份被面板接受的上报相同、因而省略的字段。只在面板以响应头 X-Report-Features: unchanged 声明支持后使用；面板用实时状态补全，没有上一份时返回 409（conflict），Agent 改发完整上报（设计 6.1） */
-  unchanged?: ('ports' | 'firewall' | 'proxies')[]
+  unchanged?: ('ports' | 'firewall' | 'proxies' | 'accounts' | 'config_files')[]
   system: {
     hostname: string
     os: string
@@ -1181,6 +1181,30 @@ export interface Report {
       listening: boolean
     })[]
   })[]
+  /** 可选（修订第 274 条）：账号与权限组——能登录或 UID 为 0 的账号、sudo / wheel / admin 组成员（取自 /etc/passwd 与 /etc/group， 不读 /etc/shadow）。面板只用来记录变更（设计 4.9.5），不在任何接口中返回 */
+  accounts?: {
+    users: {
+      name: string
+      uid: number
+      /** 登录 shell；省略表示 /bin/sh */
+      shell?: string
+    }[]
+    groups: ({
+      name: 'admin' | 'sudo' | 'wheel'
+      /** 包括以它为主组的账号 */
+      members: string[]
+    })[]
+  }
+  /** 可选（修订第 274 条）：重要配置文件的元数据与 SHA-256 摘要，不含内容；读不到内容时只有大小与修改时间， 读不到的目录只有目录本身（dir）。不存在的文件省略。面板只用来记录变更（设计 4.9.5），不在任何接口中返回 */
+  config_files?: {
+    path: string
+    /** 读不到其中文件的目录：只看修改时间 */
+    dir?: boolean
+    size?: number
+    mtime?: number
+    /** 内容摘要；读不到或超过 1 MiB 时省略 */
+    sha256?: string
+  }[]
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
     name: string

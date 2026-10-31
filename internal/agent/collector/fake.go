@@ -75,6 +75,16 @@ func (f *fake) Collect() (protocol.Report, error) {
 		Containers: fakeContainers(t),
 		Firewall:   fakeFirewall(),
 		Proxies:    fakeProxies(),
+		Accounts: &protocol.Accounts{
+			Users:  []protocol.AccountUser{{Name: "deploy", UID: 1000, Shell: "/bin/bash"}, {Name: "root", UID: 0, Shell: "/bin/bash"}},
+			Groups: []protocol.AccountGroup{{Name: "sudo", Members: []string{"deploy"}}},
+		},
+		ConfigFiles: []protocol.ConfigFile{
+			{Path: "/etc/crontab", Size: 1042, MTime: 1700000000, SHA256: "4f0e4b0d6f6c1a3a5bde1b4e6f0f6a2d9f1c3b7a8e2d4c6b0a9f8e7d6c5b4a39"},
+			{Path: "/etc/ssh/sshd_config", Size: 3253, MTime: 1700000000, SHA256: "9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"},
+			{Path: "/etc/sudoers", Size: 1800, MTime: 1700000000},
+			{Path: "/etc/sudoers.d", Dir: true, MTime: 1700000000},
+		},
 		Ports: []protocol.ListenPort{
 			{Proto: "tcp", Port: 22, Addrs: []string{"0.0.0.0", "::"}},
 			{Proto: "tcp", Port: 80, Addrs: []string{"0.0.0.0", "::"}},

@@ -286,7 +286,7 @@ func backoff(n int) time.Duration {
 // 面板声明接受 gzip 后压缩正文（约为原来的 45%，Agent 自身流量同样计入用户的套餐）。压缩的上报被拒绝
 // （400 / 415，例如面板回退到不支持压缩的旧版本）时关闭压缩并立即改发未压缩的版本，这份上报不会被丢弃。
 //
-// 面板声明支持省略未变化字段后（修订第 271 条），端口、防火墙、代理与上一份被接受的上报相同时不再重发，
+// 面板声明支持省略未变化字段后（修订第 271 条），端口、防火墙、代理、账号与重要文件与上一份被接受的上报相同时不再重发，
 // 每 fullEvery 发送一次完整上报；面板没有上一份（返回 409，如面板刚重启）时立即改发完整上报。
 func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Duration, error) {
 	rep.SentAt = r.now().Unix() // 发送时刻，面板据此计算时钟偏差（设计 43.5）
@@ -325,7 +325,8 @@ func fieldSums(rep protocol.Report) map[string]uint64 {
 		_, _ = h.Write(b)
 		return h.Sum64()
 	}
-	return map[string]uint64{"ports": sum(rep.Ports), "firewall": sum(rep.Firewall), "proxies": sum(rep.Proxies)}
+	return map[string]uint64{"ports": sum(rep.Ports), "firewall": sum(rep.Firewall), "proxies": sum(rep.Proxies),
+		"accounts": sum(rep.Accounts), "config_files": sum(rep.ConfigFiles)}
 }
 
 // omitUnchanged 返回省略了未变化字段的上报。本轮为空的字段照常发送（面板据此知道已经没有），不算作未变化。
@@ -345,6 +346,12 @@ func omitUnchanged(rep protocol.Report, sums, prev map[string]uint64) protocol.R
 	}
 	if rep.Proxies != nil && same("proxies") {
 		rep.Proxies, rep.Unchanged = nil, append(rep.Unchanged, "proxies")
+	}
+	if rep.Accounts != nil && same("accounts") {
+		rep.Accounts, rep.Unchanged = nil, append(rep.Unchanged, "accounts")
+	}
+	if rep.ConfigFiles != nil && same("config_files") {
+		rep.ConfigFiles, rep.Unchanged = nil, append(rep.Unchanged, "config_files")
 	}
 	return rep
 }
@@ -420,7 +427,7 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		if ok != r.unchangedOK {
 			r.unchangedOK = ok
 			if ok {
-				r.logf("report: panel accepts omitted unchanged fields, sending ports / firewall / proxies only when they change")
+				r.logf("report: panel accepts omitted unchanged fields, sending ports / firewall / proxies / accounts / config files only when they change")
 			}
 		}
 		r.mu.Unlock()

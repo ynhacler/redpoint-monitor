@@ -39,6 +39,9 @@ type linux struct {
 	firewall    *protocol.Firewall     // 防火墙概况（修订第 168 条）与代理程序（修订第 169 条），与监听端口一样每分钟刷新一次
 	proxies     []protocol.Proxy
 	firewallAt  time.Time
+	accounts    *protocol.Accounts // 账号与重要文件（修订第 274 条），每分钟刷新一次
+	configFiles []protocol.ConfigFile
+	accountsAt  time.Time
 	statfs      *statfsProber // 带超时的 statfs（设计 43.5）
 	memEstimate bool          // 已记录过“没有 MemAvailable，按估算”的日志
 
@@ -199,6 +202,12 @@ func (c *linux) Collect() (protocol.Report, error) {
 			c.firewallAt = now
 		}
 		r.Firewall, r.Proxies = c.firewall, c.proxies
+	})
+	guard(&errs, "accounts", func() {
+		if now.Sub(c.accountsAt) >= time.Minute {
+			c.accounts, c.configFiles, c.accountsAt = collectAccounts("/"), collectConfigFiles("/"), now
+		}
+		r.Accounts, r.ConfigFiles = c.accounts, c.configFiles
 	})
 	guard(&errs, "disk", func() { r.Disk = c.collectDisks(&errs, readFile("/proc/self/mounts")) })
 	guard(&errs, "disk_io", func() { r.DiskIO = c.collectDiskIO(now) })
