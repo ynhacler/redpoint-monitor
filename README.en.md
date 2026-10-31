@@ -13,6 +13,14 @@ For people who run several VPSes: host one panel yourself, put a tiny Agent on e
 
 Full design: [docs/design.md](docs/design.md) (Chinese). Progress: [TODO.md](TODO.md).
 
+## Screenshots
+
+| Node dashboard | Cloud accounts |
+|---|---|
+| ![Node dashboard: to-do items, remaining traffic, monthly cost and node cards](docs/images/dashboard.webp) | ![Cloud accounts: sync status, costs, budgets and CDT traffic for AWS, Tencent Cloud and Alibaba Cloud International](docs/images/cloud.webp) |
+| **Subscriptions** | **Connectivity test** |
+| ![Subscriptions grouped by category, with CNY amounts and original currencies](docs/images/subscriptions.webp) | ![Connectivity test: browser latency to common sites in China and the US, with the last 8 results](docs/images/connectivity.webp) |
+
 ---
 
 ## Features

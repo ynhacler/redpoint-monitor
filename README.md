@@ -13,6 +13,14 @@ App-first lightweight self-hosted monitoring platform for VPS enthusiasts.
 
 完整设计见 [docs/design.md](docs/design.md)，开发进度见 [TODO.md](TODO.md)。
 
+## 界面预览
+
+| 节点仪表板 | 云平台 |
+|---|---|
+| ![节点仪表板：待处理事项、剩余流量与每月成本、节点卡片](docs/images/dashboard.webp) | ![云平台：AWS、腾讯云、阿里云国际账户的同步状态、费用、预算与 CDT 流量](docs/images/cloud.webp) |
+| **订阅** | **连通性测试** |
+| ![订阅：按类别排列，人民币折算金额与原币](docs/images/subscriptions.webp) | ![连通性测试：浏览器到中国、美国常用网站的延迟与最近 8 次结果](docs/images/connectivity.webp) |
+
 ---
 
 ## 功能一览
