@@ -3,6 +3,8 @@ package server
 // WebSocket 事件推送（设计 20）：GET /ws，Web 管理员会话可用，面板向页面推送事件；页面不通过它发送指令。
 // 只实现面板需要的 RFC 6455 子集（不引入依赖）：握手、服务端发文本帧、ping / pong、关闭；
 // 客户端发来的数据帧读取后丢弃。
+// 压缩（修订第 271 条）：客户端提供 permessage-deflate（RFC 7692，浏览器默认提供）时协商为双向不保留上下文，
+// 每条事件只压缩一次、所有连接共用；节点状态事件约 2.4 KB，压缩后约为一半。
 //
 // 【安全】
 //   - 凭会话 Cookie 认证（经 admin 中间件），并校验 Origin 与面板同源：浏览器跨站发起 WebSocket 时会自动带上
@@ -13,6 +15,8 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"compress/flate"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
@@ -33,7 +37,65 @@ const (
 	wsReadTimeout  = 75 * time.Second // 超过此时间没有收到任何帧（含 pong）视为断开
 	wsWriteTimeout = 10 * time.Second
 	wsMaxFrame     = 4 << 10 // 客户端帧的上限；页面只回 pong 与关闭帧
+	wsDeflateMin   = 256     // 短于此长度的事件不压缩（压缩头与块尾的开销抵消收益）
 )
+
+// wsMsg 是待发送的一条事件：原文与按 permessage-deflate 压缩后的内容（较短的事件为 nil，按原文发送）。
+type wsMsg struct {
+	raw, deflated []byte
+}
+
+// flate 压缩器较大（约数百 KB），复用而不是每条事件新建
+var wsFlatePool = sync.Pool{New: func() any {
+	w, _ := flate.NewWriter(nil, flate.BestSpeed)
+	return w
+}}
+
+// wsDeflate 按 RFC 7692 7.2.1 压缩一条消息：不保留上下文的 DEFLATE 块，去掉结尾的 00 00 ff ff。
+func wsDeflate(b []byte) []byte {
+	if len(b) < wsDeflateMin {
+		return nil
+	}
+	var buf bytes.Buffer
+	fw := wsFlatePool.Get().(*flate.Writer)
+	defer wsFlatePool.Put(fw)
+	fw.Reset(&buf)
+	if _, err := fw.Write(b); err != nil {
+		return nil
+	}
+	if err := fw.Flush(); err != nil {
+		return nil
+	}
+	out := bytes.TrimSuffix(buf.Bytes(), []byte{0, 0, 0xff, 0xff})
+	if len(out) >= len(b) {
+		return nil
+	}
+	return out
+}
+
+// wsDeflateOffer 判断握手是否提供了可接受的 permessage-deflate：要求限制服务端窗口（server_max_window_bits）的提议不接受，
+// 其余参数（如浏览器的 client_max_window_bits）都兼容“双向不保留上下文”的应答。
+func wsDeflateOffer(h http.Header) bool {
+	for _, v := range h.Values("Sec-WebSocket-Extensions") {
+		for _, ext := range strings.Split(v, ",") {
+			params := strings.Split(ext, ";")
+			if !strings.EqualFold(strings.TrimSpace(params[0]), "permessage-deflate") {
+				continue
+			}
+			ok := true
+			for _, p := range params[1:] {
+				name, _, _ := strings.Cut(strings.TrimSpace(p), "=")
+				if strings.EqualFold(name, "server_max_window_bits") {
+					ok = false
+				}
+			}
+			if ok {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // wsEvent 是推送给页面的一条事件（设计 20）。字段与 api/openapi.yaml 的 WsEvent 一致。
 type wsEvent struct {
@@ -56,7 +118,7 @@ const (
 )
 
 type wsClient struct {
-	send   chan []byte
+	send   chan wsMsg
 	done   chan struct{}
 	once   sync.Once
 	scope  *apiScope // 以 API Key 或 App 设备连接时的节点范围；Web 管理员为 nil（全部）
@@ -101,7 +163,7 @@ func (h *wsHub) add(scope *apiScope, device int64) *wsClient {
 	if len(h.clients) >= wsMaxClients {
 		return nil
 	}
-	c := &wsClient{send: make(chan []byte, wsSendQueue), done: make(chan struct{}), scope: scope, device: device}
+	c := &wsClient{send: make(chan wsMsg, wsSendQueue), done: make(chan struct{}), scope: scope, device: device}
 	h.clients[c] = struct{}{}
 	return c
 }
@@ -151,6 +213,7 @@ func (h *wsHub) publish(ev wsEvent) {
 	if err != nil {
 		return
 	}
+	m := wsMsg{raw: b, deflated: wsDeflate(b)}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for c := range h.clients {
@@ -158,7 +221,7 @@ func (h *wsHub) publish(ev wsEvent) {
 			continue
 		}
 		select {
-		case c.send <- b:
+		case c.send <- m:
 		default:
 			delete(h.clients, c)
 			c.close()
@@ -244,9 +307,14 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	info(r).hijacked = true
 	sum := sha1.Sum([]byte(key + wsGUID))
+	deflate := wsDeflateOffer(r.Header)
+	ext := ""
+	if deflate {
+		ext = "Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover\r\n"
+	}
 	conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 	if _, err := brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
-		"Sec-WebSocket-Accept: " + base64.StdEncoding.EncodeToString(sum[:]) + "\r\n\r\n"); err != nil {
+		"Sec-WebSocket-Accept: " + base64.StdEncoding.EncodeToString(sum[:]) + "\r\n" + ext + "\r\n"); err != nil {
 		return
 	}
 	if err := brw.Flush(); err != nil {
@@ -280,7 +348,17 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	write := func(op byte, payload []byte) error {
 		conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-		if err := wsWriteFrame(brw.Writer, op, payload); err != nil {
+		if err := wsWriteFrame(brw.Writer, op, payload, false); err != nil {
+			return err
+		}
+		return brw.Flush()
+	}
+	writeMsg := func(m wsMsg) error {
+		if !deflate || m.deflated == nil {
+			return write(0x1, m.raw)
+		}
+		conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		if err := wsWriteFrame(brw.Writer, 0x1, m.deflated, true); err != nil {
 			return err
 		}
 		return brw.Flush()
@@ -290,8 +368,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		case <-c.done:
 			write(0x8, wsClosePayload(1000, ""))
 			return
-		case b := <-c.send:
-			if write(0x1, b) != nil {
+		case m := <-c.send:
+			if writeMsg(m) != nil {
 				return
 			}
 		case p := <-pongs:
@@ -328,9 +406,12 @@ func wsClosePayload(code uint16, reason string) []byte {
 	return append(b, reason...)
 }
 
-// wsWriteFrame 写一个不分片、不加掩码的帧（服务端发出的帧不加掩码，RFC 6455 5.1）。
-func wsWriteFrame(w *bufio.Writer, op byte, payload []byte) error {
+// wsWriteFrame 写一个不分片、不加掩码的帧（服务端发出的帧不加掩码，RFC 6455 5.1）；compressed 时置 RSV1（RFC 7692 6）。
+func wsWriteFrame(w *bufio.Writer, op byte, payload []byte, compressed bool) error {
 	hdr := []byte{0x80 | op}
+	if compressed {
+		hdr[0] |= 0x40
+	}
 	switch n := len(payload); {
 	case n < 126:
 		hdr = append(hdr, byte(n))

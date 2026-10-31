@@ -40,7 +40,19 @@ type Report struct {
 	CollectErrors []CollectError `json:"collect_errors,omitempty"`
 	// 可选：扩展指标（设计 4.10）。面板保存在实时状态中、随接口返回，暂不入库也不展示
 	Extra *Extra `json:"extra,omitempty"`
+	// 可选：与上一份被面板接受的上报完全相同、因而省略的字段名（UnchangedFields 中的 ports / firewall / proxies，修订第 271 条）。
+	// 只在面板以 X-Report-Features: unchanged 声明支持后使用；面板从实时状态中补全，没有上一份时返回 409，Agent 改发完整上报
+	Unchanged []string `json:"unchanged,omitempty"`
 }
+
+// 省略未变化字段（修订第 271 条）：这几项每分钟才采集一次，却随每份上报重发，约占上报正文的四成（gzip 后约三成）。
+const (
+	HeaderReportFeatures = "X-Report-Features" // 面板在上报响应中声明支持的功能，逗号分隔
+	FeatureUnchanged     = "unchanged"         // 接受 Report.Unchanged
+)
+
+// UnchangedFields 是可以因未变化而省略的字段（JSON 名）。
+var UnchangedFields = []string{"ports", "firewall", "proxies"}
 
 // Extra 是扩展指标（设计 4.10）：都来自无需特权的只读来源，读不到的项省略。
 // 速率为与上一次采样之间的平均值，首次采样时省略。

@@ -30,6 +30,11 @@ type fakePanel struct {
 	probeOut [4]string // 响应的 X-Probe-Version、X-Probe-Targets、X-Probe-Interval、X-Probe-Timing
 	gzip     string    // "accept"：声明并接受 gzip；"reject"：收到 gzip 返回 415（模拟回退到旧版面板）；空：旧版面板
 	encoded  []string
+	// 省略未变化字段（修订第 271 条）
+	features  string     // X-Report-Features 响应头
+	conflicts int        // 对省略了字段的上报返回 409 的次数（模拟面板刚重启、没有上一份）
+	omitted   [][]string // 每份被接受的上报的 Unchanged
+	hasPorts  []bool     // 每份被接受的上报是否带 ports
 }
 
 func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +57,9 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.interval != "" {
 		w.Header().Set("X-Report-Interval", p.interval)
+	}
+	if p.features != "" {
+		w.Header().Set(protocol.HeaderReportFeatures, p.features)
 	}
 	if p.procs != "" {
 		w.Header().Set(protocol.HeaderWatchProcs, p.procs)
@@ -79,6 +87,13 @@ func (p *fakePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			body = zr
 		}
 		json.NewDecoder(body).Decode(&rep)
+		if len(rep.Unchanged) > 0 && p.conflicts > 0 {
+			p.conflicts--
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		p.omitted = append(p.omitted, rep.Unchanged)
+		p.hasPorts = append(p.hasPorts, rep.Ports != nil)
 		p.received = append(p.received, rep.Timestamp)
 		p.sentAt = append(p.sentAt, rep.SentAt)
 	}
@@ -460,5 +475,56 @@ func TestUnlockHeaders(t *testing.T) {
 	r.Flush(context.Background(), true)
 	if got != protocol.UnlockVersion || len(u.reqs) != 1 || u.reqs[0] != "abc123" {
 		t.Fatalf("请求头 %q，收到请求号 %v", got, u.reqs)
+	}
+}
+
+// 省略未变化字段（修订第 271 条）：面板声明后，端口、防火墙、代理与上一份被接受的相同时省略；有变化、为空、
+// 每 5 分钟、面板返回 409 时都发送完整上报；旧版面板（不声明）始终收到完整上报。
+func TestOmitUnchanged(t *testing.T) {
+	ports := []protocol.ListenPort{{Port: 22, Proto: "tcp", Addrs: []string{"0.0.0.0"}}}
+	fw := &protocol.Firewall{Tools: []protocol.FirewallTool{}}
+	mk := func(i int64, ps []protocol.ListenPort) protocol.Report {
+		r := rep(i)
+		r.Ports, r.Firewall = ps, fw
+		return r
+	}
+	p := &fakePanel{features: "unchanged"}
+	r, c, logs := newReporter(t, p)
+	send := func(x protocol.Report) {
+		r.Enqueue(x)
+		r.Flush(context.Background(), true)
+	}
+	send(mk(0, ports)) // 还不知道面板是否支持：完整
+	send(mk(10, ports))
+	send(mk(20, append(ports, protocol.ListenPort{Port: 443, Proto: "tcp", Addrs: []string{"::"}}))) // 端口有变化
+	send(mk(30, nil))                                                                                // 端口为空：照常发送 null
+	got := fmt.Sprint(p.omitted)
+	if got != "[[] [] [firewall] [firewall]]" {
+		t.Fatalf("省略的字段 = %s", got)
+	}
+	if fmt.Sprint(p.hasPorts) != "[true true true false]" {
+		t.Errorf("带 ports = %v", p.hasPorts)
+	}
+
+	c.add(fullEvery) // 距上一次完整上报已满 5 分钟
+	send(mk(40, nil))
+	if o := p.omitted[len(p.omitted)-1]; len(o) != 0 {
+		t.Errorf("满 5 分钟应发送完整上报，省略了 %v", o)
+	}
+
+	p.conflicts = 1 // 面板刚重启：没有上一份
+	send(mk(50, nil))
+	if n := len(p.received); n != 6 || len(p.omitted[5]) != 0 {
+		t.Errorf("409 后应立即改发完整上报：收到 %d 份，最后一份省略 %v", n, p.omitted[len(p.omitted)-1])
+	}
+	if !strings.Contains(strings.Join(*logs, "\n"), "sending the full report") {
+		t.Errorf("应记录改发完整上报：%v", *logs)
+	}
+
+	p.features = "" // 面板回退到旧版本：不再声明
+	send(mk(60, nil))
+	send(mk(70, nil))
+	if o := p.omitted[len(p.omitted)-1]; len(o) != 0 {
+		t.Errorf("面板不再声明后不应省略：%v", o)
 	}
 }

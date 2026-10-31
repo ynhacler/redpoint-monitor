@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math/rand"
 	"net/http"
@@ -95,7 +96,16 @@ type Reporter struct {
 	savedAt      time.Time     // 最近一次落盘时间
 	skewLoggedAt time.Time     // 最近一次记录时钟偏差 WARN 的时间
 	onDisk       bool          // 落盘文件存在，队列清空后需要删除
+
+	// 省略未变化的字段（修订第 271 条）：面板在响应头声明 X-Report-Features: unchanged 后才省略。
+	// sentSums 是上一份被面板接受的上报中各字段的摘要，只在发送 goroutine 中使用
+	unchangedOK bool
+	sentSums    map[string]uint64
+	fullAt      time.Time // 上一次发送完整上报（未省略任何字段）被接受的时间
 }
+
+// fullEvery：省略未变化字段时，至少每隔这么久发送一次完整上报，面板的实时状态不会长期依赖补全
+const fullEvery = 5 * time.Minute
 
 func (r *Reporter) now() time.Time {
 	if r.Now != nil {
@@ -275,8 +285,72 @@ func backoff(n int) time.Duration {
 //
 // 面板声明接受 gzip 后压缩正文（约为原来的 45%，Agent 自身流量同样计入用户的套餐）。压缩的上报被拒绝
 // （400 / 415，例如面板回退到不支持压缩的旧版本）时关闭压缩并立即改发未压缩的版本，这份上报不会被丢弃。
+//
+// 面板声明支持省略未变化字段后（修订第 271 条），端口、防火墙、代理与上一份被接受的上报相同时不再重发，
+// 每 fullEvery 发送一次完整上报；面板没有上一份（返回 409，如面板刚重启）时立即改发完整上报。
 func (r *Reporter) post(ctx context.Context, rep protocol.Report) (int, time.Duration, error) {
 	rep.SentAt = r.now().Unix() // 发送时刻，面板据此计算时钟偏差（设计 43.5）
+	r.mu.Lock()
+	delta := r.unchangedOK
+	r.mu.Unlock()
+	var sums map[string]uint64
+	sent := rep
+	if delta {
+		sums = fieldSums(rep)
+		if r.now().Sub(r.fullAt) < fullEvery {
+			sent = omitUnchanged(rep, sums, r.sentSums)
+		}
+	}
+	code, ra, err := r.postBody(ctx, sent)
+	if err == nil && code == http.StatusConflict && len(sent.Unchanged) > 0 {
+		r.sentSums = nil
+		r.logf("report: panel has no previous report to fill omitted fields (HTTP 409), sending the full report")
+		sent = rep
+		code, ra, err = r.postBody(ctx, sent)
+	}
+	if err == nil && code/100 == 2 && sums != nil {
+		r.sentSums = sums
+		if len(sent.Unchanged) == 0 {
+			r.fullAt = r.now()
+		}
+	}
+	return code, ra, err
+}
+
+// fieldSums 计算可省略字段的摘要（JSON 的 FNV-64a），用来判断与上一份是否相同。
+func fieldSums(rep protocol.Report) map[string]uint64 {
+	sum := func(v any) uint64 {
+		b, _ := json.Marshal(v)
+		h := fnv.New64a()
+		_, _ = h.Write(b)
+		return h.Sum64()
+	}
+	return map[string]uint64{"ports": sum(rep.Ports), "firewall": sum(rep.Firewall), "proxies": sum(rep.Proxies)}
+}
+
+// omitUnchanged 返回省略了未变化字段的上报。本轮为空的字段照常发送（面板据此知道已经没有），不算作未变化。
+func omitUnchanged(rep protocol.Report, sums, prev map[string]uint64) protocol.Report {
+	if prev == nil {
+		return rep
+	}
+	same := func(name string) bool {
+		old, ok := prev[name]
+		return ok && old == sums[name]
+	}
+	if rep.Ports != nil && same("ports") {
+		rep.Ports, rep.Unchanged = nil, append(rep.Unchanged, "ports")
+	}
+	if rep.Firewall != nil && same("firewall") {
+		rep.Firewall, rep.Unchanged = nil, append(rep.Unchanged, "firewall")
+	}
+	if rep.Proxies != nil && same("proxies") {
+		rep.Proxies, rep.Unchanged = nil, append(rep.Unchanged, "proxies")
+	}
+	return rep
+}
+
+// postBody 编码并发送一份上报；压缩的上报被拒绝时关闭压缩并改发未压缩的版本。
+func (r *Reporter) postBody(ctx context.Context, rep protocol.Report) (int, time.Duration, error) {
 	body, _ := json.Marshal(rep)
 	r.mu.Lock()
 	compress := r.gzipOK
@@ -341,6 +415,15 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		if v := resp.Header.Get(protocol.HeaderUnlockRequest); v != "" && r.Unlock != nil {
 			r.Unlock.Request(v)
 		}
+		ok := hasToken(resp.Header.Values(protocol.HeaderReportFeatures), protocol.FeatureUnchanged)
+		r.mu.Lock()
+		if ok != r.unchangedOK {
+			r.unchangedOK = ok
+			if ok {
+				r.logf("report: panel accepts omitted unchanged fields, sending ports / firewall / proxies only when they change")
+			}
+		}
+		r.mu.Unlock()
 	}
 	if !compress && resp.StatusCode/100 == 2 && acceptsGzip(resp.Header.Values("Accept-Encoding")) {
 		r.mu.Lock()
@@ -404,10 +487,15 @@ func (r *Reporter) Interval() time.Duration {
 
 // acceptsGzip 判断 Accept-Encoding 响应头是否包含 gzip（RFC 7694）。
 func acceptsGzip(values []string) bool {
+	return hasToken(values, "gzip")
+}
+
+// hasToken 判断逗号分隔的响应头中是否有某一项（忽略大小写与 ;q= 等参数）。
+func hasToken(values []string, token string) bool {
 	for _, v := range values {
 		for _, part := range strings.Split(v, ",") {
 			name, _, _ := strings.Cut(strings.TrimSpace(part), ";")
-			if strings.EqualFold(strings.TrimSpace(name), "gzip") {
+			if strings.EqualFold(strings.TrimSpace(name), token) {
 				return true
 			}
 		}

@@ -31,3 +31,32 @@ func TestFirewallAdminOnly(t *testing.T) {
 		t.Errorf("节点列表不应带防火墙：%s", got)
 	}
 }
+
+// 省略未变化字段（修订第 271 条）：面板声明支持；省略的端口、防火墙、代理用上一份补全，之后与完整上报相同；
+// 没有上一份时返回 409，不按缺字段的上报处理。
+func TestReportUnchanged(t *testing.T) {
+	s, h, _ := testServer(t)
+	id, tok, _ := s.store.CreateServer("delta-host", 0, 1)
+	now := time.Now().Unix()
+	partial := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"unchanged":["ports","firewall","proxies"]}`, now)
+	rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(partial))
+	if rec.Code != 409 {
+		t.Fatalf("没有上一份时应返回 409：%d %s", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("X-Report-Features"); got != "unchanged" {
+		t.Errorf("X-Report-Features = %q", got)
+	}
+	full := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"ports":[{"port":22,"proto":"tcp","addrs":["0.0.0.0"]}],
+		"firewall":{"tools":[{"name":"ufw","active":true}]},"proxies":[{"name":"xray","running":true}]}`, now)
+	if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(full)); rec.Code != 204 {
+		t.Fatal(rec.Code, rec.Body)
+	}
+	partial = fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"unchanged":["ports","firewall","proxies","future_field"]}`, now+10)
+	if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(partial)); rec.Code != 204 {
+		t.Fatal(rec.Code, rec.Body)
+	}
+	snap := s.latest[id]
+	if snap == nil || len(snap.Report.Ports) != 1 || snap.Report.Firewall == nil || len(snap.Report.Proxies) != 1 || snap.Report.Unchanged != nil {
+		t.Errorf("应补全省略的字段：%+v", snap)
+	}
+}
