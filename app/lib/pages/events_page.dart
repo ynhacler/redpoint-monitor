@@ -1,6 +1,7 @@
 // 事件中心（设计 1.5.17）：告警触发与恢复的时间线，最新在前；面板按设备的授权范围过滤（17.3）。
 // 连接了多个监控中心时可切到“全部中心”：各中心最近 50 条合并为一条时间线（跨中心事件流，设计 1.5.2）。
-// “系统”标签：Agent 升级结果、到期提醒、面板自身告警（GET /system-events，修订第 163 条），只看当前中心。
+// “系统”标签：Agent 升级结果、到期提醒、面板自身告警、节点配置变更（GET /system-events，修订第 163、273 条），只看当前中心。
+// 变更的细节只给 Web 管理员，App 只看到标题（设计 4.9.5）。
 import 'package:flutter/material.dart';
 
 import '../widgets/stale_banner.dart';
@@ -290,7 +291,12 @@ class _SystemTile extends StatelessWidget {
   final SystemEvent e;
   final VoidCallback? onTap;
 
-  static const _icons = {'upgrade': Icons.system_update_alt, 'reminder': Icons.event_note_outlined, 'panel': Icons.dns_outlined};
+  static const _icons = {
+    'upgrade': Icons.system_update_alt,
+    'reminder': Icons.event_note_outlined,
+    'panel': Icons.dns_outlined,
+    'change': Icons.manage_history,
+  };
 
   @override
   Widget build(BuildContext context) {
