@@ -328,7 +328,7 @@ class ContainerMissing {
       ];
 }
 
-/// 系统事件（GET /system-events，修订第 163 条）：Agent 升级结果、到期提醒、面板自身告警；serverId 为 0 表示不属于某个节点。
+/// 系统事件（GET /system-events，修订第 163、273 条）：Agent 升级结果、到期提醒、面板自身告警、节点配置变更（App 只有标题）；serverId 为 0 表示不属于某个节点。
 class SystemEvent {
   SystemEvent({required this.id, required this.kind, required this.severity, required this.serverId, required this.serverName,
       required this.title, required this.message, required this.createdAt});
