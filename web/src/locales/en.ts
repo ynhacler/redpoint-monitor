@@ -1051,7 +1051,7 @@ export const en: Record<string, string> = {
   '{names}均正常': '{names}: all normal',
   '详情（{n} 项）': 'Details ({n})',
   // ---- 历史覆盖（修订第 254 条） ----
-  '所选 {range} 内仅有约 {d} 的数据，缺失的时段不画线（不是 0）': 'Only about {d} of data in the selected {range}; gaps are left blank (not zero)',
+  '所选 {range} 内仅有约 {d}的数据，缺失的时段不画线（不是 0）': 'Only about {d} of data in the selected {range}; gaps are left blank (not zero)',
   // ---- 订阅行（修订第 253 条） ----
   '今天扣费': 'charged today',
   '{n} 天后扣费': 'charged in {n} days',

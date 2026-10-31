@@ -213,7 +213,9 @@ const pts = computed(() => history.value?.items ?? [])
 // 数据覆盖（修订第 254 条，UI 精修 3.4）：所选范围内实际有数据的时长不到范围的 90% 时注明“仅有 N 的历史”，
 // 不让 24H / 7D / 30D 暗示已有完整历史（节点新接入、Agent 停过）；缺失的时段不补 0
 // 3 天以内按小时（四舍五入），更长按天，避免“约 1 天”与“约 2 天”这类粗略取整
-const coverageText = (sec: number) => (sec < 3 * 86400 ? t('{n} 小时', { n: Math.max(1, Math.round(sec / 3600)) }) : fmtDuration(sec))
+// 有数据的时长：不到 1 小时写分钟（修订第 272 条：此前 28 分钟也写成“约 1 小时”），3 天内写小时，更长写天
+const coverageText = (sec: number) => (sec < 3600 ? t('{n} 分钟', { n: Math.max(1, Math.round(sec / 60)) })
+  : sec < 3 * 86400 ? t('{n} 小时', { n: Math.round(sec / 3600) }) : fmtDuration(sec))
 const rangeSeconds: Record<HistoryRange, number> = { '1h': 3600, '6h': 6 * 3600, '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400 }
 const coverage = computed(() => {
   const list = pts.value
@@ -351,11 +353,14 @@ const charts = computed(() => [
             </div>
           </div>
           <p v-if="historyError" class="banner">{{ historyError }}</p>
-          <p v-else-if="coverage != null" class="small muted coverage">{{ t('所选 {range} 内仅有约 {d} 的数据，缺失的时段不画线（不是 0）', { range: range.toUpperCase(), d: coverageText(coverage) }) }}</p>
-          <p v-else-if="history && !pts.length" class="muted">{{ t('这个时间范围内还没有数据。') }}</p>
-          <div v-else class="charts">
-            <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
-          </div>
+          <template v-else>
+            <!-- 覆盖说明在曲线上方，不代替曲线（修订第 272 条：此前出现说明时曲线不显示） -->
+            <p v-if="coverage != null" class="small muted coverage">{{ t('所选 {range} 内仅有约 {d}的数据，缺失的时段不画线（不是 0）', { range: range.toUpperCase(), d: coverageText(coverage) }) }}</p>
+            <p v-if="history && !pts.length" class="muted">{{ t('这个时间范围内还没有数据。') }}</p>
+            <div v-else class="charts">
+              <Chart v-for="c in charts" :key="c.title" :title="c.title" :series="c.series" :format="c.format" :max="c.max" />
+            </div>
+          </template>
         </section>
       </template>
 

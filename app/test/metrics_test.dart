@@ -137,4 +137,11 @@ void main() {
     // 1H 内只差几分钟：不提示
     expect(historyCoverage([for (var i = 0; i < 320; i++) 1000 + i * 10], 3600), isNull);
   });
+
+  test('覆盖时长的文字（修订第 272 条）：不到 1 小时写分钟', () {
+    expect(coverageText(28 * 60), '28 分钟');
+    expect(coverageText(20), '1 分钟');
+    expect(coverageText(5400), '2 小时');
+    expect(coverageText(2 * 86400), '48 小时');
+  });
 }

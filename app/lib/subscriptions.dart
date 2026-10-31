@@ -264,12 +264,16 @@ List<DateTime> chargesBetween(Subscription s, DateTime from, DateTime to) {
   return (months: months, total: months.fold(0, (a, m) => a + m.$2), missing: missing.toList()..sort());
 }
 
+// 两个日期相差的日历天数：按 UTC 的年月日计算，跨夏令时切换（某天只有 23 或 25 小时）也不差一天（修订第 272 条）
+int _dayDiff(DateTime d, DateTime n) =>
+    DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(n.year, n.month, n.day)).inDays;
+
 /// 距下次扣费的天数（今天为 0）；没有下次扣费时为 null
 int? daysUntilCharge(Subscription s, {DateTime? now}) {
   final d = _date(s.nextCharge);
   if (d == null) return null;
   final n = now ?? DateTime.now();
-  return d.difference(DateTime(n.year, n.month, n.day)).inDays;
+  return _dayDiff(d, n);
 }
 
 /// 距结束订阅的天数（今天为 0）；没有结束日期或已结束时为 null
@@ -277,7 +281,7 @@ int? daysUntilEnd(Subscription s, {DateTime? now}) {
   final d = _date(s.endDate);
   if (d == null || s.ended) return null;
   final n = now ?? DateTime.now();
-  return d.difference(DateTime(n.year, n.month, n.day)).inDays;
+  return _dayDiff(d, n);
 }
 
 /// 快到期（修订第 218 条）：7 天内扣费或 7 天内结束；返回最近的天数，不是时为 null
@@ -294,7 +298,8 @@ String chargeText(Subscription s, {DateTime? now}) {
   if (s.ended) return '已结束订阅';
   final start = _date(s.startDate);
   if (start == null) return cycleNames[s.cycle] ?? s.cycle;
-  final first = start.add(Duration(days: s.trialDays));
+  // 按日历日相加：add(Duration(days:)) 加的是 24 小时的整数倍，跨夏令时切换时会落到前一天（修订第 272 条）
+  final first = DateTime(start.year, start.month, start.day + s.trialDays);
   final today = now ?? DateTime.now();
   if (s.trialDays > 0 && first.isAfter(today)) return '试用中，${first.month} 月 ${first.day} 日开始扣费';
   final next = _date(s.nextCharge);
