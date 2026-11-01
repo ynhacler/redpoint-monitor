@@ -413,6 +413,7 @@ type notifyMessage struct {
 	Servers    []string        // 合并通知包含的节点（批量离线）
 	Count      int             // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数 / 汇总条数
 	Items      []notifyMessage // 免打扰汇总包含的通知
+	Lines      []string        // 定期报告的正文（修订第 277 条）；标题在 Message
 }
 
 var severityIcons = map[string]string{"critical": "🔴", "warning": "🟠", "info": "🔵"}
@@ -444,6 +445,8 @@ func (m notifyMessage) title() string {
 		return t
 	case NotifyTest:
 		return "🔔 测试通知"
+	case NotifyDigest:
+		return m.Message
 	}
 	return severityIcons[m.Severity] + " " + m.ServerName + " " + m.Message
 }
@@ -486,6 +489,8 @@ func (m notifyMessage) text(now time.Time) string {
 		lines = append(lines, "持续时长 "+fmtSpan(m.ResolvedAt.Sub(m.StartedAt)))
 	case NotifyTest:
 		lines = append(lines, "这是一条来自 VPS Monitor 的测试通知，收到说明渠道配置正确。")
+	case NotifyDigest:
+		lines = append(lines, m.Lines...)
 	}
 	if m.Link != "" {
 		lines = append(lines, m.Link)
@@ -575,6 +580,9 @@ func (c NotifyChannel) wants(m notifyMessage) bool {
 	}
 	if m.Kind == NotifyTest || m.Kind == NotifyPanelDown || m.Kind == NotifyPanelUp || m.Kind == NotifyPanelIssue || m.Kind == NotifyPanelIssueResolved {
 		return true // 面板自检与面板自身告警影响全部节点，所有渠道都发
+	}
+	if m.Kind == NotifyDigest {
+		return true // 定期报告（修订第 277 条）：没有级别，所有渠道都发
 	}
 	if m.Kind == NotifyResolved && !c.NotifyResolved {
 		return false

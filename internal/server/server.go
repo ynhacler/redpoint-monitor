@@ -191,6 +191,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.runTask(ctx, "cloud", s.cloudLoop)
 	go s.runTask(ctx, "ws-status", s.statusLoop)
 	go s.runTask(ctx, "reminders", s.reminderLoop)
+	go s.runTask(ctx, "digest", s.digestLoop) // 定期报告（修订第 277 条）
 	go s.runTask(ctx, "services", s.serviceLoop)
 	go s.runTask(ctx, "heartbeat", s.heartbeatLoop)
 	go s.runTask(ctx, "panel-health", s.panelHealthLoop)
@@ -363,6 +364,9 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/settings/listen/close-old", accessAdmin, s.handleCloseOldListen)
 	handle("PUT /api/v1/settings/site", accessAdmin, s.handlePutSite)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
+	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）
+	handle("PUT /api/v1/settings/digest", accessAdmin, s.handlePutDigest)
+	handle("POST /api/v1/settings/digest/send", accessAdmin, s.handleSendDigest)
 	handle("GET /api/v1/settings/change-notify", accessAdmin, s.handleGetChangeNotify) // 变更通知（修订第 275 条）
 	handle("PUT /api/v1/settings/change-notify", accessAdmin, s.handlePutChangeNotify)
 	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)

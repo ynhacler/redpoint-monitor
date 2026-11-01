@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, ChangeNotify, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, FxRates, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, ChangeNotify, Digest, DigestView, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, FxRates, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -450,6 +450,19 @@ export function getQuietHours() {
 /** 保存免打扰时段 */
 export function saveQuietHours(v: G.QuietHours) {
   return request('put', '/settings/quiet-hours', { body: v })
+}
+
+/** 定期报告（修订第 277 条）：设置与预览 */
+export function getDigest() {
+  return request('get', '/settings/digest')
+}
+/** 保存定期报告 */
+export function saveDigest(v: G.Digest) {
+  return request('put', '/settings/digest', { body: v })
+}
+/** 立即发送一次定期报告 */
+export function sendDigest() {
+  return request('post', '/settings/digest/send')
 }
 
 /** 变更通知（修订第 275 条） */

@@ -1165,6 +1165,37 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /settings/digest:
+    get:
+      tags: [alerts]
+      summary: 定期报告（设计 16.8，修订第 277 条）：设置与按当前时间生成的预览
+      responses:
+        '200': { description: 当前设置, content: { application/json: { schema: { $ref: '#/components/schemas/DigestView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [alerts]
+      summary: 修改定期报告（记入操作日志 setting.update）
+      description: |
+        weekly：每周一在 time 发送前 7 天的概况；monthly：每月 1 日发送上个月的概况。发到全部已启用的通知渠道与授权范围为全部节点的
+        App 设备，不受渠道最低级别与免打扰限制；告警总开关关闭时不发送。面板在当天停机错过时，当天之内启动后补发。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Digest' } } }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/DigestView' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /settings/digest/send:
+    post:
+      tags: [alerts]
+      summary: 按当前设置立即发送一次定期报告（不影响定时发送，记入操作日志 digest.send）
+      responses:
+        '204': { description: 已提交发送 }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
   /settings/change-notify:
     get:
       tags: [alerts]
@@ -2901,6 +2932,25 @@ components:
         notes: { type: string }
         artifacts: { type: array, items: { type: object, required: [file, size, sha256], properties: { os: { type: string }, arch: { type: string }, file: { type: string }, size: { type: integer }, sha256: { type: string } } } }
         mirrored: { type: boolean, description: 全部文件已校验并保存在本面板（设计 27.5.3） }
+
+    Digest:
+      type: object
+      description: 定期报告（修订第 277 条）
+      required: [enabled, period, time, timezone]
+      properties:
+        enabled: { type: boolean }
+        period: { type: string, enum: [weekly, monthly], description: 'weekly：每周一报告前 7 天；monthly：每月 1 日报告上个月' }
+        time: { type: string, description: 发送时间 HH:MM }
+        timezone: { type: string, description: IANA 时区；空为面板本地时区 }
+
+    DigestView:
+      allOf:
+        - $ref: '#/components/schemas/Digest'
+        - type: object
+          required: [effective_timezone, preview]
+          properties:
+            effective_timezone: { type: string, description: 实际使用的时区 }
+            preview: { type: string, description: 按当前时间生成的报告正文（纯文本） }
 
     ChangeNotify:
       type: object

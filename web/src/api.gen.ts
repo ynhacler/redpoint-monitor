@@ -288,6 +288,24 @@ export interface AgentRelease {
   mirrored: boolean
 }
 
+/** 定期报告（修订第 277 条） */
+export interface Digest {
+  enabled: boolean
+  /** weekly：每周一报告前 7 天；monthly：每月 1 日报告上个月 */
+  period: 'weekly' | 'monthly'
+  /** 发送时间 HH:MM */
+  time: string
+  /** IANA 时区；空为面板本地时区 */
+  timezone: string
+}
+
+export type DigestView = Digest & {
+  /** 实际使用的时区 */
+  effective_timezone: string
+  /** 按当前时间生成的报告正文（纯文本） */
+  preview: string
+}
+
 /** 变更通知（修订第 275 条）：各类变更是否发送通知；关闭时仍记录 */
 export interface ChangeNotify {
   /** 防火墙 */
@@ -2428,6 +2446,23 @@ export interface Paths {
         }[]
         next_cursor: string
       }
+    }
+  }
+  '/settings/digest': {
+    /** 定期报告（设计 16.8，修订第 277 条）：设置与按当前时间生成的预览 */
+    get: {
+      response: DigestView
+    }
+    /** 修改定期报告（记入操作日志 setting.update） */
+    put: {
+      body: Digest
+      response: DigestView
+    }
+  }
+  '/settings/digest/send': {
+    /** 按当前设置立即发送一次定期报告（不影响定时发送，记入操作日志 digest.send） */
+    post: {
+      response: void
     }
   }
   '/settings/change-notify': {

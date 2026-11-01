@@ -9,6 +9,7 @@ import { severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
 import HeartbeatSettings from './HeartbeatSettings.vue'
 import ChangeNotifySettings from './ChangeNotifySettings.vue'
+import DigestSettings from './DigestSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
 import { setNotifyChannels } from './NotifyWarning.vue'
 
@@ -163,6 +164,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
 
     <QuietHoursSettings />
     <ChangeNotifySettings />
+    <DigestSettings />
     <HeartbeatSettings />
 
     <div class="actions">
