@@ -1017,6 +1017,19 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL,
 		PRIMARY KEY (server_id, item)
 	) WITHOUT ROWID;`,
+	// 迁移 61：登录记录（修订第 276 条）：Agent 从 wtmp 读到的登录，按内容去重；new_host 为当时第一次出现的来源地址
+	`CREATE TABLE logins (
+		id        INTEGER PRIMARY KEY,
+		server_id INTEGER NOT NULL,
+		at        INTEGER NOT NULL,
+		user      TEXT NOT NULL,
+		host      TEXT NOT NULL,
+		line      TEXT NOT NULL,
+		new_host  INTEGER NOT NULL DEFAULT 0,
+		UNIQUE (server_id, at, user, line, host)
+	);
+	CREATE INDEX logins_host ON logins (server_id, host);
+	CREATE INDEX logins_at ON logins (server_id, at);`,
 }
 
 func (s *Store) migrate() error {

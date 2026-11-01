@@ -531,6 +531,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"GET /api/v1/settings/quiet-hours":                accessAdmin,
 		"PUT /api/v1/settings/quiet-hours":                accessAdmin,
 		"GET /api/v1/settings/change-notify":              accessAdmin,
+		"GET /api/v1/servers/{id}/logins":                 accessAdmin,
 		"PUT /api/v1/settings/change-notify":              accessAdmin,
 		"GET /api/v1/settings/heartbeat":                  accessAdmin,
 		"PUT /api/v1/settings/heartbeat":                  accessAdmin,

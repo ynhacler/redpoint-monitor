@@ -35,7 +35,7 @@ watch(() => props.serverId, () => load())
       <h3>{{ t('变更记录') }}</h3>
       <span class="muted small">{{ t('仅管理员可见') }}</span>
     </div>
-    <p class="muted small intro">{{ t('防火墙（启用与停用、入站默认策略、规则增删）、可登录账号与 sudo 等管理员组、SSH / sudo / 定时任务等重要文件（只比较摘要，不上传内容）；有变化时记一条并按告警设置通知（通知中不含细节）。保留 180 天。') }}</p>
+    <p class="muted small intro">{{ t('防火墙（启用与停用、入站默认策略、规则增删）、可登录账号与 sudo 等管理员组、SSH / sudo / 定时任务等重要文件（只比较摘要，不上传内容）、来自新地址的登录；有变化时记一条并按“变更通知”设置通知（通知中不含细节）。保留 180 天。') }}</p>
     <p v-if="error" class="banner">{{ error }}</p>
     <p v-else-if="!loading && !items.length" class="muted small">{{ t('还没有变更。') }}</p>
     <ul v-if="items.length" class="list">

@@ -16,6 +16,7 @@ type fake struct {
 	bootID string // 每次进程启动生成新值，重启假数据 Agent 等同于一次“重启”（设计 5.5）
 	rx, tx uint64 // 累计字节数，与 /proc/net/dev 一样
 	last   time.Time
+	logins bool // 已带上示例登录记录（修订第 276 条，只在启动后的第一份上报中）
 }
 
 // NewFake 返回假数据采集器（用于 --fake 与非 Linux 平台）。
@@ -57,7 +58,16 @@ func (f *fake) Collect() (protocol.Report, error) {
 	ioRead := uint64(200_000 + 150_000*math.Sin(t/25))
 	ioWrite := uint64(800_000 + 600_000*math.Cos(t/35))
 
+	var logins []protocol.Login
+	if !f.logins {
+		f.logins = true
+		logins = []protocol.Login{
+			{Time: f.start.Add(-26 * time.Hour).Unix(), User: "deploy", Host: "198.51.100.20", Line: "pts/0"},
+			{Time: f.start.Add(-2 * time.Hour).Unix(), User: "root", Host: "203.0.113.7", Line: "pts/1"},
+		}
+	}
 	return protocol.Report{
+		Logins: logins,
 		System: protocol.System{
 			Hostname: "fake-node", OS: "fake", OSVersion: "1", Kernel: "fake",
 			Arch: runtime.GOARCH, Uptime: uint64(t), BootID: f.bootID,

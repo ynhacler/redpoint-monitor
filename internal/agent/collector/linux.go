@@ -42,6 +42,7 @@ type linux struct {
 	accounts    *protocol.Accounts // 账号与重要文件（修订第 274 条），每分钟刷新一次
 	configFiles []protocol.ConfigFile
 	accountsAt  time.Time
+	logins      loginReader   // 登录记录（修订第 276 条），与账号一起每分钟读一次
 	statfs      *statfsProber // 带超时的 statfs（设计 43.5）
 	memEstimate bool          // 已记录过“没有 MemAvailable，按估算”的日志
 
@@ -75,7 +76,7 @@ func New(opts Options) Collector {
 	if len(opts.Exclude) == 0 {
 		opts.Exclude = DefaultExclude
 	}
-	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{}, containers: containerState{proc: "/proc"},
+	return &linux{opts: opts, prevNet: map[string]netCounters{}, prevIO: map[string]ioCounters{}, containers: containerState{proc: "/proc"}, logins: loginReader{path: "/var/log/wtmp"},
 		bits: counterBits(unameMachine()), statfs: newStatfsProber(statfs)}
 }
 
@@ -206,6 +207,7 @@ func (c *linux) Collect() (protocol.Report, error) {
 	guard(&errs, "accounts", func() {
 		if now.Sub(c.accountsAt) >= time.Minute {
 			c.accounts, c.configFiles, c.accountsAt = collectAccounts("/"), collectConfigFiles("/"), now
+			r.Logins = c.logins.next() // 只在本轮读到的上报中带上新增的登录
 		}
 		r.Accounts, r.ConfigFiles = c.accounts, c.configFiles
 	})

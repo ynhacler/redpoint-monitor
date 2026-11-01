@@ -210,7 +210,7 @@ func TestChangeNotifySetting(t *testing.T) {
 	if got != defaultChangeNotify() {
 		t.Fatalf("默认应全部开启：%+v", got)
 	}
-	if rec := do(h, "PUT", "/api/v1/settings/change-notify", admin, []byte(`{"firewall":true,"accounts":true,"files":false}`)); rec.Code != 200 {
+	if rec := do(h, "PUT", "/api/v1/settings/change-notify", admin, []byte(`{"firewall":true,"accounts":true,"files":false,"logins":true}`)); rec.Code != 200 {
 		t.Fatal(rec.Code, rec.Body)
 	}
 	if rec := do(h, "PUT", "/api/v1/settings/change-notify", admin, []byte(`{"files":false,"extra":1}`)); rec.Code != 400 {
@@ -218,12 +218,12 @@ func TestChangeNotifySetting(t *testing.T) {
 	}
 	id, _, _ := s.store.CreateServer("notify-host", 0, 1)
 	now := time.Now()
-	s.recordChange(id, changeFiles, "重要文件", []string{"/etc/cron.d/x 已修改"}, SeverityInfo, now)
+	s.recordChange(id, changeFiles, "重要文件有 1 项变化", []string{"/etc/cron.d/x 已修改"}, SeverityInfo, now)
 	s.notify.wg.Wait()
 	if hook.count() != 0 {
 		t.Fatal("关闭的类别不应通知")
 	}
-	s.recordChange(id, changeAcct, "账号与权限组", []string{"sudo 组新增成员：eve"}, SeverityWarning, now)
+	s.recordChange(id, changeAcct, "账号与权限组有 1 项变化", []string{"sudo 组新增成员：eve"}, SeverityWarning, now)
 	s.notify.wg.Wait()
 	if hook.count() != 1 {
 		t.Fatalf("开启的类别应通知：%d", hook.count())

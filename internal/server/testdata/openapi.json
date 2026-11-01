@@ -3117,6 +3117,113 @@
         }
       }
     },
+    "/servers/{id}/logins": {
+      "get": {
+        "tags": [
+          "servers"
+        ],
+        "summary": "登录记录（修订第 276 条，设计 4.9.5），只给管理员",
+        "description": "Agent 从 /var/log/wtmp 读到的登录（SSH、控制台等），按时间倒序，保留 180 天。new_host 表示当时是该节点第一次出现的来源地址\n（第一次收到登录时的记录作为基准，不标记）。不包括失败的登录（btmp 只有 root 可读）；改用 wtmpdb 的系统没有记录。\n",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "上一页的 next_cursor"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "登录记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "at",
+                          "user",
+                          "host",
+                          "line",
+                          "new_host"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "at": {
+                            "type": "integer",
+                            "description": "登录时间（Unix 秒，节点时钟）"
+                          },
+                          "user": {
+                            "type": "string"
+                          },
+                          "host": {
+                            "type": "string",
+                            "description": "来源地址；本地控制台为空"
+                          },
+                          "line": {
+                            "type": "string",
+                            "description": "终端，如 pts/0"
+                          },
+                          "new_host": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/change-notify": {
       "get": {
         "tags": [
@@ -3144,13 +3251,27 @@
           "alerts"
         ],
         "summary": "修改变更通知（记入操作日志 setting.update）",
-        "description": "关闭的类别仍记录变更事件、仍显示在“变更记录”中，只是不发送通知。默认全部开启。",
+        "description": "关闭的类别仍记录变更事件、仍显示在“变更记录”中，只是不发送通知。默认全部开启。省略的字段保持原值。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangeNotify"
+                "type": "object",
+                "properties": {
+                  "firewall": {
+                    "type": "boolean"
+                  },
+                  "accounts": {
+                    "type": "boolean"
+                  },
+                  "files": {
+                    "type": "boolean"
+                  },
+                  "logins": {
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -8424,7 +8545,8 @@
         "required": [
           "firewall",
           "accounts",
-          "files"
+          "files",
+          "logins"
         ],
         "properties": {
           "firewall": {
@@ -8438,6 +8560,10 @@
           "files": {
             "type": "boolean",
             "description": "重要文件"
+          },
+          "logins": {
+            "type": "boolean",
+            "description": "来自新地址的登录（修订第 276 条）"
           }
         }
       },
@@ -11659,6 +11785,35 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "logins": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "可选（修订第 276 条）：上次采集以来新增的登录，取自 /var/log/wtmp（USER_PROCESS 记录），每分钟一次；Agent 启动后先带上最近 20 条。\n只在有新登录时出现。面板去重保存，不进入实时状态，只通过 GET /servers/{id}/logins 给管理员\n",
+            "items": {
+              "type": "object",
+              "required": [
+                "time",
+                "user"
+              ],
+              "properties": {
+                "time": {
+                  "type": "integer",
+                  "description": "Unix 秒"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "host": {
+                  "type": "string",
+                  "description": "来源地址；本地控制台省略"
+                },
+                "line": {
+                  "type": "string",
+                  "description": "终端，如 pts/0"
                 }
               }
             }

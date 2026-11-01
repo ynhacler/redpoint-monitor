@@ -35,6 +35,9 @@ type Report struct {
 	Accounts *Accounts `json:"accounts,omitempty"`
 	// 可选：重要配置文件的元数据与摘要（修订第 274 条），不含文件内容。每分钟刷新一次。面板只用来记录变更，不在任何接口中返回
 	ConfigFiles []ConfigFile `json:"config_files,omitempty"`
+	// 可选：上次采集以来新增的登录（修订第 276 条），取自 /var/log/wtmp，每分钟采集一次；Agent 启动后先带上最近的若干条。
+	// 只在有新登录时出现；面板去重保存，只给管理员看
+	Logins []Login `json:"logins,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -230,6 +233,15 @@ type AccountUser struct {
 type AccountGroup struct {
 	Name    string   `json:"name"`
 	Members []string `json:"members"`
+}
+
+// Login 是一次登录（wtmp 中的 USER_PROCESS 记录，修订第 276 条）：SSH、控制台等。不含密码等任何凭据，
+// 也不含失败的登录（/var/log/btmp 只有 root 可读）。
+type Login struct {
+	Time int64  `json:"time"`           // Unix 秒
+	User string `json:"user"`           // 账号名
+	Host string `json:"host,omitempty"` // 来源地址（IP 或主机名）；本地控制台为空
+	Line string `json:"line,omitempty"` // 终端，如 pts/0
 }
 
 // ConfigFile 是一个重要配置文件（或目录）的元数据（修订第 274 条）。【安全】只有大小、修改时间与 SHA-256 摘要，
