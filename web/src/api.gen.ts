@@ -1245,6 +1245,21 @@ export interface Report {
     /** 内容摘要；读不到或超过 1 MiB 时省略 */
     sha256?: string
   }[]
+  /** 可选（修订第 278 条，设计 4.9.6）：系统更新与待重启，每分钟刷新一次；Agent 只读文件，不运行包管理器。 可用更新只在 Ubuntu（有 update-notifier）上有，其他系统省略 pending 与 security，表示未知 */
+  updates?: {
+    /** 需要重启：有 /run/reboot-required，或已安装比正在运行的更新的内核 */
+    reboot_required: boolean
+    /** 要求重启的软件包（reboot-required.pkgs） */
+    reboot_pkgs?: string[]
+    /** 已安装、尚未运行的更新内核版本 */
+    new_kernel?: string
+    /** 可安装的更新数 */
+    pending?: number
+    /** 其中的安全更新数 */
+    security?: number
+    /** 更新数的统计时间（Unix 秒）；系统没有自动刷新软件源时会很旧 */
+    checked_at?: number
+  }
   /** 可选（设计 33.5.1）：节点关注的进程各有几个在运行；没有关注进程或旧版 Agent 时省略。只有名称与数量，不含进程列表 */
   watch_procs?: {
     name: string

@@ -47,16 +47,17 @@ func TestReportUnchanged(t *testing.T) {
 		t.Errorf("X-Report-Features = %q", got)
 	}
 	full := fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"ports":[{"port":22,"proto":"tcp","addrs":["0.0.0.0"]}],
-		"firewall":{"tools":[{"name":"ufw","active":true}]},"proxies":[{"name":"xray","running":true}]}`, now)
+		"firewall":{"tools":[{"name":"ufw","active":true}]},"proxies":[{"name":"xray","running":true}],"updates":{"reboot_required":true}}`, now)
 	if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(full)); rec.Code != 204 {
 		t.Fatal(rec.Code, rec.Body)
 	}
-	partial = fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"unchanged":["ports","firewall","proxies","future_field"]}`, now+10)
+	partial = fmt.Sprintf(`{"timestamp":%d,"system":{"boot_id":"b"},"unchanged":["ports","firewall","proxies","updates","future_field"]}`, now+10)
 	if rec := do(h, "POST", "/api/v1/agent/report", tok, []byte(partial)); rec.Code != 204 {
 		t.Fatal(rec.Code, rec.Body)
 	}
 	snap := s.latest[id]
-	if snap == nil || len(snap.Report.Ports) != 1 || snap.Report.Firewall == nil || len(snap.Report.Proxies) != 1 || snap.Report.Unchanged != nil {
+	if snap == nil || len(snap.Report.Ports) != 1 || snap.Report.Firewall == nil || len(snap.Report.Proxies) != 1 ||
+		snap.Report.Updates == nil || !snap.Report.Updates.RebootRequired || snap.Report.Unchanged != nil {
 		t.Errorf("应补全省略的字段：%+v", snap)
 	}
 }

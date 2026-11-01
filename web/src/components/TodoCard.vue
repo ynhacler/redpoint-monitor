@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 待处理（修订第 241 条，需求说明书 T-021）：仪表板顶部把分散在各处、需要动手处理的事项列在一起，每项一行并直达处理的位置。
 //   离线节点、进行中的告警、流量将在本周期用完、7 天内到期的节点、7 天内结束的订阅、到了“扣费前提醒”天数内的订阅、
-//   未关联节点的云实例、待安装的节点
+//   未关联节点的云实例、待安装的节点、需要重启或有安全更新的节点（修订第 278 条）
 // 严重的排在前面，默认显示 5 项，其余点“全部”展开。没有事项时显示一行“没有待处理的事项”。
 // 订阅与云实例只有管理员能读；查看者只看到节点相关的事项。只读取已有接口，不新增请求类型。
 import { computed, onMounted, ref } from 'vue'
@@ -64,6 +64,13 @@ const items = computed<Todo[]>(() => {
       // 扣费只按订阅自己的“扣费前提醒”天数列出（不提醒的订阅不算待处理）
       out.push({ key: `subcharge${s.id}`, level: 'info', to: '/subscriptions', text: t('订阅 {name} 扣费：{when}', { name: s.name, when: when(charge) }) })
     }
+  }
+  for (const sv of installed.value) {
+    const u = sv.latest?.updates
+    if (!u || (!u.reboot_required && !u.security)) continue
+    const text = u.reboot_required && u.security ? t('{name} 需要重启，有 {n} 个安全更新', { name: sv.name, n: u.security })
+      : u.reboot_required ? t('{name} 需要重启', { name: sv.name }) : t('{name} 有 {n} 个安全更新', { name: sv.name, n: u.security! })
+    out.push({ key: `updates${sv.id}`, level: 'info', to: `/servers/${sv.id}`, text })
   }
   if (unlinked.value) {
     out.push({ key: 'unlinked', level: 'info', to: '/cloud?unlinked=1#instances', text: t('{n} 个云实例未关联节点', { n: unlinked.value }) })

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"vpsmon/internal/protocol"
 )
 
 // 定期报告的区间与发送时间（修订第 277 条）：周报为周一之前的 7 天，月报为上个月；当天到设定时间后才发送。
@@ -56,7 +57,11 @@ func TestDigestContent(t *testing.T) {
 	}
 	now := time.Now()
 	id, _, _ := s.store.CreateServer("hk-1", 1000e9, 1)
-	s.store.CreateServer("jp-1", 0, 1)
+	jp, _, _ := s.store.CreateServer("jp-1", 0, 1)
+	sec := 2
+	s.mu.Lock()
+	s.latest[jp] = &snapshot{ReceivedAt: now, At: now, Report: protocol.Report{Updates: &protocol.Updates{RebootRequired: true, Security: &sec}}}
+	s.mu.Unlock()
 	exp := now.AddDate(0, 0, 3).Format("2006-01-02")
 	if _, err := s.store.DB.Exec(`UPDATE servers SET expire_date = ? WHERE id = ?`, exp, id); err != nil {
 		t.Fatal(err)
@@ -76,7 +81,7 @@ func TestDigestContent(t *testing.T) {
 	}
 	var v digestView
 	json.Unmarshal(rec.Body.Bytes(), &v)
-	for _, want := range []string{"VPS Monitor 周报", "节点：共 2 台", "告警：触发 1 次（严重 1 次），最多：hk-1 1 次", "离线累计：hk-1 2 小时",
+	for _, want := range []string{"VPS Monitor 周报", "节点：共 2 台", "系统：需要重启 1 台（jp-1），有安全更新 1 台（jp-1 2）", "告警：触发 1 次（严重 1 次），最多：hk-1 1 次", "离线累计：hk-1 2 小时",
 		"本周期流量用量最高：", "hk-1 0%（0 B / 1 TB", "7 天内到期的节点：hk-1", "7 天内扣费的订阅 1 笔：Netflix 15.99 USD"} {
 		if !strings.Contains(v.Preview, want) {
 			t.Errorf("预览缺少 %q：\n%s", want, v.Preview)

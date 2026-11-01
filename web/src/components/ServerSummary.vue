@@ -68,6 +68,19 @@ async function renew() {
   }
 }
 
+// 系统更新与待重启（修订第 278 条）：可用更新只在 Ubuntu 上有；需要重启或有安全更新时标黄
+const updatesFact = computed<Fact>(() => {
+  const u = r.value?.updates
+  if (!u) return { k: '', v: '' }
+  const parts: string[] = []
+  if (u.pending != null) {
+    parts.push(u.pending === 0 ? t('已是最新') : u.security ? t('{n} 个可用（{s} 个安全更新）', { n: u.pending, s: u.security }) : t('{n} 个可用', { n: u.pending }))
+  }
+  if (u.reboot_required) parts.push(u.new_kernel ? t('需要重启（新内核 {k}）', { k: u.new_kernel }) : t('需要重启'))
+  else if (u.pending == null) parts.push(t('无需重启'))
+  return { k: t('系统更新'), v: parts.join(' · '), tone: u.reboot_required || (u.security ?? 0) > 0 ? 'warn' : '', wide: true }
+})
+
 const facts = computed<Fact[]>(() => {
   const x = s.value
   const out: Fact[] = []
@@ -78,6 +91,7 @@ const facts = computed<Fact[]>(() => {
   add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
   add({ k: t('内核'), v: sys.value?.kernel || '', mono: true })
   add({ k: t('虚拟化'), v: virt.value })
+  add(updatesFact.value)
   // ASN 与位置（设计 49，来自 ipinfo.io，需在“系统 → 监测”中打开）
   const ii = props.ipInfo ?? x.ip_info
   if (ii && ii.asn) {
