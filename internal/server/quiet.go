@@ -243,17 +243,20 @@ func (s *Server) quietView(now time.Time) quietView {
 	s.quiet.mu.Lock()
 	defer s.quiet.mu.Unlock()
 	c := s.quiet.cfg
-	tz := c.Timezone
-	if tz == "" {
-		// 面板本地时区的名称在多数部署中是 “Local”，显示 UTC 偏移更有用
-		_, off := now.In(time.Local).Zone()
-		sign := "+"
-		if off < 0 {
-			sign, off = "-", -off
-		}
-		tz = fmt.Sprintf("UTC%s%02d:%02d", sign, off/3600, off%3600/60)
+	return quietView{QuietHours: c, Active: c.active(now), EffectiveTimezone: effectiveTZ(c.Timezone, now), Held: len(s.quiet.held) + s.quiet.dropped}
+}
+
+// effectiveTZ 返回实际使用的时区名称：空表示面板本地时区，其名称在多数部署中是 “Local”，显示 UTC 偏移更有用。
+func effectiveTZ(tz string, now time.Time) string {
+	if tz != "" {
+		return tz
 	}
-	return quietView{QuietHours: c, Active: c.active(now), EffectiveTimezone: tz, Held: len(s.quiet.held) + s.quiet.dropped}
+	_, off := now.In(time.Local).Zone()
+	sign := "+"
+	if off < 0 {
+		sign, off = "-", -off
+	}
+	return fmt.Sprintf("UTC%s%02d:%02d", sign, off/3600, off%3600/60)
 }
 
 // handleGetQuietHours：GET /api/v1/settings/quiet-hours，admin（设计 16.5）。
