@@ -3117,6 +3117,64 @@
         }
       }
     },
+    "/settings/change-notify": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "变更通知（设计 4.9.5，修订第 275 条）：各类变更是否发送通知",
+        "responses": {
+          "200": {
+            "description": "当前设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeNotify"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "修改变更通知（记入操作日志 setting.update）",
+        "description": "关闭的类别仍记录变更事件、仍显示在“变更记录”中，只是不发送通知。默认全部开启。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeNotify"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeNotify"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/heartbeat": {
       "get": {
         "tags": [
@@ -8357,6 +8415,29 @@
           "mirrored": {
             "type": "boolean",
             "description": "全部文件已校验并保存在本面板（设计 27.5.3）"
+          }
+        }
+      },
+      "ChangeNotify": {
+        "type": "object",
+        "description": "变更通知（修订第 275 条）：各类变更是否发送通知；关闭时仍记录",
+        "required": [
+          "firewall",
+          "accounts",
+          "files"
+        ],
+        "properties": {
+          "firewall": {
+            "type": "boolean",
+            "description": "防火墙"
+          },
+          "accounts": {
+            "type": "boolean",
+            "description": "账号与权限组"
+          },
+          "files": {
+            "type": "boolean",
+            "description": "重要文件"
           }
         }
       },

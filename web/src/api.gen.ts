@@ -288,6 +288,16 @@ export interface AgentRelease {
   mirrored: boolean
 }
 
+/** 变更通知（修订第 275 条）：各类变更是否发送通知；关闭时仍记录 */
+export interface ChangeNotify {
+  /** 防火墙 */
+  firewall: boolean
+  /** 账号与权限组 */
+  accounts: boolean
+  /** 重要文件 */
+  files: boolean
+}
+
 export interface QuietHours {
   enabled: boolean
   /** HH:MM；晚于 end 表示跨午夜 */
@@ -2379,6 +2389,17 @@ export interface Paths {
     put: {
       body: QuietHours
       response: QuietHoursView
+    }
+  }
+  '/settings/change-notify': {
+    /** 变更通知（设计 4.9.5，修订第 275 条）：各类变更是否发送通知 */
+    get: {
+      response: ChangeNotify
+    }
+    /** 修改变更通知（记入操作日志 setting.update） */
+    put: {
+      body: ChangeNotify
+      response: ChangeNotify
     }
   }
   '/settings/heartbeat': {
