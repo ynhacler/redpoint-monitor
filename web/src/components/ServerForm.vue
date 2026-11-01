@@ -8,6 +8,8 @@ import {
 } from '../api'
 import { countryOptions } from '../countries'
 import { bytesToGB, fmtBytes } from '../format'
+import { t } from '../i18n'
+import { currencies } from '../subscriptions'
 import Flag from './Flag.vue'
 import NodeProbeSettings from './NodeProbeSettings.vue'
 
@@ -54,6 +56,8 @@ const commonTimezones = ['UTC', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo',
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const submitting = ref(false)
+// 可选币种与订阅一致；已保存的不在列表中的币种（早期手动填写）也保留为选项
+const currencyOptions = computed(() => currencies.includes(f.currency) ? currencies : [f.currency, ...currencies])
 // 编辑时如果已经填过 VPS 信息，默认展开
 const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.bandwidth_mbps || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
 // 注册核对：新建时默认收起（大多数情况不需要）；编辑时如果填过预期值则展开
@@ -328,7 +332,9 @@ async function remove() {
         <label>续费价格
           <div class="row">
             <input v-model="f.price" type="number" min="0" step="0.01" />
-            <input v-model="f.currency" class="currency" maxlength="3" placeholder="USD" />
+            <select v-model="f.currency" class="currency" :aria-label="t('币种')">
+              <option v-for="c in currencyOptions" :key="c" :value="c">{{ c }}</option>
+            </select>
           </div>
           <small v-if="fieldErrors.price || fieldErrors.currency" class="err">{{ fieldErrors.price || fieldErrors.currency }}</small>
         </label>
@@ -444,7 +450,7 @@ legend { font-weight: var(--weight-strong); padding: 0; margin-bottom: var(--spa
 /* 全局样式中输入框是 flex: 1（用于横排），在纵向的字段里会被拉高，这里取消 */
 .fields > label > input, .fields > label > select { flex: none; }
 .fields .row select { flex: 1; }
-.currency { flex: 0 0 72px; text-transform: uppercase; }
+.fields .row select.currency { flex: 0 0 96px; }
 small { font-size: var(--font-sm); }
 .err { color: var(--bad); }
 .link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
