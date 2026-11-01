@@ -424,6 +424,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/servers/{id}/containers/forget", accessAdmin, s.handleForgetContainers) // 不再提醒已停止的容器（修订第 166 条）
 	handle("PUT /api/v1/servers/{id}/port-baseline", accessAdmin, s.handlePortBaseline)          // 端口基线（修订第 170 条）
 	handle("POST /api/v1/servers/{id}/exposure-check", accessAdmin, s.handleExposureCheck)       // 公网可达检测（修订第 171 条）
+	handle("GET /api/v1/servers/{id}/logins", accessAdmin, s.handleListLogins)                   // 登录记录（修订第 276 条）
 	handle("POST /api/v1/servers/{id}/proxies/forget", accessAdmin, s.handleForgetProxies)       // 不再提醒没有运行的代理（修订第 169 条）
 	handle("GET /api/v1/servers/{id}/probe", accessAdmin, s.handleGetNodeProbe)
 	handle("PUT /api/v1/servers/{id}/probe", accessAdmin, s.handlePutNodeProbe)
@@ -505,6 +506,9 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.saveUnlock(sid, rep.Unlock, now) // 解锁检测结果（设计 50）
 		rep.Unlock = nil
 	}
+	// 【安全】登录记录单独保存、只给管理员，不进入实时状态（否则会随 /servers 返回）
+	logins := rep.Logins
+	rep.Logins = nil
 	at, _, old := pointTime(rep, now)
 	s.ingest(sid, rep, at, now, old, conf.loc)
 	// 时钟偏差由告警引擎按“Agent 时钟偏差”规则评估（设计 16.1），这里只记录测量值
@@ -516,6 +520,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 	w.WriteHeader(http.StatusNoContent)
+	s.trackLogins(sid, logins, now) // 登录记录（修订第 276 条）：补发的旧数据也保存，按内容去重
 	// 实时事件（设计 45.2）：补发的旧数据不改变实时状态，不推送
 	if !old {
 		s.trackContainers(sid, rep, now) // 容器已停止（修订第 166 条）
@@ -875,6 +880,11 @@ func (s *Server) maintenance(ctx context.Context) {
 				s.log.Error("system event prune failed", "component", "events", "err", err)
 			} else if n > 0 {
 				s.log.Info("expired system events deleted", "component", "events", "rows", n)
+			}
+			if n, err := s.store.PruneLogins(now); err != nil {
+				s.log.Error("login prune failed", "component", "logins", "err", err)
+			} else if n > 0 {
+				s.log.Info("expired logins deleted", "component", "logins", "rows", n)
 			}
 			if n, err := s.store.PruneAlertEvents(now); err != nil {
 				s.log.Error("alert prune failed", "component", "alert", "err", err)

@@ -296,6 +296,8 @@ export interface ChangeNotify {
   accounts: boolean
   /** 重要文件 */
   files: boolean
+  /** 来自新地址的登录（修订第 276 条） */
+  logins: boolean
 }
 
 export interface QuietHours {
@@ -1191,6 +1193,16 @@ export interface Report {
       listening: boolean
     })[]
   })[]
+  /** 可选（修订第 276 条）：上次采集以来新增的登录，取自 /var/log/wtmp（USER_PROCESS 记录），每分钟一次；Agent 启动后先带上最近 20 条。 只在有新登录时出现。面板去重保存，不进入实时状态，只通过 GET /servers/{id}/logins 给管理员 */
+  logins?: {
+    /** Unix 秒 */
+    time: number
+    user: string
+    /** 来源地址；本地控制台省略 */
+    host?: string
+    /** 终端，如 pts/0 */
+    line?: string
+  }[]
   /** 可选（修订第 274 条）：账号与权限组——能登录或 UID 为 0 的账号、sudo / wheel / admin 组成员（取自 /etc/passwd 与 /etc/group， 不读 /etc/shadow）。面板只用来记录变更（设计 4.9.5），不在任何接口中返回 */
   accounts?: {
     users: {
@@ -2391,6 +2403,33 @@ export interface Paths {
       response: QuietHoursView
     }
   }
+  '/servers/{id}/logins': {
+    /** 登录记录（修订第 276 条，设计 4.9.5），只给管理员 */
+    get: {
+      params: {
+        id: number
+      }
+      query?: {
+        /** 上一页的 next_cursor */
+        cursor?: string
+        limit?: number
+      }
+      response: {
+        items: {
+          id: number
+          /** 登录时间（Unix 秒，节点时钟） */
+          at: number
+          user: string
+          /** 来源地址；本地控制台为空 */
+          host: string
+          /** 终端，如 pts/0 */
+          line: string
+          new_host: boolean
+        }[]
+        next_cursor: string
+      }
+    }
+  }
   '/settings/change-notify': {
     /** 变更通知（设计 4.9.5，修订第 275 条）：各类变更是否发送通知 */
     get: {
@@ -2398,7 +2437,12 @@ export interface Paths {
     }
     /** 修改变更通知（记入操作日志 setting.update） */
     put: {
-      body: ChangeNotify
+      body: {
+        firewall?: boolean
+        accounts?: boolean
+        files?: boolean
+        logins?: boolean
+      }
       response: ChangeNotify
     }
   }

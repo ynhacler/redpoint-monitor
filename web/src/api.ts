@@ -369,6 +369,13 @@ export function listServerChanges(serverId: number, cursor?: string, limit = 20)
   return request('get', '/system-events', { query: { server_id: serverId, kind: 'change', cursor, limit } })
 }
 
+/** 节点的登录记录（修订第 276 条），只给管理员 */
+export function listServerLogins(serverId: number, cursor?: string, limit = 20) {
+  return request('get', '/servers/{id}/logins', { params: { id: serverId }, query: { cursor, limit } })
+}
+/** 一条登录记录 */
+export type LoginRecord = Res<'/servers/{id}/logins', 'get'>['items'][number]
+
 /** 全部告警规则（全局、分组、节点三层） */
 export async function listAlertRules() {
   return (await request('get', '/alert-rules')).items

@@ -291,6 +291,9 @@ var prober *probe.Prober
 // unlocker 处理面板的解锁检测请求（设计 50），在 main 中创建；检测项内置，面板只能请求“现在检测一次”。
 var unlocker *unlock.Runner
 
+// heldLogins 是启动时丢弃的那次采样中读到的登录（修订第 276 条），随第一份正式上报带上，不丢失。
+var heldLogins []protocol.Login
+
 // probeDisabled：本机存在 no-probe 文件时关闭全部网络探测（设计 42.6）。
 func probeDisabled() bool {
 	_, err := os.Stat(setup.DefaultPaths.NoProbeFile())
@@ -498,7 +501,8 @@ func run() {
 	r.Unlock = unlocker
 
 	// CPU 使用率与网速都是两次采样的差值（设计 5.2）。先丢弃一次采样，第一次正式上报就有网速，而不是 0。
-	_, _ = collect(col, false, nil)
+	warm, _ := collect(col, false, nil)
+	heldLogins = warm.Logins
 
 	// systemd 存活检测（设计 43.5）：Type=notify 启动后报告就绪；主循环每轮喂一次看门狗，
 	// 主循环卡住（而不是退出）超过 WatchdogSec 时由 systemd 重启。不在 systemd 下运行时为空操作。
@@ -627,6 +631,9 @@ func collect(col collector.Collector, final bool, procs []string) (rep protocol.
 	if err != nil {
 		alog.Printf("collect: %v", err)
 		return rep, false
+	}
+	if len(heldLogins) > 0 {
+		rep.Logins, heldLogins = append(heldLogins, rep.Logins...), nil
 	}
 	rep.Timestamp = time.Now().Unix()
 	rep.AgentVersion = version

@@ -29,14 +29,16 @@ const settingChangeNotify = "change_notify"
 
 // ChangeNotify 是各类变更是否发送通知（修订第 275 条）。关闭的类别仍记录事件，只是不通知；默认全部开启。
 // 装软件时 cron.d、systemd 等文件也会变化，常装软件的用户可以只关掉“重要文件”。
+// 登录（修订第 276 条）为来自新地址的登录；之前保存的设置中没有这一项时为开启。
 type ChangeNotify struct {
 	Firewall bool `json:"firewall"`
 	Accounts bool `json:"accounts"`
 	Files    bool `json:"files"`
+	Logins   bool `json:"logins"`
 }
 
 func defaultChangeNotify() ChangeNotify {
-	return ChangeNotify{Firewall: true, Accounts: true, Files: true}
+	return ChangeNotify{Firewall: true, Accounts: true, Files: true, Logins: true}
 }
 
 // wants 判断某一项（change_state.item）的变更是否通知。
@@ -48,6 +50,8 @@ func (c ChangeNotify) wants(item string) bool {
 		return c.Accounts
 	case changeFiles:
 		return c.Files
+	case changeLogins:
+		return c.Logins
 	}
 	return true
 }
@@ -95,9 +99,9 @@ func (s *Server) handleGetChangeNotify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.changes.notifyCfg())
 }
 
-// handlePutChangeNotify：PUT /api/v1/settings/change-notify，admin。修改记入操作日志 setting.update。
+// handlePutChangeNotify：PUT /api/v1/settings/change-notify，admin。省略的字段保持原值；修改记入操作日志 setting.update。
 func (s *Server) handlePutChangeNotify(w http.ResponseWriter, r *http.Request) {
-	var c ChangeNotify
+	c := s.changes.notifyCfg() // 省略的字段保持原值（旧版页面不认识新加的类别）
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
@@ -112,7 +116,7 @@ func (s *Server) handlePutChangeNotify(w http.ResponseWriter, r *http.Request) {
 	s.changes.notify = c
 	s.changes.mu.Unlock()
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "setting.update", Success: true,
-		Details: map[string]any{"key": settingChangeNotify, "firewall": c.Firewall, "accounts": c.Accounts, "files": c.Files}})
+		Details: map[string]any{"key": settingChangeNotify, "firewall": c.Firewall, "accounts": c.Accounts, "files": c.Files, "logins": c.Logins}})
 	writeJSON(w, c)
 }
 
@@ -263,7 +267,7 @@ func trackItem[T any](s *Server, sid int64, item, what string, cur T, diff func(
 	if len(lines) == 0 {
 		return // 只有顺序、可读性等不影响判断的变化
 	}
-	s.recordChange(sid, item, what, lines, sev, now)
+	s.recordChange(sid, item, fmt.Sprintf("%s有 %d 项变化", what, len(lines)), lines, sev, now)
 }
 
 // acctState 是账号与权限组用于比较的状态：账号名 → UID 与 shell，组名 → 成员。
@@ -435,21 +439,21 @@ func (s *Server) changeSwap(sid int64, item, state string, now time.Time) (prev 
 }
 
 // recordChange 记一条变更事件，并在告警开启、该类变更通知开启（修订第 275 条）、节点不在维护、没有静音“变更记录”时发送通知。
-// 通知只写类别与条数，细节留在事件中只给管理员看。
-func (s *Server) recordChange(sid int64, item, what string, lines []string, sev string, now time.Time) {
+// summary 如“防火墙有 3 项变化”，标题为“节点名 summary”。通知只写 summary，细节留在事件中只给管理员看。
+func (s *Server) recordChange(sid int64, item, summary string, lines []string, sev string, now time.Time) {
 	row, err := s.store.GetServer(sid)
 	if err != nil {
 		return
 	}
-	title := fmt.Sprintf("%s %s有 %d 项变化", row.Name, what, len(lines))
+	title := row.Name + " " + summary
 	s.recordEvent(eventChange, sev, sid, title, strings.Join(lines, "\n"), now)
-	s.log.Info("config changed", "component", "changes", "server_id", sid, "item", what, "count", len(lines))
+	s.log.Info("config changed", "component", "changes", "server_id", sid, "item", item, "count", len(lines))
 	if !s.alertsEnabled() || !s.changes.notifyCfg().wants(item) || s.alerts.silenceFor(*row, SilenceMaintenance, "", now) != nil ||
 		s.alerts.silenceFor(*row, SilenceMute, ruleKeyChange, now) != nil {
 		return
 	}
 	m := notifyMessage{Kind: NotifyChange, ServerID: sid, ServerName: row.Name, RuleKey: ruleKeyChange, Type: eventChange,
-		Severity: sev, StartedAt: now, Message: fmt.Sprintf("%s有 %d 项变化（详情见 Web 节点详情 · 安全）", what, len(lines))}
+		Severity: sev, StartedAt: now, Message: summary + "（详情见 Web 节点详情 · 安全）"}
 	// 【安全】账号名、文件路径与防火墙规则一样只在事件正文中（只给 Web 管理员），通知中只有类别与条数
 	if s.publicURL != "" {
 		m.Link = s.publicURL + "/servers/" + itoa64(sid) + "?tab=security"

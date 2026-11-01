@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// 变更通知（修订第 275 条，设计 4.9.5）：各类变更是否发送通知。关闭的类别仍记录在节点详情“安全”页的“变更记录”中。
+// 变更通知（修订第 275、276 条，设计 4.9.5）：各类变更是否发送通知。关闭的类别仍记录在节点详情“安全”页的“变更记录”中。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { errorText, getChangeNotify, saveChangeNotify, type ChangeNotify } from '../api'
 import { t } from '../i18n'
 import SaveState, { saveStatus } from './SaveState.vue'
 
-const form = reactive<ChangeNotify>({ firewall: true, accounts: true, files: true })
+const form = reactive<ChangeNotify>({ firewall: true, accounts: true, files: true, logins: true })
 const snap = ref('')
 const saving = ref(false)
 const saved = ref(false)
@@ -16,6 +16,7 @@ const items: { key: keyof ChangeNotify; label: string; hint: string }[] = [
   { key: 'firewall', label: '防火墙', hint: '启用与停用、入站默认策略、规则增删' },
   { key: 'accounts', label: '账号与权限组', hint: '可登录账号、UID 0、sudo 等管理员组成员' },
   { key: 'files', label: '重要文件', hint: 'SSH、sudo、定时任务、systemd 等；装软件时也可能变化' },
+  { key: 'logins', label: '新地址登录', hint: '来自该节点从未出现过的地址的登录；家庭宽带地址常变时可关闭' },
 ]
 
 function fill(v: ChangeNotify) {

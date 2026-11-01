@@ -9,6 +9,7 @@ import Chart, { type Series } from '../components/Chart.vue'
 import CloudInstanceCard from '../components/CloudInstanceCard.vue'
 import ContainersCard from '../components/ContainersCard.vue'
 import ChangesCard from '../components/ChangesCard.vue'
+import LoginsCard from '../components/LoginsCard.vue'
 import FirewallCard from '../components/FirewallCard.vue'
 import PortBaselineCard from '../components/PortBaselineCard.vue'
 import ProxiesCard from '../components/ProxiesCard.vue'
@@ -399,6 +400,9 @@ const charts = computed(() => [
         </section>
         <section class="section">
           <ChangesCard :server-id="liveServer.id" />
+        </section>
+        <section class="section">
+          <LoginsCard :server-id="liveServer.id" />
         </section>
       </template>
 
