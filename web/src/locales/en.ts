@@ -1343,4 +1343,11 @@ export const en: Record<string, string> = {
   '防火墙（启用与停用、入站默认策略、规则增删）、可登录账号与 sudo 等管理员组、SSH / sudo / 定时任务等重要文件（只比较摘要，不上传内容）；有变化时记一条并按告警设置通知（通知中不含细节）。保留 180 天。': 'Firewall (enabled or stopped, default inbound policy, rules added or removed), login accounts and admin groups such as sudo, and key files for SSH, sudo and scheduled tasks (compared by hash; contents are never uploaded). Each change is recorded and notified according to your alert settings (notifications leave out details). Kept for 180 days.',
   '还没有变更。': 'No changes yet.',
   '加载更多': 'Load more',
+  '变更通知': 'Change notifications',
+  '节点上的配置有变化时通知（通知中只有类别与条数，细节在节点详情“安全”页）。关闭的类别仍会记录，只是不发送。': 'Notify when configuration on a node changes (notifications only say the category and count; details are on the node’s Security tab). Turned-off categories are still recorded, just not sent.',
+  '账号与权限组': 'Accounts and admin groups',
+  '重要文件': 'Key files',
+  '启用与停用、入站默认策略、规则增删': 'Enabled or stopped, default inbound policy, rules added or removed',
+  '可登录账号、UID 0、sudo 等管理员组成员': 'Login accounts, UID 0, members of sudo and other admin groups',
+  'SSH、sudo、定时任务、systemd 等；装软件时也可能变化': 'SSH, sudo, scheduled tasks, systemd and more; installing software can change these too',
 }

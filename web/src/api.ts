@@ -4,7 +4,7 @@ import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
 export type {
-  AgentRelease, AlertEvent, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, FxRates, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
+  AgentRelease, AlertEvent, ChangeNotify, HealthSummary, IPInfo, ListenSetting, ListenSettingInput, SiteSetting, SiteView, SSLMonitor, UnlockView, Subscription, SubscriptionInput, FxRates, APIKey, APIKeyInput, AppAccessKey, AppAccessKeyInput, AppDevice, CloudAccount, CloudAccountInput, CloudCheckItem, CloudCost, CloudInstance, CloudTrafficPool, AlertRule, Delivery, EnrollCodeView, InstallCommand, Me, MetricPoint, NotifyChannel,
   LatencyView, NodeProbe, NotifyChannelInput, ProbeSettings, ProbeTarget, ProbeTargetInput, QuietHours, QuietHoursView, Report, ServerView, Silence, ServiceMonitor, ServiceMonitorInput, TrafficView, UpgradeRollout, UpgradeTask,
 } from './api.gen'
 
@@ -443,6 +443,15 @@ export function getQuietHours() {
 /** 保存免打扰时段 */
 export function saveQuietHours(v: G.QuietHours) {
   return request('put', '/settings/quiet-hours', { body: v })
+}
+
+/** 变更通知（修订第 275 条） */
+export function getChangeNotify() {
+  return request('get', '/settings/change-notify')
+}
+/** 保存变更通知 */
+export function saveChangeNotify(v: G.ChangeNotify) {
+  return request('put', '/settings/change-notify', { body: v })
 }
 
 /** 面板心跳（设计 1.10.3，修订第 159 条） */

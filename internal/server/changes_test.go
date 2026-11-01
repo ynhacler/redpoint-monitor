@@ -195,3 +195,45 @@ func TestAccountChangesNotExposed(t *testing.T) {
 		}
 	}
 }
+
+// 变更通知按类别开关（修订第 275 条）：关闭的类别仍记事件但不通知；设置保存后重启仍有效。
+func TestChangeNotifySetting(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	hook := newReceiver(t)
+	if rec := do(h, "POST", "/api/v1/notification-channels", admin,
+		[]byte(`{"type":"webhook","name":"all","min_severity":"info","config":{"url":"`+hook.srv.URL+`/all"}}`)); rec.Code != 201 {
+		t.Fatal(rec.Body)
+	}
+	var got ChangeNotify
+	json.Unmarshal(do(h, "GET", "/api/v1/settings/change-notify", admin, nil).Body.Bytes(), &got)
+	if got != defaultChangeNotify() {
+		t.Fatalf("默认应全部开启：%+v", got)
+	}
+	if rec := do(h, "PUT", "/api/v1/settings/change-notify", admin, []byte(`{"firewall":true,"accounts":true,"files":false}`)); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body)
+	}
+	if rec := do(h, "PUT", "/api/v1/settings/change-notify", admin, []byte(`{"files":false,"extra":1}`)); rec.Code != 400 {
+		t.Errorf("未知字段应返回 400：%d", rec.Code)
+	}
+	id, _, _ := s.store.CreateServer("notify-host", 0, 1)
+	now := time.Now()
+	s.recordChange(id, changeFiles, "重要文件", []string{"/etc/cron.d/x 已修改"}, SeverityInfo, now)
+	s.notify.wg.Wait()
+	if hook.count() != 0 {
+		t.Fatal("关闭的类别不应通知")
+	}
+	s.recordChange(id, changeAcct, "账号与权限组", []string{"sudo 组新增成员：eve"}, SeverityWarning, now)
+	s.notify.wg.Wait()
+	if hook.count() != 1 {
+		t.Fatalf("开启的类别应通知：%d", hook.count())
+	}
+	evs, _, _ := s.store.ListSystemEvents(0, 10, SystemEventFilter{Kind: eventChange}, nil)
+	if len(evs) != 2 {
+		t.Errorf("两类都应记事件：%d", len(evs))
+	}
+	s.changes = newChangeWatch() // 模拟重启
+	if err := s.loadChangeNotify(); err != nil || s.changes.notifyCfg().Files {
+		t.Errorf("重启后应保持关闭：%v %+v", err, s.changes.notifyCfg())
+	}
+}

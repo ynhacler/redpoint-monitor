@@ -155,6 +155,9 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 	s.notify, s.noise, s.totp, s.health = newNotifier(s), newAlertNoise(), newTOTPFlows(), newPanelHealth(store.Dir)
 	s.cwatch, s.pwatch, s.pbase = newContainerWatch(), newProxyWatch(), newPortBaselines()
 	s.changes = newChangeWatch()
+	if err := s.loadChangeNotify(); err != nil {
+		return nil, err
+	}
 	s.exposure = newExposureState()
 	s.ipinfoBase, s.ipinfoHTTP = "https://ipinfo.io", &http.Client{Timeout: 15 * time.Second}
 	s.fxURL, s.fxHTTP = "https://open.er-api.com/v6/latest/CNY", &http.Client{Timeout: 15 * time.Second}
@@ -360,6 +363,8 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/settings/listen/close-old", accessAdmin, s.handleCloseOldListen)
 	handle("PUT /api/v1/settings/site", accessAdmin, s.handlePutSite)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
+	handle("GET /api/v1/settings/change-notify", accessAdmin, s.handleGetChangeNotify) // 变更通知（修订第 275 条）
+	handle("PUT /api/v1/settings/change-notify", accessAdmin, s.handlePutChangeNotify)
 	handle("GET /api/v1/settings/heartbeat", accessAdmin, s.handleGetHeartbeat)
 	handle("PUT /api/v1/settings/heartbeat", accessAdmin, s.handlePutHeartbeat)
 	handle("POST /api/v1/settings/heartbeat/test", accessAdmin, s.handleTestHeartbeat)
