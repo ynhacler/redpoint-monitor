@@ -1372,4 +1372,10 @@ export const en: Record<string, string> = {
   '发送中…': 'Sending…',
   '立即发送一次': 'Send now',
   '已发送，请到渠道中查看': 'Sent — check your channels',
+  // 节点标志（修订第 279 条）
+  '网络线路': 'Network route',
+  '双栈：IPv4 + IPv6': 'Dual stack: IPv4 + IPv6',
+  '仅 IPv4': 'IPv4 only',
+  '仅 IPv6': 'IPv6 only',
+  '没有默认路由': 'No default route',
 }

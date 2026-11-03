@@ -11,6 +11,7 @@ import { t } from '../i18n'
 import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
 import Icon from './Icon.vue'
+import NodeBadges from './NodeBadges.vue'
 import Ring from './Ring.vue'
 import StatusDot from './StatusDot.vue'
 
@@ -86,6 +87,8 @@ const diskTip = computed(() => {
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
         <span :class="s.status === 'offline' ? 'bad' : ''">{{ offlineFor }}</span>
       </div>
+      <!-- v4 / v6 与网络线路（修订第 279 条）：单独一行，不挤占名称 -->
+      <NodeBadges :server="s" class="badge-row" />
     </div>
 
     <!-- 离线时不显示旧指标：旧数值看起来像实时数据，会误导（设计 43.6） -->
@@ -166,6 +169,7 @@ const diskTip = computed(() => {
 /* 名称至少留约 8 个字的宽度；放不下时右侧信息换到下一行，不再把名称挤成“tok…”（修订第 230 条） */
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-3); flex-wrap: wrap;
   padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.badge-row { flex-basis: 100%; }
 .title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 8em; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 18px; }

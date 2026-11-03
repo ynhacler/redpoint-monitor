@@ -1030,6 +1030,8 @@ var migrations = []string{
 	);
 	CREATE INDEX logins_host ON logins (server_id, host);
 	CREATE INDEX logins_at ON logins (server_id, at);`,
+	// 迁移 62：网络线路标签（修订第 279 条），如 CN2 GIA、CMIN2，逗号分隔
+	`ALTER TABLE servers ADD COLUMN line_tags TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
@@ -1137,6 +1139,8 @@ type ServerRow struct {
 	TrafficTimezone string `json:"traffic_timezone"`
 	// WatchProcs 是关注的进程名，下发给 Agent 统计是否在运行（设计 33.5.1）
 	WatchProcs []string `json:"watch_procs"`
+	// LineTags 是用户标注的网络线路，如 CN2 GIA、CMIN2（修订第 279 条）；没有时为空数组
+	LineTags []string `json:"line_tags"`
 	// Probe 是节点自己的三网延迟设置（设计 42.3.2）；通过 /servers/{id}/probe 读写，不在节点 JSON 中
 	Probe         NodeProbe `json:"-"`
 	TrafficUnit   string    `json:"traffic_unit"`   // decimal / binary（设计 5.8）

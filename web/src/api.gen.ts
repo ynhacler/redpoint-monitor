@@ -228,6 +228,8 @@ export interface CreateServerRequest {
   report_interval_s?: 0 | 5 | 10 | 15 | 30 | 60
   /** 关注的进程名（与 /proc/PID/comm 比较，超过 15 个字符时比较前 15 个），Agent 统计是否在运行（设计 33.5.1）；修改节点时省略表示不变 */
   watch_procs?: string[]
+  /** 网络线路标签，由用户标注，显示在仪表板的节点上（修订第 279 条，设计 27.2）；修改节点时省略表示不变 */
+  line_tags?: string[]
   /** 计费时区（IANA 名称）；空或省略表示面板时区。只影响之后写入的流量（设计 5.4） */
   traffic_timezone?: string
   /** 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 */
@@ -554,6 +556,8 @@ export interface ServerView {
   report_interval_s: number
   /** 关注的进程名（设计 33.5.1） */
   watch_procs: string[]
+  /** 网络线路标签，如 CN2 GIA、CMIN2（修订第 279 条）；没有时为空数组 */
+  line_tags: string[]
   /** 计费时区（IANA），空表示面板时区 */
   traffic_timezone: string
   /** 续费价格 × 100 */
@@ -1085,6 +1089,11 @@ export interface Report {
     counter_bits?: 32 | 64
     /** 可选：本机是否启用了远程升级（设计 29.13）；省略表示旧版 Agent、未知 */
     remote_upgrade?: boolean
+    /** 可选（修订第 279 条，设计 4.3）：本机的 IP 协议栈。ipv4：有 IPv4 默认路由；ipv6：有全局 IPv6 地址与 IPv6 默认路由。 仪表板据此显示 v4 / v6 标志。省略表示旧版 Agent、未知 */
+    ip_stack?: {
+      ipv4: boolean
+      ipv6: boolean
+    }
   }
   cpu: {
     usage: number

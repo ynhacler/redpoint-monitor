@@ -306,6 +306,14 @@ type System struct {
 	// 可选：本机是否启用了远程升级（装有 updater 且没有 no-remote-upgrade，设计 29.13）。
 	// 省略表示旧版 Agent、未知；面板据此在创建升级任务时直接说明原因，而不是让任务一直等待。
 	RemoteUpgrade *bool `json:"remote_upgrade,omitempty"`
+	// 可选：本机的 IP 协议栈（修订第 279 条），仪表板据此显示 v4 / v6 标志；省略表示旧版 Agent、未知
+	IPStack *IPStack `json:"ip_stack,omitempty"`
+}
+
+// IPStack 是本机的 IP 协议栈：IPv4 为有 IPv4 默认路由，IPv6 为有全局 IPv6 地址与 IPv6 默认路由。
+type IPStack struct {
+	IPv4 bool `json:"ipv4"`
+	IPv6 bool `json:"ipv6"`
 }
 
 // CPU 是 CPU 使用率、核数、负载、温度与各类时间占比（设计 4.4）。

@@ -9,6 +9,7 @@ import {
 import { countryOptions } from '../countries'
 import { bytesToGB, fmtBytes } from '../format'
 import { t } from '../i18n'
+import { linePresets } from '../lines'
 import { currencies } from '../subscriptions'
 import Flag from './Flag.vue'
 import NodeProbeSettings from './NodeProbeSettings.vue'
@@ -48,6 +49,7 @@ const f = reactive({
   enroll_ttl: '24h', verify_mode: sv?.verify_mode ?? 'warn',
   report_interval_s: String(sv?.report_interval_s || 10),
   watch_procs: (sv?.watch_procs ?? []).join(', '),
+  line_tags: [...(sv?.line_tags ?? [])] as string[],
 })
 // 常见的服务商计费时区（设计 5.4），也可以输入其他 IANA 时区名
 const commonTimezones = ['UTC', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Seoul',
@@ -56,10 +58,23 @@ const commonTimezones = ['UTC', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo',
 const fieldErrors = ref<Record<string, string>>({})
 const formError = ref('')
 const submitting = ref(false)
+// 网络线路标签（修订第 279 条）：点选常见线路，也可输入其他名称后回车添加
+const customLine = ref('')
+const lineChoices = computed(() => [...linePresets, ...f.line_tags.filter((x) => !linePresets.includes(x))])
+function toggleLine(tag: string) {
+  const i = f.line_tags.indexOf(tag)
+  if (i >= 0) f.line_tags.splice(i, 1)
+  else if (f.line_tags.length < 6) f.line_tags.push(tag)
+}
+function addLine() {
+  const tag = customLine.value.replace(/[,，<>]/g, ' ').trim().replace(/\s+/g, ' ').slice(0, 20)
+  if (tag && !f.line_tags.includes(tag)) toggleLine(tag)
+  customLine.value = ''
+}
 // 可选币种与订阅一致；已保存的不在列表中的币种（早期手动填写）也保留为选项
 const currencyOptions = computed(() => currencies.includes(f.currency) ? currencies : [f.currency, ...currencies])
 // 编辑时如果已经填过 VPS 信息，默认展开
-const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.bandwidth_mbps || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
+const showVps = ref(!!(sv && (sv.provider || sv.plan || sv.region || sv.bandwidth_mbps || sv.line_tags?.length || sv.traffic_limit_bytes || sv.price_cents || sv.expire_date)))
 // 注册核对：新建时默认收起（大多数情况不需要）；编辑时如果填过预期值则展开
 const showVerify = ref(!!(sv && (sv.expected_hostname || sv.expected_ipv4 || sv.expected_ipv6 || sv.verify_mode === 'strict')))
 
@@ -112,6 +127,7 @@ function buildInput(): CreateServerInput {
     bandwidth_mbps: num(f.bandwidth_mbps),
     report_interval_s: num(f.report_interval_s) as CreateServerInput['report_interval_s'],
     watch_procs: f.watch_procs.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
+    line_tags: f.line_tags,
     traffic_limit_gb: num(f.traffic_limit_gb),
     traffic_reset_day: num(f.traffic_reset_day),
     traffic_timezone: f.traffic_timezone.trim(),
@@ -294,6 +310,17 @@ async function remove() {
           <small v-if="fieldErrors.bandwidth_mbps" class="err">{{ fieldErrors.bandwidth_mbps }}</small>
           <small v-else class="muted">服务商标称的端口速率</small>
         </label>
+        <div class="wide lines">
+          <span>网络线路</span>
+          <div class="chips">
+            <button v-for="l in lineChoices" :key="l" type="button" class="chip"
+              :class="{ on: f.line_tags.includes(l) }" :aria-pressed="f.line_tags.includes(l)"
+              :disabled="!f.line_tags.includes(l) && f.line_tags.length >= 6" @click="toggleLine(l)">{{ l }}</button>
+            <input v-model="customLine" class="custom" maxlength="20" placeholder="其他，回车添加" @keydown.enter.prevent="addLine" @blur="addLine" />
+          </div>
+          <small v-if="fieldErrors.line_tags" class="err">{{ fieldErrors.line_tags }}</small>
+          <small v-else class="muted">显示在仪表板的节点上，最多 6 个；IPv4 / IPv6 由 Agent 自动识别</small>
+        </div>
         <label>月流量（{{ f.traffic_unit === 'binary' ? 'GiB' : 'GB' }}）
           <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" placeholder="不填表示不限" />
           <small v-if="fieldErrors.traffic_limit_gb" class="err">{{ fieldErrors.traffic_limit_gb }}</small>
@@ -450,6 +477,13 @@ legend { font-weight: var(--weight-strong); padding: 0; margin-bottom: var(--spa
 /* 全局样式中输入框是 flex: 1（用于横排），在纵向的字段里会被拉高，这里取消 */
 .fields > label > input, .fields > label > select { flex: none; }
 .fields .row select { flex: 1; }
+.lines { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-sm); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.chip { flex: none; padding: 2px var(--space-3); border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font: inherit; font-size: var(--font-sm); }
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--surface-2); }
+.chip:disabled { opacity: .5; }
+.chips .custom { flex: 0 1 140px; min-width: 100px; }
 .fields .row select.currency { flex: 0 0 96px; }
 small { font-size: var(--font-sm); }
 .err { color: var(--bad); }

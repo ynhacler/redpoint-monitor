@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,12 @@ import (
 // billingPeriods 是续费周期的可选值（设计 1.2.3、1.2.5）；空字符串表示未填。
 var billingPeriods = map[string]bool{"": true, "monthly": true, "quarterly": true, "semiannually": true,
 	"annually": true, "biennially": true, "triennially": true, "one_time": true}
+
+// 网络线路标签（修订第 279 条）的个数与长度上限。
+const (
+	maxLineTags   = 6
+	maxLineTagLen = 20
+)
 
 var (
 	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]{0,252})$`)
@@ -58,6 +65,7 @@ type createServerBody struct {
 	EnrollTTL        string   `json:"enroll_ttl"`  // 1h / 24h / 7d，默认 24h
 	VerifyMode       string   `json:"verify_mode"` // warn / strict，默认 warn
 	WatchProcs       []string `json:"watch_procs"` // 关注的进程名；修改时省略表示不变（设计 33.5.1）
+	LineTags         []string `json:"line_tags"`   // 网络线路标签；修改时省略表示不变（修订第 279 条）
 }
 
 // validate 校验并规范化输入，返回字段级错误（设计 43.4 validation_failed）。
@@ -182,6 +190,25 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		}
 		joined := strings.Join(names, ",")
 		in.WatchProcs = &joined
+	}
+	if b.LineTags != nil {
+		var tags []string
+		for _, t := range b.LineTags {
+			t = strings.Join(strings.Fields(t), " ")
+			if t == "" || slices.Contains(tags, t) {
+				continue
+			}
+			if utf8.RuneCountInString(t) > maxLineTagLen || strings.ContainsAny(t, ",<>") {
+				bad("line_tags", fmt.Sprintf("线路标签最多 %d 个字符，不能包含逗号与尖括号：%s", maxLineTagLen, t))
+				break
+			}
+			tags = append(tags, t)
+		}
+		if len(tags) > maxLineTags {
+			bad("line_tags", fmt.Sprintf("每个节点最多 %d 个线路标签", maxLineTags))
+		}
+		joined := strings.Join(tags, ",")
+		in.LineTags = &joined
 	}
 	in.ResetDay = 1
 	if b.TrafficResetDay != nil {
