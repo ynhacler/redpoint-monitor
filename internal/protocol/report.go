@@ -38,6 +38,9 @@ type Report struct {
 	// 可选：上次采集以来新增的登录（修订第 276 条），取自 /var/log/wtmp，每分钟采集一次；Agent 启动后先带上最近的若干条。
 	// 只在有新登录时出现；面板去重保存，只给管理员看
 	Logins []Login `json:"logins,omitempty"`
+	// 可选：系统更新与待重启（修订第 278 条，设计 4.9.6），取自 reboot-required、/lib/modules 与 Ubuntu 的 update-notifier，
+	// 每分钟刷新一次；不运行包管理器
+	Updates *Updates `json:"updates,omitempty"`
 	// 可选：面板要求关注的进程各有几个在运行（设计 33.5.1）；面板没有下发进程名时省略
 	WatchProcs []ProcWatch `json:"watch_procs,omitempty"`
 	// 可选：上一轮三网延迟探测的结果（设计 42.3.2），每轮只随一份上报带回一次
@@ -60,8 +63,8 @@ const (
 )
 
 // UnchangedFields 是可以因未变化而省略的字段（JSON 名）。
-// 面板不认识的名称忽略即可（旧版面板不使用 accounts / config_files）。
-var UnchangedFields = []string{"ports", "firewall", "proxies", "accounts", "config_files"}
+// 面板不认识的名称忽略即可（旧版面板不使用 accounts / config_files / updates）。
+var UnchangedFields = []string{"ports", "firewall", "proxies", "accounts", "config_files", "updates"}
 
 // Extra 是扩展指标（设计 4.10）：都来自无需特权的只读来源，读不到的项省略。
 // 速率为与上一次采样之间的平均值，首次采样时省略。
@@ -242,6 +245,16 @@ type Login struct {
 	User string `json:"user"`           // 账号名
 	Host string `json:"host,omitempty"` // 来源地址（IP 或主机名）；本地控制台为空
 	Line string `json:"line,omitempty"` // 终端，如 pts/0
+}
+
+// Updates 是系统更新与待重启（修订第 278 条）。可用更新只在 Ubuntu（有 update-notifier）上有，其他系统省略 pending / security，表示未知。
+type Updates struct {
+	RebootRequired bool     `json:"reboot_required"`       // 需要重启：有 reboot-required，或装有更新的内核
+	RebootPkgs     []string `json:"reboot_pkgs,omitempty"` // 要求重启的软件包（reboot-required.pkgs），最多 20 个
+	NewKernel      string   `json:"new_kernel,omitempty"`  // 已安装、尚未运行的更新内核版本
+	Pending        *int     `json:"pending,omitempty"`     // 可安装的更新数
+	Security       *int     `json:"security,omitempty"`    // 其中的安全更新数
+	CheckedAt      int64    `json:"checked_at,omitempty"`  // 更新数的统计时间（update-notifier 生成文件的时间，Unix 秒）
 }
 
 // ConfigFile 是一个重要配置文件（或目录）的元数据（修订第 274 条）。【安全】只有大小、修改时间与 SHA-256 摘要，

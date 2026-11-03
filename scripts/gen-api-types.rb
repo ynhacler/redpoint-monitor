@@ -159,7 +159,8 @@ $doc["paths"].each do |path, item|
 end
 out << "}\n"
 
-json = JSON.pretty_generate($doc) + "\n"
+# 空数组 / 空对象统一写成 [] / {}：json 2.10 之前展开成多行，不同 Ruby 生成的文件才能一致
+json = JSON.pretty_generate($doc).gsub(/\[\s+\]/, "[]").gsub(/\{\s+\}/, "{}") + "\n"
 
 # 不一致时指出第一处不同的行，便于判断是没重新生成还是 Ruby / json 版本差异
 def check_same(path, current, want)

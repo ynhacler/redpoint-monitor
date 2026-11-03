@@ -1,6 +1,6 @@
 // 待处理（修订第 242 条，与 Web 仪表板的 TodoCard 同一规则，修订第 241 条）：首页把需要动手处理的事项列在一起，点一行直达。
 //   离线节点、进行中的告警、本周期流量已用完或预计重置前用完、7 天内到期的节点、7 天内结束的订阅、
-//   到了“扣费前提醒”天数内的订阅（不提醒的不列出）、未关联节点的云实例
+//   到了“扣费前提醒”天数内的订阅（不提醒的不列出）、未关联节点的云实例、需要重启或有安全更新的节点（修订第 278 条）
 // 严重的在前，默认 5 项、其余展开；没有事项时一行“没有待处理的事项”。订阅与云实例只在授权“全部节点”的设备上有数据。
 import 'package:flutter/material.dart';
 
@@ -86,6 +86,13 @@ List<Todo> buildTodos(List<ServerView> servers, {List<Subscription> subs = const
     } else if (charge != null && charge >= 0 && s.remindDays > 0 && charge <= s.remindDays) {
       out.add(Todo('info', '订阅 ${s.name} 扣费：${_when(charge)}', TodoTarget.subscriptions));
     }
+  }
+  for (final s in installed) {
+    final u = s.latest?.updates;
+    final sec = u?.security ?? 0;
+    if (u == null || (!u.rebootRequired && sec == 0)) continue;
+    final text = u.rebootRequired && sec > 0 ? '${s.name} 需要重启，有 $sec 个安全更新' : u.rebootRequired ? '${s.name} 需要重启' : '${s.name} 有 $sec 个安全更新';
+    out.add(Todo('info', text, TodoTarget.server, serverId: s.id));
   }
   if (unlinked > 0) out.add(Todo('info', '$unlinked 个云实例未关联节点', TodoTarget.cloud));
   const rank = {'bad': 0, 'warn': 1, 'info': 2};

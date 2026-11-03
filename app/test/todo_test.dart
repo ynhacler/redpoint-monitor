@@ -43,6 +43,23 @@ void main() {
     expect(todos.last.target, TodoTarget.cloud);
   });
 
+  test('待处理：需要重启或有安全更新的节点（修订第 278 条）', () {
+    ServerView withUpdates(int id, String name, Map<String, dynamic> u) => ServerView.fromJson({
+          'id': id, 'name': name, 'status': 'online', 'last_seen_at': 1,
+          'traffic': {'cycle_start': '2026-10-01', 'cycle_end': '2026-11-01', 'used': 0, 'limit': 0, 'unit': 'decimal'},
+          'latest': {'cpu': {'usage': 1.0, 'cores': 1}, 'memory': {'usage': 1.0, 'used': 1, 'total': 2}, 'disk': [], 'network': [], 'updates': u},
+        });
+    final servers = [
+      withUpdates(1, '东京', {'reboot_required': true, 'new_kernel': '6.8.0-51-generic', 'pending': 5, 'security': 2}),
+      withUpdates(2, '香港', {'reboot_required': true}),
+      withUpdates(3, '首尔', {'reboot_required': false, 'pending': 3, 'security': 1}),
+      withUpdates(4, '新加坡', {'reboot_required': false, 'pending': 4, 'security': 0}),
+    ];
+    expect([for (final x in buildTodos(servers, now: now)) x.text], ['东京 需要重启，有 2 个安全更新', '香港 需要重启', '首尔 有 1 个安全更新']);
+    expect([for (final s in servers) s.latest!.updates!.text],
+        ['5 个可用（2 个安全更新） · 需要重启（新内核 6.8.0-51-generic）', '需要重启', '3 个可用（1 个安全更新）', '4 个可用']);
+  });
+
   testWidgets('待处理卡片：没有事项时一行说明；默认收成一行显示最紧急的一项，点开看全部（修订第 248 条）', (tester) async {
     Todo row(int i) => Todo('info', '事项 $i', TodoTarget.subscriptions);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: TodoCard(items: const [], onOpen: (_) {}))));

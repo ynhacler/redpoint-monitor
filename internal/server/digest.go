@@ -166,6 +166,7 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		pct        float64
 	}
 	var traffic []usage
+	var reboot, security []string // 系统更新（修订第 278 条）
 	for _, row := range rows {
 		names[row.ID] = row.Name
 		v, err := s.viewOf(row, now)
@@ -174,6 +175,14 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		}
 		if v.Status == "offline" {
 			offline = append(offline, row.Name)
+		}
+		if v.Latest != nil && v.Latest.Updates != nil {
+			if u := v.Latest.Updates; u.RebootRequired {
+				reboot = append(reboot, row.Name)
+			}
+			if u := v.Latest.Updates; u.Security != nil && *u.Security > 0 {
+				security = append(security, fmt.Sprintf("%s %d", row.Name, *u.Security))
+			}
 		}
 		if t := v.Traffic; t.Limit > 0 {
 			pct := float64(t.Used) / float64(t.Limit) * 100
@@ -186,6 +195,16 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		node += fmt.Sprintf("，离线 %d（%s）", len(offline), namesBrief(offline))
 	}
 	lines = append(lines, node)
+	if len(reboot) > 0 || len(security) > 0 {
+		var parts []string
+		if len(reboot) > 0 {
+			parts = append(parts, fmt.Sprintf("需要重启 %d 台（%s）", len(reboot), namesBrief(reboot)))
+		}
+		if len(security) > 0 {
+			parts = append(parts, fmt.Sprintf("有安全更新 %d 台（%s）", len(security), namesBrief(security)))
+		}
+		lines = append(lines, "系统："+strings.Join(parts, "，"))
+	}
 
 	// 告警与离线时长
 	evs, err := s.store.AlertEventsBetween(from.Unix(), to.Unix())

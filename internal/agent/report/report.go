@@ -326,7 +326,7 @@ func fieldSums(rep protocol.Report) map[string]uint64 {
 		return h.Sum64()
 	}
 	return map[string]uint64{"ports": sum(rep.Ports), "firewall": sum(rep.Firewall), "proxies": sum(rep.Proxies),
-		"accounts": sum(rep.Accounts), "config_files": sum(rep.ConfigFiles)}
+		"accounts": sum(rep.Accounts), "config_files": sum(rep.ConfigFiles), "updates": sum(rep.Updates)}
 }
 
 // omitUnchanged 返回省略了未变化字段的上报。本轮为空的字段照常发送（面板据此知道已经没有），不算作未变化。
@@ -352,6 +352,9 @@ func omitUnchanged(rep protocol.Report, sums, prev map[string]uint64) protocol.R
 	}
 	if rep.ConfigFiles != nil && same("config_files") {
 		rep.ConfigFiles, rep.Unchanged = nil, append(rep.Unchanged, "config_files")
+	}
+	if rep.Updates != nil && same("updates") {
+		rep.Updates, rep.Unchanged = nil, append(rep.Unchanged, "updates")
 	}
 	return rep
 }
@@ -427,7 +430,7 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		if ok != r.unchangedOK {
 			r.unchangedOK = ok
 			if ok {
-				r.logf("report: panel accepts omitted unchanged fields, sending ports / firewall / proxies / accounts / config files only when they change")
+				r.logf("report: panel accepts omitted unchanged fields, sending ports / firewall / proxies / accounts / config files / updates only when they change")
 			}
 		}
 		r.mu.Unlock()

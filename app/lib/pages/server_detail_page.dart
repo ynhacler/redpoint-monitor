@@ -864,6 +864,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (price.isNotEmpty) ('续费', maskText(price, p)),
       if (fmtExpiry(s.expireDate, s.billingPeriod) case final e?)
         ('到期', s.expireDate.isEmpty ? e.text : (e.text == s.expireDate ? s.expireDate : '${s.expireDate}（${e.text}）')),
+      if (s.latest?.updates case final u?) ('更新', u.text),
       if (s.note.isNotEmpty) ('备注', s.note),
     ];
   }

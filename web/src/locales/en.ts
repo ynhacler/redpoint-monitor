@@ -1372,6 +1372,16 @@ export const en: Record<string, string> = {
   '发送中…': 'Sending…',
   '立即发送一次': 'Send now',
   '已发送，请到渠道中查看': 'Sent — check your channels',
+  // 系统更新与待重启（修订第 278 条）
+  '系统更新': 'System updates',
+  '{n} 个可用（{s} 个安全更新）': '{n} available ({s} security)',
+  '{n} 个可用': '{n} available',
+  '需要重启（新内核 {k}）': 'Reboot required (new kernel {k})',
+  '需要重启': 'Reboot required',
+  '无需重启': 'No reboot needed',
+  '{name} 需要重启，有 {n} 个安全更新': '{name} needs a reboot and has {n} security updates',
+  '{name} 需要重启': '{name} needs a reboot',
+  '{name} 有 {n} 个安全更新': '{name} has {n} security updates',
   // 节点标志（修订第 279 条）
   '网络线路': 'Network route',
   '双栈：IPv4 + IPv6': 'Dual stack: IPv4 + IPv6',
