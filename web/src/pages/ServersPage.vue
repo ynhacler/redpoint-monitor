@@ -13,6 +13,7 @@ import { errorText, putServerOrder, type ServerView } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Flag from '../components/Flag.vue'
 import { countryName } from '../countries'
+import { badgeWords, lineFilterOptions, matchLineFilter } from '../lines'
 import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import ServerTable from '../components/ServerTable.vue'
@@ -45,7 +46,9 @@ function setFilter(v: StatusFilter) {
 // 搜索与分组也写在地址中（修订第 230 条）：从节点详情返回时保持
 const query = ref(String(route.query.q ?? ''))
 const group = ref(String(route.query.g ?? ''))
-watch([query, group], ([q, g]) => router.replace({ query: { ...route.query, q: q || undefined, g: g || undefined } }))
+const line = ref(String(route.query.l ?? '')) // 线路 / 协议栈筛选（修订第 280 条）
+watch([query, group, line], ([q, g, l]) =>
+  router.replace({ query: { ...route.query, q: q || undefined, g: g || undefined, l: l || undefined } }))
 const sorts = [
   { v: 'abnormal', t: '异常优先' }, { v: 'cpu', t: 'CPU' }, { v: 'mem', t: '内存' },
   { v: 'disk', t: '磁盘' }, { v: 'traffic', t: '流量' }, { v: 'name', t: '名称' }, { v: 'custom', t: '自定义' },
@@ -147,14 +150,16 @@ async function saveArrange() {
 }
 
 const groups = computed(() => [...new Set(installed.value.map((s) => s.group).filter(Boolean))].sort())
+const lineOptions = computed(() => lineFilterOptions(installed.value))
 
-// 搜索名称、主机名、IP、分组、供应商、地区，不区分大小写
+// 搜索名称、主机名、IP、分组、供应商、地区、线路与 v4 / v6，不区分大小写
 const matches = (s: ServerView) => {
   const q = query.value.trim().toLowerCase()
   if (group.value && s.group !== group.value) return false
+  if (!matchLineFilter(s, line.value)) return false
   if (!q) return true
   // 国家可按代码或中文名搜索，如 “jp”“日本”
-  return [s.name, s.hostname, s.ipv4, s.ipv6, s.expected_ipv4, s.group, s.provider, s.region, s.country, countryName(s.country)]
+  return [s.name, s.hostname, s.ipv4, s.ipv6, s.expected_ipv4, s.group, s.provider, s.region, s.country, countryName(s.country), ...badgeWords(s)]
     .some((v) => v?.toLowerCase().includes(q))
 }
 
@@ -213,6 +218,12 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <select v-if="groups.length" v-model="group" :aria-label="t('分组')">
         <option value="">{{ t('全部分组') }}</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
+      </select>
+      <!-- 线路标签与协议栈：有可选项时才显示；选中的值已不存在时仍保留，便于看出为何没有节点 -->
+      <select v-if="lineOptions.length || line" v-model="line" :aria-label="t('网络线路')">
+        <option value="">{{ t('全部线路') }}</option>
+        <option v-for="o in lineOptions" :key="o.v" :value="o.v">{{ t(o.t) }}</option>
+        <option v-if="line && !lineOptions.some((o) => o.v === line)" :value="line">{{ line.replace(/^\w+:/, '') }}</option>
       </select>
       <div class="segmented layout-switch wide-only" role="group" :aria-label="t('显示方式')">
         <button type="button" :class="{ active: layout === 'cards' }" :aria-pressed="layout === 'cards'" @click="setLayout('cards')">{{ t('卡片') }}</button>

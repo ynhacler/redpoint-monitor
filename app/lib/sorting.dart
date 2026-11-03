@@ -1,4 +1,5 @@
 // 节点列表的搜索与排序（设计 1.5.6、1.5.16）：纯函数，有单元测试。
+import 'lines.dart';
 import 'metrics.dart';
 import 'models.dart';
 
@@ -19,11 +20,13 @@ const sortNames = {
   SortBy.provider: '供应商',
 };
 
-/// 搜索：名称、IP、供应商、地区、分组、备注、国家代码（不区分大小写，多个词需同时匹配）
+/// 搜索：名称、IP、供应商、地区、分组、备注、国家代码、线路与 v4 / v6（修订第 280 条；不区分大小写，多个词需同时匹配）
 bool matchesQuery(ServerView s, String query) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return true;
-  final hay = [s.name, s.ipv4, s.ipv6, s.provider, s.plan, s.region, s.group, s.note, s.country].join(' ').toLowerCase();
+  final hay = [s.name, s.ipv4, s.ipv6, s.provider, s.plan, s.region, s.group, s.note, s.country, for (final b in nodeBadges(s)) b.$1]
+      .join(' ')
+      .toLowerCase();
   return q.split(RegExp(r'\s+')).every(hay.contains);
 }
 

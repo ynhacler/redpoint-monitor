@@ -478,7 +478,7 @@ class _ServersTabState extends State<_ServersTab> {
           TextField(
             controller: _search,
             decoration: InputDecoration(
-              hintText: '搜索名称、IP、供应商、地区、备注',
+              hintText: '搜索名称、IP、供应商、地区、线路',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _search.text.isEmpty ? null : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_search.clear)),
               isDense: true,
