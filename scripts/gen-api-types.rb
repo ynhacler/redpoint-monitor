@@ -160,11 +160,20 @@ end
 out << "}\n"
 
 json = JSON.pretty_generate($doc) + "\n"
+
+# 不一致时指出第一处不同的行，便于判断是没重新生成还是 Ruby / json 版本差异
+def check_same(path, current, want)
+  return if current == want
+  a, b = current.lines, want.lines
+  i = (0...[a.size, b.size].max).find { |k| a[k] != b[k] }
+  warn "#{path} 第 #{i + 1} 行不同（Ruby #{RUBY_VERSION}，json #{JSON::VERSION}，libyaml #{Psych::LIBYAML_VERSION}）：",
+       "  已提交：#{a[i].inspect}", "  生成的：#{b[i].inspect}"
+  abort "#{path} 与 api/openapi.yaml 不一致：运行 make api-types 后提交"
+end
+
 if ARGV.include?("--check")
-  current = File.exist?(OUT) ? File.read(OUT) : ""
-  abort "web/src/api.gen.ts 与 api/openapi.yaml 不一致：运行 make api-types 后提交" unless current == out
-  current = File.exist?(JSON_OUT) ? File.read(JSON_OUT) : ""
-  abort "internal/server/testdata/openapi.json 与 api/openapi.yaml 不一致：运行 make api-types 后提交" unless current == json
+  check_same("web/src/api.gen.ts", File.exist?(OUT) ? File.read(OUT) : "", out)
+  check_same("internal/server/testdata/openapi.json", File.exist?(JSON_OUT) ? File.read(JSON_OUT) : "", json)
   puts "api.gen.ts、openapi.json 与契约一致"
 else
   File.write(OUT, out)
