@@ -233,7 +233,9 @@
 - [x] 变更通知按类别开关（修订第 275 条）
 - [x] 登录记录：wtmp 中的登录，新地址登录记为变更（修订第 276 条）
 - [x] 定期报告：每周 / 每月概况发到通知渠道（修订第 277 条）
+- [x] 系统更新与待重启：reboot-required、已装的更新内核、Ubuntu 的可用与安全更新数（修订第 278 条）
 - [ ] 在 test-agent 上核对账号、重要文件与登录记录（对照 last、getent group sudo）
+- [ ] 在 test-agent 上核对系统更新与待重启（对照 /run/reboot-required、apt list --upgradable、uname -r）
 
 见设计第 36 章：第一批（N1）被墙检测与三网延迟、到期提醒、多监控中心、App 增强、批量新建；
 第二批（N2）三网测速、UnifiedPush、审计完整版、远程升级与灰度；第二阶段（P2）服务探测、Docker、PostgreSQL 等。

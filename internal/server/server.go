@@ -556,6 +556,8 @@ func (s *Server) fillUnchanged(sid int64, rep *protocol.Report) bool {
 			rep.Accounts = snap.Report.Accounts
 		case "config_files":
 			rep.ConfigFiles = snap.Report.ConfigFiles
+		case "updates":
+			rep.Updates = snap.Report.Updates
 		}
 	}
 	rep.Unchanged = nil

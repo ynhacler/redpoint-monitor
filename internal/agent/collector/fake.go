@@ -95,6 +95,7 @@ func (f *fake) Collect() (protocol.Report, error) {
 			{Path: "/etc/sudoers", Size: 1800, MTime: 1700000000},
 			{Path: "/etc/sudoers.d", Dir: true, MTime: 1700000000},
 		},
+		Updates: fakeUpdates(now),
 		Ports: []protocol.ListenPort{
 			{Proto: "tcp", Port: 22, Addrs: []string{"0.0.0.0", "::"}},
 			{Proto: "tcp", Port: 80, Addrs: []string{"0.0.0.0", "::"}},
@@ -162,4 +163,11 @@ func fakeProxies() []protocol.Proxy {
 			{Protocol: "trojan", Port: 4443, Network: "tcp", Transport: "ws", Security: "tls"},
 		}},
 	}
+}
+
+// fakeUpdates 是开发用的示例系统更新（修订第 278 条）：Ubuntu 上有 5 个更新（2 个安全更新），装了新内核待重启。
+func fakeUpdates(now time.Time) *protocol.Updates {
+	pending, security := 5, 2
+	return &protocol.Updates{RebootRequired: true, RebootPkgs: []string{"linux-image-6.8.0-51-generic"}, NewKernel: "6.8.0-51-generic",
+		Pending: &pending, Security: &security, CheckedAt: now.Truncate(time.Hour).Unix()}
 }

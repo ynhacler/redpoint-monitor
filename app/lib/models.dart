@@ -30,7 +30,7 @@ class DiskInfo {
 class Latest {
   Latest({required this.cpu, required this.mem, required this.memUsed, required this.memTotal, required this.disks,
       required this.rx, required this.tx, required this.load1, required this.cores, this.uptime, this.rxTotal = 0, this.txTotal = 0,
-      this.tempC, this.io});
+      this.tempC, this.io, this.updates});
   final double cpu;
   final double mem;
   final int memUsed;
@@ -52,6 +52,9 @@ class Latest {
   /// 磁盘读写（各磁盘之和）；旧版 Agent 没有时为 null
   final DiskIO? io;
 
+  /// 系统更新与待重启（修订第 278 条）；旧版 Agent 没有时为 null
+  final SystemUpdates? updates;
+
   factory Latest.fromJson(Map<String, dynamic> j) {
     final cpu = j['cpu'] as Map<String, dynamic>;
     final mem = j['memory'] as Map<String, dynamic>;
@@ -71,8 +74,33 @@ class Latest {
       uptime: _int((j['system'] as Map<String, dynamic>?)?['uptime']),
       tempC: _dbl(cpu['temp_c']),
       io: DiskIO.sum((j['disk_io'] as List<dynamic>?)?.cast<Map<String, dynamic>>()),
+      updates: SystemUpdates.fromJson(j['updates'] as Map<String, dynamic>?),
     );
   }
+}
+
+/// 系统更新与待重启（修订第 278 条，设计 4.9.6）。可用更新只在 Ubuntu 上有，其他系统 pending / security 为 null（未知）
+class SystemUpdates {
+  const SystemUpdates({required this.rebootRequired, this.newKernel = '', this.pending, this.security});
+  final bool rebootRequired;
+  final String newKernel;
+  final int? pending;
+  final int? security;
+
+  static SystemUpdates? fromJson(Map<String, dynamic>? j) => j == null
+      ? null
+      : SystemUpdates(
+          rebootRequired: j['reboot_required'] == true,
+          newKernel: (j['new_kernel'] as String?) ?? '',
+          pending: _int(j['pending']),
+          security: _int(j['security']),
+        );
+
+  /// 一行说明，与 Web 的概况一致
+  String get text => [
+        if (pending != null) pending == 0 ? '已是最新' : ((security ?? 0) > 0 ? '$pending 个可用（$security 个安全更新）' : '$pending 个可用'),
+        if (rebootRequired) newKernel.isNotEmpty ? '需要重启（新内核 $newKernel）' : '需要重启' else if (pending == null) '无需重启',
+      ].join(' · ');
 }
 
 /// 磁盘读写速率与开机以来累计（各磁盘之和，设计 4.7）
