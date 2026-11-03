@@ -1382,4 +1382,10 @@ export const en: Record<string, string> = {
   '{name} 需要重启，有 {n} 个安全更新': '{name} needs a reboot and has {n} security updates',
   '{name} 需要重启': '{name} needs a reboot',
   '{name} 有 {n} 个安全更新': '{name} has {n} security updates',
+  // 节点标志（修订第 279 条）
+  '网络线路': 'Network route',
+  '双栈：IPv4 + IPv6': 'Dual stack: IPv4 + IPv6',
+  '仅 IPv4': 'IPv4 only',
+  '仅 IPv6': 'IPv6 only',
+  '没有默认路由': 'No default route',
 }

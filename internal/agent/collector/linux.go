@@ -48,8 +48,9 @@ type linux struct {
 	memEstimate bool              // 已记录过“没有 MemAvailable，按估算”的日志
 
 	// 很少变化的信息按 refreshEvery 刷新，减少每轮的文件读取（设计 4.2）
-	osInfo    cached[[2]string] // /etc/os-release 的 ID 与 VERSION_ID（系统升级后无需重启即可反映）
-	kernel    string            // 内核版本、boot_id 在本次启动内不变，读到一次即可
+	osInfo    cached[[2]string]         // /etc/os-release 的 ID 与 VERSION_ID（系统升级后无需重启即可反映）
+	ipStack   cached[*protocol.IPStack] // IP 协议栈（修订第 279 条），每分钟刷新：网络变化后不需要重启 Agent
+	kernel    string                    // 内核版本、boot_id 在本次启动内不变，读到一次即可
 	bootID    string
 	sensors   cached[[]sensorFile]    // 可信 CPU 温度传感器的文件；VPS 上通常为空，此后每轮不再扫描 /sys
 	wholeDisk cached[map[string]bool] // /proc/diskstats 中的整块磁盘（/sys/block 下存在的设备）
@@ -256,6 +257,9 @@ func (c *linux) collectSystem(errs *errorList) protocol.System {
 		c.cpuModel = parseCPUModel(readFile("/proc/cpuinfo"))
 	}
 	s.CPUModel = c.cpuModel
+	s.IPStack = c.ipStack.get(time.Now(), time.Minute, func() *protocol.IPStack {
+		return parseIPStack(readFile("/proc/net/route"), readFile("/proc/net/if_inet6"), readFile("/proc/net/ipv6_route"))
+	})
 	return s
 }
 

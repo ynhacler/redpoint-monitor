@@ -860,6 +860,7 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
       if (s.provider.isNotEmpty) ('供应商', maskText(s.provider, p)),
       if (s.plan.isNotEmpty) ('套餐', s.plan),
       if (s.region.isNotEmpty) ('地区', s.region),
+      if (s.lineTags.isNotEmpty) ('线路', s.lineTags.join(' · ')),
       if (price.isNotEmpty) ('续费', maskText(price, p)),
       if (fmtExpiry(s.expireDate, s.billingPeriod) case final e?)
         ('到期', s.expireDate.isEmpty ? e.text : (e.text == s.expireDate ? s.expireDate : '${s.expireDate}（${e.text}）')),

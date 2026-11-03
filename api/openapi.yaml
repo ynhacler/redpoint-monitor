@@ -2886,6 +2886,12 @@ components:
           maxItems: 20
           items: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._+:@-]+$' }
           description: 关注的进程名（与 /proc/PID/comm 比较，超过 15 个字符时比较前 15 个），Agent 统计是否在运行（设计 33.5.1）；修改节点时省略表示不变
+        line_tags:
+          type: array
+          maxItems: 6
+          items: { type: string, minLength: 1, maxLength: 20, pattern: '^[^,<>]+$' }
+          example: [CN2 GIA, CMIN2]
+          description: 网络线路标签，由用户标注，显示在仪表板的节点上（修订第 279 条，设计 27.2）；修改节点时省略表示不变
         traffic_timezone: { type: string, example: America/Los_Angeles, description: '计费时区（IANA 名称）；空或省略表示面板时区。只影响之后写入的流量（设计 5.4）' }
         traffic_limit_gb: { type: number, minimum: 0, description: 按 traffic_unit 口径的 GB / GiB（设计 5.8），0 或省略表示不限 }
         traffic_unit: { type: string, enum: [decimal, binary], default: decimal, description: 'decimal：1 GB = 10^9 字节；binary：1 GiB = 2^30 字节（设计 5.8）' }
@@ -3153,7 +3159,7 @@ components:
 
     ServerView:
       type: object
-      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, watch_procs, price_cents, currency, billing_period, expire_date, sort_order, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
+      required: [id, name, status, enroll_state, expected_hostname, expected_ipv4, expected_ipv6, verify_mode, enrolled_at, created_at, hostname, ipv4, ipv6, group, note, provider, plan, region, country, bandwidth_mbps, report_interval_s, watch_procs, line_tags, price_cents, currency, billing_period, expire_date, sort_order, traffic_limit_bytes, traffic_reset_day, traffic_timezone, traffic_count_mode, traffic_unit, traffic_factor, last_seen_at, alerts, traffic]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -3177,6 +3183,7 @@ components:
         bandwidth_mbps: { type: integer, description: 标称带宽 Mbps，0 表示未填 }
         report_interval_s: { type: integer, description: 采样间隔秒数，0 表示默认 10 秒 }
         watch_procs: { type: array, items: { type: string }, description: 关注的进程名（设计 33.5.1） }
+        line_tags: { type: array, items: { type: string }, description: 网络线路标签，如 CN2 GIA、CMIN2（修订第 279 条）；没有时为空数组 }
         traffic_timezone: { type: string, description: 计费时区（IANA），空表示面板时区 }
         price_cents: { type: integer, description: 续费价格 × 100 }
         currency: { type: string }
@@ -3705,6 +3712,15 @@ components:
             cpu_model: { type: string, description: 可选（设计 4.4） }
             counter_bits: { type: integer, enum: [32, 64], description: 可选：内核网卡计数器位数；32 位时面板按回绕补算流量（设计 5.5） }
             remote_upgrade: { type: boolean, description: 可选：本机是否启用了远程升级（设计 29.13）；省略表示旧版 Agent、未知 }
+            ip_stack:
+              type: object
+              description: |
+                可选（修订第 279 条，设计 4.3）：本机的 IP 协议栈。ipv4：有 IPv4 默认路由；ipv6：有全局 IPv6 地址与 IPv6 默认路由。
+                仪表板据此显示 v4 / v6 标志。省略表示旧版 Agent、未知
+              required: [ipv4, ipv6]
+              properties:
+                ipv4: { type: boolean }
+                ipv6: { type: boolean }
         cpu:
           type: object
           required: [usage, cores, load1]

@@ -102,6 +102,7 @@ const facts = computed<Fact[]>(() => {
   asset({ k: t('供应商'), v: x.provider })
   asset({ k: t('套餐'), v: x.plan })
   asset({ k: t('带宽'), v: x.bandwidth_mbps ? fmtBandwidth(x.bandwidth_mbps) : '' })
+  asset({ k: t('网络线路'), v: (x.line_tags ?? []).join(' · ') })
   asset({ k: t('国家 / 地区'), v: x.country ? countryName(x.country) : '', flag: x.country })
   asset({ k: t('城市 / 机房'), v: x.region })
   asset({ k: t('分组'), v: x.group })

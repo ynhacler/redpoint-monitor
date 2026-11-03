@@ -704,3 +704,34 @@ func TestProbePageHeaders(t *testing.T) {
 		t.Errorf("其他页面的 CSP 不应放宽：%s", csp)
 	}
 }
+
+// 网络线路标签（修订第 279 条）：去重、合并空白；修改时省略表示不变；个数、长度与逗号校验；没有时返回空数组。
+func TestLineTags(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	_, n, _ := createNode(t, h, admin, `{"name":"lt-1","line_tags":[" CN2  GIA ","CMIN2","CN2 GIA",""]}`)
+	base := "/api/v1/servers/" + itoa(n.ServerID)
+	get := func() []string {
+		var sv ServerRow
+		json.Unmarshal(do(h, "GET", base, admin, nil).Body.Bytes(), &sv)
+		return sv.LineTags
+	}
+	if got := fmt.Sprint(get()); got != "[CN2 GIA CMIN2]" {
+		t.Fatalf("line_tags = %s", got)
+	}
+	if rec := do(h, "PUT", base, admin, []byte(`{"name":"lt-1"}`)); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body)
+	}
+	if got := fmt.Sprint(get()); got != "[CN2 GIA CMIN2]" {
+		t.Errorf("省略 line_tags 时应保持不变：%s", got)
+	}
+	for _, bad := range []string{`["a,b"]`, `["<b>"]`, `["123456789012345678901"]`, `["1","2","3","4","5","6","7"]`} {
+		if rec := do(h, "PUT", base, admin, []byte(`{"name":"lt-1","line_tags":`+bad+`}`)); rec.Code != 422 {
+			t.Errorf("%s 应返回 422：%d", bad, rec.Code)
+		}
+	}
+	do(h, "PUT", base, admin, []byte(`{"name":"lt-1","line_tags":[]}`))
+	if got := get(); got == nil || len(got) != 0 {
+		t.Errorf("清空后应返回空数组：%#v", got)
+	}
+}

@@ -30,7 +30,7 @@ class DiskInfo {
 class Latest {
   Latest({required this.cpu, required this.mem, required this.memUsed, required this.memTotal, required this.disks,
       required this.rx, required this.tx, required this.load1, required this.cores, this.uptime, this.rxTotal = 0, this.txTotal = 0,
-      this.tempC, this.io, this.updates});
+      this.tempC, this.io, this.updates, this.ipv4, this.ipv6});
   final double cpu;
   final double mem;
   final int memUsed;
@@ -54,6 +54,9 @@ class Latest {
 
   /// 系统更新与待重启（修订第 278 条）；旧版 Agent 没有时为 null
   final SystemUpdates? updates;
+  /// IP 协议栈（修订第 279 条）：有 IPv4 默认路由、有全局 IPv6；旧版 Agent 没有时为 null
+  final bool? ipv4;
+  final bool? ipv6;
 
   factory Latest.fromJson(Map<String, dynamic> j) {
     final cpu = j['cpu'] as Map<String, dynamic>;
@@ -75,6 +78,8 @@ class Latest {
       tempC: _dbl(cpu['temp_c']),
       io: DiskIO.sum((j['disk_io'] as List<dynamic>?)?.cast<Map<String, dynamic>>()),
       updates: SystemUpdates.fromJson(j['updates'] as Map<String, dynamic>?),
+      ipv4: ((j['system'] as Map<String, dynamic>?)?['ip_stack'] as Map<String, dynamic>?)?['ipv4'] as bool?,
+      ipv6: ((j['system'] as Map<String, dynamic>?)?['ip_stack'] as Map<String, dynamic>?)?['ipv6'] as bool?,
     );
   }
 }
@@ -198,7 +203,7 @@ class ServerView {
   ServerView({required this.raw, required this.id, required this.name, required this.status, required this.group, required this.country,
       required this.lastSeenAt, required this.traffic, required this.alerts, this.latest, this.maintenance, this.muted, this.expireDate = '',
       this.ipv4 = '', this.ipv6 = '', this.provider = '', this.plan = '', this.region = '', this.note = '', this.priceCents = 0,
-      this.currency = '', this.billingPeriod = '', this.sortOrder = 0});
+      this.currency = '', this.billingPeriod = '', this.sortOrder = 0, this.lineTags = const []});
   final Map<String, dynamic> raw;
   final int id;
   final String name;
@@ -231,6 +236,9 @@ class ServerView {
   /// 面板保存的自定义顺序（从 1 开始，0 表示未排；旧版面板没有该字段，修订第 150 条）
   final int sortOrder;
 
+  /// 用户标注的网络线路，如 CN2 GIA、CMIN2（修订第 279 条）；旧版面板没有时为空
+  final List<String> lineTags;
+
   factory ServerView.fromJson(Map<String, dynamic> j) {
     final latest = j['latest'] as Map<String, dynamic>?;
     final m = j['maintenance'] as Map<String, dynamic>?;
@@ -259,6 +267,7 @@ class ServerView {
       currency: (j['currency'] as String?) ?? '',
       billingPeriod: (j['billing_period'] as String?) ?? '',
       sortOrder: _int(j['sort_order']) ?? 0,
+      lineTags: [for (final t in (j['line_tags'] as List<dynamic>?) ?? const []) t as String],
     );
   }
 }

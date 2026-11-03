@@ -8,6 +8,7 @@ import { DASH, fmtBytesShort, fmtDuration, fmtExpiry, fmtPct, fmtTraffic } from 
 import { t } from '../i18n'
 import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
+import NodeBadges from './NodeBadges.vue'
 import StatusDot from './StatusDot.vue'
 
 defineProps<{
@@ -55,7 +56,7 @@ const cols: { key: string; name: string; sort?: string }[] = [
         <tr v-for="s in servers" :key="s.id" tabindex="0" @click="open(s)" @keydown.enter="open(s)">
           <td class="st"><StatusDot :status="displayStatus(s)" dot-only /></td>
           <td class="name">
-            <span class="nm"><Flag :code="s.country" /><RouterLink :to="`/servers/${s.id}`" class="ellipsis" :title="s.name" @click.stop>{{ s.name }}</RouterLink></span>
+            <span class="nm"><Flag :code="s.country" /><RouterLink :to="`/servers/${s.id}`" class="ellipsis" :title="s.name" @click.stop>{{ s.name }}</RouterLink><NodeBadges :server="s" /></span>
             <span v-if="s.group" class="muted small">{{ s.group }}</span>
           </td>
           <template v-if="isLive(s)">

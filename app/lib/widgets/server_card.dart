@@ -1,5 +1,6 @@
 // 节点卡片（设计 13、41.3 ServerCard）：布局与 Web 的节点卡片一致，便于两端对照——
 //   头部：国旗、名称、状态点（维护 / 静音标签），右侧到期标签与收藏；第二行 IP · 供应商 · 分组，右侧温度、开机时间、1 分钟负载（离线时为离线时长）
+//   第三行（有时）：v4 / v6 与网络线路标志（修订第 279 条）
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
 //   告警：需要关注的原因（标签）
 //   底部：流量（本计费周期）与进度条
@@ -7,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../format.dart';
+import '../lines.dart';
 import '../metrics.dart';
 import '../models.dart';
 import '../privacy.dart';
@@ -111,6 +113,13 @@ class ServerCard extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: s.status == 'offline' ? c.bad : c.textMuted)),
               ]),
             ),
+            if (nodeBadges(s) case final badges when badges.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(spacing: 4, runSpacing: 4, children: [
+                  for (final (text, premium) in badges) _Pill(text, premium ? c.accent : c.textMuted, premium ? c.accent : c.border),
+                ]),
+              ),
             const SizedBox(height: 6),
 
             // ---- 主体：三个环 + 网络 + IO ----
