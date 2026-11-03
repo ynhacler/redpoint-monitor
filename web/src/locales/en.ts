@@ -1388,4 +1388,6 @@ export const en: Record<string, string> = {
   '仅 IPv4': 'IPv4 only',
   '仅 IPv6': 'IPv6 only',
   '没有默认路由': 'No default route',
+  // 线路筛选（修订第 280 条）
+  '全部线路': 'All routes',
 }

@@ -22,6 +22,19 @@ void main() {
     expect(matchesQuery(s, '香港 东京'), isFalse);
   });
 
+  test('搜索：线路标签与 v4 / v6（修订第 280 条）', () {
+    final s = ServerView.fromJson({
+      'id': 1, 'name': 'a', 'status': 'online', 'line_tags': ['CN2 GIA'],
+      'latest': {'cpu': {'usage': 1.0, 'cores': 1, 'load1': 0}, 'memory': {'usage': 1, 'used': 1, 'total': 100}, 'disk': [], 'network': [],
+        'system': {'ip_stack': {'ipv4': false, 'ipv6': true}}},
+      'traffic': {'cycle_start': '2026-10-01', 'cycle_end': '2026-11-01', 'used': 0, 'limit': 0, 'unit': 'decimal'},
+    });
+    expect(matchesQuery(s, 'cn2'), isTrue);
+    expect(matchesQuery(s, 'gia v6'), isTrue);
+    expect(matchesQuery(s, 'v4'), isFalse);
+    expect(matchesQuery(sv(2, 'b'), 'cn2'), isFalse);
+  });
+
   test('异常优先：异常 > 离线 > 收藏 > 普通（设计 1.5.6）', () {
     final list = [sv(1, 'a-normal'), sv(2, 'b-fav'), sv(3, 'c-off', status: 'offline'), sv(4, 'd-late', status: 'unknown')];
     expect(sortServers(list, SortBy.smart, {2}).map((s) => s.name), ['c-off', 'd-late', 'b-fav', 'a-normal']);
