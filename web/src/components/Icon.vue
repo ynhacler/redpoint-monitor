@@ -5,7 +5,7 @@ import {
   Activity, AlignLeft, Cloud, CreditCard, Globe, LayoutDashboard, Settings, ArrowDown, ArrowDownUp, ArrowLeft, ArrowUp, CalendarClock, ChartLine, Clock, Cpu, Eye, EyeOff, GripVertical, HardDrive,
   Layers, LogOut, MemoryStick, Monitor, Moon, Pencil, Plug, Plus, Power, Radio, Search, SquareActivity,
   Sun, Terminal, Thermometer, User, KeyRound, LockKeyhole, ShieldCheck, Smartphone, Users, ChevronRight, Bell, Download, ScrollText,
-  PanelLeftClose, PanelLeftOpen, ListFilter, ArrowUpDown, Check, RefreshCw,
+  PanelLeftClose, PanelLeftOpen, ListFilter, ArrowUpDown, Check, RefreshCw, SlidersHorizontal,
 } from '@lucide/vue'
 
 const icons = {
@@ -26,6 +26,8 @@ const icons = {
   refresh: RefreshCw,
   // 手机筛选与排序抽屉（手机 UI 规范 3.3）
   filter: ListFilter, sort: ArrowUpDown, check: Check,
+  // 卡片显示字段（修订第 288 条）
+  sliders: SlidersHorizontal,
 }
 
 export type IconName = keyof typeof icons

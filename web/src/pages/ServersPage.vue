@@ -22,6 +22,7 @@ import ServerTable from '../components/ServerTable.vue'
 import BulkEditPanel from '../components/BulkEditPanel.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { daysUntil } from '../format'
+import { cardFieldOptions, cardHidden, resetCardFields, toggleCardField } from '../cardFields'
 import StatusDot from '../components/StatusDot.vue'
 import { abnormalTier, cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { t } from '../i18n'
@@ -187,7 +188,7 @@ function clearAll() {
   query.value = ''
   setFilter('all')
 }
-const sheet = ref<'' | 'filter' | 'sort'>('') // 手机上打开的底部抽屉
+const sheet = ref<'' | 'filter' | 'sort' | 'fields'>('') // 底部抽屉（手机）/ 对话框（电脑）
 const sortShort = computed(() => sorts.find((x) => x.v === sortBy.value)!.short)
 function pickSort(v: SortKey) {
   sortBy.value = v
@@ -305,6 +306,11 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
           <option v-for="o in sorts" :key="o.v" :value="o.v">{{ t(o.t) }}</option>
         </select>
       </label>
+      <!-- 卡片显示字段（修订第 288 条）：电脑上只在卡片视图出现，手机上只显示图标 -->
+      <button v-if="installed.length" type="button" class="btn secondary fields-btn" :class="{ 'narrow-only': layout === 'table', on: cardHidden.size }"
+        :aria-label="t('卡片显示')" :title="t('卡片显示')" @click="sheet = 'fields'">
+        <Icon name="sliders" /><span class="wide-only">{{ t('卡片显示') }}</span>
+      </button>
       <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
         <Icon name="grip" />{{ t('调整顺序') }}
       </button>
@@ -354,6 +360,22 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
           </button>
         </li>
       </ul>
+    </BottomSheet>
+
+    <BottomSheet :open="sheet === 'fields'" :title="t('卡片显示')" @close="sheet = ''">
+      <p class="muted small fields-note">{{ t('名称、状态与 CPU / 内存 / 磁盘始终显示。设置只保存在本浏览器。') }}</p>
+      <ul class="sort-list fields-list">
+        <li v-for="o in cardFieldOptions" :key="o.k">
+          <label>
+            <span>{{ t(o.t) }}<small v-if="o.hint" class="muted">{{ t(o.hint) }}</small></span>
+            <input type="checkbox" :checked="!cardHidden.has(o.k)" @change="toggleCardField(o.k)" />
+          </label>
+        </li>
+      </ul>
+      <template #footer>
+        <button type="button" class="btn secondary" :disabled="!cardHidden.size" @click="resetCardFields">{{ t('全部显示') }}</button>
+        <button type="button" class="btn grow" @click="sheet = ''">{{ t('完成') }}</button>
+      </template>
     </BottomSheet>
 
     <BulkEditPanel v-if="bulk" :servers="sorted" :groups="groups" @close="bulk = false" />
@@ -442,6 +464,15 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 .sort-list button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 var(--space-1);
   background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .sort-list li:last-child button { border-bottom: 0; }
+/* 卡片显示字段：每行一个开关，整行可点 */
+.fields-btn.on { border-color: var(--accent); color: var(--accent); }
+.fields-note { margin: var(--space-2) 0 0; }
+.fields-list label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 48px;
+  padding: var(--space-1); border-bottom: 1px solid var(--border); cursor: pointer; }
+.fields-list li:last-child label { border-bottom: 0; }
+.fields-list label > span { display: flex; flex-direction: column; }
+.fields-list small { font-size: var(--font-xs); }
+.fields-list input { flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
 .sort-list button.active { color: var(--accent); font-weight: var(--weight-strong); }
 /* 表格视图只在宽屏（修订第 239 条） */
 @media (max-width: 899px) { .wide-only { display: none !important; } }
@@ -474,6 +505,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
   .filters .inline-filter { display: none; }
   .filters .btn.secondary { display: none; }
   .filters .btn.secondary.sheet-btn { display: inline-flex; flex: 1 1 0; min-width: 0; min-height: 40px; justify-content: center; }
+  .filters .btn.secondary.fields-btn { display: inline-flex; flex: none; min-height: 40px; padding: 0 var(--space-3); }
   .filters .btn.secondary.bulk-btn { display: inline-flex; flex: none; min-height: 40px; padding: 0 var(--space-3); } /* 批量修改在手机上也可用，只显示图标 */
   .grid.server-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
