@@ -236,6 +236,7 @@
 - [x] 系统更新与待重启：reboot-required、已装的更新内核、Ubuntu 的可用与安全更新数（修订第 278 条）
 - [x] 仪表板节点标志：v4 / v6（Agent 识别协议栈）与手动标注的网络线路（修订第 279 条）
 - [x] 按线路筛选：仪表板“线路”下拉与搜索匹配线路、v4 / v6（修订第 280 条）
+- [x] 批量修改节点：分组、添加 / 去掉网络线路（修订第 281 条）
 - [ ] 在 test-agent 上核对账号、重要文件与登录记录（对照 last、getent group sudo）
 - [ ] 在 test-agent 上核对系统更新与待重启（对照 /run/reboot-required、apt list --upgradable、uname -r）
 - [ ] 在 test-agent 上核对 v4 / v6 识别（对照 ip route、ip -6 route、ip -6 addr）

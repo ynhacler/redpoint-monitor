@@ -414,6 +414,7 @@ func (s *Server) routes() http.Handler {
 	handle("POST /api/v1/servers/{id}/unlock-check", accessAdmin, s.handleUnlockCheck) // 解锁检测（设计 50）
 	handle("POST /api/v1/servers/{id}/renew", accessAdmin, s.handleRenewServer)        // 已续费（修订第 224 条）
 	handle("PUT /api/v1/servers/order", accessAdmin, s.handleServerOrder)              // 自定义顺序（修订第 150 条）
+	handle("POST /api/v1/servers/bulk-edit", accessAdmin, s.handleBulkEdit)            // 批量修改（修订第 281 条）
 	handle("PUT /api/v1/servers/{id}", accessAdmin, s.handleUpdateServer)
 	handle("DELETE /api/v1/servers/{id}", accessAdmin, s.handleDeleteServer)
 	handle("POST /api/v1/servers/{id}/revoke-agent-token", accessAdmin, s.handleRevokeAgentToken)

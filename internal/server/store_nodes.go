@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -420,6 +421,42 @@ func (s *Store) SetServerOrder(ids []int64) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// errTooManyTags：批量添加线路标签后某个节点超过上限（修订第 281 条）。
+var errTooManyTags = errors.New("too many line tags")
+
+// BulkEditServers 在一个事务中修改多个节点（修订第 281 条）：group 非 nil 时设为该分组；线路标签先去掉 remove 再追加 add。
+// 某个节点不存在时返回 errNoServer，加完超过 maxLineTags 时返回该节点名称与 errTooManyTags，均不做任何修改。
+func (s *Store) BulkEditServers(ids []int64, group *string, add, remove []string) (string, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		row, err := getServerTx(tx, id)
+		if err != nil {
+			return "", err
+		}
+		tags := slices.DeleteFunc(row.LineTags, func(t string) bool { return slices.Contains(remove, t) })
+		for _, t := range add {
+			if !slices.Contains(tags, t) {
+				tags = append(tags, t)
+			}
+		}
+		if len(tags) > maxLineTags {
+			return row.Name, errTooManyTags
+		}
+		g := row.Group
+		if group != nil {
+			g = *group
+		}
+		if _, err := tx.Exec(`UPDATE servers SET group_name = ?, line_tags = ? WHERE id = ?`, g, strings.Join(tags, ","), id); err != nil {
+			return "", err
+		}
+	}
+	return "", tx.Commit()
 }
 
 // GetServer 按 ID 读取节点；不存在时返回 errNoServer。
