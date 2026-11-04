@@ -2,6 +2,8 @@
 // 节点（设计 9、10）：首页。顶部为统计，点击即按状态筛选（总览与列表合并，修订记录第 30 条）；
 // 下方搜索、按分组筛选、排序（默认异常优先，设计 1.5.6）；待安装节点单独一组（设计 27.7）。
 // 状态筛选写在地址中（?f=offline），刷新与分享后保持。排序方式记在本机浏览器（localStorage）。
+// 手机（手机 UI 规范 3.1、3.3、3.4）：分组、供应商、线路、到期等低频条件合并到“筛选”底部抽屉（入口显示生效的条件数），
+// 排序改为底部抽屉单选；电脑上仍为一排下拉框。
 // “自定义”排序按面板保存的顺序（修订第 150 条）：点“调整顺序”进入排列模式，拖动或用上下按钮排列后保存到面板，
 // 所有浏览器与（本机没有自己顺序的）App 共用。
 import NotifyWarning from '../components/NotifyWarning.vue'
@@ -18,6 +20,8 @@ import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import ServerTable from '../components/ServerTable.vue'
 import BulkEditPanel from '../components/BulkEditPanel.vue'
+import BottomSheet from '../components/BottomSheet.vue'
+import { daysUntil } from '../format'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { t } from '../i18n'
@@ -41,18 +45,37 @@ const statusFilter = computed<StatusFilter>(() => {
 })
 const counts = computed(() => Object.fromEntries(filters.map((x) => [x.v, installed.value.filter(x.test).length])))
 function setFilter(v: StatusFilter) {
-  router.replace({ query: { ...route.query, f: v === 'all' ? undefined : v } })
+  router.replace({ query: { ...route.query, f: v === 'all' ? undefined : v }, hash: route.hash })
 }
 
 // 搜索与分组也写在地址中（修订第 230 条）：从节点详情返回时保持
 const query = ref(String(route.query.q ?? ''))
 const group = ref(String(route.query.g ?? ''))
 const line = ref(String(route.query.l ?? '')) // 线路 / 协议栈筛选（修订第 280 条）
-watch([query, group, line], ([q, g, l]) =>
-  router.replace({ query: { ...route.query, q: q || undefined, g: g || undefined, l: l || undefined } }))
+const provider = ref(String(route.query.p ?? '')) // 供应商（手机 UI 规范 3.4）
+const expiryOptions = [{ v: '7', t: '7 天内到期' }, { v: '30', t: '30 天内到期' }] as const
+const expiry = ref(expiryOptions.some((o) => o.v === route.query.e) ? String(route.query.e) : '') // 到期范围（含已过期）
+// 路由的 hash 保留：底部抽屉打开时为 #sheet（系统返回关闭抽屉）
+function writeQuery() {
+  const [q, g, l, p, e] = [query.value, group.value, line.value, provider.value, expiry.value]
+  router.replace({ query: { ...route.query, q: q || undefined, g: g || undefined, l: l || undefined, p: p || undefined, e: e || undefined },
+    hash: route.hash })
+}
+watch([query, group, line, provider, expiry], writeQuery)
+// 抽屉中改的条件写在 #sheet 那一项历史上；关闭抽屉（返回到打开前的那一项）后重新写入地址，刷新与分享时保持
+watch(() => route.hash, (h, old) => {
+  if (old === '#sheet' && h !== '#sheet') writeQuery()
+})
+// 排序（手机 UI 规范 3.3）：t 为抽屉与电脑下拉中的完整说明（含方向），short 为入口按钮上的简称
 const sorts = [
-  { v: 'abnormal', t: '异常优先' }, { v: 'cpu', t: 'CPU' }, { v: 'mem', t: '内存' },
-  { v: 'disk', t: '磁盘' }, { v: 'traffic', t: '流量' }, { v: 'name', t: '名称' }, { v: 'custom', t: '自定义' },
+  { v: 'abnormal', t: '异常优先', short: '异常优先' },
+  { v: 'expiry', t: '到期时间（最近优先）', short: '到期时间' },
+  { v: 'cpu', t: 'CPU 使用率（高→低）', short: 'CPU' },
+  { v: 'mem', t: '内存使用率（高→低）', short: '内存' },
+  { v: 'disk', t: '磁盘使用率（高→低）', short: '磁盘' },
+  { v: 'traffic', t: '流量使用率（高→低）', short: '流量' },
+  { v: 'name', t: '名称（A→Z）', short: '名称' },
+  { v: 'custom', t: '自定义顺序', short: '自定义' },
 ] as const
 type SortKey = (typeof sorts)[number]['v']
 const sortKey = 'vpsmon.sortBy'
@@ -151,14 +174,37 @@ async function saveArrange() {
 }
 
 const groups = computed(() => [...new Set(installed.value.map((s) => s.group).filter(Boolean))].sort())
+const providers = computed(() => [...new Set(installed.value.map((s) => s.provider).filter(Boolean))].sort())
 const lineOptions = computed(() => lineFilterOptions(installed.value))
+const hasExpiry = computed(() => installed.value.some((s) => s.expire_date))
+// 生效的低频筛选条件数（显示在“筛选”入口上）与一键清除
+const activeFilters = computed(() => [group.value, provider.value, line.value, expiry.value].filter(Boolean).length)
+function clearFilters() {
+  group.value = provider.value = line.value = expiry.value = ''
+}
+function clearAll() {
+  clearFilters()
+  query.value = ''
+  setFilter('all')
+}
+const sheet = ref<'' | 'filter' | 'sort'>('') // 手机上打开的底部抽屉
+const sortShort = computed(() => sorts.find((x) => x.v === sortBy.value)!.short)
+function pickSort(v: SortKey) {
+  sortBy.value = v
+  sheet.value = ''
+}
 const bulk = ref(false) // 批量修改面板（修订第 281 条）
 
 // 搜索名称、主机名、IP、分组、供应商、地区、线路与 v4 / v6，不区分大小写
 const matches = (s: ServerView) => {
   const q = query.value.trim().toLowerCase()
   if (group.value && s.group !== group.value) return false
+  if (provider.value && s.provider !== provider.value) return false
   if (!matchLineFilter(s, line.value)) return false
+  if (expiry.value) {
+    const d = daysUntil(s.expire_date)
+    if (d == null || d > Number(expiry.value)) return false
+  }
   if (!q) return true
   // 国家可按代码或中文名搜索，如 “jp”“日本”
   return [s.name, s.hostname, s.ipv4, s.ipv6, s.expected_ipv4, s.group, s.provider, s.region, s.country, countryName(s.country), ...badgeWords(s)]
@@ -174,6 +220,8 @@ const sorted = computed(() => {
     // 异常优先：离线 > 未知 > 有告警的在线节点 > 正常在线，同级按名称
     abnormal: (a, b) =>
       statusRank[a.status] - statusRank[b.status] || issues(b).length - issues(a).length || byName(a, b),
+    // 到期时间：最近（含已过期）在前，没有到期日的排在最后
+    expiry: (a, b) => (daysUntil(a.expire_date) ?? Infinity) - (daysUntil(b.expire_date) ?? Infinity),
     cpu: desc(cpu),
     mem: desc(mem),
     disk: desc((s) => diskSummary(s)?.usage),
@@ -181,8 +229,10 @@ const sorted = computed(() => {
     name: byName,
     custom: byCustom,
   }
+  // 值相同（或都缺失，差为 NaN）时按名称，排序稳定
   return list.sort((a, b) => cmp[sortBy.value](a, b) || byName(a, b))
 })
+const filtering = computed(() => statusFilter.value !== 'all' || activeFilters.value > 0 || query.value.trim() !== '')
 const pendingFiltered = computed(() => pending.value.filter(matches))
 </script>
 
@@ -217,23 +267,43 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
         <Icon name="search" />
         <input v-model="query" type="search" :placeholder="t('搜索名称、IP、分组、供应商')" />
       </label>
-      <select v-if="groups.length" v-model="group" :aria-label="t('分组')">
+      <!-- 电脑：低频条件为一排下拉框；手机上收进“筛选”抽屉 -->
+      <select v-if="groups.length || group" v-model="group" class="inline-filter" :aria-label="t('分组')">
         <option value="">{{ t('全部分组') }}</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
       </select>
+      <select v-if="providers.length > 1 || provider" v-model="provider" class="inline-filter" :aria-label="t('供应商')">
+        <option value="">{{ t('全部供应商') }}</option>
+        <option v-for="p in providers" :key="p" :value="p">{{ p }}</option>
+      </select>
       <!-- 线路标签与协议栈：有可选项时才显示；选中的值已不存在时仍保留，便于看出为何没有节点 -->
-      <select v-if="lineOptions.length || line" v-model="line" :aria-label="t('网络线路')">
+      <select v-if="lineOptions.length || line" v-model="line" class="inline-filter" :aria-label="t('网络线路')">
         <option value="">{{ t('全部线路') }}</option>
         <option v-for="o in lineOptions" :key="o.v" :value="o.v">{{ t(o.t) }}</option>
         <option v-if="line && !lineOptions.some((o) => o.v === line)" :value="line">{{ line.replace(/^\w+:/, '') }}</option>
       </select>
+      <select v-if="hasExpiry || expiry" v-model="expiry" class="inline-filter" :aria-label="t('到期')">
+        <option value="">{{ t('全部到期时间') }}</option>
+        <option v-for="o in expiryOptions" :key="o.v" :value="o.v">{{ t(o.t) }}</option>
+      </select>
+      <button v-if="activeFilters" type="button" class="btn text inline-filter" @click="clearFilters">{{ t('清除筛选') }}</button>
+      <!-- 手机：筛选与排序入口 -->
+      <button type="button" class="btn secondary sheet-btn" :class="{ on: activeFilters }" @click="sheet = 'filter'">
+        <Icon name="filter" />{{ t('筛选') }}<b v-if="activeFilters" class="count num">{{ activeFilters }}</b>
+      </button>
+      <button type="button" class="btn secondary sheet-btn sort-btn" :aria-label="t('排序：{name}', { name: t(sortShort) })" @click="sheet = 'sort'">
+        <Icon name="sort" />{{ t(sortShort) }}
+      </button>
       <div class="segmented layout-switch wide-only" role="group" :aria-label="t('显示方式')">
         <button type="button" :class="{ active: layout === 'cards' }" :aria-pressed="layout === 'cards'" @click="setLayout('cards')">{{ t('卡片') }}</button>
         <button type="button" :class="{ active: layout === 'table' }" :aria-pressed="layout === 'table'" @click="setLayout('table')">{{ t('表格') }}</button>
       </div>
-      <select v-model="sortBy" :aria-label="t('排序')">
-        <option v-for="o in sorts" :key="o.v" :value="o.v">{{ t('排序：{name}', { name: t(o.t) }) }}</option>
-      </select>
+      <label class="sort-select inline-filter">
+        <span class="muted">{{ t('排序') }}</span>
+        <select v-model="sortBy">
+          <option v-for="o in sorts" :key="o.v" :value="o.v">{{ t(o.t) }}</option>
+        </select>
+      </label>
       <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
         <Icon name="grip" />{{ t('调整顺序') }}
       </button>
@@ -242,6 +312,48 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
         <Icon name="edit" /><span class="wide-only">{{ t('批量修改') }}</span>
       </button>
     </div>
+
+    <BottomSheet :open="sheet === 'filter'" :title="t('筛选节点')" @close="sheet = ''">
+      <fieldset v-if="groups.length || group" class="sheet-group">
+        <legend>{{ t('分组') }}</legend>
+        <div class="chips wrap">
+          <button v-for="g in ['', ...groups]" :key="g" type="button" class="chip" :class="{ active: group === g }" :aria-pressed="group === g" @click="group = g">{{ g || t('全部') }}</button>
+        </div>
+      </fieldset>
+      <fieldset v-if="providers.length > 1 || provider" class="sheet-group">
+        <legend>{{ t('供应商') }}</legend>
+        <div class="chips wrap">
+          <button v-for="p in ['', ...providers]" :key="p" type="button" class="chip" :class="{ active: provider === p }" :aria-pressed="provider === p" @click="provider = p">{{ p || t('全部') }}</button>
+        </div>
+      </fieldset>
+      <fieldset v-if="lineOptions.length || line" class="sheet-group">
+        <legend>{{ t('网络线路') }}</legend>
+        <div class="chips wrap">
+          <button v-for="o in [{ v: '', t: '全部' }, ...lineOptions]" :key="o.v" type="button" class="chip" :class="{ active: line === o.v }" :aria-pressed="line === o.v" @click="line = o.v">{{ t(o.t) }}</button>
+        </div>
+      </fieldset>
+      <fieldset v-if="hasExpiry || expiry" class="sheet-group">
+        <legend>{{ t('到期') }}</legend>
+        <div class="chips wrap">
+          <button v-for="o in [{ v: '', t: '全部' }, ...expiryOptions]" :key="o.v" type="button" class="chip" :class="{ active: expiry === o.v }" :aria-pressed="expiry === o.v" @click="expiry = o.v">{{ t(o.t) }}</button>
+        </div>
+      </fieldset>
+      <p v-if="!groups.length && providers.length < 2 && !lineOptions.length && !hasExpiry" class="muted small">{{ t('节点设置了分组、供应商、线路或到期日后，可以在这里筛选。') }}</p>
+      <template #footer>
+        <button type="button" class="btn secondary" :disabled="!activeFilters" @click="clearFilters">{{ t('重置') }}</button>
+        <button type="button" class="btn grow" @click="sheet = ''">{{ t('查看 {n} 台结果', { n: sorted.length }) }}</button>
+      </template>
+    </BottomSheet>
+
+    <BottomSheet :open="sheet === 'sort'" :title="t('节点排序')" @close="sheet = ''">
+      <ul class="sort-list" role="listbox" :aria-label="t('节点排序')">
+        <li v-for="o in sorts" :key="o.v" role="option" :aria-selected="sortBy === o.v">
+          <button type="button" :class="{ active: sortBy === o.v }" @click="pickSort(o.v)">
+            <span>{{ t(o.t) }}</span><Icon v-if="sortBy === o.v" name="check" />
+          </button>
+        </li>
+      </ul>
+    </BottomSheet>
 
     <BulkEditPanel v-if="bulk" :servers="sorted" :groups="groups" @close="bulk = false" />
 
@@ -283,9 +395,12 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
           <ServerCard v-for="s in sorted" :key="s.id" :server="s" />
         </div>
       </template>
+      <!-- 没有结果：说明是搜索还是筛选造成的，并可一键清除（手机 UI 规范 3.4） -->
       <p v-else-if="installed.length" class="muted empty-filter">
-        {{ statusFilter === 'all' ? t('没有匹配的节点。') : t('没有“{name}”的节点。', { name: t(filters.find((x) => x.v === statusFilter)!.t) }) }}
-        <button v-if="statusFilter !== 'all'" type="button" class="text" @click="setFilter('all')">{{ t('查看全部') }}</button>
+        {{ query.trim() ? t('没有匹配“{q}”的节点。', { q: query.trim() })
+          : statusFilter !== 'all' && !activeFilters ? t('没有“{name}”的节点。', { name: t(filters.find((x) => x.v === statusFilter)!.t) })
+          : t('没有符合筛选条件的节点。') }}
+        <button v-if="filtering" type="button" class="text" @click="clearAll">{{ t('清除搜索与筛选') }}</button>
       </p>
 
       <!-- 待安装：不参与排序与异常统计，提供安装命令入口（设计 27.7） -->
@@ -310,6 +425,23 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 </template>
 
 <style scoped>
+/* 筛选与排序：电脑为下拉框，手机为抽屉入口（手机 UI 规范 3.1） */
+.sheet-btn { display: none; }
+.sort-select { display: inline-flex; align-items: center; gap: var(--space-2); }
+.sort-select select { width: auto; }
+.sheet-btn .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-full); background: var(--accent); color: var(--on-accent);
+  font-size: var(--font-xs); line-height: 18px; text-align: center; }
+.sheet-btn.on { border-color: var(--accent); color: var(--accent); }
+.sheet-group { border: 0; margin: 0; padding: var(--space-3) 0 0; min-width: 0; }
+.sheet-group legend { padding: 0; margin-bottom: var(--space-2); font-size: var(--font-sm); color: var(--text-muted); }
+.chips.wrap { flex-wrap: wrap; overflow: visible; }
+.chips.wrap .chip { min-height: 36px; }
+.grow { flex: 1; justify-content: center; }
+.sort-list { list-style: none; margin: 0; padding: 0; }
+.sort-list button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 var(--space-1);
+  background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.sort-list li:last-child button { border-bottom: 0; }
+.sort-list button.active { color: var(--accent); font-weight: var(--weight-strong); }
 /* 表格视图只在宽屏（修订第 239 条） */
 @media (max-width: 899px) { .wide-only { display: none !important; } }
 @media (min-width: 900px) { .narrow-only { display: none !important; } }
@@ -337,9 +469,11 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
   .chip { flex: none; padding: 3px var(--space-3); }
   /* 搜索独占一行，分组与排序在下一行平分，文字不截断（修订第 230 条） */
   .filters .search { flex: 1 1 100%; max-width: none; min-width: 0; }
-  .filters select { flex: 1 1 40%; width: auto; min-width: 0; max-width: none; } /* 一行两个，下拉多时换行，文字不截断 */
+  /* 低频条件收进“筛选”抽屉，排序为抽屉；两个入口与批量修改在同一行（手机 UI 规范 3.1） */
+  .filters .inline-filter { display: none; }
   .filters .btn.secondary { display: none; }
-  .filters .btn.secondary.bulk-btn { display: inline-flex; flex: none; padding: 0 var(--space-3); } /* 批量修改在手机上也可用，只显示图标 */
+  .filters .btn.secondary.sheet-btn { display: inline-flex; flex: 1 1 0; min-width: 0; min-height: 40px; justify-content: center; }
+  .filters .btn.secondary.bulk-btn { display: inline-flex; flex: none; min-height: 40px; padding: 0 var(--space-3); } /* 批量修改在手机上也可用，只显示图标 */
   .grid.server-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
 /* 节点卡片一行五列，最窄需要约 320px（见 ServerCard） */

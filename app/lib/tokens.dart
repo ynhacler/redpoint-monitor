@@ -18,6 +18,7 @@ class AppColors {
     required this.series2,
     required this.series3,
     required this.track,
+    required this.scrim,
     required this.qrDark,
     required this.qrLight,
     required this.catVideo,
@@ -62,6 +63,8 @@ class AppColors {
   final Color series3;
   /// 环形图、每核条的底轨
   final Color track;
+  /// 弹层遮罩的底色（使用时按 40%～60% 透明度混合）
+  final Color scrim;
   /// 二维码模块：两种主题都是黑底白边，深色模式下也能被扫码识别
   final Color qrDark;
   /// 二维码背景与静区
@@ -103,6 +106,7 @@ class AppColors {
     series2: Color(0xFF7C3AED),
     series3: Color(0xFF0891B2),
     track: Color(0xFFE5E7EB),
+    scrim: Color(0xFF0F172A),
     qrDark: Color(0xFF000000),
     qrLight: Color(0xFFFFFFFF),
     catVideo: Color(0xFFEA580C),
@@ -133,6 +137,7 @@ class AppColors {
     series2: Color(0xFFA78BFA),
     series3: Color(0xFF22D3EE),
     track: Color(0xFF2A2F3A),
+    scrim: Color(0xFF000000),
     qrDark: Color(0xFF000000),
     qrLight: Color(0xFFFFFFFF),
     catVideo: Color(0xFFFB923C),

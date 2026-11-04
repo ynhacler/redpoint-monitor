@@ -44,6 +44,7 @@
   --series-2: #7C3AED;
   --series-3: #0891B2;
   --track: #E5E7EB;
+  --scrim: #0F172A;
   --qr-dark: #000000;
   --qr-light: #FFFFFF;
   --cat-video: #EA580C;
@@ -75,6 +76,7 @@
     --series-2: #A78BFA;
     --series-3: #22D3EE;
     --track: #2A2F3A;
+    --scrim: #000000;
     --qr-dark: #000000;
     --qr-light: #FFFFFF;
     --cat-video: #FB923C;
@@ -106,6 +108,7 @@
   --series-2: #A78BFA;
   --series-3: #22D3EE;
   --track: #2A2F3A;
+  --scrim: #000000;
   --qr-dark: #000000;
   --qr-light: #FFFFFF;
   --cat-video: #FB923C;
