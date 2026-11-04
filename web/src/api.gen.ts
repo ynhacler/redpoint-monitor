@@ -1125,6 +1125,10 @@ export interface Report {
     ip_stack?: {
       ipv4: boolean
       ipv6: boolean
+      /** 可选（修订第 286 条）：网卡上的第一个公网 IPv4（/proc/net/fib_trie）；NAT 机器没有时省略 */
+      public_ipv4?: string
+      /** 可选（修订第 286 条）：网卡上的第一个全局、非临时 IPv6 */
+      public_ipv6?: string
     }
   }
   cpu: {

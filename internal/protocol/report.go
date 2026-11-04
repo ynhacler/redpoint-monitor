@@ -329,6 +329,10 @@ type System struct {
 type IPStack struct {
 	IPv4 bool `json:"ipv4"`
 	IPv6 bool `json:"ipv6"`
+	// 可选（修订第 286 条）：网卡上的第一个公网地址，节点概况在注册时没有记录到该地址族时显示；
+	// NAT 机器没有公网 IPv4 时省略。旧版 Agent 不报
+	PublicIPv4 string `json:"public_ipv4,omitempty"`
+	PublicIPv6 string `json:"public_ipv6,omitempty"`
 }
 
 // CPU 是 CPU 使用率、核数、负载、温度与各类时间占比（设计 4.4）。

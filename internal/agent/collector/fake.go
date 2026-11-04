@@ -72,7 +72,7 @@ func (f *fake) Collect() (protocol.Report, error) {
 			Hostname: "fake-node", OS: "fake", OSVersion: "1", Kernel: "fake",
 			Arch: runtime.GOARCH, Uptime: uint64(t), BootID: f.bootID,
 			CPUModel: "Fake Virtual CPU @ 2.40GHz",
-			IPStack:  &protocol.IPStack{IPv4: true, IPv6: true},
+			IPStack:  &protocol.IPStack{IPv4: true, IPv6: true, PublicIPv4: "154.17.2.9", PublicIPv6: "2403:18c0:5:2fb0::55a4"},
 		},
 		CPU: protocol.CPU{
 			Usage: cpu, Cores: len(perCore), Load1: 0.3, Load5: 0.25, Load15: 0.2,

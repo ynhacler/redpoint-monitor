@@ -156,3 +156,19 @@ func TestRouteTraces(t *testing.T) {
 		t.Errorf("不存在的节点：%d", rec.Code)
 	}
 }
+
+// Agent 报告的公网地址只保留合法的公网地址（修订第 286 条）
+func TestCleanIPStack(t *testing.T) {
+	got := cleanIPStack(&protocol.IPStack{IPv4: true, IPv6: true, PublicIPv4: "154.17.2.9", PublicIPv6: "2403:18c0:5:2fb0::55a4"})
+	if got.PublicIPv4 != "154.17.2.9" || got.PublicIPv6 != "2403:18c0:5:2fb0::55a4" || !got.IPv4 {
+		t.Errorf("合法地址应保留：%+v", got)
+	}
+	for _, bad := range []protocol.IPStack{{PublicIPv4: "10.0.0.1", PublicIPv6: "fd00::1"}, {PublicIPv4: "<b>x</b>", PublicIPv6: "1.1.1.1"}} {
+		if c := cleanIPStack(&bad); c.PublicIPv4 != "" || c.PublicIPv6 != "" {
+			t.Errorf("应丢弃：%+v", c)
+		}
+	}
+	if cleanIPStack(nil) != nil {
+		t.Error("nil 应保持 nil")
+	}
+}

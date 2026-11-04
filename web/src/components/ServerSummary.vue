@@ -87,8 +87,10 @@ const facts = computed<Fact[]>(() => {
   const add = (f: Fact) => f.v && out.push(f) // 系统信息：有值才显示
   const asset = add
   add({ k: t('主机名'), v: sys.value?.hostname || x.hostname || '' })
-  add({ k: 'IPv4', v: x.ipv4 || x.expected_ipv4 || '', copy: true, mono: true })
-  add({ k: 'IPv6', v: x.ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
+  // 注册时只记录到连接所用的地址族；另一族用 Agent 报告的网卡公网地址补上（修订第 286 条）
+  const st = sys.value?.ip_stack
+  add({ k: 'IPv4', v: x.ipv4 || st?.public_ipv4 || x.expected_ipv4 || '', copy: true, mono: true })
+  add({ k: 'IPv6', v: x.ipv6 || st?.public_ipv6 || x.expected_ipv6 || '', copy: true, mono: true })
   add({ k: t('内核'), v: sys.value?.kernel || '', mono: true })
   add({ k: t('虚拟化'), v: virt.value })
   add(updatesFact.value)
@@ -284,7 +286,8 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 /* 系统与资产：紧凑的标签 / 数值列表，宽屏多列 */
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-2) var(--space-5);
   margin: var(--space-4) 0 0; padding-top: var(--space-4); border-top: 1px solid var(--border); }
-.fact { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+/* 顶端对齐（修订第 286 条）：数值换成两行（如 IPv6）时标签仍与第一行对齐；标签与数值行高相同 */
+.fact { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
 .fact.wide { grid-column: 1 / -1; }
 .fact dt { flex: none; width: 68px; font-size: var(--font-xs); line-height: var(--line-md); color: var(--text-muted); }
 .fact dd { margin: 0; min-width: 0; font-size: var(--font-sm); line-height: var(--line-md); overflow-wrap: anywhere; }
