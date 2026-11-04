@@ -1032,6 +1032,16 @@ var migrations = []string{
 	CREATE INDEX logins_at ON logins (server_id, at);`,
 	// 迁移 62：网络线路标签（修订第 279 条），如 CN2 GIA、CMIN2，逗号分隔
 	`ALTER TABLE servers ADD COLUMN line_tags TEXT NOT NULL DEFAULT '';`,
+	// 迁移 63：回程线路的路由追踪（修订第 282 条，设计 42.5），每台节点每个目标只保留最近一次
+	`CREATE TABLE route_traces (
+		server_id INTEGER NOT NULL,
+		target_id INTEGER NOT NULL,
+		ts        INTEGER NOT NULL,
+		reached   INTEGER NOT NULL DEFAULT 0,
+		hops      TEXT NOT NULL DEFAULT '[]',
+		error     TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (server_id, target_id)
+	);`,
 }
 
 func (s *Store) migrate() error {

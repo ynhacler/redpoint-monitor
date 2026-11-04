@@ -118,6 +118,9 @@ func (s *Store) DeleteProbeTarget(id int64) error {
 	if _, err := tx.Exec(`DELETE FROM probe_results WHERE target_id = ?`, id); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM route_traces WHERE target_id = ?`, id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM probe_targets WHERE id = ? AND builtin = 0`, id); err != nil {
 		return err
 	}
@@ -322,18 +325,18 @@ func (s *Server) probeBase() ([]ProbeTargetRow, ProbeSettings, error) {
 	return p.targets, p.settings, nil
 }
 
-// probeList 返回节点要下发的目标编码、每轮间隔、超时与版本。
-func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, interval int, timing protocol.ProbeTiming, err error) {
+// probeList 返回节点要下发的目标编码、要追踪路由的目标、每轮间隔、超时与版本。
+func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded, trace string, interval int, timing protocol.ProbeTiming, err error) {
 	all, global, err := s.probeBase()
 	if err != nil {
-		return "", "", 0, timing, err
+		return "", "", "", 0, timing, err
 	}
 	targets, interval := effectiveProbe(all, global.IntervalS, np, sid)
 	timing = effectiveTiming(global, np)
 	// 国内探针（修订第 154 条）：探测其他节点的项排在前面，剩余名额给三网延迟目标；合计不超过 Agent 上限
 	wire, err := s.reachTargets(sid, time.Now())
 	if err != nil {
-		return "", "", 0, timing, err
+		return "", "", "", 0, timing, err
 	}
 	wire = slices.Clone(wire)
 	for _, t := range targets {
@@ -350,7 +353,18 @@ func (s *Server) probeList(sid int64, np NodeProbe) (version, encoded string, in
 	if timing != protocol.DefaultTiming && encoded != "" {
 		ver += "@t" + timing.Encode()
 	}
-	return protocol.ProbeVersion(ver, interval), encoded, interval, timing, nil
+	// 路由追踪的目标（修订第 282 条）：只从实际下发的目标中选；变化时版本随之变化
+	var ids []int64
+	for _, t := range pickTraceTargets(targets, func(id int64) bool {
+		return slices.ContainsFunc(wire, func(w protocol.ProbeTarget) bool { return w.ID == id })
+	}) {
+		ids = append(ids, t.ID)
+	}
+	trace = protocol.EncodeTraceIDs(ids)
+	if trace != "" {
+		ver += "@r" + trace
+	}
+	return protocol.ProbeVersion(ver, interval), encoded, trace, interval, timing, nil
 }
 
 // syncProbe 处理上报请求中的 X-Probe-Version：记录 Agent 的探测状态，版本不同时在响应头中下发新列表。
@@ -377,7 +391,7 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np
 	if st == "off" {
 		return
 	}
-	version, encoded, interval, timing, err := s.probeList(sid, np)
+	version, encoded, trace, interval, timing, err := s.probeList(sid, np)
 	if err != nil {
 		s.log.Error("probe targets failed", "component", "probe", "err", err)
 		return
@@ -387,6 +401,9 @@ func (s *Server) syncProbe(w http.ResponseWriter, r *http.Request, sid int64, np
 		w.Header().Set(protocol.HeaderProbeTargets, encoded)
 		w.Header().Set(protocol.HeaderProbeInterval, strconv.Itoa(interval))
 		w.Header().Set(protocol.HeaderProbeTiming, timing.Encode())
+		if trace != "" {
+			w.Header().Set(protocol.HeaderProbeTrace, trace)
+		}
 	}
 }
 

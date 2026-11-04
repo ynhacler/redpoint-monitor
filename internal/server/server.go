@@ -421,6 +421,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/servers/{id}/metrics/history", accessRead, s.handleHistory)
 	handle("GET /api/v1/servers/{id}/health", accessRead, s.handleHealth)
 	handle("GET /api/v1/servers/{id}/latency", accessRead, s.handleLatency)
+	handle("GET /api/v1/servers/{id}/routes", accessRead, s.handleRoutes)       // 回程线路（修订第 282 条）
 	handle("GET /api/v1/latency-overview", accessRead, s.handleLatencyOverview) // 测速对比（修订第 137 条）
 	handle("GET /api/v1/reach-probes", accessAdmin, s.handleReachProbes)        // 国内探针（修订第 154 条）
 	handle("PUT /api/v1/reach-probes", accessAdmin, s.handlePutReachProbes)
@@ -663,6 +664,7 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 	} else if !stale {
 		ns := &snapshot{ReceivedAt: now, At: at, Report: rep}
 		ns.Report.Probes = nil // 探测结果只写入历史（设计 42.3.2），不属于实时状态
+		ns.Report.Traces = nil // 路由追踪同样只写入数据库（修订第 282 条）
 		if snap != nil {
 			ns.ClockSkew = snap.ClockSkew // 由 handleReport 随后更新；旧版 Agent 测不到时沿用上次的值
 			// 扩展指标（含虚拟化类型）每分钟才上报一次：其余上报沿用上一次的值，详情页始终能显示（设计 46.3）
@@ -816,6 +818,12 @@ func (s *Server) flush() {
 		if len(p.rep.Probes) > 0 {
 			if err := insertProbeResults(tx, p.serverID, p.rep.Probes, p.seen); err != nil {
 				s.log.Error("flush probes failed", "component", "store", "err", err)
+				return
+			}
+		}
+		if len(p.rep.Traces) > 0 {
+			if err := saveRouteTraces(tx, p.serverID, p.rep.Traces, p.seen); err != nil {
+				s.log.Error("flush traces failed", "component", "store", "err", err)
 				return
 			}
 		}
