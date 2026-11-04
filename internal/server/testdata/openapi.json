@@ -11782,6 +11782,14 @@
                   },
                   "ipv6": {
                     "type": "boolean"
+                  },
+                  "public_ipv4": {
+                    "type": "string",
+                    "description": "可选（修订第 286 条）：网卡上的第一个公网 IPv4（/proc/net/fib_trie）；NAT 机器没有时省略"
+                  },
+                  "public_ipv6": {
+                    "type": "string",
+                    "description": "可选（修订第 286 条）：网卡上的第一个全局、非临时 IPv6"
                   }
                 }
               }

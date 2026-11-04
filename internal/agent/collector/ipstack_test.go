@@ -27,9 +27,42 @@ func TestParseIPStack(t *testing.T) {
 		{"有全局地址但没有默认路由", route4, global6, reject6, true, false},
 		{"内核关闭了 IPv6：文件不存在", route4, "", "", true, false},
 	} {
-		got := parseIPStack(c.route, c.inet6, c.route6)
+		got := parseIPStack(c.route, c.inet6, c.route6, "")
 		if got.IPv4 != c.v4 || got.IPv6 != c.v6 {
 			t.Errorf("%s: ipv4=%v ipv6=%v, want %v %v", c.name, got.IPv4, got.IPv6, c.v4, c.v6)
 		}
+	}
+}
+
+// 公网地址（修订第 286 条）：fib_trie 中的本机地址取第一个公网的，if_inet6 跳过临时地址、ULA 与 lo
+func TestPublicAddrs(t *testing.T) {
+	trie := `Main:
+  +-- 0.0.0.0/0 3 0 5
+     |-- 0.0.0.0
+        /0 universe UNICAST
+     +-- 10.0.0.0/24 2 0 2
+        |-- 10.0.0.5
+           /32 host LOCAL
+     |-- 154.17.2.9
+        /32 host LOCAL
+     |-- 154.17.2.255
+        /32 link BROADCAST
+Local:
+  +-- 127.0.0.0/8 2 0 2
+     |-- 127.0.0.1
+        /32 host LOCAL
+`
+	if got := publicV4(trie); got != "154.17.2.9" {
+		t.Errorf("publicV4 = %q", got)
+	}
+	if got := publicV4("|-- 10.0.0.5\n   /32 host LOCAL\n"); got != "" {
+		t.Errorf("只有内网地址时应为空：%q", got)
+	}
+	inet6 := "00000000000000000000000000000001 01 80 10 80       lo\n" +
+		"fd000000000000000000000000000001 02 40 00 80     eth0\n" +
+		"240318c000050000000000000000abcd 02 40 00 01     eth0\n" + // 临时地址
+		"240318c000052fb0be2411fffefe55a4 02 40 00 80     eth0\n"
+	if got := publicV6(inet6); got != "2403:18c0:5:2fb0:be24:11ff:fefe:55a4" {
+		t.Errorf("publicV6 = %q", got)
 	}
 }

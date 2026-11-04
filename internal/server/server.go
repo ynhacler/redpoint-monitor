@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"path"
 	"runtime/debug"
 	"slices"
@@ -665,6 +666,7 @@ func (s *Server) ingest(sid int64, rep protocol.Report, at, now time.Time, traff
 		ns := &snapshot{ReceivedAt: now, At: at, Report: rep}
 		ns.Report.Probes = nil // 探测结果只写入历史（设计 42.3.2），不属于实时状态
 		ns.Report.Traces = nil // 路由追踪同样只写入数据库（修订第 282 条）
+		ns.Report.System.IPStack = cleanIPStack(ns.Report.System.IPStack)
 		if snap != nil {
 			ns.ClockSkew = snap.ClockSkew // 由 handleReport 随后更新；旧版 Agent 测不到时沿用上次的值
 			// 扩展指标（含虚拟化类型）每分钟才上报一次：其余上报沿用上一次的值，详情页始终能显示（设计 46.3）
@@ -1128,4 +1130,23 @@ func (s *Server) webHandler() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+// cleanIPStack 只保留可解析的公网地址（修订第 286 条）：Agent 报告的地址原样显示在节点概况中，不合法的丢弃。
+func cleanIPStack(st *protocol.IPStack) *protocol.IPStack {
+	if st == nil {
+		return nil
+	}
+	c := *st
+	if a, err := netip.ParseAddr(c.PublicIPv4); err != nil || !a.Is4() || !protocol.PublicProbeAddr(a) {
+		c.PublicIPv4 = ""
+	} else {
+		c.PublicIPv4 = a.String()
+	}
+	if a, err := netip.ParseAddr(c.PublicIPv6); err != nil || !a.Is6() || a.Is4In6() || !protocol.PublicProbeAddr(a) {
+		c.PublicIPv6 = ""
+	} else {
+		c.PublicIPv6 = a.String()
+	}
+	return &c
 }

@@ -258,7 +258,7 @@ func (c *linux) collectSystem(errs *errorList) protocol.System {
 	}
 	s.CPUModel = c.cpuModel
 	s.IPStack = c.ipStack.get(time.Now(), time.Minute, func() *protocol.IPStack {
-		return parseIPStack(readFile("/proc/net/route"), readFile("/proc/net/if_inet6"), readFile("/proc/net/ipv6_route"))
+		return parseIPStack(readFile("/proc/net/route"), readFile("/proc/net/if_inet6"), readFile("/proc/net/ipv6_route"), readFile("/proc/net/fib_trie"))
 	})
 	return s
 }
