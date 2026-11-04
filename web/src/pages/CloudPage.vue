@@ -136,6 +136,10 @@ function badge(a: CloudAccount): { tone: string; text: string; detail: string } 
   if (a.auth_failed) return { tone: 'bad', text: t('凭证失效'), detail: st.text }
   if (a.last_error) return { tone: 'bad', text: t('同步失败'), detail: st.text }
   if (a.last_warning) return { tone: 'warn', text: t('部分同步'), detail: st.text }
+  // 费用或流量包因权限等原因没有读到（其余部分照常）：也是部分同步，各部分的状态在详情中（手机 UI 规范 4.2）
+  if (a.cost_warning || a.pool_warning) return { tone: 'warn', text: t('部分同步'), detail: '' }
+  const lastAny = Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
+  if (lastAny && a.sync_cost && !a.cost_synced_at) return { tone: 'warn', text: t('部分同步'), detail: '' } // 实例已同步，费用还没有
   const last = Math.max(a.cost_synced_at, a.instances_synced_at, a.traffic_synced_at)
   return last ? { tone: 'ok', text: t('同步成功'), detail: '' } : { tone: 'muted', text: t('等待首次同步'), detail: '' }
 }
@@ -148,7 +152,46 @@ function costText(a: CloudAccount, cents: number | null | undefined): string {
   return fmtMoney(cents, a.current_cost.currency)
 }
 // 第二轮 UI2-004 / CLD-01（修订第 261 条）：费用分三种——已核实金额、历史缓存（最近一次同步失败时，注明是哪次同步的）、待确认
-const costPending = (a: CloudAccount) => a.enabled && costText(a, a.current_cost?.amount_cents) === DASH
+// 手机 UI 规范 4.2（修订第 284 条）：没有金额时说明是哪种情况，不与真实的 0 混用——
+// 未开启（关闭了费用同步）、同步中、未获取（从未拿到，或没有账单权限）、同步失败、待确认（拿到 0 但同步不完整）
+type CostCell = { text: string; value: boolean; tone: string }
+function costCell(a: CloudAccount, cents: number | null | undefined): CostCell {
+  const state = (text: string, tone = 'muted'): CostCell => ({ text, value: false, tone })
+  if (!a.sync_cost) return state(t('未开启'))
+  if (!a.cost_synced_at) {
+    if (a.syncing) return state(t('同步中…'))
+    if (a.cost_warning) return state(t('未获取'), 'warn')
+    if (a.last_error || a.auth_failed) return state(t('同步失败'), 'bad')
+    return state(t('未获取'))
+  }
+  if (a.cost_warning && !cents) return state(t('未获取'), 'warn') // 没有账单权限：没读到，不是 0
+  if (!a.current_cost || cents == null) return state(DASH) // 这家云没有这项（如没有预估），不补 0
+  if (cents === 0 && costUnconfirmed(a)) return state(t('待确认'), 'warn')
+  return { text: costText(a, cents), value: true, tone: '' }
+}
+// 费用没有可信金额时的一行提示（手机 UI 规范 4.1）：点“查看”展开各部分的同步状态
+function costNotice(a: CloudAccount): string {
+  if (!a.enabled || a.syncing || !a.sync_cost) return ''
+  const c = costCell(a, a.current_cost?.amount_cents)
+  if (c.value || c.text === DASH) return ''
+  return c.tone === 'bad' ? t('费用同步失败') : c.text === t('待确认') ? t('费用待确认') : t('账单数据未获取')
+}
+// 各部分的同步状态（手机 UI 规范 4.2）：“部分同步”时说清楚是实例、费用还是流量包没有同步
+function modules(a: CloudAccount): { name: string; tone: string; text: string }[] {
+  const at = (ts: number) => t('已同步 {time}', { time: fmtTime(ts) })
+  const out = [{ name: t('实例'), tone: a.instances_synced_at ? (a.last_warning ? 'warn' : 'ok') : 'muted',
+    text: a.instances_synced_at ? at(a.instances_synced_at) + (a.last_warning ? ` · ${t('部分区域已跳过')}` : '') : t('未获取') }]
+  if (!a.sync_cost) out.push({ name: t('费用'), tone: 'muted', text: t('未开启') })
+  else if (a.cost_warning) out.push({ name: t('费用'), tone: 'warn', text: t('未获取：{reason}', { reason: a.cost_warning }) })
+  else out.push({ name: t('费用'), tone: a.cost_synced_at ? 'ok' : 'muted', text: a.cost_synced_at ? at(a.cost_synced_at) : t('未获取') })
+  if (a.sync_traffic) {
+    out.push({ name: t('流量包'), tone: a.pool_warning ? 'warn' : a.traffic_synced_at ? 'ok' : 'muted',
+      text: a.pool_warning ? t('未获取：{reason}', { reason: a.pool_warning }) : a.traffic_synced_at ? at(a.traffic_synced_at) : t('未获取') })
+  }
+  return out
+}
+// 是否有可展开的详情：状态原因、某一部分没有同步，或费用没有可信金额
+const hasDetail = (a: CloudAccount) => !!badge(a).detail || modules(a).some((m) => m.tone === 'warn') || !!costNotice(a)
 const costCached = (a: CloudAccount) => !!a.current_cost && (!!a.last_error || a.auth_failed) && a.cost_synced_at > 0
 // 更多菜单（<details>）：点了菜单项后收起
 const closeMenu = (e: Event) => (e.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -584,7 +627,11 @@ function expireTone(i: CloudInstance): string {
           </div>
           <!-- 操作（修订第 245 条，UI-003）：只留“同步”，其余放在更多菜单中，各家账户的卡片不再因按钮多少而换行错位 -->
           <div class="acts">
-            <button type="button" class="secondary small" :disabled="a.syncing || !a.enabled" @click="syncNow(a)">{{ a.syncing ? t('同步中…') : t('同步') }}</button>
+            <!-- 手机上只留刷新图标（同步中旋转），文字作为无障碍名称（手机 UI 规范 4.1） -->
+            <button type="button" class="secondary small sync-btn" :disabled="a.syncing || !a.enabled" :aria-label="a.syncing ? t('同步中…') : t('立即同步')"
+              :title="a.syncing ? t('同步中…') : t('立即同步')" @click="syncNow(a)">
+              <Icon name="refresh" :size="14" :class="{ spin: a.syncing }" /><span class="sync-text">{{ a.syncing ? t('同步中…') : t('同步') }}</span>
+            </button>
             <details class="more">
               <summary class="more-btn" :aria-label="t('更多操作')" :title="t('更多操作')">···</summary>
               <div class="menu" role="menu">
@@ -602,12 +649,17 @@ function expireTone(i: CloudInstance): string {
         <div class="state-row small">
           <span class="badge" :class="badge(a).tone">{{ badge(a).text }}</span>
           <span v-if="syncedAt(a)" class="muted">{{ t('上次成功 {time}', { time: fmtTime(syncedAt(a)) }) }}</span>
-          <button v-if="badge(a).detail" type="button" class="text small detail-toggle" :aria-expanded="!!detailOpen[a.id]"
+          <button v-if="hasDetail(a)" type="button" class="text small detail-toggle" :aria-expanded="!!detailOpen[a.id]"
             @click="detailOpen[a.id] = !detailOpen[a.id]">
             {{ t('查看详情') }}<Icon name="chevron-right" :size="12" class="chev" :class="{ open: detailOpen[a.id] }" />
           </button>
         </div>
-        <p v-if="badge(a).detail && detailOpen[a.id]" class="state-detail small" :class="badge(a).tone">{{ badge(a).detail }}</p>
+        <div v-if="hasDetail(a) && detailOpen[a.id]" class="state-detail small">
+          <p v-if="badge(a).detail" :class="badge(a).tone">{{ badge(a).detail }}</p>
+          <ul class="modules">
+            <li v-for="m in modules(a)" :key="m.name"><span class="mod-name">{{ m.name }}</span><span :class="m.tone">{{ m.text }}</span></li>
+          </ul>
+        </div>
         <p v-if="syncMsg[a.id]" class="small err">{{ syncMsg[a.id] }}</p>
         <div v-if="checks[a.id] && (checks[a.id].items.length || checks[a.id].error)" class="check">
           <div class="check-head">
@@ -630,8 +682,7 @@ function expireTone(i: CloudInstance): string {
         <div class="stats">
           <div>
             <div class="muted small">{{ t('本月已产生') }}</div>
-            <div v-if="costPending(a)" class="big pending">{{ t('待确认') }}</div>
-            <div v-else class="big num">{{ costText(a, a.current_cost?.amount_cents) }}</div>
+            <div class="big" :class="costCell(a, a.current_cost?.amount_cents).value ? 'num' : ['pending', costCell(a, a.current_cost?.amount_cents).tone]">{{ costCell(a, a.current_cost?.amount_cents).text }}</div>
             <div v-if="costCached(a)" class="muted small">{{ t('缓存 · {time}', { time: fmtTime(a.cost_synced_at) }) }}</div>
           </div>
           <!-- 阿里云没有费用预测，显示账户余额 -->
@@ -644,8 +695,7 @@ function expireTone(i: CloudInstance): string {
           </div>
           <div v-else>
             <div class="muted small">{{ t('本月预估') }}</div>
-            <div v-if="costPending(a)" class="big pending">{{ t('待确认') }}</div>
-            <div v-else class="big num">{{ costText(a, a.current_cost?.forecast_cents) }}</div>
+            <div class="big" :class="costCell(a, a.current_cost?.forecast_cents).value ? 'num' : ['pending', costCell(a, a.current_cost?.forecast_cents).tone]">{{ costCell(a, a.current_cost?.forecast_cents).text }}</div>
           </div>
           <div>
             <div class="muted small">{{ t('预算') }}</div>
@@ -671,7 +721,10 @@ function expireTone(i: CloudInstance): string {
           </span>
         </div>
         <p v-if="a.pool_warning" class="small warn">{{ a.pool_warning }}</p>
-        <p v-if="a.cost_warning" class="small warn">{{ a.cost_warning }}</p>
+        <!-- 费用没有可信金额：一行提示，点“查看”展开各部分的同步状态（原因在其中） -->
+        <button v-if="costNotice(a)" type="button" class="notice small" @click="detailOpen[a.id] = true">
+          <span class="warn">⚠ {{ costNotice(a) }}</span><span class="muted">{{ t('查看') }}<Icon name="chevron-right" :size="12" /></span>
+        </button>
         <!-- 共性说明收进“ⓘ 费用说明”（修订第 267 条，第二轮 UI2-012）；影响判断的问题由状态标签与“待确认”常驻显示 -->
         <details class="cost-info small">
           <summary class="muted">ⓘ {{ t('费用说明') }}</summary>
@@ -784,8 +837,6 @@ function expireTone(i: CloudInstance): string {
 .badge.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
 .badge.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
 .state-detail { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
-.state-detail.warn { background: color-mix(in srgb, var(--warn) 8%, transparent); }
-.state-detail.bad { background: color-mix(in srgb, var(--bad) 8%, transparent); }
 .state-detail { margin-bottom: 0; word-break: break-word; }
 .detail-toggle { display: inline-flex; align-items: center; gap: 2px; min-height: 28px; }
 .detail-toggle .chev { transition: transform .15s; }
@@ -855,8 +906,29 @@ function expireTone(i: CloudInstance): string {
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .traffic { display: flex; flex-direction: column; gap: var(--space-1); }
 .danger-text { color: var(--bad); }
+.sync-btn { display: inline-flex; align-items: center; gap: var(--space-1); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.state-detail p { margin: 0 0 var(--space-1); word-break: break-word; }
+.state-detail p.bad { color: var(--bad); }
+.state-detail p.warn { color: var(--warn); }
+.modules { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.modules li { display: flex; gap: var(--space-2); }
+.mod-name { flex: none; width: 4em; color: var(--text-muted); }
+.modules .ok { color: var(--ok); }
+.modules .warn, .big.pending.warn { color: var(--warn); }
+.modules .bad, .big.pending.bad { color: var(--bad); }
+.modules .muted { color: var(--text-muted); }
+.notice { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: var(--space-2); margin: var(--space-1) 0 var(--space-2);
+  padding: var(--space-2) var(--space-3); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface)); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.notice .muted { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--text-muted); }
+.notice .warn { color: var(--warn); }
 @media (max-width: 640px) {
   .account { padding: var(--space-4); }
+  .sync-text { display: none; }
+  .sync-btn { min-width: 44px; justify-content: center; }
   /* 触控区域不小于 44px（修订第 270 条，M-05） */
   .acts > button, .more-btn, .cost-info summary, .detail-toggle { min-height: 44px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
