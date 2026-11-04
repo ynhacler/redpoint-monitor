@@ -1402,4 +1402,13 @@ export const en: Record<string, string> = {
   '其他，回车添加': 'Other, press Enter to add',
   '点一下添加，再点一下去掉，第三下恢复不变': 'Click once to add, again to remove, a third time to leave unchanged',
   '应用到 {n} 个节点': 'Apply to {n} nodes',
+  '未获取': 'Not fetched',
+  '费用同步失败': 'Cost sync failed',
+  '费用待确认': 'Cost not confirmed',
+  '账单数据未获取': 'Billing data not fetched',
+  '部分区域已跳过': 'some regions skipped',
+  '费用': 'Cost',
+  '未获取：{reason}': 'Not fetched: {reason}',
+  '流量包': 'Traffic packages',
+  '查看': 'View',
 }
