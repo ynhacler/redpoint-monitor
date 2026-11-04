@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -49,11 +50,16 @@ type Prober struct {
 	changed  chan struct{}
 	pending  [][]protocol.ProbeResult
 
+	traceIDs     []int64 // 要追踪路由的目标（修订第 282 条），面板随目标列表下发
+	traceChanged chan struct{}
+	traces       []protocol.TraceResult // 待上报的路由追踪
+
 	// 以下供测试替换
 	tcp    func(ctx context.Context, addr string) (time.Duration, error)
 	ping   func(ip net.IP) (pinger, error) // 打开到一个目标的 ICMP 套接字，这个目标的样本共用
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 	sleep  func(ctx context.Context, d time.Duration) // 样本之间的等待
+	trace  func(ctx context.Context, a netip.Addr) ([]netprobe.Hop, bool, error)
 }
 
 // pinger 是 netprobe.Pinger 的接口，便于测试替换。
@@ -72,9 +78,9 @@ func openPinger(ip net.IP) (pinger, error) {
 
 // New 返回探测器；disabled 为空表示不检查本机开关。
 func New(disabled func() bool) *Prober {
-	return &Prober{Disabled: disabled, Now: time.Now, changed: make(chan struct{}, 1),
+	return &Prober{Disabled: disabled, Now: time.Now, changed: make(chan struct{}, 1), traceChanged: make(chan struct{}, 1),
 		timing: protocol.DefaultTiming,
-		tcp:    netprobe.TCPConnect, ping: openPinger, sleep: sleepCtx,
+		tcp:    netprobe.TCPConnect, ping: openPinger, sleep: sleepCtx, trace: realTrace,
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		}}
@@ -92,9 +98,10 @@ func (p *Prober) Version() string {
 	return p.version
 }
 
-// Update 保存面板下发的目标列表、间隔与超时（响应头 X-Probe-Version、X-Probe-Targets、X-Probe-Interval、
-// X-Probe-Timing）；版本相同时忽略。旧版面板不发 X-Probe-Timing，按默认超时 4 秒、样本间隔 1 秒。
-func (p *Prober) Update(version, encoded, interval, timing string) {
+// Update 保存面板下发的目标列表、间隔、超时与要追踪路由的目标（响应头 X-Probe-Version、X-Probe-Targets、
+// X-Probe-Interval、X-Probe-Timing、X-Probe-Trace）；版本相同时忽略。旧版面板不发 X-Probe-Timing，
+// 按默认超时 4 秒、样本间隔 1 秒；不发 X-Probe-Trace 时不追踪。
+func (p *Prober) Update(version, encoded, interval, timing, trace string) {
 	if version == "" || len(version) > 64 {
 		return
 	}
@@ -106,10 +113,19 @@ func (p *Prober) Update(version, encoded, interval, timing string) {
 		return
 	}
 	p.version, p.targets, p.interval, p.timing = version, targets, iv, protocol.ParseProbeTiming(timing)
+	ids := protocol.ParseTraceIDs(trace)
+	traceChanged := !slices.Equal(ids, p.traceIDs)
+	p.traceIDs = ids
 	p.mu.Unlock()
 	select {
 	case p.changed <- struct{}{}:
 	default:
+	}
+	if traceChanged {
+		select {
+		case p.traceChanged <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -158,8 +174,9 @@ func (p *Prober) Drain() []protocol.ProbeResult {
 	return out
 }
 
-// Run 在独立 goroutine 中运行，直到 ctx 取消。
+// Run 在独立 goroutine 中运行，直到 ctx 取消；路由追踪在另一个 goroutine 中按自己的节奏运行，不推迟延迟探测。
 func (p *Prober) Run(ctx context.Context) {
+	go p.runTraces(ctx)
 	timer := time.NewTimer(FirstDelay)
 	defer timer.Stop()
 	for {

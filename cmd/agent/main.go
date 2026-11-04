@@ -495,6 +495,9 @@ func run() {
 	}
 	// 三网延迟探测（设计 42.3.2）：目标由面板随上报响应下发；本机存在 no-probe 文件时关闭（只能在本机修改，设计 42.6）
 	prober = probe.New(probeDisabled)
+	if *fake || runtime.GOOS != "linux" {
+		prober.UseFakeTrace() // 路由追踪只在 Linux 上可用；联调时用假路径（设计 42.5）
+	}
 	r.Probe = prober
 	go prober.Run(context.Background())
 	unlocker = &unlock.Runner{Client: &http.Client{}, Logf: alog.Printf}
@@ -643,6 +646,7 @@ func collect(col collector.Collector, final bool, procs []string) (rep protocol.
 	}
 	if prober != nil {
 		rep.Probes = prober.Drain() // 上一轮的探测结果只随一份上报带回；上报失败时随这份上报一起补发
+		rep.Traces = prober.DrainTraces()
 	}
 	if unlocker != nil {
 		rep.Unlock = unlocker.Drain() // 解锁检测结果（设计 50）只随一份上报带回

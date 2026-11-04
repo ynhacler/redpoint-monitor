@@ -15,6 +15,7 @@ import PortBaselineCard from '../components/PortBaselineCard.vue'
 import ProxiesCard from '../components/ProxiesCard.vue'
 import HealthCard from '../components/HealthCard.vue'
 import LatencyCard from '../components/LatencyCard.vue'
+import RoutesCard from '../components/RoutesCard.vue'
 import ReachCard from '../components/ReachCard.vue'
 import Icon from '../components/Icon.vue'
 import LivePanels from '../components/LivePanels.vue'
@@ -374,6 +375,7 @@ const charts = computed(() => [
           <UnlockCard :server-id="s.id" :unlock="detail?.id === s.id ? detail.unlock : undefined" :online="live" class="section-tight"
             @requested="loadDetail" />
           <LatencyCard :server-id="s.id" class="section-tight" />
+          <RoutesCard :server="s" class="section-tight" />
           <ReachCard :server-id="s.id" class="section-tight" />
         </template>
         <TrafficHistory :server="s" class="section-tight" />

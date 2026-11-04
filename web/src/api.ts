@@ -729,6 +729,13 @@ export function getLatency(id: number, range: '24h' | '7d') {
   return request('get', '/servers/{id}/latency', { params: { id }, query: { range } })
 }
 
+/** 回程线路（修订第 282 条）：到电信、联通、移动各一个目标的路由追踪与识别出的线路 */
+export function getRoutes(id: number) {
+  return request('get', '/servers/{id}/routes', { params: { id } })
+}
+/** 回程线路接口的响应 */
+export type RoutesView = Res<'/servers/{id}/routes', 'get'>
+
 /** 测速对比：全部节点到各目标最近 1 小时的延迟与丢包（修订第 137 条） */
 export function getLatencyOverview() {
   return request('get', '/latency-overview')

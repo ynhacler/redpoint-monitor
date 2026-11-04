@@ -238,9 +238,11 @@
 - [x] 按线路筛选：仪表板“线路”下拉与搜索匹配线路、v4 / v6（修订第 280 条）
 - [x] 批量修改节点：分组、添加 / 去掉网络线路（修订第 281 条）
 - [x] 手机 UI 规范第一轮：节点页总览 2×2、筛选与排序底部抽屉、节点卡片分层（修订第 283 条）
+- [x] 回程线路自动识别：Agent 每 6 小时 ICMP 路由追踪三网目标，面板按骨干网地址段识别线路（修订第 282 条，设计 42.5）
 - [ ] 在 test-agent 上核对账号、重要文件与登录记录（对照 last、getent group sudo）
 - [ ] 在 test-agent 上核对系统更新与待重启（对照 /run/reboot-required、apt list --upgradable、uname -r）
 - [ ] 在 test-agent 上核对 v4 / v6 识别（对照 ip route、ip -6 route、ip -6 addr）
+- [ ] 在 test-agent 上核对回程线路追踪（对照 tracepath / mtr 到同一目标）
 
 见设计第 36 章：第一批（N1）被墙检测与三网延迟、到期提醒、多监控中心、App 增强、批量新建；
 第二批（N2）三网测速、UnifiedPush、审计完整版、远程升级与灰度；第二阶段（P2）服务探测、Docker、PostgreSQL 等。

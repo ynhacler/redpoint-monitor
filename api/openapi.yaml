@@ -2323,6 +2323,22 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/{id}/routes:
+    get:
+      security: [{ session: [] }, { apiKey: [] }, { deviceToken: [] }]
+      tags: [servers]
+      summary: 回程线路（设计 42.5，修订第 282 条）：到电信、联通、移动各一个目标的路由追踪与识别出的线路
+      description: |
+        面板从节点在测的三网延迟目标中为每个运营商选一个（优先 IPv4 或域名目标），Agent 每 6 小时用非特权 ICMP 追踪一次。
+        line 按经过的骨干网地址段识别（CN2 GIA、CN2 GT、163、9929、4837、CMIN2、CMI、CMNET），未识别时为空字符串；
+        识别结果只是建议，不会自动修改节点的线路标签。at 为 0 表示尚未收到结果。
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+      responses:
+        '200': { description: 回程线路, content: { application/json: { schema: { $ref: '#/components/schemas/RoutesView' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /reach-probes:
     get:
       tags: [servers]
@@ -3505,6 +3521,38 @@ components:
               latency_ms: { type: ['number', 'null'], description: 最近 1 小时成功轮次的中位数；全部失败时为 null }
               loss: { type: number, description: 平均丢包率 0～100 }
 
+    RoutesView:
+      type: object
+      required: [status, items, lines]
+      properties:
+        status: { type: string, enum: ['on', 'off', unsupported], description: 同 LatencyView.status }
+        lines: { type: array, items: { type: string }, description: 识别出的线路，去重，按电信、联通、移动排列 }
+        items:
+          type: array
+          description: 正在追踪的目标，以及已不再追踪但还有记录的目标（排在后面）
+          items:
+            type: object
+            required: [target_id, isp, province, address, at, reached, line, error, hops]
+            properties:
+              target_id: { type: integer }
+              isp: { type: string, enum: [ct, cu, cm] }
+              province: { type: string }
+              address: { type: string }
+              at: { type: integer, description: 追踪时间；0 表示尚未收到结果 }
+              reached: { type: boolean, description: 是否收到目标本身的回复 }
+              line: { type: string, description: 识别出的线路；未识别时为空 }
+              error: { type: string, description: '无法追踪的原因：icmp_unavailable（本机不允许非特权 ICMP）、dns、blocked、error；成功时为空' }
+              hops:
+                type: array
+                items:
+                  type: object
+                  required: [ttl]
+                  properties:
+                    ttl: { type: integer }
+                    ip: { type: string, description: 没有回复的跳省略 }
+                    rtt_ms: { type: number }
+                    asn: { type: integer, description: 属于识别规则中的骨干网时给出 }
+                    net: { type: string, description: 骨干网名称，如“电信 CN2” }
     LatencyView:
       type: object
       required: [status, mode, interval_s, targets, series]
