@@ -826,6 +826,38 @@ export interface LatencyOverview {
   })[]
 }
 
+export interface RoutesView {
+  /** 同 LatencyView.status */
+  status: 'on' | 'off' | 'unsupported'
+  /** 识别出的线路，去重，按电信、联通、移动排列 */
+  lines: string[]
+  /** 正在追踪的目标，以及已不再追踪但还有记录的目标（排在后面） */
+  items: ({
+    target_id: number
+    isp: 'ct' | 'cu' | 'cm'
+    province: string
+    address: string
+    /** 追踪时间；0 表示尚未收到结果 */
+    at: number
+    /** 是否收到目标本身的回复 */
+    reached: boolean
+    /** 识别出的线路；未识别时为空 */
+    line: string
+    /** 无法追踪的原因：icmp_unavailable（本机不允许非特权 ICMP）、dns、blocked、error；成功时为空 */
+    error: string
+    hops: {
+      ttl: number
+      /** 没有回复的跳省略 */
+      ip?: string
+      rtt_ms?: number
+      /** 属于识别规则中的骨干网时给出 */
+      asn?: number
+      /** 骨干网名称，如“电信 CN2” */
+      net?: string
+    }[]
+  })[]
+}
+
 export interface LatencyView {
   /** 节点的三网延迟设置（GET /servers/{id}/probe） */
   mode: 'default' | 'custom' | 'off'
@@ -3245,6 +3277,15 @@ export interface Paths {
         range?: '24h' | '7d'
       }
       response: LatencyView
+    }
+  }
+  '/servers/{id}/routes': {
+    /** 回程线路（设计 42.5，修订第 282 条）：到电信、联通、移动各一个目标的路由追踪与识别出的线路 */
+    get: {
+      params: {
+        id: number
+      }
+      response: RoutesView
     }
   }
   '/reach-probes': {

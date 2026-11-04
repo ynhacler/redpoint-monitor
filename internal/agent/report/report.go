@@ -68,7 +68,7 @@ type Reporter struct {
 	// Probe 同步三网延迟的目标列表（设计 42.3.2）：请求头带当前版本，响应头带新列表；为空时不参与
 	Probe interface {
 		Version() string
-		Update(version, encoded, interval, timing string)
+		Update(version, encoded, interval, timing, trace string)
 	}
 	// Unlock 处理面板的解锁检测请求（设计 50）：请求头声明支持，响应头带请求号；为空时不参与
 	Unlock interface {
@@ -420,7 +420,7 @@ func (r *Reporter) send(ctx context.Context, body []byte, compress bool) (int, t
 		r.setWatchProcs(resp.Header.Get(protocol.HeaderWatchProcs))
 		if v := resp.Header.Get(protocol.HeaderProbeVersion); v != "" && r.Probe != nil {
 			r.Probe.Update(v, resp.Header.Get(protocol.HeaderProbeTargets), resp.Header.Get(protocol.HeaderProbeInterval),
-				resp.Header.Get(protocol.HeaderProbeTiming))
+				resp.Header.Get(protocol.HeaderProbeTiming), resp.Header.Get(protocol.HeaderProbeTrace))
 		}
 		if v := resp.Header.Get(protocol.HeaderUnlockRequest); v != "" && r.Unlock != nil {
 			r.Unlock.Request(v)

@@ -170,6 +170,7 @@ func (s *Store) DeleteServer(id int64) (string, error) {
 		`DELETE FROM port_baseline WHERE server_id = ?`,              // 端口基线（修订第 170 条）
 		`DELETE FROM change_state WHERE server_id = ?`,               // 变更记录的上次状态（修订第 273 条）
 		`DELETE FROM logins WHERE server_id = ?`,                     // 登录记录（修订第 276 条）
+		`DELETE FROM route_traces WHERE server_id = ?`,               // 路由追踪（修订第 282 条）
 		`DELETE FROM probe_targets WHERE server_id = ?`,              // 节点自己的测试目标
 		`DELETE FROM alert_rules WHERE scope_type = 'server' AND scope_id = CAST(? AS TEXT)`,
 		`DELETE FROM servers WHERE id = ?`,
