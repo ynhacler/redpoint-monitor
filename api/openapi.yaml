@@ -2101,6 +2101,42 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /servers/bulk-edit:
+    post:
+      tags: [servers]
+      summary: 批量修改节点（修订第 281 条）：分组、添加 / 去掉网络线路
+      description: |
+        对 ids 中的节点一次性修改，全部成功或全部不变（一个事务）。group 省略表示不改分组，空字符串表示清除分组；
+        add_line_tags 中的标签加到每个节点末尾（已有的跳过），remove_line_tags 中的标签从每个节点去掉（先去掉再添加）。
+        标签规则与新建节点相同；加完后某个节点超过 6 个标签时整体拒绝（422，details 中写明节点名称）。至少要有一项修改。
+        记入操作日志 server.bulk_edit。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 500, items: { type: integer }, description: 不能重复，必须都是已有节点 }
+                group: { type: string, maxLength: 32, description: 新分组；省略表示不改，空字符串表示清除 }
+                add_line_tags: { type: array, maxItems: 6, items: { type: string, maxLength: 20, pattern: '^[^,<>]+$' } }
+                remove_line_tags: { type: array, maxItems: 50, items: { type: string } }
+      responses:
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated: { type: integer, description: 修改的节点数 }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /servers/{id}/renew:
     post:
       tags: [servers]

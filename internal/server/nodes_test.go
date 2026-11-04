@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -151,5 +152,61 @@ func TestServerOrder(t *testing.T) {
 	}
 	if rec := do(h, "PUT", "/api/v1/servers/order", "", body(ids[0])); rec.Code != 401 {
 		t.Errorf("未登录：%d", rec.Code)
+	}
+}
+
+// 批量修改（修订第 281 条）：分组与线路标签一起改；先去掉再添加、已有的跳过；超过上限、不存在的节点整体拒绝；省略 group 不改分组。
+func TestBulkEdit(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	var ids []int64
+	for _, b := range []string{`{"name":"a","group":"old","line_tags":["BGP","163"]}`, `{"name":"b","line_tags":["1","2","3","4","5"]}`} {
+		_, v, _ := createNode(t, h, admin, b)
+		ids = append(ids, v.ServerID)
+	}
+	get := func() map[string]serverView {
+		var list struct{ Items []serverView }
+		json.Unmarshal(do(h, "GET", "/api/v1/servers", admin, nil).Body.Bytes(), &list)
+		m := map[string]serverView{}
+		for _, it := range list.Items {
+			m[it.Name] = it
+		}
+		return m
+	}
+	edit := func(v map[string]any) *httptest.ResponseRecorder {
+		b, _ := json.Marshal(v)
+		return do(h, "POST", "/api/v1/servers/bulk-edit", admin, b)
+	}
+	if rec := edit(map[string]any{"ids": ids, "group": " 香港 ", "add_line_tags": []string{"CN2 GIA"}, "remove_line_tags": []string{"163", "5"}}); rec.Code != 200 ||
+		!strings.Contains(rec.Body.String(), `"updated":2`) {
+		t.Fatalf("批量修改：%d %s", rec.Code, rec.Body)
+	}
+	m := get()
+	if m["a"].Group != "香港" || strings.Join(m["a"].LineTags, ",") != "BGP,CN2 GIA" || strings.Join(m["b"].LineTags, ",") != "1,2,3,4,CN2 GIA" {
+		t.Fatalf("结果：a=%q %v b=%v", m["a"].Group, m["a"].LineTags, m["b"].LineTags)
+	}
+	// b 已有 5 个，再加两个超过 6 个：整体拒绝，a 也不变
+	if rec := edit(map[string]any{"ids": ids, "add_line_tags": []string{"x", "y"}}); rec.Code != 422 || !strings.Contains(rec.Body.String(), "b 加上后") {
+		t.Errorf("超过上限应 422：%d %s", rec.Code, rec.Body)
+	}
+	if rec := edit(map[string]any{"ids": []int64{ids[0], 99999}, "group": "x"}); rec.Code != 422 {
+		t.Errorf("不存在的节点应 422：%d", rec.Code)
+	}
+	for _, bad := range []map[string]any{{"ids": ids}, {"ids": []int64{}}, {"ids": []int64{ids[0], ids[0]}, "group": "x"}, {"ids": ids, "add_line_tags": []string{"a,b"}}} {
+		if rec := edit(bad); rec.Code != 422 {
+			t.Errorf("应拒绝 %v：%d", bad, rec.Code)
+		}
+	}
+	if m := get(); m["a"].Group != "香港" || len(m["a"].LineTags) != 2 {
+		t.Errorf("被拒绝的请求不应改变节点：%+v", m["a"])
+	}
+	// 省略 group 不改分组；空字符串清除
+	edit(map[string]any{"ids": ids[:1], "remove_line_tags": []string{"BGP"}})
+	if m := get(); m["a"].Group != "香港" || strings.Join(m["a"].LineTags, ",") != "CN2 GIA" {
+		t.Errorf("只改线路：%+v", m["a"])
+	}
+	edit(map[string]any{"ids": ids[:1], "group": ""})
+	if m := get(); m["a"].Group != "" {
+		t.Errorf("清除分组：%q", m["a"].Group)
 	}
 }

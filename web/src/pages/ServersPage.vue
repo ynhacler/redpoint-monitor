@@ -17,6 +17,7 @@ import { badgeWords, lineFilterOptions, matchLineFilter } from '../lines'
 import Icon from '../components/Icon.vue'
 import ServerCard from '../components/ServerCard.vue'
 import ServerTable from '../components/ServerTable.vue'
+import BulkEditPanel from '../components/BulkEditPanel.vue'
 import StatusDot from '../components/StatusDot.vue'
 import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { t } from '../i18n'
@@ -151,6 +152,7 @@ async function saveArrange() {
 
 const groups = computed(() => [...new Set(installed.value.map((s) => s.group).filter(Boolean))].sort())
 const lineOptions = computed(() => lineFilterOptions(installed.value))
+const bulk = ref(false) // 批量修改面板（修订第 281 条）
 
 // 搜索名称、主机名、IP、分组、供应商、地区、线路与 v4 / v6，不区分大小写
 const matches = (s: ServerView) => {
@@ -235,7 +237,13 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <button v-if="sortBy === 'custom' && installed.length > 1 && !arranging && !isViewer" type="button" class="btn secondary" @click="startArrange">
         <Icon name="grip" />{{ t('调整顺序') }}
       </button>
+      <button v-if="installed.length > 1 && !arranging && !bulk && !isViewer" type="button" class="btn secondary bulk-btn"
+        :aria-label="t('批量修改')" :title="t('批量修改')" @click="bulk = true">
+        <Icon name="edit" /><span class="wide-only">{{ t('批量修改') }}</span>
+      </button>
     </div>
+
+    <BulkEditPanel v-if="bulk" :servers="sorted" :groups="groups" @close="bulk = false" />
 
     <!-- 排列模式：按住把手拖动或用上下按钮；保存到面板，所有浏览器共用 -->
     <section v-if="arranging" class="panel arrange" :aria-label="t('调整顺序')">
@@ -329,8 +337,9 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
   .chip { flex: none; padding: 3px var(--space-3); }
   /* 搜索独占一行，分组与排序在下一行平分，文字不截断（修订第 230 条） */
   .filters .search { flex: 1 1 100%; max-width: none; min-width: 0; }
-  .filters select { flex: 1 1 0; width: auto; min-width: 0; max-width: none; }
+  .filters select { flex: 1 1 40%; width: auto; min-width: 0; max-width: none; } /* 一行两个，下拉多时换行，文字不截断 */
   .filters .btn.secondary { display: none; }
+  .filters .btn.secondary.bulk-btn { display: inline-flex; flex: none; padding: 0 var(--space-3); } /* 批量修改在手机上也可用，只显示图标 */
   .grid.server-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
 /* 节点卡片一行五列，最窄需要约 320px（见 ServerCard） */

@@ -192,19 +192,10 @@ func (b *createServerBody) validate() (NodeInput, time.Duration, []FieldError) {
 		in.WatchProcs = &joined
 	}
 	if b.LineTags != nil {
-		var tags []string
-		for _, t := range b.LineTags {
-			t = strings.Join(strings.Fields(t), " ")
-			if t == "" || slices.Contains(tags, t) {
-				continue
-			}
-			if utf8.RuneCountInString(t) > maxLineTagLen || strings.ContainsAny(t, ",<>") {
-				bad("line_tags", fmt.Sprintf("线路标签最多 %d 个字符，不能包含逗号与尖括号：%s", maxLineTagLen, t))
-				break
-			}
-			tags = append(tags, t)
-		}
-		if len(tags) > maxLineTags {
+		tags, msg := normLineTags(b.LineTags)
+		if msg != "" {
+			bad("line_tags", msg)
+		} else if len(tags) > maxLineTags {
 			bad("line_tags", fmt.Sprintf("每个节点最多 %d 个线路标签", maxLineTags))
 		}
 		joined := strings.Join(tags, ",")
@@ -589,6 +580,95 @@ func (s *Server) handleServerOrder(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.reorder", TargetType: "server", Success: true,
 		Details: map[string]any{"count": len(body.IDs)}})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// normLineTags 整理线路标签（修订第 279 条）：合并空白、去掉空的与重复的；有不合规的标签时返回说明。
+func normLineTags(list []string) (tags []string, msg string) {
+	for _, t := range list {
+		t = strings.Join(strings.Fields(t), " ")
+		if t == "" || slices.Contains(tags, t) {
+			continue
+		}
+		if utf8.RuneCountInString(t) > maxLineTagLen || strings.ContainsAny(t, ",<>") {
+			return nil, fmt.Sprintf("线路标签最多 %d 个字符，不能包含逗号与尖括号：%s", maxLineTagLen, t)
+		}
+		tags = append(tags, t)
+	}
+	return tags, ""
+}
+
+// handleBulkEdit：POST /api/v1/servers/bulk-edit，admin（修订第 281 条）。一次修改多个节点的分组与网络线路，
+// 全部成功或全部不变。group 为 nil 表示不改分组；先去掉 remove_line_tags，再把 add_line_tags 加到末尾。
+func (s *Server) handleBulkEdit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs    []int64  `json:"ids"`
+		Group  *string  `json:"group"`
+		Add    []string `json:"add_line_tags"`
+		Remove []string `json:"remove_line_tags"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeError(w, r, &APIError{Code: CodeBadRequest, Cause: err})
+		return
+	}
+	fail := func(field, msg string) {
+		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: field, Message: msg}}})
+	}
+	if len(body.IDs) == 0 || len(body.IDs) > 500 {
+		fail("ids", "请选择 1～500 个节点")
+		return
+	}
+	seen := make(map[int64]bool, len(body.IDs))
+	for _, id := range body.IDs {
+		if seen[id] {
+			fail("ids", "节点重复")
+			return
+		}
+		seen[id] = true
+	}
+	var group *string
+	if body.Group != nil {
+		g := strings.TrimSpace(*body.Group)
+		if utf8.RuneCountInString(g) > 32 {
+			fail("group", "不能超过 32 个字符")
+			return
+		}
+		group = &g
+	}
+	add, msg := normLineTags(body.Add)
+	if msg != "" {
+		fail("add_line_tags", msg)
+		return
+	}
+	remove, _ := normLineTags(body.Remove) // 去掉的标签只用于匹配，不合规的自然匹配不到
+	if group == nil && len(add) == 0 && len(remove) == 0 {
+		fail("ids", "没有要修改的内容")
+		return
+	}
+	switch name, err := s.store.BulkEditServers(body.IDs, group, add, remove); {
+	case errors.Is(err, errNoServer):
+		fail("ids", "节点不存在或已删除")
+		return
+	case errors.Is(err, errTooManyTags):
+		fail("add_line_tags", fmt.Sprintf("%s 加上后超过 %d 个线路标签", name, maxLineTags))
+		return
+	case err != nil:
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	details := map[string]any{"count": len(body.IDs)}
+	if group != nil {
+		details["group"] = *group
+	}
+	if len(add) > 0 {
+		details["add_line_tags"] = add
+	}
+	if len(remove) > 0 {
+		details["remove_line_tags"] = remove
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "server.bulk_edit", TargetType: "server", Success: true, Details: details})
+	writeJSON(w, map[string]int{"updated": len(body.IDs)})
 }
 
 // handleRevokeAgentToken：POST /api/v1/servers/{id}/revoke-agent-token，admin（设计 17.2、23.2）。

@@ -1390,4 +1390,16 @@ export const en: Record<string, string> = {
   '没有默认路由': 'No default route',
   // 线路筛选（修订第 280 条）
   '全部线路': 'All routes',
+  // 批量修改（修订第 281 条）
+  '批量修改': 'Bulk edit',
+  '批量修改节点': 'Bulk edit nodes',
+  '勾选节点，设置分组或添加 / 去掉网络线路；没有设置的项目保持不变。': 'Select nodes, then set a group or add / remove routes. Anything you leave unset stays as it is.',
+  '全选（{n} 个）': 'Select all ({n})',
+  '不修改': 'Unchanged',
+  '新分组…': 'New group…',
+  '清除分组': 'Clear group',
+  '分组名称': 'Group name',
+  '其他，回车添加': 'Other, press Enter to add',
+  '点一下添加，再点一下去掉，第三下恢复不变': 'Click once to add, again to remove, a third time to leave unchanged',
+  '应用到 {n} 个节点': 'Apply to {n} nodes',
 }

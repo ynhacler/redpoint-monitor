@@ -220,6 +220,11 @@ export function putServerOrder(ids: number[]) {
   return request('put', '/servers/order', { body: { ids } })
 }
 
+/** 批量修改节点的分组与网络线路（修订第 281 条）：全部成功或全部不变。group 省略表示不改，空字符串表示清除。 */
+export function bulkEditServers(body: { ids: number[]; group?: string; add_line_tags?: string[]; remove_line_tags?: string[] }) {
+  return request('post', '/servers/bulk-edit', { body })
+}
+
 /** 删除节点及其全部历史数据，不可恢复。 */
 export function deleteServer(id: number) {
   return request('delete', '/servers/{id}', { params: { id } })

@@ -3113,6 +3113,23 @@ export interface Paths {
       response: void
     }
   }
+  '/servers/bulk-edit': {
+    /** 批量修改节点（修订第 281 条）：分组、添加 / 去掉网络线路 */
+    post: {
+      body: {
+        /** 不能重复，必须都是已有节点 */
+        ids: number[]
+        /** 新分组；省略表示不改，空字符串表示清除 */
+        group?: string
+        add_line_tags?: string[]
+        remove_line_tags?: string[]
+      }
+      response: {
+        /** 修改的节点数 */
+        updated: number
+      }
+    }
+  }
   '/servers/{id}/renew': {
     /** 已续费：节点到期日顺延一个计费周期（修订第 224 条） */
     post: {
