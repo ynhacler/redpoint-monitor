@@ -5,7 +5,7 @@ import {
   Activity, AlignLeft, Cloud, CreditCard, Globe, LayoutDashboard, Settings, ArrowDown, ArrowDownUp, ArrowLeft, ArrowUp, CalendarClock, ChartLine, Clock, Cpu, Eye, EyeOff, GripVertical, HardDrive,
   Layers, LogOut, MemoryStick, Monitor, Moon, Pencil, Plug, Plus, Power, Radio, Search, SquareActivity,
   Sun, Terminal, Thermometer, User, KeyRound, LockKeyhole, ShieldCheck, Smartphone, Users, ChevronRight, Bell, Download, ScrollText,
-  PanelLeftClose, PanelLeftOpen, RefreshCw,
+  PanelLeftClose, PanelLeftOpen, ListFilter, ArrowUpDown, Check, RefreshCw,
 } from '@lucide/vue'
 
 const icons = {
@@ -24,6 +24,8 @@ const icons = {
   'panel-close': PanelLeftClose, 'panel-open': PanelLeftOpen,
   // 云账户同步（手机 UI 规范 4.1）
   refresh: RefreshCw,
+  // 手机筛选与排序抽屉（手机 UI 规范 3.3）
+  filter: ListFilter, sort: ArrowUpDown, check: Check,
 }
 
 export type IconName = keyof typeof icons

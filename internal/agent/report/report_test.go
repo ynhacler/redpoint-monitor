@@ -397,8 +397,8 @@ func TestPanelWatchProcs(t *testing.T) {
 
 type fakeProbe struct{ ver, enc, iv, tm string }
 
-func (f *fakeProbe) Version() string              { return f.ver }
-func (f *fakeProbe) Update(v, enc, iv, tm string) { f.ver, f.enc, f.iv, f.tm = v, enc, iv, tm }
+func (f *fakeProbe) Version() string                 { return f.ver }
+func (f *fakeProbe) Update(v, enc, iv, tm, _ string) { f.ver, f.enc, f.iv, f.tm = v, enc, iv, tm }
 
 // 三网延迟目标的同步（设计 42.3.2）：请求头始终带版本（空值表示还没有目标），响应头带新列表时更新。
 func TestProbeHeaders(t *testing.T) {

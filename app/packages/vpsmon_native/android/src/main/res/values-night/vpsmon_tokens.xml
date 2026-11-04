@@ -16,6 +16,7 @@
     <color name="vpsmon_series_2">#A78BFA</color>
     <color name="vpsmon_series_3">#22D3EE</color>
     <color name="vpsmon_track">#2A2F3A</color>
+    <color name="vpsmon_scrim">#000000</color>
     <color name="vpsmon_qr_dark">#000000</color>
     <color name="vpsmon_qr_light">#FFFFFF</color>
     <color name="vpsmon_cat_video">#FB923C</color>

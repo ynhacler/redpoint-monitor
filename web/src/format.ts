@@ -254,12 +254,19 @@ export function fmtExpiry(expireDate: string, billingPeriod: string, now = new D
   if (!expireDate) {
     return billingPeriod === 'one_time' ? { text: t('永久'), title: t('一次性付款，没有到期日'), level: '' } : null
   }
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const days = Math.round((new Date(expireDate + 'T00:00:00').getTime() - today) / 86400000)
-  if (Number.isNaN(days)) return null
+  const days = daysUntil(expireDate, now)
+  if (days == null) return null
   const title = t('到期日 {date}', { date: expireDate })
   if (days < 0) return { text: t('已过期'), title: `${title}，${t('已过期 {n} 天', { n: -days })}`, level: 'bad' }
   const level = days <= 7 ? 'bad' : days <= 30 ? 'warn' : ''
   if (days === 0) return { text: t('今天到期'), title, level }
   return { text: days < 100 ? t('剩{n}天', { n: days }) : expireDate, title, level }
+}
+
+/** 到期日（YYYY-MM-DD，本地日期）距今天的天数：今天为 0，已过期为负；没有或无法解析时为 null */
+export function daysUntil(expireDate: string, now = new Date()): number | null {
+  if (!expireDate) return null
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const days = Math.round((new Date(expireDate + 'T00:00:00').getTime() - today) / 86400000)
+  return Number.isNaN(days) ? null : days
 }

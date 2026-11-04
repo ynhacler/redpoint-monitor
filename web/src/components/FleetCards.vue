@@ -3,6 +3,8 @@
 // 本月剩余流量与“预计哪台先用完”、每月总成本（节点续费折算 + 云账单本月预估）、未来 30 天到期。
 // 每项只显示一个数字与一行说明；明细（各节点、成本构成、资料不全的提醒）放在悬停提示中。
 // 成本卡只给管理员（云账户只有管理员能读）；资料不全时提醒（没填价格的节点、未关联节点的云实例）。
+// 手机 UI 规范 3.1：首项为在线节点数；手机上 2×2 排列，说明文字可换行而不截断。剩余流量改称“剩余配额合计”，
+// 说明它是各节点独立配额的算术合计，不能互相共享。
 import { computed, onMounted, ref } from 'vue'
 import { listCloudAccounts, listCloudInstances, type CloudAccount } from '../api'
 import { costFleet, renewalsSoon, trafficFleet } from '../fleet'
@@ -28,11 +30,13 @@ onMounted(async () => {
   }
 })
 const cost = computed(() => costFleet(installed.value, accounts.value, linked.value))
-const shown = computed(() => traffic.value.limited > 0 || (!isViewer.value && cost.value.lines.length > 0) || renewals.value.length > 0)
+const shown = computed(() => installed.value.length > 0)
+const online = computed(() => installed.value.filter((s) => s.status === 'online').length)
+const offline = computed(() => installed.value.filter((s) => s.status === 'offline').length)
 const money = (cents: number, cur: string) => fmtMoney(Math.round(cents), cur === '—' ? '' : cur)
 
 // 悬停提示：明细（修订第 187 条）
-const trafficTip = computed(() => [t('{n} 台节点有流量额度', { n: traffic.value.limited }),
+const trafficTip = computed(() => [t('{n} 台有流量额度的节点本周期剩余配额之和；各节点的配额独立计算，不能互相共享', { n: traffic.value.limited }),
   ...traffic.value.risks.map((r) => `${r.server.name}：${r.daysLeft === 0 ? t('已用完（{pct}%）', { pct: Math.round(r.pct) }) : t('约 {n} 天后用完', { n: r.daysLeft })}`)].join('\n'))
 const costTip = computed(() => [
   ...cost.value.lines.map((l) => `${l.currency}：${t('节点续费 {m}', { m: money(l.nodes, l.currency) })}${l.cloud ? ` + ${t('云账单本月 {m}', { m: money(l.cloud, l.currency) })}` : ''}`),
@@ -52,9 +56,18 @@ function dueText(days: number) {
 <template>
   <!-- 只显示有内容的项（修订第 178 条） -->
   <div v-if="shown" class="panel fleet">
+    <!-- 在线 -->
+    <div class="item">
+      <span class="label">{{ t('在线节点') }}</span>
+      <span class="big num">{{ online }}<small> / {{ installed.length }}</small></span>
+      <span v-if="offline" class="sub bad"><RouterLink to="/?f=offline" class="bad">{{ t('{n} 台离线', { n: offline }) }}</RouterLink></span>
+      <span v-else-if="online === installed.length" class="sub muted">{{ t('全部在线') }}</span>
+      <span v-else class="sub warn">{{ t('{n} 台状态未知', { n: installed.length - online }) }}</span>
+    </div>
+
     <!-- 流量 -->
     <div v-if="traffic.limited" class="item" :title="trafficTip">
-      <span class="label">{{ t('本月剩余流量') }}</span>
+      <span class="label">{{ t('剩余配额合计') }}</span>
       <span class="big num">{{ fmtTraffic(traffic.remaining) }}</span>
       <span v-if="traffic.risks.length" class="sub" :class="traffic.risks[0].daysLeft === 0 ? 'bad' : 'warn'">
         <RouterLink :to="`/servers/${traffic.risks[0].server.id}?tab=traffic`">{{ traffic.risks[0].server.name }}</RouterLink>
@@ -96,10 +109,13 @@ function dueText(days: number) {
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
 .muted { color: var(--text-muted); }
-/* 手机（修订第 199 条）：各项仍在一行（最多三项），数字缩小一档 */
+/* 手机（手机 UI 规范 3.1）：2×2 排列，说明文字最多两行、不截断；数字缩小一档 */
 @media (max-width: 600px) {
-  .fleet { flex-wrap: nowrap; padding: var(--space-2) 0; margin-bottom: var(--space-2); }
-  .item { flex: 1 1 0; padding: 0 var(--space-3); }
+  .fleet { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--space-3); padding: var(--space-3) 0; margin-bottom: var(--space-2); }
+  .item { padding: 0 var(--space-3); }
+  .item + .item { border-left: 0; }
+  .item:nth-child(even) { border-left: 1px solid var(--border); }
   .big { font-size: var(--font-md); line-height: var(--line-md); }
+  .sub { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 }
 </style>

@@ -574,6 +574,7 @@ func TestPermissionMatrix(t *testing.T) {
 		"PUT /api/v1/probe-targets/{id}":                  accessAdmin,
 		"DELETE /api/v1/probe-targets/{id}":               accessAdmin,
 		"GET /api/v1/servers/{id}/latency":                accessRead,
+		"GET /api/v1/servers/{id}/routes":                 accessRead,
 		"GET /api/v1/latency-overview":                    accessRead,
 		"GET /api/v1/reach-probes":                        accessAdmin,
 		"PUT /api/v1/reach-probes":                        accessAdmin,

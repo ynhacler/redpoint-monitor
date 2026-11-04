@@ -4,6 +4,8 @@
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
 //   底部：流量（本计费周期；流量是本产品的核心，保留在卡片上）
 // 整张卡片可点击进入详情（设计 11）。
+// 手机（手机 UI 规范 3.2）分四层：名称与状态（名称最多两行）→ 到期 · 运行 · 负载 · 温度与 v4 / v6、线路标志（同一行，放不下时换行）
+// → CPU / 内存 / 磁盘三列等宽 → 上下行速率单独一行（带 /s 单位）与流量配额。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtExpiry, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
@@ -78,10 +80,10 @@ const diskTip = computed(() => {
       </div>
       <div v-if="live && r" class="meta num">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
-        <span v-if="r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
-        <!-- 手机上显示文字标签（修订第 246 条，UI-005）：“已运行 1天 · 负载 0.30”，不只靠图标 -->
+        <!-- 手机上显示文字标签（修订第 246 条，UI-005）：“已运行 1天 · 负载 0.30”，不只靠图标；温度排在最后 -->
         <span :title="t('开机时间')"><Icon name="power" :size="15" /><span class="lbl">{{ t('已运行') }}</span>{{ uptime }}</span>
         <span :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" /><span class="lbl">{{ t('负载') }}</span>{{ load1 }}</span>
+        <span v-if="r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
       </div>
       <div v-else class="meta">
         <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
@@ -136,10 +138,11 @@ const diskTip = computed(() => {
         <span class="mk">{{ m.k }}<b :class="m.lv === 'ok' ? '' : m.lv">{{ m.v == null ? DASH : fmtPct(m.v) }}</b></span>
         <span class="mbar"><span :class="m.lv" :style="{ width: `${Math.min(100, Math.max(2, m.v ?? 0))}%` }" /></span>
       </div>
-      <div class="net" :title="t('上行 {up}，下行 {down}', { up: fmtBytes(tx(s), true), down: fmtBytes(rx(s), true) })">
-        <span><Icon name="arrow-up" :size="11" />{{ fmtBytesShort(tx(s)) }}</span>
-        <span><Icon name="arrow-down" :size="11" />{{ fmtBytesShort(rx(s)) }}</span>
-      </div>
+    </div>
+    <!-- 手机：上下行速率单独一行，带完整单位（手机 UI 规范 3.2） -->
+    <div v-if="live && r" class="netrow num">
+      <span :aria-label="t('上行 {v}', { v: fmtBytes(tx(s), true) })"><Icon name="arrow-up" :size="12" />{{ fmtBytes(tx(s), true) }}</span>
+      <span :aria-label="t('下行 {v}', { v: fmtBytes(rx(s), true) })"><Icon name="arrow-down" :size="12" />{{ fmtBytes(rx(s), true) }}</span>
     </div>
 
     <div class="traffic num" :title="t('本计费周期 {start} 起', { start: s.traffic.cycle_start })">
@@ -201,20 +204,27 @@ const diskTip = computed(() => {
 .tbar span.ok { background: var(--ok); }
 
 /* 手机宽度（修订第 199 条）：用紧凑指标代替五列环形图，名称行与流量行收紧 */
-.compact { display: none; }
+.compact, .netrow { display: none; }
 /* 手机：名称独占一行，到期 / 温度 / 运行时间 / 负载在第二行并带文字标签（修订第 246 条，UI-005） */
 .lbl { display: none; }
 @media (max-width: 600px) {
   .card { padding: var(--space-3); }
-  .head { padding-bottom: var(--space-2); flex-direction: column; align-items: stretch; gap: 2px; }
-  .title { flex: none; }
-  .meta { flex-wrap: wrap; row-gap: 0; }
+  /* 名称独占一行；到期 / 运行 / 负载与 v4 / v6、线路标志在下一行，放不下时换行 */
+  .head { padding-bottom: var(--space-2); gap: 2px var(--space-2); }
+  .title { flex: 1 1 100%; }
+  .meta { flex: 0 1 auto; flex-wrap: wrap; row-gap: 0; }
+  .badge-row { flex-basis: auto; }
   .meta :deep(svg) { display: none; }
   .lbl { display: inline; margin-right: 2px; }
   .meta > span + span::before { content: '·'; margin-right: var(--space-2); color: var(--text-muted); }
-  .name { font-size: var(--font-md); line-height: var(--line-md); }
+  /* 长名称最多两行，不挤掉状态点（完整名称在详情页与悬停提示中） */
+  .name { font-size: var(--font-md); line-height: var(--line-md); white-space: normal; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .metrics { display: none; }
-  .compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: var(--space-3); align-items: end; padding: var(--space-2) 0; }
+  .compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); align-items: end; padding: var(--space-2) 0 var(--space-1); }
+  .netrow { display: flex; justify-content: space-between; padding: 0 0 var(--space-2); font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text); white-space: nowrap; }
+  .netrow span { display: inline-flex; align-items: center; gap: 2px; }
+  .netrow :deep(svg) { color: var(--text-muted); }
   .m { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .mk { display: flex; justify-content: space-between; gap: var(--space-1); font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
   .mk b { color: var(--text); font-weight: var(--weight-strong); font-size: var(--font-sm); }
@@ -224,9 +234,6 @@ const diskTip = computed(() => {
   .mbar span { display: block; height: 100%; background: var(--ok); }
   .mbar span.warn { background: var(--warn); }
   .mbar span.bad { background: var(--bad); }
-  .net { display: flex; flex-direction: column; gap: 2px; font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text); white-space: nowrap; }
-  .net span { display: inline-flex; align-items: center; gap: 2px; }
-  .net :deep(svg) { color: var(--text-muted); }
   .traffic { padding-top: var(--space-2); font-size: var(--font-xs); }
 }
 </style>
