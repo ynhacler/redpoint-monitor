@@ -376,6 +376,14 @@ const mainPrice = (s: Subscription) => {
   const v = toCny(s.price_cents, s.currency, rates.value)
   return v == null ? fmtMoney(s.price_cents, s.currency) : `≈ ${fmtMoney(v, 'CNY')}`
 }
+// 不是按月付费的订阅在金额下注明月均（手机 UI 规范 5.1）：“≈ ¥44.98/月”，与本月实际扣款分开
+const monthlyLine = (s: Subscription) => {
+  if (s.ended || s.cycle === 'monthly' || s.cycle === 'once') return ''
+  const m = monthlyCents(s)
+  if (s.currency === 'CNY') return `${fmtMoney(Math.round(m), 'CNY')}/${t('月')}`
+  const v = toCny(m, s.currency, rates.value)
+  return v == null ? `${fmtMoney(Math.round(m), s.currency)}/${t('月')}` : `≈ ${fmtMoney(Math.round(v), 'CNY')}/${t('月')}`
+}
 // 电脑宽度名称下的一行（修订第 269 条）：类别与备注；按类别排列时类别已在分组标题中，只写备注
 const descText = (s: Subscription) =>
   [grouped.value ? '' : t(categoryNames[s.category] ?? s.category), s.note.split('\n')[0]].filter(Boolean).join(' · ')
@@ -621,6 +629,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <span class="sub-price">
                 <b class="num">{{ mainPrice(s) }}<small class="muted cyc">/{{ t(cycleShort[s.cycle] ?? s.cycle) }}</small></b>
                 <span v-if="s.currency !== 'CNY'" class="small muted num">{{ fmtMoney(s.price_cents, s.currency) }}</span>
+                <span v-if="monthlyLine(s)" class="small muted num" :title="t('按周期折算的月均，不是本月扣款')">{{ t('月均 {v}', { v: monthlyLine(s) }) }}</span>
                 <span v-if="soonDays(s) != null" class="soon small">{{ soonDays(s) === 0 ? t('今天扣费') : t('{n} 天后扣费', { n: soonDays(s)! }) }}</span>
               </span>
             </button>
@@ -737,7 +746,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           </div>
         </section>
         <!-- 汇率说明（修订第 223 条） -->
-        <p v-if="usedRates.length && view !== 'list'" class="small muted rate-note">
+        <!-- 列表中也注明汇率与日期（手机 UI 规范 5.1）：换算金额不是实际扣款 -->
+        <p v-if="usedRates.length" class="small muted rate-note">
           {{ t('外币按汇率换算为人民币：') }}<span v-for="r in usedRates" :key="r.c" class="num rate">1 {{ r.c }} = {{ r.v ? `¥${r.v.toFixed(r.v < 0.1 ? 4 : 2)}` : t('无汇率') }}</span>
           <template v-if="rateDate">{{ t('（{source}，{date}）', { source: fx?.source ?? '', date: rateDate }) }}</template>
           <template v-if="fx?.error"> · {{ t('最近一次更新失败：{e}', { e: fx.error }) }}</template>

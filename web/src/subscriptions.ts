@@ -199,11 +199,18 @@ export function chargeText(s: Subscription, today = new Date()): string {
   first.setDate(first.getDate() + s.trial_days)
   const md = (d: Date) => ({ m: d.getMonth() + 1, d: d.getDate() })
   if (s.trial_days > 0 && first > today) return t('试用中，{m} 月 {d} 日开始扣费', md(first))
-  if (s.cycle === 'once') return s.next_charge ? t('{m} 月 {d} 日扣费', md(parse(s.next_charge))) : t('一次性，已扣费')
+  // 不在今年的日期写出年份（手机 UI 规范 5.1），避免把明年的扣费看成今年的
+  const otherYear = (d: Date) => d.getFullYear() !== today.getFullYear()
+  if (s.cycle === 'once') {
+    if (!s.next_charge) return t('一次性，已扣费')
+    const d = parse(s.next_charge)
+    return otherYear(d) ? t('{y} 年 {m} 月 {d} 日扣费', { y: d.getFullYear(), ...md(d) }) : t('{m} 月 {d} 日扣费', md(d))
+  }
   if (s.cycle === 'weekly') return t(weeklyText[first.getDay()])
   if (s.cycle === 'monthly') return t('每月 {d} 日扣费', md(first))
   if (s.cycle === 'annually') return t('每年 {m} 月 {d} 日扣费', md(first))
   const next = s.next_charge ? parse(s.next_charge) : null
+  if (next && otherYear(next)) return t('{cycle}，下次 {y} 年 {m} 月 {d} 日', { cycle: t(cycleNames[s.cycle]), y: next.getFullYear(), ...md(next) })
   return next ? t('{cycle}，下次 {m} 月 {d} 日', { cycle: t(cycleNames[s.cycle]), ...md(next) }) : t(cycleNames[s.cycle])
 }
 

@@ -23,7 +23,7 @@ import BulkEditPanel from '../components/BulkEditPanel.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { daysUntil } from '../format'
 import StatusDot from '../components/StatusDot.vue'
-import { cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
+import { abnormalTier, cpu, diskSummary, issues, mem, trafficPct } from '../metrics'
 import { t } from '../i18n'
 import { alertsOn, installed, isViewer, pending, refresh, state, statusRank } from '../store'
 
@@ -217,9 +217,10 @@ const sorted = computed(() => {
   const list = installed.value.filter((s) => test(s) && matches(s))
   const byName = (a: ServerView, b: ServerView) => a.name.localeCompare(b.name)
   const cmp: Record<typeof sortBy.value, (a: ServerView, b: ServerView) => number> = {
-    // 异常优先：离线 > 未知 > 有告警的在线节点 > 正常在线，同级按名称
+    // 异常优先（手机 UI 规范 3.3）：离线 → 上报延迟 / 严重告警 → 流量用完 / 7 天内到期 → 其他告警 → 正常；
+    // 同级按问题数，再按名称
     abnormal: (a, b) =>
-      statusRank[a.status] - statusRank[b.status] || issues(b).length - issues(a).length || byName(a, b),
+      abnormalTier(a) - abnormalTier(b) || statusRank[a.status] - statusRank[b.status] || issues(b).length - issues(a).length || byName(a, b),
     // 到期时间：最近（含已过期）在前，没有到期日的排在最后
     expiry: (a, b) => (daysUntil(a.expire_date) ?? Infinity) - (daysUntil(b.expire_date) ?? Infinity),
     cpu: desc(cpu),

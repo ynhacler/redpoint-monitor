@@ -1,5 +1,6 @@
 // 从节点数据派生展示用的指标与健康判断，总览、列表、详情共用，保证同一节点在各处的结论一致。
 import type { AlertBrief, DiskInfo, DiskIO, ServerView } from './api'
+import { daysUntil } from './format'
 import { t } from './i18n'
 
 /** 环形图配色用的阈值，与告警默认值一致（设计 16.1）；“需要关注”以服务端告警为准（见 issues） */
@@ -118,6 +119,21 @@ export function issues(s: ServerView): { level: 'bad' | 'warn'; text: string }[]
     out.push({ level: a.severity === 'critical' ? 'bad' : 'warn', text: alertLabel(a) })
   }
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'bad' ? -1 : 1))
+}
+
+/**
+ * “异常优先”排序的层级（手机 UI 规范 3.3）：数字越小越靠前。
+ * 0 离线 → 1 上报延迟或有严重告警 → 2 流量已用完或 7 天内到期（含已过期）→ 3 其他告警 → 4 正常。维护中的节点按正常处理。
+ */
+export function abnormalTier(s: ServerView, now = new Date()): number {
+  if (s.maintenance) return 4
+  if (s.status === 'offline') return 0
+  const list = issues(s)
+  if (s.status === 'unknown' || list.some((x) => x.level === 'bad')) return 1
+  const pct = trafficPct(s)
+  const days = daysUntil(s.expire_date, now)
+  if ((pct != null && pct >= 100) || (days != null && days <= 7)) return 2
+  return list.length ? 3 : 4
 }
 
 /** 本周期还剩几天重置（设计 1.5.8）：按面板返回的下一周期开始日计算，与服务端口径一致 */
