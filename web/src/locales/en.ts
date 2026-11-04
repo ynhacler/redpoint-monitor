@@ -1460,4 +1460,7 @@ export const en: Record<string, string> = {
   '移动 CMIN2': 'China Mobile CMIN2',
   '移动 CMI': 'China Mobile CMI',
   '移动骨干': 'China Mobile backbone',
+  '按周期折算的月均，不是本月扣款': 'Monthly average spread over the billing cycle, not this month\'s charge',
+  '{y} 年 {m} 月 {d} 日扣费': 'Charged on {m}/{d}/{y}',
+  '{cycle}，下次 {y} 年 {m} 月 {d} 日': '{cycle}, next on {m}/{d}/{y}',
 }
