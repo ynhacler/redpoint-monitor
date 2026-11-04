@@ -15,10 +15,13 @@ import { state } from '../store'
 
 const keys = ref<AppAccessKey[]>([])
 const devices = ref<AppDevice[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 async function load() {
   try {
     ;[keys.value, devices.value] = await Promise.all([listAppKeys(), listAppDevices()])
+    ready.value = true
     error.value = ''
   } catch (e) {
     error.value = errorText(e, 'App 接入信息加载失败')
@@ -240,8 +243,8 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
           <button v-if="d.status === 'active'" type="button" class="secondary small" @click="revokeDevice(d)">吊销</button>
         </li>
       </ul>
-      <p v-else-if="!devices.length" class="small muted empty">{{ DASH }} 还没有设备。创建 AK 后在 App 中扫码或填写即可配对。</p>
-      <p v-else-if="!showOldDevices" class="small muted empty">{{ DASH }} 没有在用的设备。</p>
+      <p v-else-if="ready && !devices.length" class="small muted empty">{{ DASH }} 还没有设备。创建 AK 后在 App 中扫码或填写即可配对。</p>
+      <p v-else-if="ready && !showOldDevices" class="small muted empty">{{ DASH }} 没有在用的设备。</p>
       <button v-if="oldDevices" type="button" class="text small more" @click="showOldDevices = !showOldDevices">
         {{ showOldDevices ? '收起已失效的设备' : `显示已失效的 ${oldDevices} 台设备` }}
       </button>
@@ -263,8 +266,8 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
           <button v-if="!k.revoked_at" type="button" class="secondary small" @click="revokeKey(k)">吊销</button>
         </li>
       </ul>
-      <p v-else-if="!keys.length" class="small muted empty">{{ DASH }} 还没有 AK</p>
-      <p v-else-if="!showOldKeys" class="small muted empty">{{ DASH }} 没有可用的 AK。</p>
+      <p v-else-if="ready && !keys.length" class="small muted empty">{{ DASH }} 还没有 AK</p>
+      <p v-else-if="ready && !showOldKeys" class="small muted empty">{{ DASH }} 没有可用的 AK。</p>
       <button v-if="oldKeys" type="button" class="text small more" @click="showOldKeys = !showOldKeys">
         {{ showOldKeys ? '收起已失效的 AK' : `显示已用完、过期或吊销的 ${oldKeys} 个 AK` }}
       </button>

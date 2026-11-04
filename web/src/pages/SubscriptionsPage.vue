@@ -556,11 +556,11 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
     </form>
 
     <template v-if="loaded && !step">
-      <EmptyState v-if="!list.length" :text="t('还没有订阅。记录影音、工具、云服务等订阅的价格与扣费日，扣费前可提醒。')">
+      <EmptyState v-if="!list.length && !error" :text="t('还没有订阅。记录影音、工具、云服务等订阅的价格与扣费日，扣费前可提醒。')">
         <button type="button" class="btn" @click="openAdd"><Icon name="plus" />{{ t('添加订阅') }}</button>
       </EmptyState>
 
-      <template v-else>
+      <template v-else-if="list.length">
         <!-- 概览 -->
         <div class="panel strip">
           <div class="item">

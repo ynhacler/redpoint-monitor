@@ -53,6 +53,8 @@ const duration = (e: AlertEvent) => fmtDuration((e.resolved_at || Date.now() / 1
 
 // ---- 规则 ----
 const rules = ref<AlertRule[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const rulesReady = ref(false)
 const rulesError = ref('')
 const editing = ref<number | null>(null) // 正在编辑的规则 ID
 // 加载中显示提示：网络慢时不再是一片空白（修订第 173 条）
@@ -61,6 +63,7 @@ async function loadRules() {
   loadingRules.value = true
   try {
     rules.value = await listAlertRules()
+    rulesReady.value = true
     rulesError.value = ''
   } catch (e) {
     fail(e, (m) => (rulesError.value = m))
@@ -106,12 +109,15 @@ const addTaken = computed(() =>
 
 // ---- 静音 ----
 const silences = ref<Silence[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const silencesReady = ref(false)
 const silencesError = ref('')
 const sil = ref({ scopeType: 'global' as Silence['scope_type'], scopeId: '', reason: '' })
 async function loadSilences() {
   try {
     silences.value = await listSilences()
     if (!rules.value.length) rules.value = await listAlertRules() // 规则静音需要规则列表
+    silencesReady.value = true
     silencesError.value = ''
   } catch (e) {
     fail(e, (m) => (silencesError.value = m))
@@ -223,8 +229,8 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
             :disabled="sil.scopeType !== 'global' && !sil.scopeId" @click="addSilence(d[0])">{{ d[1] }}</button>
         </div>
       </div>
-      <EmptyState v-if="!silences.length" text="没有生效中的静音或维护。" />
-      <ul v-else class="panel rules">
+      <EmptyState v-if="silencesReady && !silences.length" text="没有生效中的静音或维护。" />
+      <ul v-else-if="silences.length" class="panel rules">
         <li v-for="x in silences" :key="x.id">
           <div class="rule">
             <span class="sev small">{{ x.kind === 'maintenance' ? '维护' : '静音' }}</span>
@@ -302,7 +308,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
             :rule="addBase" :scope="{ type: add.scopeType, id: add.scopeId }" @saved="saved" @cancel="adding = false" />
           <div v-else class="add-cancel"><button type="button" class="secondary" @click="adding = false">取消</button></div>
         </div>
-        <p v-if="!overrides.length && !adding" class="muted small">还没有覆盖。例如：为“落地”分组把流量阈值改为 70%，或为某台机器关闭 CPU 告警。</p>
+        <p v-if="rulesReady && !overrides.length && !adding" class="muted small">还没有覆盖。例如：为“落地”分组把流量阈值改为 70%，或为某台机器关闭 CPU 告警。</p>
         <ul v-if="overrides.length" class="panel rules">
           <li v-for="r in overrides" :key="r.id" :class="{ off: !r.enabled }">
             <div class="rule">

@@ -12,10 +12,13 @@ import { scopeText } from '../scope'
 import CommandBlock from './CommandBlock.vue'
 
 const keys = ref<APIKey[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 async function load() {
   try {
     keys.value = await listAPIKeys()
+    ready.value = true
     error.value = ''
   } catch (e) {
     error.value = errorText(e, t('API Key 加载失败'))
@@ -161,7 +164,7 @@ const example = computed(() => `curl -H "Authorization: Bearer ${created.value}"
         <button v-if="!k.revoked_at" type="button" class="secondary small" @click="revoke(k)">{{ t('吊销') }}</button>
       </li>
     </ul>
-    <p v-else-if="!adding && !created" class="sc-empty">{{ t('还没有 API Key') }}</p>
+    <p v-else-if="ready && !adding && !created" class="sc-empty">{{ t('还没有 API Key') }}</p>
   </SettingsCard>
 </template>
 

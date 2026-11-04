@@ -5,6 +5,8 @@ import { ApiError, checkSSLMonitor, createSSLMonitor, deleteSSLMonitor, errorTex
 import { DASH, fmtDate, fmtTime } from '../format'
 
 const items = ref<SSLMonitor[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 const host = ref('')
 const note = ref('')
@@ -15,6 +17,7 @@ const busy = ref<number | null>(null)
 async function load() {
   try {
     items.value = await listSSLMonitors()
+    ready.value = true
     error.value = ''
   } catch (e) {
     error.value = errorText(e, '证书监控加载失败')
@@ -108,7 +111,7 @@ function remain(m: SSLMonitor): { text: string; tone: string } {
         </div>
       </li>
     </ul>
-    <p v-else class="muted small">还没有监控的证书。</p>
+    <p v-else-if="ready" class="muted small">还没有监控的证书。</p>
   </div>
 </template>
 

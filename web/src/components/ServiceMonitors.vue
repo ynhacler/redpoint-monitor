@@ -11,6 +11,8 @@ import { alertsOn, state } from '../store'
 import Chart, { type Series } from './Chart.vue'
 
 const items = ref<ServiceMonitor[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 const busy = ref<number | null>(null)
 
@@ -24,6 +26,7 @@ let timer: number | undefined
 async function load() {
   try {
     items.value = await listServiceMonitors()
+    ready.value = true
     error.value = ''
   } catch (e) {
     error.value = errorText(e, '服务监控加载失败')
@@ -231,7 +234,7 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
         </div>
       </li>
     </ul>
-    <p v-else-if="editing === null" class="muted small">还没有监控的服务。</p>
+    <p v-else-if="ready && editing === null" class="muted small">还没有监控的服务。</p>
   </div>
 </template>
 

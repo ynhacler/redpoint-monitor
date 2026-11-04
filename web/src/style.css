@@ -47,6 +47,9 @@ code {
 .section > h3 { margin-bottom: var(--space-3); }
 .row { display: flex; gap: var(--space-2); align-items: center; }
 
+/* 表单分组：浏览器默认 fieldset 的最小宽度是内容宽度，长标题或一排标签会把页面撑出横向滚动（手机 UI 规范 P2，320px）。 */
+fieldset { min-width: 0; }
+legend { max-width: 100%; white-space: normal; }
 /* 表单控件：标签在上，错误在下（设计 41.3） */
 input, select, textarea {
   font: inherit; color: var(--text); background: var(--surface);
@@ -124,5 +127,13 @@ input:-webkit-autofill { animation-name: vpsmon-autofill; animation-duration: 1m
 @media (prefers-reduced-motion: reduce) {
   *:not(input), *:not(input)::before, *:not(input)::after {
     animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
+
+/* 触摸热区（手机 UI 规范 P2）：触屏上文字按钮与返回链接视觉不变，点击范围在纵向扩到至少 40px，避免点不中 */
+@media (pointer: coarse) {
+  button.text, .btn.text, a.back { position: relative; }
+  button.text::after, .btn.text::after, a.back::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%; height: max(100%, 40px); transform: translateY(-50%);
   }
 }

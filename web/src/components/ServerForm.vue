@@ -487,7 +487,7 @@ legend { font-weight: var(--weight-strong); padding: 0; margin-bottom: var(--spa
 .fields .row select.currency { flex: 0 0 96px; }
 small { font-size: var(--font-sm); }
 .err { color: var(--bad); }
-.link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; }
+.link { background: none; color: var(--text); padding: 0; font: inherit; font-weight: 600; white-space: normal; text-align: left; }
 .actions { display: flex; gap: var(--space-2); margin-top: var(--space-6); }
 .collected { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0;
   padding: var(--space-3) var(--space-4); background: var(--surface-2); border-radius: var(--radius-sm); font-size: var(--font-sm); }
@@ -496,4 +496,8 @@ small { font-size: var(--font-sm); }
 .danger { margin-top: var(--space-7); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .danger legend { color: var(--bad); }
 .danger-btn { background: var(--bad); color: var(--on-accent); }
+/* 窄屏上确认密码与删除按钮换成两行；节点名很长时按钮文字截断 */
+.danger .row { flex-wrap: wrap; }
+.danger .row input { flex: 1 1 180px; }
+.danger-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 </style>
