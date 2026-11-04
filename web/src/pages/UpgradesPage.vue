@@ -15,6 +15,8 @@ import { compareVersions } from '../versions'
 const latest = ref<AgentRelease | null>(null)
 const mirrorOn = ref(false)
 const tasks = ref<UpgradeTask[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 const notice = ref('')
 const busy = ref(false)
@@ -50,6 +52,7 @@ async function load() {
     mirrorOn.value = rels.mirror
     tasks.value = list.items
     rollouts.value = ros.items
+    ready.value = true
   } catch (e) {
     handle(e)
   }
@@ -303,7 +306,7 @@ function name(id: number) {
 
     <section class="section">
       <h3>最近任务</h3>
-      <p v-if="!tasks.length" class="muted small">还没有升级任务。</p>
+      <p v-if="ready && !tasks.length" class="muted small">还没有升级任务。</p>
       <ul v-else class="panel list">
         <li v-for="t in tasks.slice(0, 30)" :key="t.id" class="task">
           <span class="time num small">{{ fmtDateTime(t.created_at) }}</span>

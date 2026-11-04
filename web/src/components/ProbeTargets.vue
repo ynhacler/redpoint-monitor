@@ -21,6 +21,8 @@ const isps = [
 const ispName = (k: string) => (k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
 
 const items = ref<ProbeTarget[]>([])
+// 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
+const ready = ref(false)
 const error = ref('')
 const busy = ref<number | null>(null)
 
@@ -39,6 +41,7 @@ async function load() {
   try {
     const [list, cfg] = await Promise.all([listProbeTargets(), getProbeSettings()])
     items.value = list
+    ready.value = true
     interval.value = cfg.interval_s
     timeout.value = cfg.timeout_s ?? 0
     gap.value = cfg.gap_s ?? 0
@@ -185,7 +188,7 @@ async function remove(t: ProbeTarget) {
       </div>
     </form>
 
-    <p v-if="!items.length && !adding" class="panel empty small">
+    <p v-if="ready && !items.length && !adding" class="panel empty small">
       还没有测试目标。添加电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。
     </p>
     <ProbeTargetHint v-if="!items.length || adding" class="hint-line" />

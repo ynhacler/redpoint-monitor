@@ -181,6 +181,8 @@ function niceMax(v: number): number {
 .axis button { background: transparent; border: 0; border-radius: 0; padding: 0 var(--space-2); font-size: var(--font-xs); line-height: 20px;
   color: var(--text-muted); }
 .axis button + button { border-left: 1px solid var(--border); }
+/* 触屏上加高，便于点中（手机 UI 规范 P2） */
+@media (pointer: coarse) { .axis button { line-height: 28px; } }
 .axis button.on { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
 .stats { margin: 2px 0 0; font-size: var(--font-xs); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0 var(--space-3); }
 .chart h3 { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); font-weight: var(--weight-strong); }
