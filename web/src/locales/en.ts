@@ -1611,6 +1611,14 @@ export const en: Record<string, string> = {
   '共 {n} 次，合计约 {amount}': 'Charges: {n}, about {amount} in total',
   '显示全部 {n} 次': 'Show all {n}',
   '按开始日期与周期推算，金额按当前价格；改过价格时与实际付款不同，以账单为准。': 'Calculated from the start date and cycle at the current price; it differs from what you paid if the price changed. Your bill is authoritative.',
+  // 汇率走势（修订第 295 条）
+  '汇率走势': 'Exchange rate trend',
+  '汇率历史加载失败': 'Could not load exchange rate history',
+  '记录还不够画出走势。面板每天记一次订阅用到的外币汇率，来源没有更早的数据。': 'Not enough records for a trend yet. The panel records the rates of your subscription currencies once a day; the source has no earlier data.',
+  '区间 {low} ～ {high}': 'Range {low} – {high}',
+  '较 30 天前 {v}': '{v} vs 30 days ago',
+  '1 {c} 折合人民币': '1 {c} in CNY',
+  '从 {date} 开始记录，只用于查看走势，订阅金额按最新汇率换算。': 'Recorded since {date}. For reference only: subscription amounts use the latest rate.',
   // 模板与脚本中原来直接写的中文（修订第 296 条）
   '秒': 'seconds',
   '倍核数': '× cores',

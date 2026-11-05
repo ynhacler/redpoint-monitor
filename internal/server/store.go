@@ -1042,6 +1042,16 @@ var migrations = []string{
 		error     TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (server_id, target_id)
 	);`,
+	// 迁移 64：汇率历史（修订第 295 条）：订阅用到的外币每天一条，保留两年；已有的汇率作为第一条
+	`CREATE TABLE fx_history (
+		day      TEXT NOT NULL,
+		currency TEXT NOT NULL,
+		cny      REAL NOT NULL,
+		PRIMARY KEY (currency, day)
+	);
+	INSERT INTO fx_history (day, currency, cny)
+		SELECT date(as_of, 'unixepoch'), currency, cny FROM fx_rates
+		WHERE as_of > 0 AND currency IN (SELECT currency FROM subscriptions WHERE currency <> 'CNY');`,
 }
 
 func (s *Store) migrate() error {

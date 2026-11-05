@@ -1616,6 +1616,22 @@ paths:
         '200': { description: 汇率, content: { application/json: { schema: { $ref: '#/components/schemas/FxRates' } } } }
         '401': { $ref: '#/components/responses/Error' }
 
+  /fx-rates/history:
+    get:
+      tags: [subscriptions]
+      summary: 某币种的汇率历史（修订第 295 条）
+      description: |
+        面板每次刷新汇率时记下订阅用到的外币，每天一条，保留两年，按日期从早到晚返回。来源没有免费的历史接口，
+        记录从升级或开始使用该币种起，之前的日期没有数据。只用于查看走势，订阅金额的换算仍用最新汇率。
+      parameters:
+        - { name: currency, in: query, required: true, schema: { type: string, pattern: '^[A-Z]{3}$' }, description: 币种，如 USD }
+      responses:
+        '200':
+          description: 列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string, description: 总为空，一次返回全部 }, items: { type: array, items: { $ref: '#/components/schemas/FxDay' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
   /subscriptions:
     get:
       tags: [subscriptions]
@@ -4352,6 +4368,12 @@ components:
         fetched_at: { type: integer, description: 面板最近一次成功取得的时间（Unix 秒） }
         rates: { type: object, additionalProperties: { type: number }, description: 币种 → 1 单位折合多少人民币；总含 CNY = 1 }
         error: { type: string, description: 最近一次请求失败的原因；成功后为空 }
+    FxDay:
+      type: object
+      required: [day, cny]
+      properties:
+        day: { type: string, description: 来源数据的日期（UTC，YYYY-MM-DD） }
+        cny: { type: number, description: 1 单位折合多少人民币 }
     AppSubscriptions:
       type: object
       required: [limited, items]

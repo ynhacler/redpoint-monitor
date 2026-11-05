@@ -47,6 +47,8 @@ const props = defineProps<{
   kind?: 'line' | 'bar'
   /** 不显示图例（外部已有图例时使用）；默认多条线时显示 */
   hideLegend?: boolean
+  /** 纵轴不从 0 开始，按数据范围缩放（汇率这类变化幅度很小的数值） */
+  scaleY?: boolean
 }>()
 
 const el = ref<HTMLDivElement | null>(null)
@@ -101,7 +103,8 @@ function render() {
       },
       yAxis: {
         type: 'value',
-        min: 0,
+        min: props.scaleY ? undefined : 0,
+        scale: props.scaleY,
         // 百分比图：固定 0～100% 时按 1/4 等分（避免 90% 与 100% 挤在一起）；自动缩放时上限随数据，但不超过 max（修订第 234 条）
         max: fixed.value ? props.max : props.max ? (v: { max: number }) => Math.min(props.max!, niceMax(v.max)) : undefined,
         interval: fixed.value ? props.max! / 4 : undefined,

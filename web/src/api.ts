@@ -642,6 +642,11 @@ export function getFxRates() {
   return request('get', '/fx-rates')
 }
 
+/** 某币种的汇率历史，按日期从早到晚（修订第 295 条） */
+export async function listFxHistory(currency: string) {
+  return (await request('get', '/fx-rates/history', { query: { currency } })).items
+}
+
 /** 添加订阅 */
 export function createSubscription(body: G.SubscriptionInput) {
   return request('post', '/subscriptions', { body })
