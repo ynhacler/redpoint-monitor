@@ -37,7 +37,7 @@ code {
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)); gap: var(--space-3); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
 /* 状态标签：圆角胶囊（账号等设置页，修订第 207 条） */
-.pill { display: inline-block; font-size: var(--font-xs); line-height: 18px; font-weight: var(--weight-regular); padding: 0 var(--space-2);
+.pill { display: inline-block; font-size: var(--font-xs); line-height: 1.125rem; font-weight: var(--weight-regular); padding: 0 var(--space-2);
   border-radius: var(--radius-full); background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
 .pill.on { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
 .pill.accent { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
@@ -113,7 +113,7 @@ html.sidebar-collapsed { --sidebar-w: 60px; }
   /* 分段选择的触控高度不小于 44px（修订第 270 条，M-05） */
   .segmented button { min-height: 44px; }
   /* 底部标签栏（App.vue，修订第 199 条）的高度：内容不被遮住 */
-  body { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+  body { padding-bottom: calc(44px + 0.75rem + env(safe-area-inset-bottom)); }
   /* 二级页面不显示标签栏（修订第 230 条），只留出主屏幕指示条的安全区 */
   html.no-tabbar body { padding-bottom: env(safe-area-inset-bottom); }
 }

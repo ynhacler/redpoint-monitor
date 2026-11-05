@@ -445,7 +445,7 @@ const charts = computed(() => [
   padding: var(--space-2) var(--space-3); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-1); }
 .tabs button:hover { color: var(--text); }
 .tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
-.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-full); font-size: 10px; line-height: 16px; text-align: center;
+.badge { min-width: 1rem; height: 1rem; padding: 0 4px; border-radius: var(--radius-full); font-size: 0.625rem; line-height: 1rem; text-align: center;
   color: var(--on-accent); background: var(--warn); }
 .badge.bad { background: var(--bad); }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); display: inline-block; }

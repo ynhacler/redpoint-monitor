@@ -176,14 +176,14 @@ async function submit() {
   padding: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 8%, transparent); }
 .head { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; margin-bottom: var(--space-2); }
-.head h1 { margin: var(--space-1) 0 0; font-size: 22px; line-height: 30px; }
+.head h1 { margin: var(--space-1) 0 0; font-size: 1.375rem; line-height: 1.875rem; }
 .head p { margin: 0; }
 .logo { display: block; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
 .label { font-size: var(--font-sm); font-weight: var(--weight-strong); color: var(--text); }
 .pw { position: relative; display: block; }
 /* 输入框约 48px 高、圆角 10px；显示密码按钮触控区 44 × 44（修订第 247 条） */
-.login input:not([type='checkbox']) { min-height: 48px; border-radius: 10px; font-size: 16px; scroll-margin: 120px 0; }
+.login input:not([type='checkbox']) { min-height: 48px; border-radius: 10px; font-size: 1rem; scroll-margin: 120px 0; }
 .login input[aria-invalid='true'] { border-color: var(--bad); }
 .field .bad { color: var(--bad); font-size: var(--font-sm); }
 .pw input { width: 100%; padding-right: 48px; }

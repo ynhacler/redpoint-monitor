@@ -122,8 +122,8 @@ const levelName: Record<Level, string> = { bad: '严重', warn: '注意', info: 
 .todo { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
 .head { display: flex; align-items: center; gap: var(--space-2); }
 .head h2 { margin: 0; font-size: var(--font-md); }
-.count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-full); background: var(--surface-2); font-size: var(--font-xs);
-  line-height: 20px; text-align: center; font-weight: var(--weight-strong); }
+.count { min-width: 1.25rem; height: 1.25rem; padding: 0 6px; border-radius: var(--radius-full); background: var(--surface-2); font-size: var(--font-xs);
+  line-height: 1.25rem; text-align: center; font-weight: var(--weight-strong); }
 .ok { color: var(--ok); display: inline-flex; align-items: center; gap: 4px; }
 .more { margin-left: auto; }
 ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

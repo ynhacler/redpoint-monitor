@@ -24,7 +24,7 @@ const lines = computed(() => props.server.line_tags ?? [])
 
 <style scoped>
 .badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; }
-.badge { flex: none; font-size: var(--font-xs); line-height: 16px; padding: 0 5px; border-radius: var(--radius-sm);
+.badge { flex: none; font-size: var(--font-xs); line-height: 1rem; padding: 0 5px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; font-weight: var(--weight-strong); }
 .ip { font-family: var(--font-mono); }
 .line.premium { color: var(--accent); border-color: var(--accent); }

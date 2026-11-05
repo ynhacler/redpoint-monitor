@@ -192,7 +192,7 @@ function tint(hex: string) {
 .group-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .group-head h2 { margin: 0; font-size: var(--font-xl); }
 .group-head b { color: var(--text); }
-.flag { font-size: 24px; line-height: 1; }
+.flag { font-size: 1.5rem; line-height: 1; }
 .refresh { margin-left: auto; }
 .sites { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-2); }
 .site { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }

@@ -131,7 +131,7 @@ async function submit() {
 /* 账号与密码 */
 .profile { padding: 0; overflow: hidden; }
 .who { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-5); }
-.avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 22px;
+.avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 1.375rem;
   font-weight: var(--weight-strong); color: var(--on-accent); background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--series-2))); }
 .who-main { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); overflow: hidden; text-overflow: ellipsis; }
