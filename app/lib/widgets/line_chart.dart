@@ -1,4 +1,4 @@
-// 简单折线图（设计 14“趋势”）：自绘，不引入图表库。一到两条系列，纵轴从 0 开始，
+// 简单折线图（设计 14“趋势”）：自绘，不引入图表库。一到两条系列，纵轴从 0 开始（scaleY 时按数据范围，用于汇率这类变化很小的数值），
 // 上限按数据取整（留约 15% 余量，百分比不超过 100%），左侧标出上限与一半处的数值，第一条系列下方浅色填充；
 // 标出本区间平均与峰值（修订第 243 条）与起止时间；数据为空时显示提示。
 import 'dart:math' as math;
@@ -16,7 +16,7 @@ class ChartSeries {
 /// 折线图：一到两条系列，纵轴按数据取整
 class LineChart extends StatelessWidget {
   const LineChart({super.key, required this.times, required this.series, required this.formatY, this.fixedMax, this.capMax, this.minMax,
-      this.height = 160});
+      this.height = 160, this.scaleY = false, this.dateOnly = false});
 
   /// 每个点的时间（Unix 秒），与各系列等长
   final List<int> times;
@@ -31,6 +31,12 @@ class LineChart extends StatelessWidget {
   final double? minMax;
   final double height;
 
+  /// 纵轴不从 0 开始，按数据范围缩放
+  final bool scaleY;
+
+  /// 起止时间只显示日期（按天的数据，时间为 UTC 零点）
+  final bool dateOnly;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -42,6 +48,14 @@ class LineChart extends StatelessWidget {
     final dataMax = series.expand((s) => s.values).where((v) => v.isFinite).fold<double>(0, math.max);
     var max = fixedMax ?? chartMax(dataMax, cap: capMax, floor: minMax);
     if (max <= 0) max = 1;
+    var min = 0.0;
+    if (scaleY) {
+      final v = series.expand((s) => s.values).where((x) => x.isFinite);
+      final low = v.fold<double>(double.infinity, math.min), high = v.fold<double>(-double.infinity, math.max);
+      final pad = high > low ? (high - low) * 0.15 : low.abs() * 0.01 + 1e-9;
+      min = low - pad;
+      max = high + pad;
+    }
     final labelStyle = TextStyle(fontSize: 11, color: muted);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -61,19 +75,25 @@ class LineChart extends StatelessWidget {
         height: height,
         width: double.infinity,
         child: Stack(children: [
-          Positioned.fill(child: CustomPaint(painter: _Painter(times, series, max, theme.colorScheme.outlineVariant))),
+          Positioned.fill(child: CustomPaint(painter: _Painter(times, series, min, max, theme.colorScheme.outlineVariant))),
           // 纵轴刻度：上限与一半
           Positioned(left: 0, top: 2, child: Text(formatY(max), style: labelStyle.copyWith(fontSize: 10))),
-          Positioned(left: 0, top: height / 2 + 2, child: Text(formatY(max / 2), style: labelStyle.copyWith(fontSize: 10))),
+          Positioned(left: 0, top: height / 2 + 2, child: Text(formatY((min + max) / 2), style: labelStyle.copyWith(fontSize: 10))),
         ]),
       ),
       const SizedBox(height: 4),
       Row(children: [
-        Text(_label(times.first, times.last - times.first), style: labelStyle),
+        Text(_edge(times.first), style: labelStyle),
         const Spacer(),
-        Text(_label(times.last, times.last - times.first), style: labelStyle),
+        Text(_edge(times.last), style: labelStyle),
       ]),
     ]);
+  }
+
+  String _edge(int unix) {
+    if (!dateOnly) return _label(unix, times.last - times.first);
+    final d = DateTime.fromMillisecondsSinceEpoch(unix * 1000, isUtc: true);
+    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
   String _stats(List<double> values) {
@@ -92,9 +112,10 @@ class LineChart extends StatelessWidget {
 }
 
 class _Painter extends CustomPainter {
-  _Painter(this.times, this.series, this.max, this.grid);
+  _Painter(this.times, this.series, this.min, this.max, this.grid);
   final List<int> times;
   final List<ChartSeries> series;
+  final double min;
   final double max;
   final Color grid;
 
@@ -121,7 +142,7 @@ class _Painter extends CustomPainter {
           continue;
         }
         final x = size.width * (times[i] - t0) / span;
-        final y = size.height * (1 - (s.values[i] / max).clamp(0.0, 1.0));
+        final y = size.height * (1 - ((s.values[i] - min) / (max - min)).clamp(0.0, 1.0));
         final gap = i > 0 && times[i] - times[i - 1] > step * 3;
         broken || gap ? path.moveTo(x, y) : path.lineTo(x, y);
         broken = false;
@@ -163,7 +184,7 @@ class _Painter extends CustomPainter {
       if (!v.isFinite || gap) close();
       if (!v.isFinite) continue;
       final x = size.width * (times[i] - t0) / span;
-      final y = size.height * (1 - (v / max).clamp(0.0, 1.0));
+      final y = size.height * (1 - ((v - min) / (max - min)).clamp(0.0, 1.0));
       if (area == null) {
         area = Path()
           ..moveTo(x, size.height)

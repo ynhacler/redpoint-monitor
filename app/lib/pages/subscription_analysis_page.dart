@@ -7,11 +7,12 @@ import '../format.dart';
 import '../subscriptions.dart';
 import '../theme.dart';
 import '../tokens.dart';
+import '../widgets/fx_trend.dart';
 
 /// 订阅分析页
 class SubscriptionAnalysisPage extends StatefulWidget {
   /// 创建
-  const SubscriptionAnalysisPage({super.key, required this.items, required this.fx, required this.avatar, this.privacy = false});
+  const SubscriptionAnalysisPage({super.key, required this.items, required this.fx, required this.avatar, this.privacy = false, this.loadFx});
 
   /// 订阅
   final List<Subscription> items;
@@ -24,6 +25,9 @@ class SubscriptionAnalysisPage extends StatefulWidget {
 
   /// 隐私模式：金额打码
   final bool privacy;
+
+  /// 读取某币种的汇率历史；为空时不显示汇率走势
+  final Future<List<FxDay>> Function(String currency)? loadFx;
 
   @override
   State<SubscriptionAnalysisPage> createState() => _SubscriptionAnalysisPageState();
@@ -207,6 +211,7 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
             style: muted,
           ),
         ),
+        if (widget.loadFx != null && used.isNotEmpty) FxTrend(currencies: used, load: widget.loadFx!),
       ]),
     );
   }

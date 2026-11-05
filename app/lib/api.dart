@@ -231,6 +231,12 @@ class ApiClient {
   /// 汇率（修订第 223 条）：1 单位外币折合多少人民币；旧版面板没有该接口时抛出 ApiException（404）。
   Future<FxRates> fxRates() async => FxRates.fromJson(await getJson('/fx-rates') as Map<String, dynamic>);
 
+  /// 某币种的汇率历史（修订第 297 条），按日期从早到晚；旧版面板没有该接口时抛出 ApiException（404）。
+  Future<List<FxDay>> fxHistory(String currency) async {
+    final j = await getJson('/fx-rates/history', query: {'currency': currency}) as Map<String, dynamic>;
+    return [for (final x in j['items'] as List<dynamic>) FxDay.fromJson(x as Map<String, dynamic>)];
+  }
+
   /// 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条），权限与记录订阅相同。
   Future<Subscription> renewSubscription(int id) async => Subscription.fromJson(await _send2xx('POST', '/app/subscriptions/$id/renew'));
 
