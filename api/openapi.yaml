@@ -2316,7 +2316,9 @@ paths:
         CPU：过去 24 小时平均与峰值；内存：过去 24 小时的范围（波动不超过 10 个百分点时为“稳定”）；
         磁盘：当前使用率与最近 30 天增长（数据满 7 天才计算，增长时估算写满天数）；流量：本周期用量与预计。
         数据来自 5 分钟聚合（设计 21），最近几分钟可能尚未计入。
-      parameters: [{ $ref: '#/components/parameters/ServerID' }]
+      parameters:
+        - { $ref: '#/components/parameters/ServerID' }
+        - { name: lang, in: query, schema: { type: string, enum: [zh, en], default: zh }, description: 摘要文字的语言；其他值按中文（设计 52.2） }
       responses:
         '200': { description: 健康摘要, content: { application/json: { schema: { $ref: '#/components/schemas/HealthSummary' } } } }
         '401': { $ref: '#/components/responses/Error' }
