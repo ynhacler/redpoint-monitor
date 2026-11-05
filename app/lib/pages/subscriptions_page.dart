@@ -15,6 +15,7 @@ import '../subscriptions.dart';
 import '../theme.dart';
 import '../widgets/brand_avatar.dart';
 import '../widgets/stale_banner.dart';
+import '../widgets/sub_charges.dart';
 import 'subscription_add_page.dart';
 import 'subscription_analysis_page.dart';
 
@@ -493,6 +494,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             if (s.category == 'vps' && s.vps.summary.isNotEmpty) line('配置', s.vps.summary),
             if (s.category == 'vps' && s.vps.ips.isNotEmpty) line('地址', s.vps.ips.map((ip) => widget.privacy ? maskIP(ip) : ip).join('\n')),
             if (s.note.isNotEmpty) line('备注', s.note),
+            // 历史扣费（修订第 294 条）：免费的订阅不显示
+            if (s.priceCents > 0) SubCharges(sub: s, privacy: widget.privacy),
             const SizedBox(height: 8),
             Text(widget.api.session.allowSubscriptions ? '长按列表中的订阅可修改或删除；上传图标请在 Web 中进行。' : '修改与删除请在 Web 的“订阅”页进行。',
                 style: TextStyle(fontSize: 12, color: c.textMuted)),

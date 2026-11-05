@@ -238,6 +238,12 @@ List<DateTime> chargesBetween(Subscription s, DateTime from, DateTime to) {
   return out;
 }
 
+/// 到今天（含）为止的扣费日，最新的在前（修订第 294 条，与 Web 的“历史扣费”相同）：按周期推算，不是实际付款记录
+List<DateTime> pastCharges(Subscription s, {DateTime? today}) {
+  final now = today ?? DateTime.now();
+  return chargesBetween(s, DateTime(1970), DateTime(now.year, now.month, now.day + 1)).reversed.toList();
+}
+
 /// 未来 n 个月每月的预计扣款（修订第 240 条，与 Web 的 cashflow 相同）：按扣费日排期，换算人民币的舍入点为每个订阅的当月扣费
 ({List<(DateTime, int, int)> months, int total, List<String> missing}) cashflow(Iterable<Subscription> list, FxRates fx,
     {DateTime? today, int n = 12}) {
