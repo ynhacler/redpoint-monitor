@@ -366,6 +366,33 @@ String defaultCountry(String currency) => _currencyCountry[currency] ?? '';
 /// 国家 / 地区名称
 String countryLabel(String code) => code.isEmpty ? '' : (countryNames[code] ?? code);
 
+/// 某币种某天的汇率（修订第 297 条）
+class FxDay {
+  /// 创建
+  const FxDay(this.day, this.cny);
+
+  /// 日期（UTC，YYYY-MM-DD）
+  final String day;
+
+  /// 1 单位折合多少人民币
+  final double cny;
+
+  /// 该日 UTC 零点（Unix 秒）
+  int get unix => DateTime.parse('${day}T00:00:00Z').millisecondsSinceEpoch ~/ 1000;
+
+  /// 从接口 JSON 创建
+  factory FxDay.fromJson(Map<String, dynamic> j) => FxDay(j['day'] as String, (j['cny'] as num).toDouble());
+}
+
+/// 最新汇率较 30 天前的变化（%）：取 30 天前当天或更早最近的一条；记录不满 30 天时为 null（与 Web 相同）
+double? fxChange30(List<FxDay> rows) {
+  if (rows.isEmpty) return null;
+  final last = rows.last;
+  final edge = last.unix - 30 * 86400;
+  final base = rows.where((r) => r.unix <= edge).lastOrNull;
+  return base == null ? null : (last.cny - base.cny) / base.cny * 100;
+}
+
 /// 汇率（GET /fx-rates）：1 单位外币折合多少人民币
 class FxRates {
   /// 创建

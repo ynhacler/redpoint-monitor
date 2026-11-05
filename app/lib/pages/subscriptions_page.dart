@@ -267,7 +267,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             ),
             TextButton.icon(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SubscriptionAnalysisPage(items: list, fx: _fx, privacy: widget.privacy, avatar: _avatar))),
+                  builder: (_) => SubscriptionAnalysisPage(items: list, fx: _fx, privacy: widget.privacy, avatar: _avatar, loadFx: widget.api.fxHistory))),
               icon: const Icon(Icons.insights_outlined, size: 18),
               label: const Text('分析'),
             ),
