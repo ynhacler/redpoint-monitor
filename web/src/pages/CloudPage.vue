@@ -9,6 +9,7 @@ import {
   updateCloudAccount, ApiError, type CloudAccount, type CloudAccountInput, type CloudCheckItem, type CloudInstance, type CloudTrafficPool,
 } from '../api'
 import CommandBlock from '../components/CommandBlock.vue'
+import CostHistory from '../components/CostHistory.vue'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import UsageBar from '../components/UsageBar.vue'
@@ -206,6 +207,8 @@ function budgetPct(a: CloudAccount): number | null {
 const syncMsg = ref<Record<number, string>>({})
 // 状态原因是否展开（按账户）
 const detailOpen = ref<Record<number, boolean>>({})
+// 费用历史（修订第 289 条）：展开时才加载
+const historyOpen = ref<Record<number, boolean>>({})
 async function syncNow(a: CloudAccount) {
   try {
     await syncCloudAccount(a.id)
@@ -725,6 +728,12 @@ function expireTone(i: CloudInstance): string {
         <button v-if="costNotice(a)" type="button" class="notice small" @click="detailOpen[a.id] = true">
           <span class="warn">⚠ {{ costNotice(a) }}</span><span class="muted">{{ t('查看') }}<Icon name="chevron-right" :size="12" /></span>
         </button>
+        <!-- 费用历史（修订第 289 条）：按月列出已同步的费用，展开时才请求 -->
+        <details v-if="a.sync_cost || a.current_cost" class="cost-info small"
+          @toggle="historyOpen[a.id] = ($event.target as HTMLDetailsElement).open">
+          <summary class="muted">{{ t('费用历史') }}</summary>
+          <CostHistory v-if="historyOpen[a.id]" :account-id="a.id" :budget-cents="a.budget_cents" />
+        </details>
         <!-- 共性说明收进“ⓘ 费用说明”（修订第 267 条，第二轮 UI2-012）；影响判断的问题由状态标签与“待确认”常驻显示 -->
         <details class="cost-info small">
           <summary class="muted">ⓘ {{ t('费用说明') }}</summary>
