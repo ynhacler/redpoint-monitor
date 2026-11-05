@@ -1,3 +1,4 @@
+import { t } from './i18n'
 // 费用统计（设计 36.3）：按节点的续费价格与周期，按币种汇总月均 / 年均开销、按供应商或分组拆分、近期续费。
 // 只用节点资产信息（设计 1.2.3），在浏览器中计算；不同币种不换算（没有汇率来源，也不联网获取）。
 
@@ -42,16 +43,16 @@ export function totalsByCurrency(nodes: CostNode[]): CurrencyTotal[] {
   for (const n of nodes) {
     if (!n.price_cents) continue
     const cur = n.currency || '—'
-    const t = by.get(cur) ?? { currency: cur, monthly: 0, yearly: 0, count: 0, oneTime: 0 }
+    const tot = by.get(cur) ?? { currency: cur, monthly: 0, yearly: 0, count: 0, oneTime: 0 }
     const m = monthlyCents(n)
     if (m != null) {
-      t.monthly += m
-      t.count++
+      tot.monthly += m
+      tot.count++
     } else if (n.billing_period === 'one_time') {
-      t.oneTime += n.price_cents
+      tot.oneTime += n.price_cents
     }
-    t.yearly = t.monthly * 12
-    by.set(cur, t)
+    tot.yearly = tot.monthly * 12
+    by.set(cur, tot)
   }
   return [...by.values()].sort((a, b) => b.yearly - a.yearly || a.currency.localeCompare(b.currency))
 }
@@ -69,7 +70,7 @@ export function breakdown(nodes: CostNode[], by: 'provider' | 'group'): Breakdow
   for (const n of nodes) {
     const v = monthlyCents(n)
     if (v == null) continue
-    const key = (by === 'provider' ? n.provider : n.group) || '未填写'
+    const key = (by === 'provider' ? n.provider : n.group) || t('未填写')
     const id = `${n.currency}\u0000${key}`
     const b = m.get(id) ?? { key, currency: n.currency || '—', monthly: 0, count: 0 }
     b.monthly += v

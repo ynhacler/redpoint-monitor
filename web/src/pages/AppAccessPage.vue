@@ -12,6 +12,7 @@ import QrCode from '../components/QrCode.vue'
 import { DASH, fmtDateTime, fmtTime } from '../format'
 import { scopeText } from '../scope'
 import { state } from '../store'
+import { t } from '../i18n'
 
 const keys = ref<AppAccessKey[]>([])
 const devices = ref<AppDevice[]>([])
@@ -24,7 +25,7 @@ async function load() {
     ready.value = true
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, 'App 接入信息加载失败')
+    error.value = errorText(e, t('App 接入信息加载失败'))
   }
 }
 onMounted(load)
@@ -55,7 +56,7 @@ async function save() {
   const f = form.value
   fieldErrors.value = {}
   if (!f.password) {
-    fieldErrors.value = { password: '请输入当前登录密码以确认' }
+    fieldErrors.value = { password: t('请输入当前登录密码以确认') }
     return
   }
   saving.value = true
@@ -87,11 +88,11 @@ const insecure = computed(() => !!created.value && !created.value.server_url.sta
 const statusText: Record<string, string> = { active: '可用', used: '已用完', expired: '已过期', revoked: '已吊销' }
 
 async function revokeKey(k: AppAccessKey) {
-  if (!confirm(`吊销 AK“${k.name}”？之后不能再用它配对。`)) return
+  if (!confirm(t('吊销 AK“{name}”？之后不能再用它配对。', { name: k.name }))) return
   let withDevices = false
   const active = devices.value.filter((d) => d.access_key_id === k.id && d.status === 'active').length
   if (active > 0) {
-    withDevices = confirm(`用这个 AK 配对的 ${active} 台设备是否一并吊销？\n确定：一并吊销（这些设备需要重新配对）\n取消：只吊销 AK，设备照常使用`)
+    withDevices = confirm(t('用这个 AK 配对的 {active} 台设备是否一并吊销？\n确定：一并吊销（这些设备需要重新配对）\n取消：只吊销 AK，设备照常使用', { active }))
   }
   try {
     await revokeAppKey(k.id, withDevices)
@@ -102,7 +103,7 @@ async function revokeKey(k: AppAccessKey) {
 }
 
 async function revokeDevice(d: AppDevice) {
-  if (!confirm(`吊销设备“${d.name}”？该设备将立即退出，需要重新生成 AK 配对。`)) return
+  if (!confirm(t('吊销设备“{name}”？该设备将立即退出，需要重新生成 AK 配对。', { name: d.name }))) return
   try {
     await revokeAppDevice(d.id)
     await load()
@@ -128,148 +129,147 @@ const oldKeys = computed(() => keys.value.filter((k) => k.status !== 'active').l
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>App 接入</h1>
-      <button v-if="!adding" type="button" @click="openNew">创建配对 AK</button>
+      <h1>{{ t('App 接入') }}</h1>
+      <button v-if="!adding" type="button" @click="openNew">{{ t('创建配对 AK') }}</button>
     </div>
     <p class="muted small intro">
-      App 不使用面板的用户名和密码。在这里创建一次性的配对 AK，在 App 中扫码或填写面板地址与 AK 即可连接。
-      App 只能查看授权范围内的节点、指标、流量与告警；创建时可允许它静音告警、开启维护模式，其他设置只能在 Web 中修改。
+      {{ t('App 不使用面板的用户名和密码。在这里创建一次性的配对 AK，在 App 中扫码或填写面板地址与 AK 即可连接。App 只能查看授权范围内的节点、指标、流量与告警；创建时可允许它静音告警、开启维护模式，其他设置只能在 Web 中修改。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <!-- 刚创建：完整 AK 只显示这一次 -->
     <section v-if="created" class="panel created">
-      <h2>配对信息</h2>
-      <p class="small"><b>请立即在 App 中完成配对</b>：离开本页后无法再次查看完整 AK。</p>
+      <h2>{{ t('配对信息') }}</h2>
+      <p class="small"><b>{{ t('请立即在 App 中完成配对') }}</b>{{ t('：离开本页后无法再次查看完整 AK。') }}</p>
       <p v-if="insecure" class="banner warn small">
-        面板地址不是 https，App 会拒绝连接。请为面板配置 HTTPS（如用 Caddy 反向代理），并以 --public-url 启动面板。
+        {{ t('面板地址不是 https，App 会拒绝连接。请为面板配置 HTTPS（如用 Caddy 反向代理），并以 --public-url 启动面板。') }}
       </p>
       <div class="pair-wrap">
       <figure class="qr-box">
-        <QrCode :value="created.pair_url" label="App 配对二维码" />
-        <figcaption class="small muted">用 App 扫码配对</figcaption>
+        <QrCode :value="created.pair_url" :label="t('App 配对二维码')" />
+        <figcaption class="small muted">{{ t('用 App 扫码配对') }}</figcaption>
       </figure>
       <div class="pair">
-        <span class="small muted">或在 App 中手工填写 · 面板地址</span>
+        <span class="small muted">{{ t('或在 App 中手工填写 · 面板地址') }}</span>
         <CommandBlock :command="created.server_url" plain />
         <span class="small muted">AK</span>
         <CommandBlock :command="created.access_key" plain />
-        <span class="small muted">配对链接（二维码内容）</span>
+        <span class="small muted">{{ t('配对链接（二维码内容）') }}</span>
         <CommandBlock :command="created.pair_url" plain />
       </div>
       </div>
     </section>
 
     <form v-if="adding" class="panel editor" novalidate @submit.prevent="save">
-      <h2>创建配对 AK</h2>
+      <h2>{{ t('创建配对 AK') }}</h2>
       <div class="fields">
-        <label>名称
-          <input v-model="form.name" maxlength="64" placeholder="如 Tom 的 iPhone" />
+        <label>{{ t('名称') }}
+          <input v-model="form.name" maxlength="64" :placeholder="t('如 Tom 的 iPhone')" />
           <small v-if="fieldErrors.name" class="bad">{{ fieldErrors.name }}</small>
         </label>
-        <label>可查看的节点
+        <label>{{ t('可查看的节点') }}
           <select v-model="form.scope_type">
-            <option value="all">全部节点</option>
-            <option value="group" :disabled="!groups.length">指定分组</option>
-            <option value="servers">指定节点</option>
+            <option value="all">{{ t('全部节点') }}</option>
+            <option value="group" :disabled="!groups.length">{{ t('指定分组') }}</option>
+            <option value="servers">{{ t('指定节点') }}</option>
           </select>
           <small v-if="fieldErrors.scope_type" class="bad">{{ fieldErrors.scope_type }}</small>
         </label>
-        <label v-if="form.scope_type === 'group'">分组
+        <label v-if="form.scope_type === 'group'">{{ t('分组') }}
           <select v-model="form.group">
             <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
           </select>
           <small v-if="fieldErrors.group" class="bad">{{ fieldErrors.group }}</small>
         </label>
         <fieldset v-if="form.scope_type === 'servers'" class="servers wide">
-          <legend class="small">节点</legend>
+          <legend class="small">{{ t('节点') }}</legend>
           <label v-for="s in servers" :key="s.id" class="check small">
             <input v-model="form.server_ids" type="checkbox" :value="s.id" />{{ s.name }}
           </label>
           <small v-if="fieldErrors.server_ids" class="bad">{{ fieldErrors.server_ids }}</small>
         </fieldset>
-        <label>最多配对设备
+        <label>{{ t('最多配对设备') }}
           <select v-model.number="form.max_devices">
-            <option :value="1">1 台（推荐）</option>
-            <option :value="2">2 台</option>
-            <option :value="3">3 台</option>
-            <option :value="5">5 台</option>
+            <option :value="1">{{ t('1 台（推荐）') }}</option>
+            <option :value="2">{{ t('2 台') }}</option>
+            <option :value="3">{{ t('3 台') }}</option>
+            <option :value="5">{{ t('5 台') }}</option>
           </select>
           <small v-if="fieldErrors.max_devices" class="bad">{{ fieldErrors.max_devices }}</small>
         </label>
-        <label>AK 有效期
+        <label>{{ t('AK 有效期') }}
           <select v-model.number="form.expires_in_days">
-            <option :value="1">1 天（推荐）</option>
-            <option :value="7">7 天</option>
-            <option :value="30">30 天</option>
-            <option :value="90">90 天</option>
+            <option :value="1">{{ t('1 天（推荐）') }}</option>
+            <option :value="7">{{ t('7 天') }}</option>
+            <option :value="30">{{ t('30 天') }}</option>
+            <option :value="90">{{ t('90 天') }}</option>
           </select>
           <small v-if="fieldErrors.expires_in_days" class="bad">{{ fieldErrors.expires_in_days }}</small>
         </label>
         <label class="check wide">
-          <input v-model="form.allow_low_risk_ops" type="checkbox" />允许静音告警、开启 / 结束维护模式（仅限可查看的节点）
+          <input v-model="form.allow_low_risk_ops" type="checkbox" />{{ t('允许静音告警、开启 / 结束维护模式（仅限可查看的节点）') }}
         </label>
         <label v-if="form.scope_type === 'all'" class="check wide">
-          <input v-model="form.allow_subscriptions" type="checkbox" />允许在 App 中记录订阅与续费（订阅的新增、修改、删除，订阅与节点的“已续费”；上传图标仍在 Web 中进行）
+          <input v-model="form.allow_subscriptions" type="checkbox" />{{ t('允许在 App 中记录订阅与续费（订阅的新增、修改、删除，订阅与节点的“已续费”；上传图标仍在 Web 中进行）') }}
         </label>
-        <label>当前登录密码
+        <label>{{ t('当前登录密码') }}
           <input v-model="form.password" type="password" autocomplete="current-password" />
           <small v-if="fieldErrors.password" class="bad">{{ fieldErrors.password }}</small>
         </label>
       </div>
-      <p class="small muted">AK 只用于首次配对；配对后设备使用独立的凭证，AK 过期不影响已配对的设备。</p>
+      <p class="small muted">{{ t('AK 只用于首次配对；配对后设备使用独立的凭证，AK 过期不影响已配对的设备。') }}</p>
       <p v-if="fieldErrors.form" class="small bad">{{ fieldErrors.form }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving">{{ saving ? '创建中…' : '创建' }}</button>
-        <button type="button" class="secondary" @click="adding = false">取消</button>
+        <button type="submit" :disabled="saving">{{ saving ? t('创建中…') : t('创建') }}</button>
+        <button type="button" class="secondary" @click="adding = false">{{ t('取消') }}</button>
       </div>
     </form>
 
     <section class="panel">
-      <h2>已连接设备 <span class="muted small num">{{ activeDevices }}</span></h2>
+      <h2>{{ t('已连接设备') }} <span class="muted small num">{{ activeDevices }}</span></h2>
       <ul v-if="shownDevices.length" class="list">
         <li v-for="d in shownDevices" :key="d.id" :class="{ off: d.status !== 'active' }">
           <div class="who">
             <strong>{{ d.name }}</strong>
             <span class="small muted"> {{ platformName[d.platform] ?? d.platform }}{{ d.app_version ? ` · App ${d.app_version}` : '' }}</span>
-            <span v-if="d.status === 'revoked'" class="tag">{{ revokedByText[d.revoked_by] ?? '已吊销' }}</span>
-            <span v-else-if="d.status === 'expired'" class="tag">90 天未使用，已失效</span>
+            <span v-if="d.status === 'revoked'" class="tag">{{ t(revokedByText[d.revoked_by] ?? '已吊销') }}</span>
+            <span v-else-if="d.status === 'expired'" class="tag">{{ t('90 天未使用，已失效') }}</span>
             <div class="small muted">
-              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? '只读 + 静音 / 维护' : '只读' }}{{ d.allow_subscriptions ? ' + 记录订阅与续费' : '' }}
-              · 最后在线 {{ d.last_seen_at ? fmtTime(d.last_seen_at) : DASH }} · 配对于 {{ fmtDateTime(d.paired_at) }}
+              {{ scopeText(d.scope_type, d.scope_value) }} · {{ d.allow_low_risk_ops ? t('只读 + 静音 / 维护') : t('只读') }}{{ d.allow_subscriptions ? t(' + 记录订阅与续费') : '' }}
+              · {{ t('最后在线 {time}', { time: d.last_seen_at ? fmtTime(d.last_seen_at) : DASH }) }} · {{ t('配对于 {time}', { time: fmtDateTime(d.paired_at) }) }}
               <template v-if="d.access_key_name"> · AK：{{ d.access_key_name }}</template>
             </div>
           </div>
-          <button v-if="d.status === 'active'" type="button" class="secondary small" @click="revokeDevice(d)">吊销</button>
+          <button v-if="d.status === 'active'" type="button" class="secondary small" @click="revokeDevice(d)">{{ t('吊销') }}</button>
         </li>
       </ul>
-      <p v-else-if="ready && !devices.length" class="small muted empty">{{ DASH }} 还没有设备。创建 AK 后在 App 中扫码或填写即可配对。</p>
-      <p v-else-if="ready && !showOldDevices" class="small muted empty">{{ DASH }} 没有在用的设备。</p>
+      <p v-else-if="ready && !devices.length" class="small muted empty">{{ DASH + ' ' + t('还没有设备。创建 AK 后在 App 中扫码或填写即可配对。') }}</p>
+      <p v-else-if="ready && !showOldDevices" class="small muted empty">{{ DASH + ' ' + t('没有在用的设备。') }}</p>
       <button v-if="oldDevices" type="button" class="text small more" @click="showOldDevices = !showOldDevices">
-        {{ showOldDevices ? '收起已失效的设备' : `显示已失效的 ${oldDevices} 台设备` }}
+        {{ showOldDevices ? t('收起已失效的设备') : t('显示已失效的 {oldDevices} 台设备', { oldDevices }) }}
       </button>
     </section>
 
     <section class="panel">
-      <h2>配对 AK</h2>
+      <h2>{{ t('配对 AK') }}</h2>
       <ul v-if="shownKeys.length" class="list">
         <li v-for="k in shownKeys" :key="k.id" :class="{ off: k.status !== 'active' }">
           <div class="who">
             <strong>{{ k.name }}</strong> <span class="small muted mono">{{ k.hint }}</span>
-            <span class="tag" :class="{ live: k.status === 'active' }">{{ statusText[k.status] ?? k.status }}</span>
+            <span class="tag" :class="{ live: k.status === 'active' }">{{ t(statusText[k.status] ?? k.status) }}</span>
             <div class="small muted">
-              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? '允许静音 / 维护' : '只读' }}{{ k.allow_subscriptions ? ' · 允许记录订阅与续费' : '' }}
-              · 已配对 {{ k.paired_devices }} / {{ k.max_devices }}
-              · {{ k.status === 'active' ? `${fmtDateTime(k.expires_at)} 前有效` : `创建于 ${fmtDateTime(k.created_at)}` }}
+              {{ scopeText(k.scope_type, k.scope_value) }} · {{ k.allow_low_risk_ops ? t('允许静音 / 维护') : t('只读') }}{{ k.allow_subscriptions ? t(' · 允许记录订阅与续费') : '' }}
+              · {{ t('已配对 {n} / {max}', { n: k.paired_devices, max: k.max_devices }) }}
+              · {{ k.status === 'active' ? t('{time} 前有效', { time: fmtDateTime(k.expires_at) }) : t('创建于 {time}', { time: fmtDateTime(k.created_at) }) }}
             </div>
           </div>
-          <button v-if="!k.revoked_at" type="button" class="secondary small" @click="revokeKey(k)">吊销</button>
+          <button v-if="!k.revoked_at" type="button" class="secondary small" @click="revokeKey(k)">{{ t('吊销') }}</button>
         </li>
       </ul>
-      <p v-else-if="ready && !keys.length" class="small muted empty">{{ DASH }} 还没有 AK</p>
-      <p v-else-if="ready && !showOldKeys" class="small muted empty">{{ DASH }} 没有可用的 AK。</p>
+      <p v-else-if="ready && !keys.length" class="small muted empty">{{ DASH + ' ' + t('还没有 AK') }}</p>
+      <p v-else-if="ready && !showOldKeys" class="small muted empty">{{ DASH + ' ' + t('没有可用的 AK。') }}</p>
       <button v-if="oldKeys" type="button" class="text small more" @click="showOldKeys = !showOldKeys">
-        {{ showOldKeys ? '收起已失效的 AK' : `显示已用完、过期或吊销的 ${oldKeys} 个 AK` }}
+        {{ showOldKeys ? t('收起已失效的 AK') : t('显示已用完、过期或吊销的 {oldKeys} 个 AK', { oldKeys }) }}
       </button>
     </section>
   </main>

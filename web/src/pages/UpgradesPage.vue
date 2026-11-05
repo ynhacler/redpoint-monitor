@@ -11,6 +11,7 @@ import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtDateTime } from '../format'
 import { state } from '../store'
 import { compareVersions } from '../versions'
+import { t } from '../i18n'
 
 const latest = ref<AgentRelease | null>(null)
 const mirrorOn = ref(false)
@@ -38,7 +39,7 @@ const statusNames: Record<string, string> = {
   pending: '等待获取', delivered: '下载校验中', staged: '安装中', success: '成功',
   failed: '失败', rolled_back: '已回滚', cancelled: '已取消',
 }
-const isActive = (t: UpgradeTask) => t.status === 'pending' || t.status === 'delivered' || t.status === 'staged'
+const isActive = (task: UpgradeTask) => task.status === 'pending' || task.status === 'delivered' || task.status === 'staged'
 
 function handle(e: unknown) {
   error.value = errorText(e)
@@ -65,7 +66,7 @@ onBeforeUnmount(() => timer && clearTimeout(timer))
 // 每个节点最近一个任务（列表按 id 倒序）
 const lastTask = computed(() => {
   const m = new Map<number, UpgradeTask>()
-  for (const t of tasks.value) if (!m.has(t.server_id)) m.set(t.server_id, t)
+  for (const task of tasks.value) if (!m.has(task.server_id)) m.set(task.server_id, task)
   return m
 })
 
@@ -76,9 +77,9 @@ const rows = computed<Row[]>(() => {
     if (s.status === 'pending') continue
     if (group.value && s.group !== group.value) continue
     const version = s.latest?.agent_version ?? ''
-    const t = lastTask.value.get(s.id)
+    const task = lastTask.value.get(s.id)
     let st: Row['state'] = 'unknown'
-    if (t && isActive(t)) st = 'busy'
+    if (task && isActive(task)) st = 'busy'
     else if (latest.value && version) {
       const c = compareVersions(version, latest.value.version)
       st = c === null ? 'unknown' : c < 0 ? 'old' : 'latest'
@@ -106,12 +107,12 @@ function selectAll(on: boolean) {
 async function upgrade() {
   if (!latest.value || !chosen.value.length) return
   const n = chosen.value.length
-  if (!confirm(`将 ${n} 个节点的 Agent 升级到 ${latest.value.version}？\n节点会在 5 分钟内获取任务，独立验签后安装；健康检查失败会自动回滚。`)) return
+  if (!confirm(t('将 {n} 个节点的 Agent 升级到 {version}？\n节点会在 5 分钟内获取任务，独立验签后安装；健康检查失败会自动回滚。', { n, version: latest.value.version }))) return
   busy.value = true
   error.value = notice.value = ''
   try {
     const r = await createUpgradeTasks(chosen.value.map((x) => x.s.id), latest.value.version)
-    notice.value = `已创建 ${r.created.length} 个任务` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个：${r.skipped.map((x) => `${name(x.server_id)}（${x.reason}）`).join('、')}` : '')
+    notice.value = t('已创建 {n} 个任务', { n: r.created.length }) + (r.skipped.length ? t('，跳过 {n} 个：{list}', { n: r.skipped.length, list: r.skipped.map((x) => `${name(x.server_id)}（${x.reason}）`).join(t('、')) }) : '')
     selected.value = new Set()
     await load()
   } catch (e) {
@@ -127,8 +128,8 @@ const hasOpenRollout = computed(() => rollouts.value.some(rolloutOpen))
 async function canary() {
   if (!latest.value || chosen.value.length < 2) return
   const n = chosen.value.length
-  if (!confirm(`灰度升级 ${n} 个节点到 ${latest.value.version}？\n第一批 ${firstCount.value} 台，第二批累计 ${secondPercent.value}%，然后其余全部；` +
-    `每批结束后观察 ${observe.value} 分钟，失败超过 ${maxFailures.value} 台或已升级的节点离线时自动暂停。`)) return
+  if (!confirm(t('灰度升级 {n} 个节点到 {version}？\n第一批 {first} 台，第二批累计 {second}%，然后其余全部；', { n, version: latest.value.version, first: firstCount.value, second: secondPercent.value }) +
+    t('每批结束后观察 {minutes} 分钟，失败超过 {max} 台或已升级的节点离线时自动暂停。', { minutes: observe.value, max: maxFailures.value }))) return
   busy.value = true
   error.value = notice.value = ''
   try {
@@ -137,7 +138,7 @@ async function canary() {
       stages: [{ count: firstCount.value }, { percent: secondPercent.value }, { percent: 100 }],
       observe_minutes: observe.value, max_failures: maxFailures.value,
     })
-    notice.value = `已开始灰度升级：第一批 ${r.progress[0]?.tasks ?? 0} 台` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个` : '')
+    notice.value = t('已开始灰度升级：第一批 {n} 台', { n: r.progress[0]?.tasks ?? 0 }) + (r.skipped.length ? t('，跳过 {n} 个', { n: r.skipped.length }) : '')
     selected.value = new Set()
     await load()
   } catch (e) {
@@ -148,8 +149,8 @@ async function canary() {
 }
 
 async function act(r: UpgradeRollout, action: 'pause' | 'resume' | 'cancel') {
-  if (action === 'cancel' && !confirm('取消灰度升级？尚未开始安装的任务会一并取消，已升级的节点不受影响。')) return
-  if (action === 'resume' && r.reason && !confirm(`继续灰度升级？\n${r.reason}\n继续即表示已确认上述情况，之后只有新的失败或离线才会再次暂停。`)) return
+  if (action === 'cancel' && !confirm(t('取消灰度升级？尚未开始安装的任务会一并取消，已升级的节点不受影响。'))) return
+  if (action === 'resume' && r.reason && !confirm(t('继续灰度升级？\n{reason}\n继续即表示已确认上述情况，之后只有新的失败或离线才会再次暂停。', { reason: r.reason }))) return
   busy.value = true
   error.value = ''
   try {
@@ -167,11 +168,11 @@ function nextAt(r: UpgradeRollout) {
   return r.stage_done_at ? fmtDateTime(r.stage_done_at + r.observe_minutes * 60) : ''
 }
 
-async function cancel(t: UpgradeTask) {
+async function cancel(task: UpgradeTask) {
   busy.value = true
   error.value = ''
   try {
-    await cancelUpgradeTask(t.id)
+    await cancelUpgradeTask(task.id)
     await load()
   } catch (e) {
     handle(e)
@@ -185,7 +186,7 @@ async function sync() {
   error.value = notice.value = ''
   try {
     const r = await syncReleases()
-    notice.value = `已同步官方版本 ${r.version}`
+    notice.value = t('已同步官方版本 {version}', { version: r.version })
     await load()
   } catch (e) {
     handle(e)
@@ -202,16 +203,16 @@ function name(id: number) {
 <template>
   <main class="page">
     <div class="head">
-      <h1>Agent 升级</h1>
-      <button type="button" class="secondary" :disabled="busy" @click="sync">同步官方版本</button>
+      <h1>{{ t('Agent 升级') }}</h1>
+      <button type="button" class="secondary" :disabled="busy" @click="sync">{{ t('同步官方版本') }}</button>
     </div>
     <p class="muted small">
-      <template v-if="latest">官方最新稳定版 <b class="num">{{ latest.version }}</b>（签名公钥 {{ latest.key_id }}，同步于 {{ fmtDateTime(latest.synced_at) }}）。</template>
-      <template v-else>尚未同步到官方版本，点击“同步官方版本”。</template>
-      <template v-if="latest?.mirrored">已镜像到本面板，节点从本面板下载。</template>
-      <template v-else-if="latest && mirrorOn">镜像已开启，同步时会一并下载全部构建。</template>
-      只能升级到官方签名的更高版本；节点需启用远程升级（新安装默认启用，已安装的执行
-      <code>sudo vpsmon-agent enable-remote-upgrade</code>）。
+      <template v-if="latest">{{ t('官方最新稳定版') }} <b class="num">{{ latest.version }}</b>{{ t('（签名公钥 {key_id}，同步于 {dateTime}）。', { key_id: latest.key_id, dateTime: fmtDateTime(latest.synced_at) }) }}</template>
+      <template v-else>{{ t('尚未同步到官方版本，点击“同步官方版本”。') }}</template>
+      <template v-if="latest?.mirrored">{{ t('已镜像到本面板，节点从本面板下载。') }}</template>
+      <template v-else-if="latest && mirrorOn">{{ t('镜像已开启，同步时会一并下载全部构建。') }}</template>
+      {{ t('只能升级到官方签名的更高版本；节点需启用远程升级（新安装默认启用，已安装的执行') }}
+      <code>sudo vpsmon-agent enable-remote-upgrade</code>{{ t('）。') }}
     </p>
 
     <p v-if="error" class="banner">{{ error }}</p>
@@ -220,34 +221,34 @@ function name(id: number) {
     <section class="section">
       <div class="toolbar">
         <label class="check"><input type="checkbox" :checked="upgradable.length > 0 && chosen.length === upgradable.length"
-          :disabled="!upgradable.length" @change="selectAll(($event.target as HTMLInputElement).checked)" />全选可升级（{{ upgradable.length }}）</label>
-        <select v-if="groups.length" v-model="group" aria-label="分组">
-          <option value="">全部分组</option>
+          :disabled="!upgradable.length" @change="selectAll(($event.target as HTMLInputElement).checked)" />{{ t('全选可升级（{n}）', { n: upgradable.length }) }}</label>
+        <select v-if="groups.length" v-model="group" :aria-label="t('分组')">
+          <option value="">{{ t('全部分组') }}</option>
           <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
         </select>
-        <div class="seg" role="radiogroup" aria-label="升级方式">
-          <label :class="{ on: mode === 'all' }"><input v-model="mode" type="radio" value="all" />全部升级</label>
-          <label :class="{ on: mode === 'canary' }"><input v-model="mode" type="radio" value="canary" />灰度升级</label>
+        <div class="seg" role="radiogroup" :aria-label="t('升级方式')">
+          <label :class="{ on: mode === 'all' }"><input v-model="mode" type="radio" value="all" />{{ t('全部升级') }}</label>
+          <label :class="{ on: mode === 'canary' }"><input v-model="mode" type="radio" value="canary" />{{ t('灰度升级') }}</label>
         </div>
         <button v-if="mode === 'all'" type="button" :disabled="busy || !chosen.length || !latest" @click="upgrade">
-          <template v-if="!chosen.length">选择要升级的节点</template>
-          <template v-else>升级 {{ chosen.length }} 个节点<template v-if="latest">到 {{ latest.version }}</template></template>
+          <template v-if="!chosen.length">{{ t('选择要升级的节点') }}</template>
+          <template v-else>{{ t('升级 {n} 个节点', { n: chosen.length }) }}<template v-if="latest">{{ t('到 {version}', { version: latest.version }) }}</template></template>
         </button>
         <button v-else type="button" :disabled="busy || !canaryReady || !latest || hasOpenRollout" @click="canary">
-          <template v-if="hasOpenRollout">已有进行中的灰度升级</template>
-          <template v-else-if="chosen.length < 2">灰度升级至少选择 2 个节点</template>
-          <template v-else>灰度升级 {{ chosen.length }} 个节点</template>
+          <template v-if="hasOpenRollout">{{ t('已有进行中的灰度升级') }}</template>
+          <template v-else-if="chosen.length < 2">{{ t('灰度升级至少选择 2 个节点') }}</template>
+          <template v-else>{{ t('灰度升级 {n} 个节点', { n: chosen.length }) }}</template>
         </button>
       </div>
       <div v-if="mode === 'canary'" class="canary panel small">
-        <label>第一批<input v-model.number="firstCount" type="number" min="1" max="500" />台</label>
-        <label>第二批累计<input v-model.number="secondPercent" type="number" min="1" max="100" />%</label>
-        <span class="muted">第三批：其余全部</span>
-        <label>每批观察<input v-model.number="observe" type="number" min="5" max="1440" />分钟</label>
-        <label>允许失败<input v-model.number="maxFailures" type="number" min="0" max="100" />台</label>
-        <p class="muted hint">按列表顺序分批。每批全部结束后观察，失败（含回滚）超过允许台数或已升级的节点离线时自动暂停；不能升级的节点轮到时跳过，由后面的节点补足。</p>
+        <label>{{ t('第一批') }}<input v-model.number="firstCount" type="number" min="1" max="500" />{{ t('台') }}</label>
+        <label>{{ t('第二批累计') }}<input v-model.number="secondPercent" type="number" min="1" max="100" />%</label>
+        <span class="muted">{{ t('第三批：其余全部') }}</span>
+        <label>{{ t('每批观察') }}<input v-model.number="observe" type="number" min="5" max="1440" />{{ t('分钟') }}</label>
+        <label>{{ t('允许失败') }}<input v-model.number="maxFailures" type="number" min="0" max="100" />{{ t('台') }}</label>
+        <p class="muted hint">{{ t('按列表顺序分批。每批全部结束后观察，失败（含回滚）超过允许台数或已升级的节点离线时自动暂停；不能升级的节点轮到时跳过，由后面的节点补足。') }}</p>
       </div>
-      <EmptyState v-if="state.loaded && !rows.length" text="没有已安装 Agent 的节点" />
+      <EmptyState v-if="state.loaded && !rows.length" :text="t('没有已安装 Agent 的节点')" />
       <ul v-else class="panel list">
         <li v-for="r in rows" :key="r.s.id">
           <label class="row">
@@ -255,13 +256,13 @@ function name(id: number) {
             <span class="name">
               <RouterLink :to="`/servers/${r.s.id}`" @click.stop>{{ r.s.name }}</RouterLink>
               <span v-if="r.s.group" class="muted small"> · {{ r.s.group }}</span>
-              <span v-if="r.s.status === 'offline'" class="bad small"> · 离线</span>
+              <span v-if="r.s.status === 'offline'" class="bad small"> {{ t('· 离线') }}</span>
             </span>
             <span class="num ver">{{ r.version || DASH }}</span>
             <span class="small state" :class="r.state">
-              <template v-if="r.state === 'old'">可升级</template>
-              <template v-else-if="r.state === 'latest'">已是最新</template>
-              <template v-else-if="r.state === 'busy'">升级中：{{ statusNames[lastTask.get(r.s.id)!.status] }}</template>
+              <template v-if="r.state === 'old'">{{ t('可升级') }}</template>
+              <template v-else-if="r.state === 'latest'">{{ t('已是最新') }}</template>
+              <template v-else-if="r.state === 'busy'">{{ t('升级中：{v}', { v: t(statusNames[lastTask.get(r.s.id)!.status]) }) }}</template>
               <template v-else>{{ DASH }}</template>
             </span>
           </label>
@@ -270,34 +271,34 @@ function name(id: number) {
     </section>
 
     <section v-if="rollouts.length" class="section">
-      <h3>灰度升级</h3>
+      <h3>{{ t('灰度升级') }}</h3>
       <ul class="panel list">
         <li v-for="r in rollouts.slice(0, 5)" :key="r.id" class="rollout">
           <div class="rhead">
             <span class="num">→ {{ r.target_version }}</span>
-            <span class="small rstatus" :class="r.status">{{ rolloutStatus[r.status] }}</span>
-            <span class="muted small">{{ r.total }} 个节点 · 第 {{ r.current_stage }} / {{ r.stages.length }} 批 · {{ fmtDateTime(r.created_at) }}</span>
+            <span class="small rstatus" :class="r.status">{{ t(rolloutStatus[r.status]) }}</span>
+            <span class="muted small">{{ t('{total} 个节点 · 第 {current_stage} / {n} 批 · {dateTime}', { total: r.total, current_stage: r.current_stage, n: r.stages.length, dateTime: fmtDateTime(r.created_at) }) }}</span>
             <span class="actions">
-              <button v-if="r.status === 'running'" type="button" class="link" :disabled="busy" @click="act(r, 'pause')">暂停</button>
-              <button v-if="r.status === 'paused'" type="button" class="link" :disabled="busy" @click="act(r, 'resume')">继续</button>
-              <button v-if="rolloutOpen(r)" type="button" class="link danger" :disabled="busy" @click="act(r, 'cancel')">取消</button>
+              <button v-if="r.status === 'running'" type="button" class="link" :disabled="busy" @click="act(r, 'pause')">{{ t('暂停') }}</button>
+              <button v-if="r.status === 'paused'" type="button" class="link" :disabled="busy" @click="act(r, 'resume')">{{ t('继续') }}</button>
+              <button v-if="rolloutOpen(r)" type="button" class="link danger" :disabled="busy" @click="act(r, 'cancel')">{{ t('取消') }}</button>
             </span>
           </div>
           <ol class="stages small">
             <li v-for="p in r.progress" :key="p.stage" :class="{ cur: p.stage === r.current_stage && rolloutOpen(r) }">
-              <span>第 {{ p.stage }} 批</span>
-              <span v-if="!p.target && !p.tasks" class="muted">并入上一批</span>
+              <span>{{ t('第 {stage} 批', { stage: p.stage }) }}</span>
+              <span v-if="!p.target && !p.tasks" class="muted">{{ t('并入上一批') }}</span>
               <span v-else class="num">{{ p.success }}/{{ p.tasks || p.target }}</span>
-              <span v-if="p.failed" class="bad num">失败 {{ p.failed }}</span>
-              <span v-if="p.active" class="muted num">进行中 {{ p.active }}</span>
+              <span v-if="p.failed" class="bad num">{{ t('失败 {failed}', { failed: p.failed }) }}</span>
+              <span v-if="p.active" class="muted num">{{ t('进行中 {active}', { active: p.active }) }}</span>
             </li>
           </ol>
           <p v-if="r.status === 'running' && r.stage_done_at && r.current_stage < r.stages.length" class="muted small">
-            观察中，约 {{ nextAt(r) }} 开始第 {{ r.current_stage + 1 }} 批
+            {{ t('观察中，约 {v} 开始第 {v2} 批', { v: nextAt(r), v2: r.current_stage + 1 }) }}
           </p>
           <p v-if="r.reason" class="small" :class="r.status === 'paused' ? 'warn' : 'muted'">{{ r.reason }}</p>
           <details v-if="r.skipped.length" class="small">
-            <summary class="muted">跳过 {{ r.skipped.length }} 个节点</summary>
+            <summary class="muted">{{ t('跳过 {n} 个节点', { n: r.skipped.length }) }}</summary>
             <ul class="skips"><li v-for="k in r.skipped" :key="k.server_id">{{ name(k.server_id) }}：{{ k.reason }}</li></ul>
           </details>
         </li>
@@ -305,16 +306,16 @@ function name(id: number) {
     </section>
 
     <section class="section">
-      <h3>最近任务</h3>
-      <p v-if="ready && !tasks.length" class="muted small">还没有升级任务。</p>
+      <h3>{{ t('最近任务') }}</h3>
+      <p v-if="ready && !tasks.length" class="muted small">{{ t('还没有升级任务。') }}</p>
       <ul v-else class="panel list">
-        <li v-for="t in tasks.slice(0, 30)" :key="t.id" class="task">
-          <span class="time num small">{{ fmtDateTime(t.created_at) }}</span>
-          <span class="name">{{ t.server_name || name(t.server_id) }}</span>
-          <span class="num small">{{ t.from_version || '?' }} → {{ t.target_version }}</span>
-          <span class="small status" :class="t.status">
-            {{ statusNames[t.status] }}<template v-if="t.reason && t.status !== 'success'">：{{ t.reason }}</template>
-            <button v-if="t.status === 'pending' || t.status === 'delivered'" type="button" class="link" :disabled="busy" @click="cancel(t)">取消</button>
+        <li v-for="task in tasks.slice(0, 30)" :key="task.id" class="task">
+          <span class="time num small">{{ fmtDateTime(task.created_at) }}</span>
+          <span class="name">{{ task.server_name || name(task.server_id) }}</span>
+          <span class="num small">{{ task.from_version || '?' }} → {{ task.target_version }}</span>
+          <span class="small status" :class="task.status">
+            {{ t(statusNames[task.status]) }}<template v-if="task.reason && task.status !== 'success'">：{{ task.reason }}</template>
+            <button v-if="task.status === 'pending' || task.status === 'delivered'" type="button" class="link" :disabled="busy" @click="cancel(task)">{{ t('取消') }}</button>
           </span>
         </li>
       </ul>

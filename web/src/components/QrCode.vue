@@ -3,6 +3,7 @@
 // 两种主题都是黑色模块 + 白色背景与 4 格静区，深色模式下也能被扫码识别。
 import qrcode from 'qrcode-generator'
 import { computed } from 'vue'
+import { t } from '../i18n'
 
 const props = defineProps<{ value: string; label?: string }>()
 
@@ -22,7 +23,7 @@ const qr = computed(() => {
 </script>
 
 <template>
-  <svg class="qr" :viewBox="`0 0 ${qr.size} ${qr.size}`" role="img" :aria-label="label ?? '二维码'" shape-rendering="crispEdges">
+  <svg class="qr" :viewBox="`0 0 ${qr.size} ${qr.size}`" role="img" :aria-label="label ?? t('二维码')" shape-rendering="crispEdges">
     <rect :width="qr.size" :height="qr.size" class="bg" />
     <path :d="qr.d" class="fg" />
   </svg>

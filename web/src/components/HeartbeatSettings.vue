@@ -5,6 +5,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, errorText, getHeartbeat, saveHeartbeat, testHeartbeat, type HeartbeatView } from '../api'
 import { fmtDateTime } from '../format'
 import SaveState, { saveStatus } from './SaveState.vue'
+import { t } from '../i18n'
 
 const intervals = [1, 2, 5, 10, 15, 30, 60]
 const view = ref<HeartbeatView | null>(null)
@@ -22,13 +23,13 @@ function fill(v: HeartbeatView) {
 // 保存状态（修订第 229 条）：与上次载入 / 保存的值比较
 const snap = ref('')
 const dirty = computed(() => !!snap.value && JSON.stringify(form) !== snap.value)
-const fieldError = computed(() => (Object.keys(errors.value).length ? '请检查标出的项' : ''))
+const fieldError = computed(() => (Object.keys(errors.value).length ? t('请检查标出的项') : ''))
 
 onMounted(async () => {
   try {
     fill(await getHeartbeat())
   } catch (e) {
-    error.value = errorText(e, '加载失败')
+    error.value = errorText(e, t('加载失败'))
   }
 })
 
@@ -43,7 +44,7 @@ async function run(kind: 'save' | 'test') {
     else fill(await testHeartbeat())
   } catch (e) {
     if (e instanceof ApiError && e.details.length) errors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-    else error.value = errorText(e, kind === 'save' ? '保存失败' : '发送失败')
+    else error.value = errorText(e, kind === 'save' ? t('保存失败') : t('发送失败'))
   } finally {
     busy.value = ''
   }
@@ -53,36 +54,35 @@ async function run(kind: 'save' | 'test') {
 <template>
   <form class="panel heartbeat" novalidate @submit.prevent="run('save')">
     <div class="head">
-      <label class="check title"><input v-model="form.enabled" type="checkbox" />面板心跳</label>
+      <label class="check title"><input v-model="form.enabled" type="checkbox" />{{ t('面板心跳') }}</label>
       <span v-if="view?.last_at" class="badge" :class="view.last_ok ? 'good' : 'bad'">
-        {{ view.last_ok ? '最近一次成功' : '最近一次失败' }} · {{ fmtDateTime(view.last_at) }}
+        {{ view.last_ok ? t('最近一次成功') : t('最近一次失败') }} · {{ fmtDateTime(view.last_at) }}
       </span>
     </div>
     <p class="muted small">
-      面板自己停止或断网时，上面的告警都发不出去。填一个任意心跳监控服务给的 URL（如 Healthchecks.io）：
-      面板按间隔访问它，超时没收到时由那边通知你。请求不带任何节点数据。
+      {{ t('面板自己停止或断网时，上面的告警都发不出去。填一个任意心跳监控服务给的 URL（如 Healthchecks.io）：面板按间隔访问它，超时没收到时由那边通知你。请求不带任何节点数据。') }}
     </p>
     <div class="fields" :class="{ off: !form.enabled }">
-      <label class="url">地址
+      <label class="url">{{ t('地址') }}
         <input v-model="form.url" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-          :placeholder="view?.url_set ? `已保存：${view.url}（留空保留）` : 'https://hc-ping.com/…'" />
+          :placeholder="view?.url_set ? t('已保存：{url}（留空保留）', { url: view.url }) : 'https://hc-ping.com/…'" />
         <small v-if="errors.url" class="err">{{ errors.url }}</small>
-        <small v-else class="muted">只支持 HTTPS；地址中常含令牌，保存后只显示主机</small>
+        <small v-else class="muted">{{ t('只支持 HTTPS；地址中常含令牌，保存后只显示主机') }}</small>
       </label>
-      <label>间隔
+      <label>{{ t('间隔') }}
         <select v-model.number="form.minutes">
-          <option v-for="m in intervals" :key="m" :value="m">每 {{ m }} 分钟</option>
+          <option v-for="m in intervals" :key="m" :value="m">{{ t('每 {m} 分钟', { m }) }}</option>
         </select>
         <small v-if="errors.interval" class="err">{{ errors.interval }}</small>
-        <small v-else class="muted">外部服务的宽限期应大于这个间隔</small>
+        <small v-else class="muted">{{ t('外部服务的宽限期应大于这个间隔') }}</small>
       </label>
     </div>
-    <p v-if="view?.last_error" class="err small">最近一次：{{ view.last_error }}</p>
+    <p v-if="view?.last_error" class="err small">{{ t('最近一次：{last_error}', { last_error: view.last_error }) }}</p>
     <p v-if="error" class="err small">{{ error }}</p>
     <div class="actions">
-      <button type="submit" :disabled="!!busy || !dirty" :title="!dirty ? '没有修改' : undefined">{{ busy === 'save' ? '保存中…' : '保存' }}</button>
+      <button type="submit" :disabled="!!busy || !dirty" :title="!dirty ? t('没有修改') : undefined">{{ busy === 'save' ? t('保存中…') : t('保存') }}</button>
       <button type="button" class="secondary" :disabled="!!busy || (!view?.url_set && !form.url)" @click="run('test')">
-        {{ busy === 'test' ? '发送中…' : '立即发送' }}
+        {{ busy === 'test' ? t('发送中…') : t('立即发送') }}
       </button>
       <SaveState :state="saveStatus({ saving: busy === 'save', error: error || fieldError, dirty, saved })" :error="(error || fieldError) || undefined" />
     </div>
