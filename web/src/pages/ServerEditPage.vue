@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { errorText, getServer, type EnrollCodeView, type ServerView } from '../api'
 import Icon from '../components/Icon.vue'
 import ServerForm from '../components/ServerForm.vue'
+import { t } from '../i18n'
 import { refresh, stashCreated } from '../store'
 
 const props = defineProps<{
@@ -47,11 +48,11 @@ function deleted() {
 <template>
   <main class="page">
     <div class="top">
-      <RouterLink :to="id ? `/servers/${id}` : '/'" class="back muted small"><Icon name="arrow-left" :size="14" />返回</RouterLink>
+      <RouterLink :to="id ? `/servers/${id}` : '/'" class="back muted small"><Icon name="arrow-left" :size="14" />{{ t('返回') }}</RouterLink>
       <!-- 批量新建的入口（仪表板只留一个“新建节点”按钮，修订第 178 条） -->
-      <RouterLink v-if="!id" to="/servers/batch" class="small">一次新建多个节点 →</RouterLink>
+      <RouterLink v-if="!id" to="/servers/batch" class="small">{{ t('一次新建多个节点 →') }}</RouterLink>
     </div>
-    <p v-if="loading" class="muted">加载中…</p>
+    <p v-if="loading" class="muted">{{ t('加载中…') }}</p>
     <p v-else-if="error" class="banner">{{ error }}</p>
     <ServerForm
       v-else

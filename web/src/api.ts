@@ -1,5 +1,6 @@
 // 接口客户端（设计 19.0.1、43.6）。类型由 api/openapi.yaml 生成（api.gen.ts，make api-types），不手写：
 // 每个函数通过 request(方法, 契约中的路径, 参数) 调用，路径参数、查询参数、请求体与响应都按契约检查。
+import { t, tServer } from './i18n'
 import type { Paths } from './api.gen'
 import type * as G from './api.gen'
 
@@ -93,7 +94,8 @@ export class ApiError extends Error {
     /** 429 时建议等待的秒数（Retry-After），没有时为 0 */
     public retryAfter = 0,
   ) {
-    super(message)
+    super(tServer(message)) // 面板的提示信息是中文，按界面语言翻译（修订第 292 条）
+    this.details = details.map((d) => ({ ...d, message: tServer(d.message) }))
   }
 
   /** 面板不可达（网络错误、502～504）：保留已显示的数据并自动重试（设计 43.6） */
@@ -121,14 +123,14 @@ export function onUnauthorized(fn: () => void) {
  * 把错误转换为给用户看的一句话（设计 43.6、43.9）：不展示原始错误与堆栈；
  * 500 附错误编号；网络错误与 503 提示正在重试；401 返回空字符串（统一处理已在跳转登录页）。
  */
-export function errorText(e: unknown, fallback = '操作失败，请稍后重试'): string {
+export function errorText(e: unknown, fallback = t('操作失败，请稍后重试')): string {
   if (e instanceof UnauthorizedError) return '' // 已由 onUnauthorized 统一回到登录页
-  if (!(e instanceof ApiError)) return fallback
-  if (e.unreachable) return '无法连接面板，正在重试'
-  if (e.status >= 500) return `服务器内部错误，请稍后重试${e.requestId ? `（编号 ${e.requestId}）` : ''}`
-  if (e.status === 429 && e.retryAfter > 0) return `${e.message}（${e.retryAfter} 秒后可重试）`
+  if (!(e instanceof ApiError)) return t(fallback)
+  if (e.unreachable) return t('无法连接面板，正在重试')
+  if (e.status >= 500) return e.requestId ? t('服务器内部错误，请稍后重试（编号 {id}）', { id: e.requestId }) : t('服务器内部错误，请稍后重试')
+  if (e.status === 429 && e.retryAfter > 0) return t('{msg}（{n} 秒后可重试）', { msg: e.message, n: e.retryAfter })
   if (e.code === 'validation_failed' && e.details.length) return e.details[0].message
-  return e.message || fallback
+  return e.message || t(fallback)
 }
 
 type Opts<P extends keyof Paths, M extends keyof Paths[P]> = (Op<P, M> extends { params: infer A } ? { params: A } : { params?: never }) &
@@ -170,14 +172,14 @@ export async function request<P extends keyof Paths, M extends Method & keyof Pa
       body: o.body === undefined ? undefined : raw ? (o.body as Blob) : JSON.stringify(o.body),
     })
   } catch {
-    throw new ApiError(0, 'network', '无法连接面板，请检查网络')
+    throw new ApiError(0, 'network', t('无法连接面板，请检查网络'))
   }
   if (res.status === 204) return undefined as Res<P, M>
   const data = await res.json().catch(() => null)
   if (res.ok) return data as Res<P, M>
   const e = data?.error ?? {}
   const args = [
-    res.status, e.code ?? 'unknown', e.message || `请求失败（HTTP ${res.status}）`, e.request_id ?? res.headers.get('X-Request-ID') ?? '',
+    res.status, e.code ?? 'unknown', e.message || t('请求失败（HTTP {n}）', { n: res.status }), e.request_id ?? res.headers.get('X-Request-ID') ?? '',
     e.details ?? [], Number(res.headers.get('Retry-After')) || 0,
   ] as const
   if (res.status === 401) {

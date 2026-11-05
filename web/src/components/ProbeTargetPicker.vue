@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 import type { ProbeTarget } from '../api'
 import { fmtLatency, fmtPct } from '../format'
+import { t } from '../i18n'
 
 const props = defineProps<{
   targets: ProbeTarget[]
@@ -19,45 +20,46 @@ const isps = [
   { key: 'cu', name: '联通' },
   { key: 'cm', name: '移动' },
 ] as const
-const ispName = (k: string) => (k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
+// 运营商名称经 t() 翻译（修订第 291 条）
+const ispName = (k: string) => t(k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
 
 const rows = computed(() => {
   const out: { province: string; cells: Partial<Record<string, ProbeTarget>> }[] = []
-  for (const t of props.targets) {
-    if (!t.builtin || t.isp === 'intl') continue
-    let r = out.find((x) => x.province === t.province)
-    if (!r) out.push((r = { province: t.province, cells: {} }))
-    r.cells[t.isp] = t
+  for (const pt of props.targets) {
+    if (!pt.builtin || pt.isp === 'intl') continue
+    let r = out.find((x) => x.province === pt.province)
+    if (!r) out.push((r = { province: pt.province, cells: {} }))
+    r.cells[pt.isp] = pt
   }
   return out
 })
-const intl = computed(() => props.targets.filter((t) => t.builtin && t.isp === 'intl'))
-const custom = computed(() => props.targets.filter((t) => !t.builtin))
-const on = (t: ProbeTarget) => props.selected.includes(t.id)
+const intl = computed(() => props.targets.filter((pt) => pt.builtin && pt.isp === 'intl'))
+const custom = computed(() => props.targets.filter((pt) => !pt.builtin))
+const on = (pt: ProbeTarget) => props.selected.includes(pt.id)
 // 最近 24 小时全部节点的汇总（修订第 134 条）：失效的目标提示更换
 const healthBadge: Record<string, { text: string; cls: string }> = {
   dead: { text: '疑似失效', cls: 'bad' }, degraded: { text: '丢包偏高', cls: 'warn' },
 }
-function healthText(t: ProbeTarget): string {
-  const h = t.health
-  if (!h || h.state === 'nodata') return '24 小时内没有结果'
-  const lat = h.latency_ms == null ? '全部失败' : fmtLatency(h.latency_ms)
-  return `24 小时：${h.nodes} 个节点 · ${lat} · 丢包 ${fmtPct(h.loss)}`
+function healthText(pt: ProbeTarget): string {
+  const h = pt.health
+  if (!h || h.state === 'nodata') return t('24 小时内没有结果')
+  const lat = h.latency_ms == null ? t('全部失败') : fmtLatency(h.latency_ms)
+  return t('24 小时：{n} 个节点 · {lat} · 丢包 {loss}', { n: h.nodes, lat, loss: fmtPct(h.loss) })
 }
-const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`
+const where = (pt: ProbeTarget) => `${pt.proto === 'icmp' ? 'ICMP' : `TCP ${pt.port}`} → ${pt.address}`
 </script>
 
 <template>
   <div>
     <table v-if="rows.length">
-      <thead><tr><th scope="col">地区</th><th v-for="i in isps" :key="i.key" scope="col">{{ i.name }}</th></tr></thead>
+      <thead><tr><th scope="col">{{ t('地区') }}</th><th v-for="i in isps" :key="i.key" scope="col">{{ t(i.name) }}</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.province">
           <th scope="row">{{ r.province }}</th>
           <td v-for="i in isps" :key="i.key">
             <label v-if="r.cells[i.key]" class="check" :title="where(r.cells[i.key]!)">
               <input type="checkbox" :checked="on(r.cells[i.key]!)" :disabled="busy === r.cells[i.key]!.id"
-                :aria-label="`${r.province}${i.name}`" @change="emit('toggle', r.cells[i.key]!)" />
+                :aria-label="`${r.province} ${t(i.name)}`" @change="emit('toggle', r.cells[i.key]!)" />
               <span class="small muted mono addr">{{ r.cells[i.key]!.address }}</span>
             </label>
           </td>
@@ -66,28 +68,28 @@ const where = (t: ProbeTarget) => `${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port
     </table>
     <!-- 境外（修订第 122 条）：主要地区云厂商的测速主机 -->
     <template v-if="intl.length">
-      <h4 class="sub">境外</h4>
+      <h4 class="sub">{{ t('境外') }}</h4>
       <ul class="intl">
-        <li v-for="t in intl" :key="t.id">
-          <label class="check" :title="where(t)">
-            <input type="checkbox" :checked="on(t)" :disabled="busy === t.id" :aria-label="`境外${t.province}`" @change="emit('toggle', t)" />
-            <span>{{ t.province }}</span><small class="muted">{{ t.note }}</small>
+        <li v-for="pt in intl" :key="pt.id">
+          <label class="check" :title="where(pt)">
+            <input type="checkbox" :checked="on(pt)" :disabled="busy === pt.id" :aria-label="`${t('境外')} ${pt.province}`" @change="emit('toggle', pt)" />
+            <span>{{ pt.province }}</span><small class="muted">{{ pt.note }}</small>
           </label>
         </li>
       </ul>
     </template>
-    <h4 v-if="custom.length && (rows.length || intl.length)" class="sub">自己添加的</h4>
+    <h4 v-if="custom.length && (rows.length || intl.length)" class="sub">{{ t('自己添加的') }}</h4>
     <ul v-if="custom.length" class="custom">
-      <li v-for="t in custom" :key="t.id">
-        <label class="check"><input type="checkbox" :checked="on(t)" :disabled="busy === t.id" @change="emit('toggle', t)" />
-          <span>{{ t.province }} · {{ ispName(t.isp) }}</span></label>
-        <span class="small muted mono">{{ where(t) }}</span>
-        <span v-if="t.health" class="small health">
-          <b v-if="healthBadge[t.health.state]" class="badge" :class="healthBadge[t.health.state].cls"
-            :title="t.health.state === 'dead' ? '最近 24 小时几乎没有一次成功：地址可能已失效，或被防火墙拦截，建议更换' : ''">{{ healthBadge[t.health.state].text }}</b>
-          <span class="muted">{{ healthText(t) }}</span>
+      <li v-for="pt in custom" :key="pt.id">
+        <label class="check"><input type="checkbox" :checked="on(pt)" :disabled="busy === pt.id" @change="emit('toggle', pt)" />
+          <span>{{ pt.province }} · {{ ispName(pt.isp) }}</span></label>
+        <span class="small muted mono">{{ where(pt) }}</span>
+        <span v-if="pt.health" class="small health">
+          <b v-if="healthBadge[pt.health.state]" class="badge" :class="healthBadge[pt.health.state].cls"
+            :title="pt.health.state === 'dead' ? t('最近 24 小时几乎没有一次成功：地址可能已失效，或被防火墙拦截，建议更换') : ''">{{ t(healthBadge[pt.health.state].text) }}</b>
+          <span class="muted">{{ healthText(pt) }}</span>
         </span>
-        <slot name="custom-extra" :target="t" />
+        <slot name="custom-extra" :target="pt" />
       </li>
     </ul>
   </div>

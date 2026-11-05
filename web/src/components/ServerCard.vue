@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 节点卡片（设计 41.3 ServerCard）：紧凑的一行五列，便于在一屏里扫过很多台节点。
-//   头部：国旗、名称、状态；右侧温度、运行时间、1 分钟负载
+//   头部：第一行国旗、名称、状态；第二行到期、运行时间、1 分钟负载、温度，右侧 v4 / v6 与线路标志（修订第 291 条）
 //   主体：CPU / 内存 / 磁盘三个环（下方为核数、总量），网络与 IO 两列（速率 + 开机以来累计）
 //   底部：流量（本计费周期；流量是本产品的核心，保留在卡片上）
 // 整张卡片可点击进入详情（设计 11）。
@@ -175,16 +175,16 @@ const diskTip = computed(() => {
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
 
-/* 名称至少留约 8 个字的宽度；放不下时右侧信息换到下一行，不再把名称挤成“tok…”（修订第 230 条） */
+/* 名称独占一行（修订第 291 条：电脑上也不再与开机时间挤在一行）；到期 / 运行 / 负载 / 温度在第二行左侧，v4 / v6 与线路标志在右侧，放不下时换行 */
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-3); flex-wrap: wrap;
   padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
-.badge-row { flex-basis: 100%; }
-.title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 8em; }
+.badge-row { flex-basis: auto; margin-left: auto; }
+.title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 100%; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 18px; }
-.meta { display: flex; align-items: center; gap: var(--space-3); color: var(--text-muted); font-size: var(--font-md); line-height: var(--line-md); white-space: nowrap; flex: none; }
+.meta { display: flex; align-items: center; gap: var(--space-1) var(--space-3); color: var(--text-muted); font-size: var(--font-md); line-height: var(--line-md); white-space: nowrap; flex: 0 1 auto; flex-wrap: wrap; }
 .meta span { display: inline-flex; align-items: center; gap: 3px; }
-/* 窄卡片（网格最小列宽 320px）：右侧信息缩小一档，把空间留给名称 */
+/* 窄卡片（网格最小列宽 320px）：第二行信息缩小一档 */
 @container (max-width: 380px) {
   .meta { gap: var(--space-2); font-size: var(--font-sm); line-height: var(--line-sm); }
   .meta :deep(svg) { width: 13px; height: 13px; }
