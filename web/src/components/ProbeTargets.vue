@@ -11,6 +11,7 @@ import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getProbeSettings, listProbeTargets, putProbeSettings, updateProbeTarget,
   type ProbeSettings, type ProbeTarget, type ProbeTargetInput,
 } from '../api'
+import { t } from '../i18n'
 
 const MAX_ENABLED = 64
 const isps = [
@@ -18,7 +19,7 @@ const isps = [
   { key: 'cu', name: '联通' },
   { key: 'cm', name: '移动' },
 ] as const
-const ispName = (k: string) => (k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
+const ispName = (k: string) => t(k === 'intl' ? '境外' : isps.find((i) => i.key === k)?.name ?? k)
 
 const items = ref<ProbeTarget[]>([])
 // 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
@@ -47,7 +48,7 @@ async function load() {
     gap.value = cfg.gap_s ?? 0
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '探测目标加载失败')
+    error.value = errorText(e, t('探测目标加载失败'))
   }
 }
 
@@ -72,14 +73,14 @@ async function saveInterval() {
 const roundsPerDay = computed(() => Math.round(86400 / interval.value))
 onMounted(load)
 
-const deadCount = computed(() => items.value.filter((t) => t.health?.state === 'dead').length)
-const enabledCount = computed(() => items.value.filter((t) => t.enabled).length)
-const selected = computed(() => items.value.filter((t) => t.enabled).map((t) => t.id))
+const deadCount = computed(() => items.value.filter((x) => x.health?.state === 'dead').length)
+const enabledCount = computed(() => items.value.filter((x) => x.enabled).length)
+const selected = computed(() => items.value.filter((x) => x.enabled).map((x) => x.id))
 
-async function toggle(t: ProbeTarget) {
-  busy.value = t.id
+async function toggle(target: ProbeTarget) {
+  busy.value = target.id
   try {
-    const r = await updateProbeTarget(t.id, { enabled: !t.enabled })
+    const r = await updateProbeTarget(target.id, { enabled: !target.enabled })
     items.value = items.value.map((x) => (x.id === r.id ? r : x))
     error.value = ''
   } catch (e) {
@@ -118,10 +119,10 @@ async function add() {
   }
 }
 
-async function remove(t: ProbeTarget) {
-  if (!confirm(`删除目标“${t.province} ${ispName(t.isp)} ${t.address}”？各节点到它的探测记录会一并删除。`)) return
+async function remove(target: ProbeTarget) {
+  if (!confirm(t('删除目标“{province} {v} {address}”？各节点到它的探测记录会一并删除。', { province: target.province, v: ispName(target.isp), address: target.address }))) return
   try {
-    await deleteProbeTarget(t.id)
+    await deleteProbeTarget(target.id)
     await load()
   } catch (e) {
     error.value = errorText(e)
@@ -132,75 +133,75 @@ async function remove(t: ProbeTarget) {
 <template>
   <div>
     <!-- 说明精简为一句（修订第 185 条）；细节放在 title 中 -->
-    <p class="muted small intro" title="TCP 连接（不发送数据）或 ICMP；目标为公网 IPv4 / IPv6 或域名，域名由 Agent 每轮解析、只连接公网地址；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测">
-      各节点定时测到这些地址的往返延迟与丢包（VPS → 目标，TCP 连接或 ICMP），结果在节点详情的“网络”页，保留 7 天。目标不响应 ICMP 不代表线路断开。
+    <p class="muted small intro" :title="t('TCP 连接（不发送数据）或 ICMP；目标为公网 IPv4 / IPv6 或域名，域名由 Agent 每轮解析、只连接公网地址；节点本机可创建 /etc/vpsmon-agent/no-probe 关闭探测')">
+      {{ t('各节点定时测到这些地址的往返延迟与丢包（VPS → 目标，TCP 连接或 ICMP），结果在节点详情的“网络”页，保留 7 天。目标不响应 ICMP 不代表线路断开。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
-    <p v-if="deadCount" class="banner warn small">{{ deadCount }} 个目标最近 24 小时几乎全部失败，疑似失效（地址变更或被拦截），建议在下方更换或删除。</p>
+    <p v-if="deadCount" class="banner warn small">{{ t('{deadCount} 个目标最近 24 小时几乎全部失败，疑似失效（地址变更或被拦截），建议在下方更换或删除。', { deadCount }) }}</p>
     <div class="toolbar">
       <!-- 频率等设置在有目标后才显示；超时与样本间隔收进“高级”（修订第 185 条） -->
-      <label v-if="items.length" class="freq small">测试频率
+      <label v-if="items.length" class="freq small">{{ t('测试频率') }}
         <select v-model.number="interval" :disabled="savingInterval" @change="saveInterval">
-          <option v-for="s in intervals" :key="s" :value="s">每 {{ s / 60 }} 分钟{{ s === 300 ? '（默认）' : '' }}</option>
+          <option v-for="s in intervals" :key="s" :value="s">{{ t(s === 300 ? '每 {n} 分钟（默认）' : '每 {n} 分钟', { n: s / 60 }) }}</option>
         </select>
-        <span class="muted">每个节点每天 {{ roundsPerDay }} 轮 × 已启用 {{ enabledCount }} 个目标</span>
+        <span class="muted">{{ t('每个节点每天 {roundsPerDay} 轮 × 已启用 {enabledCount} 个目标', { roundsPerDay, enabledCount }) }}</span>
       </label>
       <details v-if="items.length" class="freq small adv">
-        <summary class="muted">高级</summary>
-        <label>超时
+        <summary class="muted">{{ t('高级') }}</summary>
+        <label>{{ t('超时') }}
           <select v-model.number="timeout" :disabled="savingInterval" @change="saveInterval">
-            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : '默认 4 秒' }}</option>
+            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? t('{n} 秒', { n: s }) : t('默认 4 秒') }}</option>
           </select>
         </label>
-        <label>样本间隔
+        <label>{{ t('样本间隔') }}
           <select v-model.number="gap" :disabled="savingInterval" @change="saveInterval">
-            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : '默认 1 秒' }}</option>
+            <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? t('{n} 秒', { n: s }) : t('默认 1 秒') }}</option>
           </select>
         </label>
-        <span class="muted">每个目标每轮 5 个样本：超时为每个样本最多等多久，超过算丢包；样本间隔为两个样本之间等多久</span>
+        <span class="muted">{{ t('每个目标每轮 5 个样本：超时为每个样本最多等多久，超过算丢包；样本间隔为两个样本之间等多久') }}</span>
       </details>
       <SaveState v-if="items.length && (savingInterval || intervalSaved || intervalError)"
         :state="savingInterval ? 'saving' : intervalError ? 'error' : 'saved'" :error="intervalError || undefined" />
-      <span v-if="items.length" class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">已启用 <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
-      <button type="button" @click="adding = !adding">{{ adding ? '取消' : '添加目标' }}</button>
+      <span v-if="items.length" class="small" :class="enabledCount > MAX_ENABLED - 4 ? 'warn' : 'muted'">{{ t('已启用') }} <b class="num">{{ enabledCount }}</b> / {{ MAX_ENABLED }}</span>
+      <button type="button" @click="adding = !adding">{{ adding ? t('取消') : t('添加目标') }}</button>
     </div>
 
     <form v-if="adding" class="panel form" novalidate @submit.prevent="add">
       <div class="grid">
-        <label>运营商
-          <select v-model="form.isp"><option v-for="i in isps" :key="i.key" :value="i.key">{{ i.name }}</option><option value="intl">境外</option></select>
+        <label>{{ t('运营商') }}
+          <select v-model="form.isp"><option v-for="i in isps" :key="i.key" :value="i.key">{{ t(i.name) }}</option><option value="intl">{{ t('境外') }}</option></select>
           <small v-if="fieldErrors.isp" class="bad">{{ fieldErrors.isp }}</small></label>
-        <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
+        <label>{{ form.isp === 'intl' ? t('城市') : t('地区') }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? t('如 台北') : t('如 杭州')" />
           <small v-if="fieldErrors.province" class="bad">{{ fieldErrors.province }}</small></label>
-        <label>IP 或域名<input v-model="form.address" spellcheck="false" autocapitalize="off" placeholder="如 115.220.14.91、2408:8000::1 或域名" />
+        <label>{{ t('IP 或域名') }}<input v-model="form.address" spellcheck="false" autocapitalize="off" :placeholder="t('如 115.220.14.91、2408:8000::1 或域名')" />
           <small v-if="fieldErrors.address" class="bad">{{ fieldErrors.address }}</small></label>
-        <label>协议
-          <select v-model="form.proto"><option value="tcp">TCP 连接</option><option value="icmp">ICMP（Ping）</option></select>
+        <label>{{ t('协议') }}
+          <select v-model="form.proto"><option value="tcp">{{ t('TCP 连接') }}</option><option value="icmp">ICMP（Ping）</option></select>
           <small v-if="fieldErrors.proto" class="bad">{{ fieldErrors.proto }}</small></label>
-        <label v-if="form.proto === 'tcp'">端口<input v-model.number="form.port" type="number" min="1" max="65535" />
+        <label v-if="form.proto === 'tcp'">{{ t('端口') }}<input v-model.number="form.port" type="number" min="1" max="65535" />
           <small v-if="fieldErrors.port" class="bad">{{ fieldErrors.port }}</small></label>
-        <label>{{ form.isp === 'intl' ? '提供商（可选）' : '备注（可选）' }}<input v-model="form.note" maxlength="64" />
+        <label>{{ form.isp === 'intl' ? t('提供商（可选）') : t('备注（可选）') }}<input v-model="form.note" maxlength="64" />
           <small v-if="fieldErrors.note" class="bad">{{ fieldErrors.note }}</small></label>
       </div>
       <p v-if="fieldErrors.enabled || fieldErrors._" class="bad small">{{ fieldErrors.enabled || fieldErrors._ }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving || !form.province.trim() || !form.address.trim()">{{ saving ? '保存中…' : '保存' }}</button>
+        <button type="submit" :disabled="saving || !form.province.trim() || !form.address.trim()">{{ saving ? t('保存中…') : t('保存') }}</button>
       </div>
     </form>
 
     <p v-if="ready && !items.length && !adding" class="panel empty small">
-      还没有测试目标。添加电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。
+      {{ t('还没有测试目标。添加电信、联通、移动在各地的公网 IP 或域名，境外地址运营商选“境外”。') }}
     </p>
     <ProbeTargetHint v-if="!items.length || adding" class="hint-line" />
     <section v-if="items.length" class="panel block">
-      <h3>目标（勾选的对所有“跟随全局”的节点生效）</h3>
+      <h3>{{ t('目标（勾选的对所有“跟随全局”的节点生效）') }}</h3>
       <ProbeTargetPicker :targets="items" :selected="selected" :busy="busy" @toggle="toggle">
         <template #custom-extra="{ target }">
           <span v-if="target.note" class="small muted">{{ target.note }}</span>
-          <button type="button" class="text small del" @click="remove(target)">删除</button>
+          <button type="button" class="text small del" @click="remove(target)">{{ t('删除') }}</button>
         </template>
       </ProbeTargetPicker>
-      <p class="small muted foot">单台节点可在节点的“编辑 → 测速”中自己选择目标与频率，或关闭。</p>
+      <p class="small muted foot">{{ t('单台节点可在节点的“编辑 → 测速”中自己选择目标与频率，或关闭。') }}</p>
     </section>
     <!-- 国内探针与被墙检测（设计 42.2，修订第 155 条） -->
     <ReachProbes class="block" />

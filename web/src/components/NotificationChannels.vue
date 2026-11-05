@@ -12,6 +12,7 @@ import ChangeNotifySettings from './ChangeNotifySettings.vue'
 import DigestSettings from './DigestSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
 import { setNotifyChannels } from './NotifyWarning.vue'
+import { t } from '../i18n'
 
 
 const channels = ref<NotifyChannel[]>([])
@@ -48,7 +49,7 @@ const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
 
 function openNew(type: ChannelType) {
-  Object.assign(form, { type, name: typeNames[type], enabled: true, min_severity: 'warning',
+  Object.assign(form, { type, name: t(typeNames[type]), enabled: true, min_severity: 'warning',
     notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
     smtp_host: '', smtp_port: '', smtp_security: 'starttls', username: '', password: '', from: '', to: '' })
   fieldErrors.value = {}
@@ -96,7 +97,7 @@ async function save() {
 }
 
 async function remove(c: NotifyChannel) {
-  if (!confirm(`删除通知渠道“${c.name}”？`)) return
+  if (!confirm(t('删除通知渠道“{name}”？', { name: c.name }))) return
   try {
     await deleteChannel(c.id)
     await load()
@@ -145,20 +146,18 @@ const robotHelp: Partial<Record<ChannelType, string>> = {
   dingtalk: '群设置 → 机器人 → 自定义机器人；安全设置选“加签”时把密钥（SEC…）填在下面（https://oapi.dingtalk.com/robot/send?access_token=…）',
   feishu: '群设置 → 群机器人 → 自定义机器人；开启“签名校验”时把密钥填在下面（https://open.feishu.cn/open-apis/bot/v2/hook/…）',
 }
-const isRobot = (t: ChannelType) => t in robotHelp
+const isRobot = (c: ChannelType) => c in robotHelp
 const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.chat_id} · ${c.config.bot_token}`
-  : c.type === 'ntfy' ? `${c.config.url} · 主题 ${c.config.topic}${c.config.has_token ? ' · 已设置令牌' : ''}`
-    : c.type === 'bark' ? `${c.config.url}${c.config.has_token ? ' · 已设置设备密钥' : ''}`
+  : c.type === 'ntfy' ? `${c.config.url} · ${t('主题 {topic}', { topic: c.config.topic })}${c.config.has_token ? t(' · 已设置令牌') : ''}`
+    : c.type === 'bark' ? `${c.config.url}${c.config.has_token ? t(' · 已设置设备密钥') : ''}`
       : c.type === 'email' ? `${c.config.smtp_host}:${c.config.smtp_port} → ${c.config.to}`
-      : `${c.config.url}${c.config.has_secret ? ' · 已设置签名' : ''}`)
+      : `${c.config.url}${c.config.has_secret ? t(' · 已设置签名') : ''}`)
 </script>
 
 <template>
   <div>
     <p class="muted small intro">
-      告警触发、恢复以及严重告警未恢复时的重复提醒，会发送到下列渠道；已静音的告警不发送。
-      节点到期（剩 30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包用到 90% / 95%、同步失败）也从这里发送，各发一次。
-      同时有 5 台以上节点离线会合并为一条；状态频繁变化的告警只提醒一次；全部节点同时停止上报时发面板告警。渠道由本面板直接发送，凭证只保存在本面板。
+      {{ t('告警触发、恢复以及严重告警未恢复时的重复提醒，会发送到下列渠道；已静音的告警不发送。节点到期（剩 30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包用到 90% / 95%、同步失败）也从这里发送，各发一次。同时有 5 台以上节点离线会合并为一条；状态频繁变化的告警只提醒一次；全部节点同时停止上报时发面板告警。渠道由本面板直接发送，凭证只保存在本面板。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
 
@@ -169,158 +168,158 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
 
     <div class="actions">
       <!-- 渠道类型较多：用下拉选择，窄屏也不溢出 -->
-      <select class="add-type" aria-label="添加通知渠道" :value="''"
+      <select class="add-type" :aria-label="t('添加通知渠道')" :value="''"
         @change="openNew(($event.target as HTMLSelectElement).value as ChannelType); ($event.target as HTMLSelectElement).value = ''">
-        <option value="" disabled>＋ 添加通知渠道…</option>
-        <option v-for="(n, t) in typeNames" :key="t" :value="t">{{ n }}</option>
+        <option value="" disabled>{{ t('＋ 添加通知渠道…') }}</option>
+        <option v-for="(n, k) in typeNames" :key="k" :value="k">{{ t(n) }}</option>
       </select>
     </div>
 
     <!-- 新增 / 编辑 -->
     <form v-if="editing !== null" class="panel editor" novalidate @submit.prevent="save">
-      <h3>{{ editing === 'new' ? `添加 ${typeNames[form.type]}` : `编辑 ${form.name}` }}</h3>
+      <h3>{{ editing === 'new' ? t('添加 {v}', { v: t(typeNames[form.type]) }) : t('编辑 {name}', { name: form.name }) }}</h3>
       <div class="fields">
-        <label>名称
+        <label>{{ t('名称') }}
           <input v-model="form.name" maxlength="40" />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
         </label>
         <template v-if="form.type === 'telegram'">
           <label>Bot Token
-            <input v-model="form.bot_token" autocomplete="off" spellcheck="false" :placeholder="editing === 'new' ? '123456789:AA…（从 @BotFather 获取）' : '留空保持不变'" />
+            <input v-model="form.bot_token" autocomplete="off" spellcheck="false" :placeholder="editing === 'new' ? t('123456789:AA…（从 @BotFather 获取）') : t('留空保持不变')" />
             <small v-if="fieldErrors.bot_token" class="err">{{ fieldErrors.bot_token }}</small>
           </label>
           <label>Chat ID
-            <input v-model="form.chat_id" spellcheck="false" placeholder="个人 / 群组的数字 ID，或 @频道名" />
+            <input v-model="form.chat_id" spellcheck="false" :placeholder="t('个人 / 群组的数字 ID，或 @频道名')" />
             <small v-if="fieldErrors.chat_id" class="err">{{ fieldErrors.chat_id }}</small>
-            <small v-else class="muted">先向机器人发一条消息（群组需把机器人拉进群），再通过 @userinfobot 等获取 ID</small>
+            <small v-else class="muted">{{ t('先向机器人发一条消息（群组需把机器人拉进群），再通过 @userinfobot 等获取 ID') }}</small>
           </label>
         </template>
         <template v-else-if="form.type === 'ntfy'">
-          <label class="wide">ntfy 服务器
-            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://ntfy.sh（留空使用公共服务器）' : '留空保持不变'" />
+          <label class="wide">{{ t('ntfy 服务器') }}
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? t('https://ntfy.sh（留空使用公共服务器）') : t('留空保持不变')" />
             <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
-            <small v-else class="muted">自建 ntfy 时填写自己的地址；只支持 HTTPS，本机回环地址除外</small>
+            <small v-else class="muted">{{ t('自建 ntfy 时填写自己的地址；只支持 HTTPS，本机回环地址除外') }}</small>
           </label>
-          <label>主题
-            <input v-model="form.topic" spellcheck="false" autocomplete="off" :placeholder="editing === 'new' ? '如 vpsmon-7k2q9x' : '留空保持不变'" />
+          <label>{{ t('主题') }}
+            <input v-model="form.topic" spellcheck="false" autocomplete="off" :placeholder="editing === 'new' ? t('如 vpsmon-7k2q9x') : t('留空保持不变')" />
             <small v-if="fieldErrors.topic" class="err">{{ fieldErrors.topic }}</small>
-            <small v-else class="muted">公共服务器上知道主题就能订阅，请用不易猜到的名称；手机上的 ntfy App 订阅同一主题即可收到</small>
+            <small v-else class="muted">{{ t('公共服务器上知道主题就能订阅，请用不易猜到的名称；手机上的 ntfy App 订阅同一主题即可收到') }}</small>
           </label>
-          <label>访问令牌（可选）
-            <input v-model="form.token" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? 'tk_…（服务器开启鉴权时）' : '留空保持不变'" />
+          <label>{{ t('访问令牌（可选）') }}
+            <input v-model="form.token" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? t('tk_…（服务器开启鉴权时）') : t('留空保持不变')" />
             <small v-if="fieldErrors.token" class="err">{{ fieldErrors.token }}</small>
           </label>
-          <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_token" type="checkbox" />清除访问令牌</label>
+          <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_token" type="checkbox" />{{ t('清除访问令牌') }}</label>
         </template>
         <template v-else-if="form.type === 'email'">
-          <label>SMTP 服务器
+          <label>{{ t('SMTP 服务器') }}
             <input v-model="form.smtp_host" spellcheck="false" placeholder="smtp.gmail.com" />
             <small v-if="fieldErrors.smtp_host" class="err">{{ fieldErrors.smtp_host }}</small>
           </label>
-          <label>加密方式
+          <label>{{ t('加密方式') }}
             <select v-model="form.smtp_security">
               <option value="starttls">STARTTLS（587）</option>
               <option value="tls">TLS（465）</option>
-              <option value="none">不加密（只限本机中转）</option>
+              <option value="none">{{ t('不加密（只限本机中转）') }}</option>
             </select>
             <small v-if="fieldErrors.smtp_security" class="err">{{ fieldErrors.smtp_security }}</small>
           </label>
-          <label>端口
+          <label>{{ t('端口') }}
             <input v-model="form.smtp_port" inputmode="numeric" :placeholder="form.smtp_security === 'tls' ? '465' : form.smtp_security === 'none' ? '25' : '587'" />
             <small v-if="fieldErrors.smtp_port" class="err">{{ fieldErrors.smtp_port }}</small>
           </label>
-          <label>用户名
-            <input v-model="form.username" autocomplete="off" spellcheck="false" placeholder="通常是邮箱地址" />
+          <label>{{ t('用户名') }}
+            <input v-model="form.username" autocomplete="off" spellcheck="false" :placeholder="t('通常是邮箱地址')" />
           </label>
-          <label>密码 / 授权码
-            <input v-model="form.password" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : '留空保持不变（改了服务器或用户名需重填）'" />
+          <label>{{ t('密码 / 授权码') }}
+            <input v-model="form.password" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : t('留空保持不变（改了服务器或用户名需重填）')" />
             <small v-if="fieldErrors.password" class="err">{{ fieldErrors.password }}</small>
-            <small v-else class="muted">QQ、163、Gmail 等需使用邮箱设置中生成的授权码 / 应用专用密码</small>
+            <small v-else class="muted">{{ t('QQ、163、Gmail 等需使用邮箱设置中生成的授权码 / 应用专用密码') }}</small>
           </label>
-          <label>发件人
+          <label>{{ t('发件人') }}
             <input v-model="form.from" spellcheck="false" placeholder="VPS Monitor <alerts@example.com>" />
             <small v-if="fieldErrors.from" class="err">{{ fieldErrors.from }}</small>
           </label>
-          <label class="wide">收件人
-            <input v-model="form.to" spellcheck="false" placeholder="a@example.com, b@example.com（最多 10 个）" />
+          <label class="wide">{{ t('收件人') }}
+            <input v-model="form.to" spellcheck="false" :placeholder="t('a@example.com, b@example.com（最多 10 个）')" />
             <small v-if="fieldErrors.to" class="err">{{ fieldErrors.to }}</small>
           </label>
         </template>
         <template v-else-if="form.type === 'bark'">
-          <label class="wide">Bark 服务器
-            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://api.day.app（留空使用公共服务器）' : '留空保持不变'" />
+          <label class="wide">{{ t('Bark 服务器') }}
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? t('https://api.day.app（留空使用公共服务器）') : t('留空保持不变')" />
             <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
           </label>
-          <label>设备密钥（Device Key）
-            <input v-model="form.token" type="password" autocomplete="off" :placeholder="editing === 'new' ? 'Bark App 首页显示的密钥' : '留空保持不变'" />
+          <label>{{ t('设备密钥（Device Key）') }}
+            <input v-model="form.token" type="password" autocomplete="off" :placeholder="editing === 'new' ? t('Bark App 首页显示的密钥') : t('留空保持不变')" />
             <small v-if="fieldErrors.token" class="err">{{ fieldErrors.token }}</small>
-            <small v-else class="muted">严重告警以“时效性通知”提醒，点击打开节点详情</small>
+            <small v-else class="muted">{{ t('严重告警以“时效性通知”提醒，点击打开节点详情') }}</small>
           </label>
         </template>
         <template v-else-if="isRobot(form.type)">
-          <label class="wide">机器人地址
-            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : '留空保持不变'" />
+          <label class="wide">{{ t('机器人地址') }}
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : t('留空保持不变')" />
             <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
-            <small v-else class="muted">{{ robotHelp[form.type] }}</small>
+            <small v-else class="muted">{{ t(robotHelp[form.type] ?? '') }}</small>
           </label>
           <template v-if="form.type === 'dingtalk' || form.type === 'feishu'">
-            <label>加签密钥（可选）
-              <input v-model="form.secret" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : '留空保持不变'" />
+            <label>{{ t('加签密钥（可选）') }}
+              <input v-model="form.secret" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : t('留空保持不变')" />
               <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
             </label>
-            <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_secret" type="checkbox" />清除加签密钥</label>
+            <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_secret" type="checkbox" />{{ t('清除加签密钥') }}</label>
           </template>
         </template>
         <template v-else>
-          <label class="wide">Webhook 地址
-            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : '留空保持不变'" />
+          <label class="wide">{{ t('Webhook 地址') }}
+            <input v-model="form.url" spellcheck="false" :placeholder="editing === 'new' ? 'https://…' : t('留空保持不变')" />
             <small v-if="fieldErrors.url" class="err">{{ fieldErrors.url }}</small>
-            <small v-else class="muted">POST JSON（version、kind、title、text、server、severity、message 等）；只支持 HTTPS，本机回环地址除外</small>
+            <small v-else class="muted">{{ t('POST JSON（version、kind、title、text、server、severity、message 等）；只支持 HTTPS，本机回环地址除外') }}</small>
           </label>
-          <label>签名密钥（可选）
-            <input v-model="form.secret" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : '留空保持不变'" />
+          <label>{{ t('签名密钥（可选）') }}
+            <input v-model="form.secret" type="password" autocomplete="new-password" :placeholder="editing === 'new' ? '' : t('留空保持不变')" />
             <small v-if="fieldErrors.secret" class="err">{{ fieldErrors.secret }}</small>
-            <small v-else class="muted">设置后请求头带 X-Vpsmon-Signature: sha256=HMAC(密钥, 请求体)</small>
+            <small v-else class="muted">{{ t('设置后请求头带 X-Vpsmon-Signature: sha256=HMAC(密钥, 请求体)') }}</small>
           </label>
-          <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_secret" type="checkbox" />清除签名密钥</label>
+          <label v-if="editing !== 'new'" class="check"><input v-model="form.clear_secret" type="checkbox" />{{ t('清除签名密钥') }}</label>
         </template>
-        <label>最低级别
+        <label>{{ t('最低级别') }}
           <select v-model="form.min_severity">
-            <option value="critical">只发严重</option>
-            <option value="warning">警告及以上</option>
-            <option value="info">全部（含提示）</option>
+            <option value="critical">{{ t('只发严重') }}</option>
+            <option value="warning">{{ t('警告及以上') }}</option>
+            <option value="info">{{ t('全部（含提示）') }}</option>
           </select>
         </label>
-        <label class="check"><input v-model="form.notify_resolved" type="checkbox" />恢复时也通知</label>
-        <label class="check"><input v-model="form.enabled" type="checkbox" />启用</label>
+        <label class="check"><input v-model="form.notify_resolved" type="checkbox" />{{ t('恢复时也通知') }}</label>
+        <label class="check"><input v-model="form.enabled" type="checkbox" />{{ t('启用') }}</label>
       </div>
       <div class="actions">
-        <button type="submit" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
-        <button type="button" class="secondary" @click="editing = null">取消</button>
+        <button type="submit" :disabled="saving">{{ saving ? t('保存中…') : t('保存') }}</button>
+        <button type="button" class="secondary" @click="editing = null">{{ t('取消') }}</button>
       </div>
     </form>
 
     <!-- 渠道列表 -->
-    <p v-if="loaded && !channels.length && editing === null" class="muted empty">还没有通知渠道。添加后告警会推送到 Telegram、邮件、ntfy、Bark、Discord、企业微信、钉钉、飞书或你的 Webhook。</p>
+    <p v-if="loaded && !channels.length && editing === null" class="muted empty">{{ t('还没有通知渠道。添加后告警会推送到 Telegram、邮件、ntfy、Bark、Discord、企业微信、钉钉、飞书或你的 Webhook。') }}</p>
     <ul v-if="channels.length" class="panel list">
       <li v-for="c in channels" :key="c.id" :class="{ off: !c.enabled }">
         <div class="ch">
           <div class="ch-main">
             <div class="ch-name">
-              <span class="type">{{ typeNames[c.type] }}</span>{{ c.name }}
-              <span v-if="!c.enabled" class="muted small">已停用</span>
+              <span class="type">{{ t(typeNames[c.type]) }}</span>{{ c.name }}
+              <span v-if="!c.enabled" class="muted small">{{ t('已停用') }}</span>
             </div>
             <div class="muted small ellipsis">{{ target(c) }}</div>
-            <div class="muted small">{{ c.min_severity === 'info' ? '全部级别' : `${severityNames[c.min_severity]}及以上` }}{{ c.notify_resolved ? ' · 含恢复通知' : '' }}</div>
+            <div class="muted small">{{ c.min_severity === 'info' ? t('全部级别') : t('{v}及以上', { v: t(severityNames[c.min_severity]) }) }}{{ c.notify_resolved ? t(' · 含恢复通知') : '' }}</div>
             <div v-if="testResult[c.id]" class="small" :class="testResult[c.id].ok ? 'ok' : 'err'">
-              {{ testResult[c.id].ok ? '✓ 测试通知已发送，请在接收端确认' : `✗ ${testResult[c.id].error}` }}
+              {{ testResult[c.id].ok ? t('✓ 测试通知已发送，请在接收端确认') : `✗ ${testResult[c.id].error}` }}
             </div>
           </div>
           <div class="ch-actions">
-            <button type="button" class="secondary" :disabled="testing === c.id" @click="test(c)">{{ testing === c.id ? '发送中…' : '发送测试' }}</button>
-            <button type="button" class="text" @click="toggle(c)">{{ c.enabled ? '停用' : '启用' }}</button>
-            <button type="button" class="text" @click="openEdit(c)">编辑</button>
-            <button type="button" class="text danger-text" @click="remove(c)">删除</button>
+            <button type="button" class="secondary" :disabled="testing === c.id" @click="test(c)">{{ testing === c.id ? t('发送中…') : t('发送测试') }}</button>
+            <button type="button" class="text" @click="toggle(c)">{{ c.enabled ? t('停用') : t('启用') }}</button>
+            <button type="button" class="text" @click="openEdit(c)">{{ t('编辑') }}</button>
+            <button type="button" class="text danger-text" @click="remove(c)">{{ t('删除') }}</button>
           </div>
         </div>
       </li>
@@ -328,18 +327,18 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
 
     <!-- 投递记录 -->
     <section v-if="deliveries.length" class="section">
-      <h3>最近投递</h3>
+      <h3>{{ t('最近投递') }}</h3>
       <ul class="panel list deliveries">
         <li v-for="d in deliveries" :key="d.id" :class="d.status">
           <span class="time num small">{{ fmtDateTime(d.created_at) }}</span>
-          <span class="small kind">{{ kindNames[d.kind] }}</span>
+          <span class="small kind">{{ t(kindNames[d.kind]) }}</span>
           <span class="title ellipsis" :title="d.title">{{ d.title }}</span>
           <span class="small muted ellipsis">{{ d.channel_name }}</span>
-          <span class="small status" :title="d.last_error">{{ statusNames[d.status] }}<template v-if="d.attempts > 1"> · {{ d.attempts }} 次</template></span>
+          <span class="small status" :title="d.last_error">{{ t(statusNames[d.status]) }}<template v-if="d.attempts > 1"> {{ t('· {attempts} 次', { attempts: d.attempts }) }}</template></span>
           <span v-if="d.status === 'failed' && d.last_error" class="small err reason">{{ d.last_error }}</span>
         </li>
       </ul>
-      <p class="muted small">投递记录保留 30 天；失败后自动重试 3 次（2 秒 / 8 秒 / 30 秒）。</p>
+      <p class="muted small">{{ t('投递记录保留 30 天；失败后自动重试 3 次（2 秒 / 8 秒 / 30 秒）。') }}</p>
     </section>
   </div>
 </template>

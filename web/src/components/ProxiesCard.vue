@@ -72,7 +72,7 @@ const hasDown = (p: { running: boolean; inbounds?: { local?: boolean; listening:
     <ul v-if="missing.length" class="missing">
       <li v-for="m in missing" :key="m.name">
         <span class="tag warn">{{ t('没有运行') }}</span>
-        <strong>{{ names[m.name] ?? m.name }}</strong>
+        <strong>{{ t(names[m.name] ?? m.name) }}</strong>
         <span class="muted small">{{ t('{time} 起', { time: fmtTime(m.since) }) }}</span>
         <button type="button" class="text small" :title="t('主动停用或卸载时点这里')" @click="forget(m.name)">{{ t('不再提醒') }}</button>
       </li>

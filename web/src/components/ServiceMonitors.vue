@@ -9,6 +9,7 @@ import {
 import { DASH, fmtAvailability, fmtLatency, fmtTime } from '../format'
 import { alertsOn, state } from '../store'
 import Chart, { type Series } from './Chart.vue'
+import { t } from '../i18n'
 
 const items = ref<ServiceMonitor[]>([])
 // 列表成功加载过才显示“还没有…”；连不上面板时只显示错误，不误显示为空（手机 UI 规范 P2，弱网）
@@ -29,7 +30,7 @@ async function load() {
     ready.value = true
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '服务监控加载失败')
+    error.value = errorText(e, t('服务监控加载失败'))
   }
   if (timer) clearTimeout(timer)
   timer = window.setTimeout(load, 30_000)
@@ -97,7 +98,7 @@ async function recheck(m: ServiceMonitor) {
 }
 
 async function remove(m: ServiceMonitor) {
-  if (!confirm(`删除服务监控“${m.name}”？检查记录会一并删除。`)) return
+  if (!confirm(t('删除服务监控“{name}”？检查记录会一并删除。', { name: m.name }))) return
   try {
     await deleteServiceMonitor(m.id)
     if (open.value === m.id) open.value = null
@@ -117,7 +118,7 @@ async function loadChart() {
   chartError.value = ''
   try {
     const pts = await serviceChecks(open.value, range.value)
-    series.value = [{ name: '耗时', data: pts.map((p) => [p.ts * 1000, p.latency_ms ?? null]) }]
+    series.value = [{ name: t('耗时'), data: pts.map((p) => [p.ts * 1000, p.latency_ms ?? null]) }]
   } catch (e) {
     chartError.value = errorText(e)
   }
@@ -142,60 +143,60 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
   <div>
     <!-- 告警关闭时（修订第 175 条）不提通知（修订第 185 条） -->
     <p class="muted small intro">
-      面板定时检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 与 Ping，连续失败达到设定次数判为异常{{ alertsOn ? '并通知，恢复时再通知一次' : '' }}；记录保留 7 天。
+      {{ t('面板定时检查网址（HTTP / HTTPS，始终校验证书）、TCP 端口、DNS 与 Ping，连续失败达到设定次数判为异常{v}；记录保留 7 天。', { v: alertsOn ? t('并通知，恢复时再通知一次') : '' }) }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <div class="toolbar">
-      <button type="button" @click="openNew">添加服务</button>
+      <button type="button" @click="openNew">{{ t('添加服务') }}</button>
     </div>
 
     <form v-if="editing !== null" class="panel form" novalidate @submit.prevent="save">
-      <h3>{{ editing === 'new' ? '添加服务' : '编辑服务' }}</h3>
+      <h3>{{ editing === 'new' ? t('添加服务') : t('编辑服务') }}</h3>
       <div class="grid">
-        <label>名称<input v-model="form.name" maxlength="64" placeholder="官网、主库…" />
+        <label>{{ t('名称') }}<input v-model="form.name" maxlength="64" :placeholder="t('官网、主库…')" />
           <small v-if="fieldErrors.name" class="bad">{{ fieldErrors.name }}</small></label>
-        <label>类型
+        <label>{{ t('类型') }}
           <select v-model="form.kind">
-            <option value="http">网址（HTTP / HTTPS）</option>
-            <option value="tcp">TCP 端口</option>
-            <option value="dns">DNS 解析</option>
+            <option value="http">{{ t('网址（HTTP / HTTPS）') }}</option>
+            <option value="tcp">{{ t('TCP 端口') }}</option>
+            <option value="dns">{{ t('DNS 解析') }}</option>
             <option value="icmp">Ping（ICMP）</option>
           </select></label>
-        <label class="wide">目标<input v-model="form.target" spellcheck="false" :placeholder="placeholders[form.kind]" />
+        <label class="wide">{{ t('目标') }}<input v-model="form.target" spellcheck="false" :placeholder="t(placeholders[form.kind])" />
           <small v-if="fieldErrors.target" class="bad">{{ fieldErrors.target }}</small>
-          <small v-else-if="form.kind === 'icmp'" class="muted">每次最多发 3 个请求，收到任一回复即为正常；域名优先解析为 IPv4</small></label>
+          <small v-else-if="form.kind === 'icmp'" class="muted">{{ t('每次最多发 3 个请求，收到任一回复即为正常；域名优先解析为 IPv4') }}</small></label>
         <template v-if="form.kind === 'http'">
-          <label>期望状态码<input v-model="form.expect_status" placeholder="默认 200-399" spellcheck="false" />
+          <label>{{ t('期望状态码') }}<input v-model="form.expect_status" :placeholder="t('默认 200-399')" spellcheck="false" />
             <small v-if="fieldErrors.expect_status" class="bad">{{ fieldErrors.expect_status }}</small></label>
-          <label>响应包含（可选）<input v-model="form.keyword" maxlength="100" placeholder="如 ok" />
+          <label>{{ t('响应包含（可选）') }}<input v-model="form.keyword" maxlength="100" :placeholder="t('如 ok')" />
             <small v-if="fieldErrors.keyword" class="bad">{{ fieldErrors.keyword }}</small></label>
         </template>
         <template v-if="form.kind === 'dns'">
-          <label>记录类型
+          <label>{{ t('记录类型') }}
             <select v-model="form.dns_type"><option value="A">A（IPv4）</option><option value="AAAA">AAAA（IPv6）</option></select></label>
-          <label>必须包含的 IP（可选）<input v-model="form.dns_expect" spellcheck="false" placeholder="203.0.113.10" />
+          <label>{{ t('必须包含的 IP（可选）') }}<input v-model="form.dns_expect" spellcheck="false" placeholder="203.0.113.10" />
             <small v-if="fieldErrors.dns_expect" class="bad">{{ fieldErrors.dns_expect }}</small></label>
         </template>
-        <label>检查间隔（秒）<input v-model.number="form.interval_s" type="number" min="30" max="3600" />
+        <label>{{ t('检查间隔（秒）') }}<input v-model.number="form.interval_s" type="number" min="30" max="3600" />
           <small v-if="fieldErrors.interval_s" class="bad">{{ fieldErrors.interval_s }}</small></label>
-        <label>超时（秒）<input v-model.number="form.timeout_s" type="number" min="1" max="30" />
+        <label>{{ t('超时（秒）') }}<input v-model.number="form.timeout_s" type="number" min="1" max="30" />
           <small v-if="fieldErrors.timeout_s" class="bad">{{ fieldErrors.timeout_s }}</small></label>
-        <label>连续失败几次判为异常<input v-model.number="form.fail_threshold" type="number" min="1" max="10" />
+        <label>{{ t('连续失败几次判为异常') }}<input v-model.number="form.fail_threshold" type="number" min="1" max="10" />
           <small v-if="fieldErrors.fail_threshold" class="bad">{{ fieldErrors.fail_threshold }}</small></label>
-        <label>级别
-          <select v-model="form.severity"><option value="critical">严重</option><option value="warning">警告</option></select></label>
-        <label>关联节点（可选）
+        <label>{{ t('级别') }}
+          <select v-model="form.severity"><option value="critical">{{ t('严重') }}</option><option value="warning">{{ t('警告') }}</option></select></label>
+        <label>{{ t('关联节点（可选）') }}
           <select v-model.number="form.server_id">
-            <option :value="0">不关联</option>
+            <option :value="0">{{ t('不关联') }}</option>
             <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
-          <small class="muted">关联后，只能查看该节点的 App 设备也会收到推送</small></label>
-        <label class="check"><input v-model="form.enabled" type="checkbox" />启用</label>
+          <small class="muted">{{ t('关联后，只能查看该节点的 App 设备也会收到推送') }}</small></label>
+        <label class="check"><input v-model="form.enabled" type="checkbox" />{{ t('启用') }}</label>
       </div>
       <p v-if="fieldErrors._" class="bad small">{{ fieldErrors._ }}</p>
       <div class="actions">
-        <button type="submit" :disabled="saving || !form.name.trim() || !form.target.trim()">{{ saving ? '保存并检查中…' : '保存' }}</button>
-        <button type="button" class="secondary" @click="editing = null">取消</button>
+        <button type="submit" :disabled="saving || !form.name.trim() || !form.target.trim()">{{ saving ? t('保存并检查中…') : t('保存') }}</button>
+        <button type="button" class="secondary" @click="editing = null">{{ t('取消') }}</button>
       </div>
     </form>
 
@@ -206,35 +207,35 @@ const uptimeTone = (p: number | null) => (p == null ? 'muted' : p >= 99.9 ? 'ok'
             <span class="name">
               <span class="dot" :class="tone(m)" aria-hidden="true">●</span>
               <strong>{{ m.name }}</strong>
-              <span class="small" :class="tone(m)">{{ m.enabled ? statusNames[m.status] : '已停用' }}</span>
+              <span class="small" :class="tone(m)">{{ m.enabled ? t(statusNames[m.status]) : t('已停用') }}</span>
             </span>
-            <span class="small muted target">{{ kindNames[m.kind] }} · {{ m.target }}<template v-if="m.server_id"> · {{ nodeName(m.server_id) }}</template></span>
-            <span v-if="m.last_error && m.enabled" class="small bad">{{ m.last_error }}<template v-if="m.fails > 1">（连续 {{ m.fails }} 次）</template></span>
+            <span class="small muted target">{{ t(kindNames[m.kind]) }} · {{ m.target }}<template v-if="m.server_id"> · {{ nodeName(m.server_id) }}</template></span>
+            <span v-if="m.last_error && m.enabled" class="small bad">{{ m.last_error }}<template v-if="m.fails > 1">{{ t('（连续 {fails} 次）', { fails: m.fails }) }}</template></span>
           </button>
           <div class="nums small">
-            <span><span class="muted">耗时</span> <b class="num">{{ m.last_latency_ms === 0 ? '<1 ms' : fmtLatency(m.last_latency_ms) }}</b></span>
-            <span><span class="muted">24 小时</span> <b class="num" :class="uptimeTone(m.uptime_24h)">{{ fmtAvailability(m.uptime_24h) }}</b></span>
-            <span><span class="muted">7 天</span> <b class="num" :class="uptimeTone(m.uptime_7d)">{{ fmtAvailability(m.uptime_7d) }}</b></span>
-            <span class="muted">{{ m.checked_at ? `检查于 ${fmtTime(m.checked_at)}` : DASH }}</span>
+            <span><span class="muted">{{ t('耗时') }}</span> <b class="num">{{ m.last_latency_ms === 0 ? '<1 ms' : fmtLatency(m.last_latency_ms) }}</b></span>
+            <span><span class="muted">{{ t('24 小时') }}</span> <b class="num" :class="uptimeTone(m.uptime_24h)">{{ fmtAvailability(m.uptime_24h) }}</b></span>
+            <span><span class="muted">{{ t('7 天') }}</span> <b class="num" :class="uptimeTone(m.uptime_7d)">{{ fmtAvailability(m.uptime_7d) }}</b></span>
+            <span class="muted">{{ m.checked_at ? t('检查于 {time}', { time: fmtTime(m.checked_at) }) : DASH }}</span>
           </div>
           <div class="ops">
-            <button type="button" class="secondary small" :disabled="busy === m.id" @click="recheck(m)">{{ busy === m.id ? '检查中…' : '检查' }}</button>
-            <button type="button" class="text small" @click="openEdit(m)">编辑</button>
-            <button type="button" class="text small del" @click="remove(m)">删除</button>
+            <button type="button" class="secondary small" :disabled="busy === m.id" @click="recheck(m)">{{ busy === m.id ? t('检查中…') : t('检查') }}</button>
+            <button type="button" class="text small" @click="openEdit(m)">{{ t('编辑') }}</button>
+            <button type="button" class="text small del" @click="remove(m)">{{ t('删除') }}</button>
           </div>
         </div>
         <div v-if="open === m.id" class="detail">
           <div class="segmented range" role="tablist">
-            <button type="button" role="tab" :class="{ active: range === '24h' }" @click="setRange('24h')">24 小时</button>
-            <button type="button" role="tab" :class="{ active: range === '7d' }" @click="setRange('7d')">7 天</button>
+            <button type="button" role="tab" :class="{ active: range === '24h' }" @click="setRange('24h')">{{ t('24 小时') }}</button>
+            <button type="button" role="tab" :class="{ active: range === '7d' }" @click="setRange('7d')">{{ t('7 天') }}</button>
           </div>
           <p v-if="chartError" class="bad small">{{ chartError }}</p>
-          <Chart v-else-if="series.length && series[0].data.length" title="响应耗时（失败处断开）" :series="series" :format="fmtLatency" hide-legend />
-          <p v-else class="muted small">还没有检查记录。</p>
+          <Chart v-else-if="series.length && series[0].data.length" :title="t('响应耗时（失败处断开）')" :series="series" :format="fmtLatency" hide-legend />
+          <p v-else class="muted small">{{ t('还没有检查记录。') }}</p>
         </div>
       </li>
     </ul>
-    <p v-else-if="ready && editing === null" class="muted small">还没有监控的服务。</p>
+    <p v-else-if="ready && editing === null" class="muted small">{{ t('还没有监控的服务。') }}</p>
   </div>
 </template>
 

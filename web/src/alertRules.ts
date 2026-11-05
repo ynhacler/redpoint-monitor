@@ -1,5 +1,6 @@
 // 告警规则的展示：名称、单位、条件摘要（设计 16.1、16.2）。规则页与节点详情共用。
 import type { AlertRule, AlertSeverity } from './api'
+import { t } from './i18n'
 
 /** 规则名称（按 rule_key） */
 export const ruleNames: Record<string, string> = {
@@ -27,18 +28,27 @@ export const ruleNames: Record<string, string> = {
   port_gone: '基线端口未监听',
 }
 
-/** 告警级别的中文名称 */
+/** 告警级别的名称（中文原文，显示时经 t() 翻译） */
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
 
-/** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，测速为毫秒，其余为百分比 */
-export function thresholdUnit(type: string): string {
-  if (type === 'offline' || type === 'agent_clock') return '秒'
-  if (type === 'load') return '倍核数'
+/** 阈值单位：离线与时钟偏差为秒，负载为“倍核数”，测速为毫秒，其余为百分比。
+ * “个”“次”只作内部判断，不直接翻译：这两个字在译文表中已有别的含义（个 → 空、次 → once），显示时用下面的整句 */
+function thresholdUnit(type: string): string {
+  if (type === 'offline' || type === 'agent_clock') return t('秒')
+  if (type === 'load') return t('倍核数')
   if (type === 'process' || type === 'container' || type === 'proxy' || type === 'port_new' || type === 'port_gone') return '个'
   if (type === 'container_restart') return '次'
   if (type === 'probe_latency') return 'ms'
-  if (type === 'reach') return '级' // 1 不稳定、2 单运营商或端口不可达、3 全部探针不可达（修订第 154 条）
+  if (type === 'reach') return t('级') // 1 不稳定、2 单运营商或端口不可达、3 全部探针不可达（修订第 154 条）
   return '%'
+}
+
+/** 阈值输入框的标题，如“触发阈值（秒）”；recover 为恢复阈值 */
+export function thresholdLabel(type: string, recover = false): string {
+  const u = thresholdUnit(type)
+  if (u === '个') return recover ? t('恢复阈值（个）') : t('触发阈值（个）')
+  if (u === '次') return recover ? t('恢复阈值（次）') : t('触发阈值（次）')
+  return t(recover ? '恢复阈值（{unit}）' : '触发阈值（{unit}）', { unit: u })
 }
 
 /** 输入框的范围与步长，与服务端校验一致（alert_api.go thresholdRange） */
@@ -60,19 +70,21 @@ export function thresholdRange(type: string): { min: number; max: number; step: 
 
 function dur(s: number): string {
   if (!s) return ''
-  if (s % 3600 === 0) return `${s / 3600} 小时`
-  if (s % 60 === 0) return `${s / 60} 分钟`
-  return `${s} 秒`
+  if (s % 3600 === 0) return t('{n} 小时', { n: s / 3600 })
+  if (s % 60 === 0) return t('{n} 分钟', { n: s / 60 })
+  return t('{n} 秒', { n: s })
 }
 
 /** 条件摘要，如“> 90%，持续 5 分钟；< 80% 持续 2 分钟后恢复” */
 export function ruleSummary(r: AlertRule): string {
   const u = thresholdUnit(r.type)
-  const v = (x: number) => (u === '%' ? `${x}%` : `${x} ${u}`)
-  if (r.type === 'offline') return `超过 ${dur(r.threshold)}未上报`
+  const v = (x: number) => (u === '%' ? `${x}%` : u === '个' ? t('{n} 个', { n: x }) : u === '次' ? t('{n} 次', { n: x }) : `${x} ${u}`)
+  if (r.type === 'offline') return t('超过 {d}未上报', { d: dur(r.threshold) })
   let s = `${r.operator === '>=' ? '≥' : '>'} ${v(r.threshold)}`
-  if (r.duration_s) s += `，持续 ${dur(r.duration_s)}`
+  if (r.duration_s) s += t('，持续 {d}', { d: dur(r.duration_s) })
   if (r.type.startsWith('traffic')) return s
-  s += `；< ${v(r.recover_threshold)}${r.recover_duration_s ? ` 持续 ${dur(r.recover_duration_s)}后` : ' 即'}恢复`
+  s += r.recover_duration_s
+    ? t('；< {v} 持续 {d}后恢复', { v: v(r.recover_threshold), d: dur(r.recover_duration_s) })
+    : t('；< {v} 即恢复', { v: v(r.recover_threshold) })
   return s
 }

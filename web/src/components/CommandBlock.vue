@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 命令展示块（设计 41.3 CommandBlock）：等宽字体展示安装命令，右上角“复制”。
 import { ref } from 'vue'
+import { t } from '../i18n'
 
 const props = defineProps<{
   /** 要展示与复制的命令 */
@@ -35,7 +36,7 @@ async function copy() {
     <!-- 每个词整体不换行，只在空格处折行：注册码、URL 中的连字符不会被拆开 -->
     <pre v-if="plain" ref="pre" class="plain">{{ command }}</pre>
     <pre v-else ref="pre"><template v-for="(w, i) in command.split(' ')" :key="i"><span class="word">{{ w }}</span>{{ ' ' }}</template></pre>
-    <button type="button" class="secondary" @click="copy">{{ copied ? '已复制' : '复制' }}</button>
+    <button type="button" class="secondary" @click="copy">{{ copied ? t('已复制') : t('复制') }}</button>
   </div>
 </template>
 

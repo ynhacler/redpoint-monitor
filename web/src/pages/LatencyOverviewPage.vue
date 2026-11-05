@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { errorText, getLatencyOverview, type LatencyOverview, type ProbeTarget } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtLatency, fmtPct } from '../format'
+import { t } from '../i18n'
 
 type Cell = LatencyOverview['cells'][number]
 
@@ -19,7 +20,7 @@ async function load() {
     data.value = await getLatencyOverview()
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '测速对比加载失败')
+    error.value = errorText(e, t('测速对比加载失败'))
   }
   timer = setTimeout(load, 60_000)
 }
@@ -27,7 +28,7 @@ onMounted(load)
 onBeforeUnmount(() => clearTimeout(timer))
 
 const isps: Record<string, string> = { ct: '电信', cu: '联通', cm: '移动', intl: '' }
-const targetName = (t: ProbeTarget) => (t.isp === 'intl' ? `${t.province}${t.note ? ` ${t.note}` : ''}` : `${t.province}${isps[t.isp] ?? ''}`)
+const targetName = (tg: ProbeTarget) => (tg.isp === 'intl' ? `${tg.province}${tg.note ? ` ${tg.note}` : ''}` : t('{province}{isp}', { province: tg.province, isp: t(isps[tg.isp] ?? '') }))
 
 const groups = computed(() => [...new Set((data.value?.servers ?? []).map((s) => s.group).filter(Boolean))].sort())
 // 只显示有结果的节点（还没测过或已关闭测速的节点不占行）
@@ -44,17 +45,17 @@ const cell = (sid: number, tid: number) => cells.value.get(`${sid}:${tid}`)
 // 每列延迟最低的节点（只在当前显示的节点中比较）
 const best = computed(() => {
   const out = new Map<number, number>()
-  for (const t of data.value?.targets ?? []) {
+  for (const tg of data.value?.targets ?? []) {
     let min = Infinity
     let who = 0
     for (const s of servers.value) {
-      const lat = cell(s.id, t.id)?.latency_ms
+      const lat = cell(s.id, tg.id)?.latency_ms
       if (lat != null && lat < min) {
         min = lat
         who = s.id
       }
     }
-    if (who) out.set(t.id, who)
+    if (who) out.set(tg.id, who)
   }
   return out
 })
@@ -63,10 +64,10 @@ const best = computed(() => {
 // 不是节点线路的问题：这一列显示为灰色“无响应”，不按不可达标红，避免误报
 const deadTargets = computed(() => {
   const out = new Set<number>()
-  for (const t of data.value?.targets ?? []) {
-    const cs = servers.value.map((sv) => cell(sv.id, t.id)).filter((c): c is Cell => !!c)
+  for (const tg of data.value?.targets ?? []) {
+    const cs = servers.value.map((sv) => cell(sv.id, tg.id)).filter((c): c is Cell => !!c)
     // 至少两台节点都测不通才算：只有一台节点时分不清是目标还是线路的问题
-    if (cs.length >= 2 && cs.every((c) => c.latency_ms == null)) out.add(t.id)
+    if (cs.length >= 2 && cs.every((c) => c.latency_ms == null)) out.add(tg.id)
   }
   return out
 })
@@ -84,36 +85,36 @@ function level(c?: Cell): string {
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>测速对比</h1>
-      <select v-if="groups.length > 1" v-model="group" class="group" aria-label="分组">
-        <option value="">全部分组</option>
+      <h1>{{ t('测速对比') }}</h1>
+      <select v-if="groups.length > 1" v-model="group" class="group" :aria-label="t('分组')">
+        <option value="">{{ t('全部分组') }}</option>
         <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
       </select>
     </div>
     <p class="muted small intro">
-      各节点到每个测试目标最近 1 小时的延迟中位数与丢包率；每列延迟最低的节点加粗。目标在“监测 → 测速设置”中管理，点击节点名查看曲线。
+      {{ t('各节点到每个测试目标最近 1 小时的延迟中位数与丢包率；每列延迟最低的节点加粗。目标在“监测 → 测速设置”中管理，点击节点名查看曲线。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
     <EmptyState v-else-if="data && (!servers.length || !data.targets.length)"
-      text="最近 1 小时还没有测速结果。在“监测 → 测速设置”中添加并启用目标，Agent 约 20 秒后测第一轮。" />
+      :text="t('最近 1 小时还没有测速结果。在“监测 → 测速设置”中添加并启用目标，Agent 约 20 秒后测第一轮。')" />
     <div v-else-if="data" class="panel table-wrap">
       <table>
         <thead>
           <tr>
-            <th scope="col" class="node">节点</th>
-            <th v-for="t in data.targets" :key="t.id" scope="col" :title="`${t.proto === 'icmp' ? 'ICMP' : `TCP ${t.port}`} → ${t.address}`">
-              {{ targetName(t) }}
-              <small v-if="deadTargets.has(t.id)" class="dead-tag" :title="`所有节点都测不通：目标可能禁止了 ${t.proto === 'icmp' ? 'Ping（ICMP）' : `TCP ${t.port}`}或已失效，不代表线路不通`">目标无响应</small>
+            <th scope="col" class="node">{{ t('节点') }}</th>
+            <th v-for="tg in data.targets" :key="tg.id" scope="col" :title="`${tg.proto === 'icmp' ? 'ICMP' : `TCP ${tg.port}`} → ${tg.address}`">
+              {{ targetName(tg) }}
+              <small v-if="deadTargets.has(tg.id)" class="dead-tag" :title="t('所有节点都测不通：目标可能禁止了 {what}或已失效，不代表线路不通', { what: tg.proto === 'icmp' ? 'Ping（ICMP）' : `TCP ${tg.port}` })">{{ t('目标无响应') }}</small>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="s in servers" :key="s.id">
             <th scope="row" class="node"><RouterLink :to="`/servers/${s.id}`">{{ s.name }}</RouterLink></th>
-            <td v-for="t in data.targets" :key="t.id" :class="[level(cell(s.id, t.id)), { best: best.get(t.id) === s.id }]">
-              <template v-if="cell(s.id, t.id)">
-                <b class="num">{{ cell(s.id, t.id)!.latency_ms == null ? (deadTargets.has(t.id) ? '无响应' : '不可达') : fmtLatency(cell(s.id, t.id)!.latency_ms) }}</b>
-                <small>{{ fmtPct(cell(s.id, t.id)!.loss) }}</small>
+            <td v-for="tg in data.targets" :key="tg.id" :class="[level(cell(s.id, tg.id)), { best: best.get(tg.id) === s.id }]">
+              <template v-if="cell(s.id, tg.id)">
+                <b class="num">{{ cell(s.id, tg.id)!.latency_ms == null ? (deadTargets.has(tg.id) ? t('无响应') : t('不可达')) : fmtLatency(cell(s.id, tg.id)!.latency_ms) }}</b>
+                <small>{{ fmtPct(cell(s.id, tg.id)!.loss) }}</small>
               </template>
               <span v-else class="muted">{{ DASH }}</span>
             </td>

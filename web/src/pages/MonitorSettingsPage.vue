@@ -4,16 +4,17 @@
 import ProbeTargets from '../components/ProbeTargets.vue'
 import IPInfoSettings from '../components/IPInfoSettings.vue'
 import ServiceMonitors from '../components/ServiceMonitors.vue'
+import { t } from '../i18n'
 </script>
 
 <template>
   <main class="page">
-    <div class="page-head"><h1>监测</h1></div>
-    <h2 id="probes">测速</h2>
+    <div class="page-head"><h1>{{ t('监测') }}</h1></div>
+    <h2 id="probes">{{ t('测速') }}</h2>
     <ProbeTargets />
-    <h2 id="services" class="later">服务</h2>
+    <h2 id="services" class="later">{{ t('服务') }}</h2>
     <ServiceMonitors />
-    <h2 id="ipinfo" class="later">IP 信息</h2>
+    <h2 id="ipinfo" class="later">{{ t('IP 信息') }}</h2>
     <IPInfoSettings />
   </main>
 </template>

@@ -6,7 +6,8 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ApiError, createAlertRule, errorText, previewAlertRule, UnauthorizedError, updateAlertRule, type AlertRule, type AlertRuleInput,
 } from '../api'
-import { ruleNames, severityNames, thresholdRange, thresholdUnit } from '../alertRules'
+import { ruleNames, severityNames, thresholdLabel, thresholdRange } from '../alertRules'
+import { t } from '../i18n'
 
 const props = defineProps<{
   /** 修改时为该规则；新增覆盖时为作为基础的全局规则 */
@@ -22,7 +23,6 @@ const f = reactive({
   durMin: r.duration_s / 60, recDurMin: r.recover_duration_s / 60,
   severity: r.severity, repeatH: r.repeat_interval_s / 3600, enabled: r.enabled,
 })
-const unit = thresholdUnit(r.type)
 const range = thresholdRange(r.type)
 // 流量类规则在新周期开始时自然恢复，恢复阈值固定为触发阈值；离线的恢复指重新上报，不开放修改
 const editRecover = !r.type.startsWith('traffic') && r.type !== 'offline'
@@ -74,50 +74,50 @@ async function save() {
     saving.value = false
   }
 }
-const title = computed(() => ruleNames[r.rule_key] ?? r.rule_key)
+const title = computed(() => t(ruleNames[r.rule_key] ?? r.rule_key))
 </script>
 
 <template>
   <form class="editor" novalidate @submit.prevent="save">
     <div class="fields">
-      <label>触发阈值（{{ unit }}）
+      <label>{{ thresholdLabel(r.type) }}
         <input v-model="f.threshold" type="number" :min="range.min" :max="range.max" :step="range.step" />
         <small v-if="errors.threshold" class="err">{{ errors.threshold }}</small>
       </label>
-      <label v-if="editDuration">持续（分钟）
+      <label v-if="editDuration">{{ t('持续（分钟）') }}
         <input v-model="f.durMin" type="number" min="0" max="1440" step="1" />
         <small v-if="errors.duration_s" class="err">{{ errors.duration_s }}</small>
       </label>
-      <label v-if="editRecover">恢复阈值（{{ unit }}）
+      <label v-if="editRecover">{{ thresholdLabel(r.type, true) }}
         <input v-model="f.recover" type="number" min="0" :max="range.max" :step="range.step" />
         <small v-if="errors.recover_threshold" class="err">{{ errors.recover_threshold }}</small>
-        <small v-else class="muted">低于此值才恢复，避免在阈值附近反复触发</small>
+        <small v-else class="muted">{{ t('低于此值才恢复，避免在阈值附近反复触发') }}</small>
       </label>
-      <label v-if="editRecover">恢复持续（分钟）
+      <label v-if="editRecover">{{ t('恢复持续（分钟）') }}
         <input v-model="f.recDurMin" type="number" min="0" max="1440" step="1" />
       </label>
-      <label>级别
+      <label>{{ t('级别') }}
         <select v-model="f.severity">
-          <option v-for="(n, k) in severityNames" :key="k" :value="k">{{ n }}</option>
+          <option v-for="(n, k) in severityNames" :key="k" :value="k">{{ t(n) }}</option>
         </select>
       </label>
-      <label>未恢复时重复提醒（小时）
+      <label>{{ t('未恢复时重复提醒（小时）') }}
         <input v-model="f.repeatH" type="number" min="0" max="168" step="0.5" />
-        <small class="muted">0 表示不重复；通知发到“通知”标签中的渠道</small>
+        <small class="muted">{{ t('0 表示不重复；通知发到“通知”标签中的渠道') }}</small>
       </label>
-      <label class="check"><input v-model="f.enabled" type="checkbox" />启用“{{ title }}”</label>
+      <label class="check"><input v-model="f.enabled" type="checkbox" />{{ t('启用“{title}”', { title }) }}</label>
     </div>
     <p class="preview small" :class="{ hot: preview && preview.matching }">
-      <template v-if="!f.enabled">规则关闭后不会触发。</template>
+      <template v-if="!f.enabled">{{ t('规则关闭后不会触发。') }}</template>
       <template v-else-if="preview">
-        按当前数据，此规则会对 <b>{{ preview.matching }}</b> / {{ preview.total }} 台节点触发<template v-if="preview.names">：{{ preview.names }}</template>
-        <span class="muted">（只比较阈值，不含持续时间）</span>
+        {{ t('按当前数据，此规则会对') }} <b>{{ preview.matching }}</b> {{ t('/ {total} 台节点触发', { total: preview.total }) }}<template v-if="preview.names">：{{ preview.names }}</template>
+        <span class="muted">{{ t('（只比较阈值，不含持续时间）') }}</span>
       </template>
     </p>
     <p v-if="errors.form" class="err small">{{ errors.form }}</p>
     <div class="actions">
-      <button type="submit" :disabled="saving">{{ saving ? '保存中…' : scope ? '添加覆盖' : '保存' }}</button>
-      <button type="button" class="secondary" @click="emit('cancel')">取消</button>
+      <button type="submit" :disabled="saving">{{ saving ? t('保存中…') : scope ? t('添加覆盖') : t('保存') }}</button>
+      <button type="button" class="secondary" @click="emit('cancel')">{{ t('取消') }}</button>
     </div>
   </form>
 </template>

@@ -3,6 +3,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, errorText, getQuietHours, saveQuietHours, type QuietHoursView } from '../api'
 import SaveState, { saveStatus } from './SaveState.vue'
+import { t } from '../i18n'
 
 
 const view = ref<QuietHoursView | null>(null)
@@ -32,7 +33,7 @@ onMounted(async () => {
   try {
     fill(await getQuietHours())
   } catch (e) {
-    error.value = errorText(e, '加载失败')
+    error.value = errorText(e, t('加载失败'))
   }
 })
 
@@ -46,7 +47,7 @@ async function save() {
     saved.value = true
   } catch (e) {
     if (e instanceof ApiError && e.details.length) errors.value = Object.fromEntries(e.details.map((d) => [d.field, d.message]))
-    else error.value = errorText(e, '保存失败')
+    else error.value = errorText(e, t('保存失败'))
   } finally {
     saving.value = false
   }
@@ -58,37 +59,37 @@ const crossesMidnight = computed(() => form.start > form.end)
 <template>
   <form class="panel quiet" novalidate @submit.prevent="save">
     <div class="head">
-      <label class="check title"><input v-model="form.enabled" type="checkbox" />免打扰时段</label>
-      <span v-if="view?.active" class="badge">🌙 免打扰中<template v-if="view.held"> · 已暂存 {{ view.held }} 条</template></span>
+      <label class="check title"><input v-model="form.enabled" type="checkbox" />{{ t('免打扰时段') }}</label>
+      <span v-if="view?.active" class="badge">{{ t('🌙 免打扰中') }}<template v-if="view.held"> {{ t('· 已暂存 {held} 条', { held: view.held }) }}</template></span>
     </div>
-    <p class="muted small">严重告警默认仍然通知；警告暂存，结束后汇总为一条发出；提示不发送。面板自检与测试通知不受影响。</p>
+    <p class="muted small">{{ t('严重告警默认仍然通知；警告暂存，结束后汇总为一条发出；提示不发送。面板自检与测试通知不受影响。') }}</p>
     <div class="fields" :class="{ off: !form.enabled }">
-      <label>开始
+      <label>{{ t('开始') }}
         <input v-model="form.start" type="time" required />
         <small v-if="errors.start" class="err">{{ errors.start }}</small>
       </label>
-      <label>结束
+      <label>{{ t('结束') }}
         <input v-model="form.end" type="time" required />
         <small v-if="errors.end" class="err">{{ errors.end }}</small>
-        <small v-else-if="crossesMidnight" class="muted">跨午夜，至次日 {{ form.end }}</small>
+        <small v-else-if="crossesMidnight" class="muted">{{ t('跨午夜，至次日 {end}', { end: form.end }) }}</small>
       </label>
-      <label>时区
+      <label>{{ t('时区') }}
         <select v-model="form.timezone">
-          <option value="">面板本地时区<template v-if="view && !view.timezone">（{{ view.effective_timezone }}）</template></option>
+          <option value="">{{ t('面板本地时区') }}<template v-if="view && !view.timezone">（{{ view.effective_timezone }}）</template></option>
           <option v-for="z in zones" :key="z" :value="z">{{ z }}</option>
         </select>
         <small v-if="errors.timezone" class="err">{{ errors.timezone }}</small>
       </label>
-      <label>严重告警
+      <label>{{ t('严重告警') }}
         <select v-model="form.critical">
-          <option value="notify">仍然立即通知</option>
-          <option value="summary">也一起汇总</option>
+          <option value="notify">{{ t('仍然立即通知') }}</option>
+          <option value="summary">{{ t('也一起汇总') }}</option>
         </select>
       </label>
     </div>
     <p v-if="error" class="err small">{{ error }}</p>
     <div class="actions">
-      <button type="submit" :disabled="saving || !dirty" :title="!dirty ? '没有修改' : undefined">{{ saving ? '保存中…' : '保存' }}</button>
+      <button type="submit" :disabled="saving || !dirty" :title="!dirty ? t('没有修改') : undefined">{{ saving ? t('保存中…') : t('保存') }}</button>
       <SaveState :state="saveStatus({ saving, error: error || fieldError, dirty, saved })" :error="(error || fieldError) || undefined" />
     </div>
   </form>
