@@ -7,6 +7,7 @@ import {
   ApiError, createProbeTarget, deleteProbeTarget, errorText, getNodeProbe, getProbeSettings, listProbeTargets, putNodeProbe,
   type NodeProbe, type ProbeTarget, type ProbeTargetInput,
 } from '../api'
+import { t } from '../i18n'
 import ProbeTargetHint from './ProbeTargetHint.vue'
 import ProbeTargetPicker from './ProbeTargetPicker.vue'
 
@@ -41,14 +42,14 @@ onMounted(async () => {
     picked.value = np.mode === 'custom' ? np.target_ids : list.filter((t) => t.enabled).map((t) => t.id)
     loaded.value = true
   } catch (e) {
-    error.value = errorText(e, '测速设置加载失败')
+    error.value = errorText(e, t('测速设置加载失败'))
   }
 })
 
 function toggle(t: ProbeTarget) {
   picked.value = picked.value.includes(t.id) ? picked.value.filter((id) => id !== t.id) : [...picked.value, t.id]
 }
-const label = (s: number) => (s === 0 ? `跟随全局（每 ${globalInterval.value / 60} 分钟）` : `每 ${s / 60} 分钟`)
+const label = (s: number) => (s === 0 ? t('跟随全局（每 {n} 分钟）', { n: globalInterval.value / 60 }) : t('每 {n} 分钟', { n: s / 60 }))
 const tooMany = computed(() => picked.value.length > MAX)
 
 // ---- 这台节点自己的测试目标（修订第 123 条）----
@@ -66,9 +67,9 @@ async function addOwn() {
     note: form.note.trim(), server_id: props.serverId,
   }
   try {
-    const t = await createProbeTarget(body)
-    targets.value = [...targets.value, t]
-    picked.value = [...picked.value, t.id] // 添加即选中
+    const nt = await createProbeTarget(body)
+    targets.value = [...targets.value, nt]
+    picked.value = [...picked.value, nt.id] // 添加即选中
     adding.value = false
     Object.assign(form, { province: '', address: '', note: '' })
   } catch (e) {
@@ -80,30 +81,30 @@ async function addOwn() {
   }
 }
 
-async function removeOwn(t: ProbeTarget) {
-  if (!confirm(`删除这台节点的测试目标“${t.province} ${t.address}”？它的探测记录会一并删除。`)) return
+async function removeOwn(pt: ProbeTarget) {
+  if (!confirm(t('删除这台节点的测试目标“{name}”？它的探测记录会一并删除。', { name: `${pt.province} ${pt.address}` }))) return
   try {
-    await deleteProbeTarget(t.id)
-    targets.value = targets.value.filter((x) => x.id !== t.id)
-    picked.value = picked.value.filter((id) => id !== t.id)
+    await deleteProbeTarget(pt.id)
+    targets.value = targets.value.filter((x) => x.id !== pt.id)
+    picked.value = picked.value.filter((id) => id !== pt.id)
   } catch (e) {
     error.value = errorText(e)
   }
 }
 
-/** 由“编辑”页的保存调用；校验失败或保存失败时抛出错误（消息已是中文） */
+/** 由“编辑”页的保存调用；校验失败或保存失败时抛出错误（消息已按界面语言翻译） */
 async function save() {
   if (!loaded.value) return
   const custom = mode.value === 'custom'
-  if (custom && !picked.value.length) throw new Error('测速：自定义时请至少选择一个目标；不测请选“关闭”')
-  if (tooMany.value) throw new Error(`测速：最多选择 ${MAX} 个目标`)
+  if (custom && !picked.value.length) throw new Error(t('测速：自定义时请至少选择一个目标；不测请选“关闭”'))
+  if (tooMany.value) throw new Error(t('测速：最多选择 {n} 个目标', { n: MAX }))
   try {
     await putNodeProbe(props.serverId, {
       mode: mode.value, target_ids: custom ? picked.value : [], interval_s: custom ? interval.value : 0,
       timeout_s: custom ? timeout.value : 0, gap_s: custom ? gap.value : 0,
     })
   } catch (e) {
-    throw new Error(`测速：${e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join('；') : errorText(e)}`)
+    throw new Error(t('测速：{msg}', { msg: e instanceof ApiError && e.details.length ? e.details.map((d) => d.message).join(t('；')) : errorText(e) }))
   }
 }
 defineExpose({ save })
@@ -111,63 +112,63 @@ defineExpose({ save })
 
 <template>
   <div class="settings">
-    <p v-if="!loaded && !error" class="small muted">加载中…</p>
+    <p v-if="!loaded && !error" class="small muted">{{ t('加载中…') }}</p>
     <template v-if="loaded">
-      <div class="modes" role="radiogroup" aria-label="这台节点的测速">
-        <label><input v-model="mode" type="radio" value="default" />跟随全局<small class="muted">“系统 → 监测”中启用的目标与频率</small></label>
-        <label><input v-model="mode" type="radio" value="custom" />自定义<small class="muted">这台节点自己选择目标与频率</small></label>
-        <label><input v-model="mode" type="radio" value="off" />关闭<small class="muted">这台节点不测</small></label>
+      <div class="modes" role="radiogroup" :aria-label="t('这台节点的测速')">
+        <label><input v-model="mode" type="radio" value="default" />{{ t('跟随全局') }}<small class="muted">{{ t('“系统 → 监测”中启用的目标与频率') }}</small></label>
+        <label><input v-model="mode" type="radio" value="custom" />{{ t('自定义') }}<small class="muted">{{ t('这台节点自己选择目标与频率') }}</small></label>
+        <label><input v-model="mode" type="radio" value="off" />{{ t('关闭') }}<small class="muted">{{ t('这台节点不测') }}</small></label>
       </div>
       <template v-if="mode === 'custom'">
-        <label class="freq small">测试频率
+        <label class="freq small">{{ t('测试频率') }}
           <select v-model.number="interval">
             <option v-for="s in intervals" :key="s" :value="s">{{ label(s) }}</option>
           </select>
         </label>
         <div class="freq small">
-          <label>超时
+          <label>{{ t('超时') }}
             <select v-model.number="timeout">
-              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : `跟随全局（${globalTiming.timeout} 秒）` }}</option>
+              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? t('{n} 秒', { n: s }) : t('跟随全局（{n} 秒）', { n: globalTiming.timeout }) }}</option>
             </select>
           </label>
-          <label>样本间隔
+          <label>{{ t('样本间隔') }}
             <select v-model.number="gap">
-              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? `${s} 秒` : `跟随全局（${globalTiming.gap} 秒）` }}</option>
+              <option v-for="s in timingOptions" :key="s" :value="s">{{ s ? t('{n} 秒', { n: s }) : t('跟随全局（{n} 秒）', { n: globalTiming.gap }) }}</option>
             </select>
           </label>
         </div>
-        <p class="small" :class="tooMany ? 'bad' : 'muted'">已选 <b class="num">{{ picked.length }}</b> / {{ MAX }}（全局未启用的目标也可以选）</p>
+        <p class="small" :class="tooMany ? 'bad' : 'muted'">{{ t('已选 {n} / {max}（全局未启用的目标也可以选）', { n: picked.length, max: MAX }) }}</p>
         <ProbeTargetPicker :targets="targets" :selected="picked" @toggle="toggle">
           <template #custom-extra="{ target }">
             <template v-if="target.server_id">
-              <span class="tag small">本机</span>
-              <button type="button" class="text small del" @click="removeOwn(target)">删除</button>
+              <span class="tag small">{{ t('本机') }}</span>
+              <button type="button" class="text small del" @click="removeOwn(target)">{{ t('删除') }}</button>
             </template>
-            <span v-else class="tag small muted">共用</span>
+            <span v-else class="tag small muted">{{ t('共用') }}</span>
           </template>
         </ProbeTargetPicker>
 
         <div class="own">
-          <button v-if="!adding" type="button" class="secondary small" @click="adding = true">添加这台节点自己的测试目标</button>
+          <button v-if="!adding" type="button" class="secondary small" @click="adding = true">{{ t('添加这台节点自己的测试目标') }}</button>
           <div v-else class="own-form">
             <div class="grid">
-              <label>运营商
-                <select v-model="form.isp"><option value="ct">电信</option><option value="cu">联通</option><option value="cm">移动</option><option value="intl">境外</option></select></label>
-              <label>{{ form.isp === 'intl' ? '城市' : '地区' }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? '如 台北' : '如 杭州'" />
+              <label>{{ t('运营商') }}
+                <select v-model="form.isp"><option value="ct">{{ t('电信') }}</option><option value="cu">{{ t('联通') }}</option><option value="cm">{{ t('移动') }}</option><option value="intl">{{ t('境外') }}</option></select></label>
+              <label>{{ form.isp === 'intl' ? t('城市') : t('地区') }}<input v-model="form.province" maxlength="16" :placeholder="form.isp === 'intl' ? t('如 台北') : t('如 杭州')" />
                 <small v-if="addErrors.province" class="bad">{{ addErrors.province }}</small></label>
-              <label>IP 或域名<input v-model="form.address" spellcheck="false" autocapitalize="off" placeholder="公网 IPv4 / IPv6 或域名" />
+              <label>{{ t('IP 或域名') }}<input v-model="form.address" spellcheck="false" autocapitalize="off" :placeholder="t('公网 IPv4 / IPv6 或域名')" />
                 <small v-if="addErrors.address" class="bad">{{ addErrors.address }}</small></label>
-              <label>协议
-                <select v-model="form.proto"><option value="tcp">TCP 连接</option><option value="icmp">ICMP（Ping）</option></select></label>
-              <label v-if="form.proto === 'tcp'">端口<input v-model.number="form.port" type="number" min="1" max="65535" />
+              <label>{{ t('协议') }}
+                <select v-model="form.proto"><option value="tcp">{{ t('TCP 连接') }}</option><option value="icmp">ICMP（Ping）</option></select></label>
+              <label v-if="form.proto === 'tcp'">{{ t('端口') }}<input v-model.number="form.port" type="number" min="1" max="65535" />
                 <small v-if="addErrors.port" class="bad">{{ addErrors.port }}</small></label>
-              <label>备注（可选）<input v-model="form.note" maxlength="64" /></label>
+              <label>{{ t('备注（可选）') }}<input v-model="form.note" maxlength="64" /></label>
             </div>
             <p v-if="addErrors._ || addErrors.isp || addErrors.server_id" class="small bad">{{ addErrors._ || addErrors.isp || addErrors.server_id }}</p>
             <div class="actions">
-              <button type="button" class="small" :disabled="addBusy || !form.province.trim() || !form.address.trim()" @click="addOwn">{{ addBusy ? '添加中…' : '添加' }}</button>
-              <button type="button" class="secondary small" @click="adding = false">取消</button>
-              <span class="small muted">只有这台节点测，不出现在全局列表中；最多 20 个</span>
+              <button type="button" class="small" :disabled="addBusy || !form.province.trim() || !form.address.trim()" @click="addOwn">{{ addBusy ? t('添加中…') : t('添加') }}</button>
+              <button type="button" class="secondary small" @click="adding = false">{{ t('取消') }}</button>
+              <span class="small muted">{{ t('只有这台节点测，不出现在全局列表中；最多 20 个') }}</span>
             </div>
             <ProbeTargetHint />
           </div>

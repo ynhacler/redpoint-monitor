@@ -84,19 +84,19 @@ const collected = computed(() => {
   if (!sv || sv.enroll_state !== 'enrolled') return []
   const disks = r?.disk ?? []
   return [
-    { k: '主机名', v: sv.hostname || r?.system.hostname },
-    { k: 'IPv4', v: sv.ipv4, hint: '注册时面板看到的来源地址' },
-    { k: 'IPv6', v: sv.ipv6, hint: '注册时面板看到的来源地址' },
-    { k: '系统', v: [r?.system.os, r?.system.os_version].filter(Boolean).join(' ') },
-    { k: '内核 / 架构', v: [r?.system.kernel, r?.system.arch].filter(Boolean).join(' · ') },
-    { k: 'CPU', v: r ? [r.system.cpu_model, `${r.cpu.cores} 核`].filter(Boolean).join(' · ') : '' },
-    { k: '内存', v: r ? fmtBytes(r.memory.total) + (r.swap.total ? ` · Swap ${fmtBytes(r.swap.total)}` : '') : '' },
-    { k: '磁盘', v: disks.length ? `${fmtBytes(disks.reduce((a, d) => a + d.total, 0))} · ${disks.map((d) => d.mount).join('、')}` : '' },
+    { k: t('主机名'), v: sv.hostname || r?.system.hostname },
+    { k: 'IPv4', v: sv.ipv4, hint: t('注册时面板看到的来源地址') },
+    { k: 'IPv6', v: sv.ipv6, hint: t('注册时面板看到的来源地址') },
+    { k: t('系统'), v: [r?.system.os, r?.system.os_version].filter(Boolean).join(' ') },
+    { k: t('内核 / 架构'), v: [r?.system.kernel, r?.system.arch].filter(Boolean).join(' · ') },
+    { k: 'CPU', v: r ? [r.system.cpu_model, t('{n} 核', { n: r.cpu.cores })].filter(Boolean).join(' · ') : '' },
+    { k: t('内存'), v: r ? fmtBytes(r.memory.total) + (r.swap.total ? ` · Swap ${fmtBytes(r.swap.total)}` : '') : '' },
+    { k: t('磁盘'), v: disks.length ? `${fmtBytes(disks.reduce((a, d) => a + d.total, 0))} · ${disks.map((d) => d.mount).join(t('、'))}` : '' },
     { k: 'Agent', v: r?.agent_version },
   ]
 })
 
-// 选项文案（设计 1.2.4、1.2.5、27.2、27.6.3）
+// 选项文案（设计 1.2.4、1.2.5、27.2、27.6.3）：显示时经 t() 翻译
 const countModes = [
   { v: 'sum', t: '入 + 出（RX + TX）' }, { v: 'max', t: '入、出取较大值' },
   { v: 'tx', t: '仅出站（TX）' }, { v: 'rx', t: '仅入站（RX）' },
@@ -150,7 +150,7 @@ async function submit() {
   fieldErrors.value = {}
   formError.value = ''
   if (!f.name.trim()) {
-    fieldErrors.value = { name: '请填写名称' }
+    fieldErrors.value = { name: t('请填写名称') }
     return
   }
   submitting.value = true
@@ -187,7 +187,7 @@ const revoking = ref(false)
 async function revoke() {
   if (!props.server) return
   if (!revokePassword.value) {
-    revokeError.value = '请输入登录密码以确认'
+    revokeError.value = t('请输入登录密码以确认')
     return
   }
   revoking.value = true
@@ -211,7 +211,7 @@ const deleting = ref(false)
 async function remove() {
   if (!props.server) return
   if (!deletePassword.value) {
-    deleteError.value = '请输入登录密码以确认'
+    deleteError.value = t('请输入登录密码以确认')
     return
   }
   deleting.value = true
@@ -231,54 +231,54 @@ async function remove() {
 
 <template>
   <form class="panel" novalidate @submit.prevent="submit">
-    <h2>{{ editing ? '编辑节点' : '新建节点' }}</h2>
+    <h2>{{ editing ? t('编辑节点') : t('新建节点') }}</h2>
     <p v-if="!editing" class="muted">
-      只需填写 Agent 采集不到的信息。主机名、IP、系统、CPU、内存、磁盘等在安装 Agent 后自动采集，无需填写。
-      保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。
+      {{ t('只需填写 Agent 采集不到的信息。主机名、IP、系统、CPU、内存、磁盘等在安装 Agent 后自动采集，无需填写。') }}
+      {{ t('保存后节点显示为“待安装”，页面会给出在主机上执行的安装命令。') }}
     </p>
 
     <fieldset>
-      <legend>基本信息</legend>
+      <legend>{{ t('基本信息') }}</legend>
       <div class="fields">
-        <label class="wide">名称 *
-          <input v-model="f.name" placeholder="如 DMIT-HK" autofocus />
+        <label class="wide">{{ t('名称') }} *
+          <input v-model="f.name" :placeholder="t('如 DMIT-HK')" autofocus />
           <small v-if="fieldErrors.name" class="err">{{ fieldErrors.name }}</small>
         </label>
-        <label>国家 / 地区
+        <label>{{ t('国家 / 地区') }}
           <div class="row">
             <Flag :code="f.country" />
             <select v-model="f.country">
-              <option value="">未选择</option>
-              <optgroup label="常用">
+              <option value="">{{ t('未选择') }}</option>
+              <optgroup :label="t('常用')">
                 <option v-for="c in countries.common" :key="c.code" :value="c.code">{{ c.name }}（{{ c.code }}）</option>
               </optgroup>
-              <optgroup label="全部">
+              <optgroup :label="t('全部')">
                 <option v-for="c in countries.all" :key="c.code" :value="c.code">{{ c.name }}（{{ c.code }}）</option>
               </optgroup>
             </select>
           </div>
           <small v-if="fieldErrors.country" class="err">{{ fieldErrors.country }}</small>
-          <small v-else class="muted">节点卡片上显示国旗</small>
+          <small v-else class="muted">{{ t('节点卡片上显示国旗') }}</small>
         </label>
-        <label>分组
-          <input v-model="f.group" placeholder="如 香港、落地" />
+        <label>{{ t('分组') }}
+          <input v-model="f.group" :placeholder="t('如 香港、落地')" />
           <small v-if="fieldErrors.group" class="err">{{ fieldErrors.group }}</small>
         </label>
         <!-- 采样间隔（设计 4.2、6.1）：随上报响应下发，Agent 下一轮即生效；间隔越长，Agent 自身的流量与 CPU 越少 -->
-        <label>采样间隔
+        <label>{{ t('采样间隔') }}
           <select v-model="f.report_interval_s">
-            <option v-for="s in [5, 10, 15, 30, 60]" :key="s" :value="String(s)">{{ s }} 秒{{ s === 10 ? '（默认）' : '' }}</option>
+            <option v-for="s in [5, 10, 15, 30, 60]" :key="s" :value="String(s)">{{ t(s === 10 ? '{n} 秒（默认）' : '{n} 秒', { n: s }) }}</option>
           </select>
           <small v-if="fieldErrors.report_interval_s" class="err">{{ fieldErrors.report_interval_s }}</small>
-          <small v-else class="muted">间隔越长越省流量；离线判定随之放宽</small>
+          <small v-else class="muted">{{ t('间隔越长越省流量；离线判定随之放宽') }}</small>
         </label>
         <!-- 进程监控（设计 33.5.1）：进程名随上报响应下发，Agent 只统计这些名称各有几个进程在运行 -->
-        <label class="wide">关注的进程
-          <input v-model="f.watch_procs" spellcheck="false" placeholder="如 nginx, sshd, mysqld" />
+        <label class="wide">{{ t('关注的进程') }}
+          <input v-model="f.watch_procs" spellcheck="false" :placeholder="t('如 nginx, sshd, mysqld')" />
           <small v-if="fieldErrors.watch_procs" class="err">{{ fieldErrors.watch_procs }}</small>
-          <small v-else class="muted">按进程名（top 中的名称）匹配，最多 20 个；没有在运行时按“进程未运行”规则告警</small>
+          <small v-else class="muted">{{ t('按进程名（top 中的名称）匹配，最多 20 个；没有在运行时按“进程未运行”规则告警') }}</small>
         </label>
-        <label class="wide">备注
+        <label class="wide">{{ t('备注') }}
           <input v-model="f.note" />
           <small v-if="fieldErrors.note" class="err">{{ fieldErrors.note }}</small>
         </label>
@@ -287,7 +287,7 @@ async function remove() {
 
     <!-- Agent 自动采集（只读）：让用户清楚哪些不需要填写（设计 27.2） -->
     <fieldset v-if="collected.length">
-      <legend>Agent 自动采集<span class="muted">（只读，随上报更新）</span></legend>
+      <legend>{{ t('Agent 自动采集') }}<span class="muted">{{ t('（只读，随上报更新）') }}</span></legend>
       <dl class="collected">
         <template v-for="c in collected" :key="c.k">
           <dt>{{ c.k }}</dt><dd :title="c.hint">{{ c.v || '—' }}</dd>
@@ -298,65 +298,65 @@ async function remove() {
     <fieldset>
       <legend>
         <button type="button" class="link" @click="showVps = !showVps">
-          {{ showVps ? '▾' : '▸' }} VPS 信息<span class="muted">（服务商提供，Agent 采集不到；可以以后再填）</span>
+          {{ showVps ? '▾' : '▸' }} {{ t('VPS 信息') }}<span class="muted">{{ t('（服务商提供，Agent 采集不到；可以以后再填）') }}</span>
         </button>
       </legend>
       <div v-show="showVps" class="fields">
-        <label>供应商<input v-model="f.provider" placeholder="如 DMIT" /></label>
-        <label>套餐<input v-model="f.plan" /></label>
-        <label>城市 / 机房<input v-model="f.region" placeholder="如 东京、Equinix TY8" /></label>
-        <label>带宽（Mbps）
-          <input v-model="f.bandwidth_mbps" type="number" min="0" step="1" placeholder="如 1000" />
+        <label>{{ t('供应商') }}<input v-model="f.provider" :placeholder="t('如 DMIT')" /></label>
+        <label>{{ t('套餐') }}<input v-model="f.plan" /></label>
+        <label>{{ t('城市 / 机房') }}<input v-model="f.region" :placeholder="t('如 东京、Equinix TY8')" /></label>
+        <label>{{ t('带宽（Mbps）') }}
+          <input v-model="f.bandwidth_mbps" type="number" min="0" step="1" :placeholder="t('如 1000')" />
           <small v-if="fieldErrors.bandwidth_mbps" class="err">{{ fieldErrors.bandwidth_mbps }}</small>
-          <small v-else class="muted">服务商标称的端口速率</small>
+          <small v-else class="muted">{{ t('服务商标称的端口速率') }}</small>
         </label>
         <div class="wide lines">
-          <span>网络线路</span>
+          <span>{{ t('网络线路') }}</span>
           <div class="chips">
             <button v-for="l in lineChoices" :key="l" type="button" class="chip"
               :class="{ on: f.line_tags.includes(l) }" :aria-pressed="f.line_tags.includes(l)"
               :disabled="!f.line_tags.includes(l) && f.line_tags.length >= 6" @click="toggleLine(l)">{{ l }}</button>
-            <input v-model="customLine" class="custom" maxlength="20" placeholder="其他，回车添加" @keydown.enter.prevent="addLine" @blur="addLine" />
+            <input v-model="customLine" class="custom" maxlength="20" :placeholder="t('其他，回车添加')" @keydown.enter.prevent="addLine" @blur="addLine" />
           </div>
           <small v-if="fieldErrors.line_tags" class="err">{{ fieldErrors.line_tags }}</small>
-          <small v-else class="muted">显示在仪表板的节点上，最多 6 个；IPv4 / IPv6 由 Agent 自动识别</small>
+          <small v-else class="muted">{{ t('显示在仪表板的节点上，最多 6 个；IPv4 / IPv6 由 Agent 自动识别') }}</small>
         </div>
-        <label>月流量（{{ f.traffic_unit === 'binary' ? 'GiB' : 'GB' }}）
-          <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" placeholder="不填表示不限" />
+        <label>{{ t('月流量（{unit}）', { unit: f.traffic_unit === 'binary' ? 'GiB' : 'GB' }) }}
+          <input v-model="f.traffic_limit_gb" type="number" min="0" step="any" :placeholder="t('不填表示不限')" />
           <small v-if="fieldErrors.traffic_limit_gb" class="err">{{ fieldErrors.traffic_limit_gb }}</small>
         </label>
-        <label>计量单位
+        <label>{{ t('计量单位') }}
           <select v-model="f.traffic_unit">
-            <option value="decimal">十进制：1 GB = 10⁹ 字节</option>
-            <option value="binary">二进制：1 GiB = 2³⁰ 字节</option>
+            <option value="decimal">{{ t('十进制：1 GB = 10⁹ 字节') }}</option>
+            <option value="binary">{{ t('二进制：1 GiB = 2³⁰ 字节') }}</option>
           </select>
           <small v-if="fieldErrors.traffic_unit" class="err">{{ fieldErrors.traffic_unit }}</small>
-          <small v-else class="muted">与服务商面板一致；多数服务商用十进制</small>
+          <small v-else class="muted">{{ t('与服务商面板一致；多数服务商用十进制') }}</small>
         </label>
-        <label>流量重置日
+        <label>{{ t('流量重置日') }}
           <input v-model="f.traffic_reset_day" type="number" min="1" max="31" />
           <small v-if="fieldErrors.traffic_reset_day" class="err">{{ fieldErrors.traffic_reset_day }}</small>
         </label>
         <!-- 计费时区（设计 5.4）：服务商按自己的时区换月与计日；只影响之后的流量 -->
-        <label>计费时区
-          <input v-model="f.traffic_timezone" list="tz-list" placeholder="留空 = 面板时区" autocomplete="off" />
+        <label>{{ t('计费时区') }}
+          <input v-model="f.traffic_timezone" list="tz-list" :placeholder="t('留空 = 面板时区')" autocomplete="off" />
           <datalist id="tz-list">
             <option v-for="tz in commonTimezones" :key="tz" :value="tz" />
           </datalist>
           <small v-if="fieldErrors.traffic_timezone" class="err">{{ fieldErrors.traffic_timezone }}</small>
-          <small v-else class="muted">如 America/Los_Angeles；修改后只影响之后的流量</small>
+          <small v-else class="muted">{{ t('如 America/Los_Angeles；修改后只影响之后的流量') }}</small>
         </label>
-        <label>计费模式
+        <label>{{ t('计费模式') }}
           <select v-model="f.traffic_count_mode">
-            <option v-for="m in countModes" :key="m.v" :value="m.v">{{ m.t }}</option>
+            <option v-for="m in countModes" :key="m.v" :value="m.v">{{ t(m.t) }}</option>
           </select>
         </label>
-        <label>统计系数
+        <label>{{ t('统计系数') }}
           <input v-model="f.traffic_factor" type="number" min="0.5" max="2" step="0.01" />
           <small v-if="fieldErrors.traffic_factor" class="err">{{ fieldErrors.traffic_factor }}</small>
-          <small v-else class="muted">统计值长期比服务商偏低 3% 时填 1.03；一般保持 1</small>
+          <small v-else class="muted">{{ t('统计值长期比服务商偏低 3% 时填 1.03；一般保持 1') }}</small>
         </label>
-        <label>续费价格
+        <label>{{ t('续费价格') }}
           <div class="row">
             <input v-model="f.price" type="number" min="0" step="0.01" />
             <select v-model="f.currency" class="currency" :aria-label="t('币种')">
@@ -365,12 +365,12 @@ async function remove() {
           </div>
           <small v-if="fieldErrors.price || fieldErrors.currency" class="err">{{ fieldErrors.price || fieldErrors.currency }}</small>
         </label>
-        <label>续费周期
+        <label>{{ t('续费周期') }}
           <select v-model="f.billing_period">
-            <option v-for="p in periods" :key="p.v" :value="p.v">{{ p.t }}</option>
+            <option v-for="p in periods" :key="p.v" :value="p.v">{{ t(p.t) }}</option>
           </select>
         </label>
-        <label>到期日期
+        <label>{{ t('到期日期') }}
           <input v-model="f.expire_date" type="date" />
           <small v-if="fieldErrors.expire_date" class="err">{{ fieldErrors.expire_date }}</small>
         </label>
@@ -380,46 +380,46 @@ async function remove() {
     <fieldset>
       <legend>
         <button type="button" class="link" @click="showVerify = !showVerify">
-          {{ showVerify ? '▾' : '▸' }} 注册核对<span class="muted">（可选：填写预期值，Agent 注册时与实际值比对）</span>
+          {{ showVerify ? '▾' : '▸' }} {{ t('注册核对') }}<span class="muted">{{ t('（可选：填写预期值，Agent 注册时与实际值比对）') }}</span>
         </button>
       </legend>
       <div v-show="showVerify" class="fields">
-        <label>预期主机名
-          <input v-model="f.expected_hostname" placeholder="hostname 命令的输出" />
+        <label>{{ t('预期主机名') }}
+          <input v-model="f.expected_hostname" :placeholder="t('hostname 命令的输出')" />
           <small v-if="fieldErrors.expected_hostname" class="err">{{ fieldErrors.expected_hostname }}</small>
         </label>
-        <label>预期 IPv4
+        <label>{{ t('预期 IPv4') }}
           <input v-model="f.expected_ipv4" placeholder="103.1.2.3" inputmode="decimal" />
           <small v-if="fieldErrors.expected_ipv4" class="err">{{ fieldErrors.expected_ipv4 }}</small>
         </label>
-        <label>预期 IPv6
+        <label>{{ t('预期 IPv6') }}
           <input v-model="f.expected_ipv6" placeholder="2001:db8::1" />
           <small v-if="fieldErrors.expected_ipv6" class="err">{{ fieldErrors.expected_ipv6 }}</small>
         </label>
-        <label>核对严格程度
+        <label>{{ t('核对严格程度') }}
           <select v-model="f.verify_mode">
-            <option value="warn">不一致时仅提示</option>
-            <option value="strict">不一致时拒绝注册</option>
+            <option value="warn">{{ t('不一致时仅提示') }}</option>
+            <option value="strict">{{ t('不一致时拒绝注册') }}</option>
           </select>
-          <small class="muted">NAT、IPv6-only 主机建议仅提示</small>
+          <small class="muted">{{ t('NAT、IPv6-only 主机建议仅提示') }}</small>
         </label>
       </div>
     </fieldset>
 
     <!-- 测速（设计 42.3.2）：只在编辑时显示；随“保存”一起提交 -->
     <fieldset v-if="server" id="probe">
-      <legend>测速</legend>
+      <legend>{{ t('测速') }}</legend>
       <NodeProbeSettings ref="probeRef" :server-id="server.id" />
     </fieldset>
 
     <fieldset v-if="!editing">
-      <legend>安装选项</legend>
+      <legend>{{ t('安装选项') }}</legend>
       <div class="fields">
-        <label>注册码有效期
+        <label>{{ t('注册码有效期') }}
           <select v-model="f.enroll_ttl">
-            <option value="1h">1 小时</option>
-            <option value="24h">24 小时</option>
-            <option value="7d">7 天</option>
+            <option value="1h">{{ t('1 小时') }}</option>
+            <option value="24h">{{ t('24 小时') }}</option>
+            <option value="7d">{{ t('7 天') }}</option>
           </select>
         </label>
       </div>
@@ -428,25 +428,25 @@ async function remove() {
     <p v-if="formError" class="banner">{{ formError }}</p>
     <div class="actions">
       <button type="submit" :disabled="submitting">
-        {{ submitting ? '保存中…' : editing ? '保存' : '保存并生成安装命令' }}
+        {{ submitting ? t('保存中…') : editing ? t('保存') : t('保存并生成安装命令') }}
       </button>
-      <button type="button" class="secondary" @click="emit('cancel')">取消</button>
+      <button type="button" class="secondary" @click="emit('cancel')">{{ t('取消') }}</button>
     </div>
 
     <fieldset v-if="server && server.status !== 'pending'" class="danger">
-      <legend>吊销 Agent Token</legend>
+      <legend>{{ t('吊销 Agent Token') }}</legend>
       <template v-if="revokeDone">
-        <p>已吊销，主机上的 Agent 无法再上报，节点回到“待安装”，历史数据保留。</p>
-        <p class="muted">恢复上报：在<RouterLink :to="`/servers/${server.id}/install`">安装命令页</RouterLink>生成注册码，
-          在主机上执行“更换 Token”命令（<code>sudo vpsmon-agent rotate-token --enroll …</code>）。</p>
+        <p>{{ t('已吊销，主机上的 Agent 无法再上报，节点回到“待安装”，历史数据保留。') }}</p>
+        <p class="muted">{{ t('恢复上报：在') }}<RouterLink :to="`/servers/${server.id}/install`">{{ t('安装命令页') }}</RouterLink>{{ t('生成注册码，在主机上执行“更换 Token”命令') }}
+          （<code>sudo vpsmon-agent rotate-token --enroll …</code>）。</p>
       </template>
       <template v-else>
-        <p class="muted">怀疑 Token 泄露时使用：立即使该节点的 Token 失效，历史数据保留。之后凭新的注册码在主机上更换 Token 即可恢复。</p>
+        <p class="muted">{{ t('怀疑 Token 泄露时使用：立即使该节点的 Token 失效，历史数据保留。之后凭新的注册码在主机上更换 Token 即可恢复。') }}</p>
         <div class="row">
-          <input v-model="revokePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
+          <input v-model="revokePassword" type="password" :placeholder="t('输入登录密码以确认')" autocomplete="current-password"
             @keydown.enter.prevent="revoke" />
           <button type="button" class="danger-btn" :disabled="revoking" @click="revoke">
-            {{ revoking ? '吊销中…' : '吊销 Token' }}
+            {{ revoking ? t('吊销中…') : t('吊销 Token') }}
           </button>
         </div>
         <small v-if="revokeError" class="err">{{ revokeError }}</small>
@@ -454,13 +454,13 @@ async function remove() {
     </fieldset>
 
     <fieldset v-if="server" class="danger">
-      <legend>删除节点</legend>
-      <p class="muted">删除后该节点的历史指标与流量统计一并删除，不可恢复；主机上的 Agent 将无法再上报。</p>
+      <legend>{{ t('删除节点') }}</legend>
+      <p class="muted">{{ t('删除后该节点的历史指标与流量统计一并删除，不可恢复；主机上的 Agent 将无法再上报。') }}</p>
       <div class="row">
-        <input v-model="deletePassword" type="password" placeholder="输入登录密码以确认" autocomplete="current-password"
+        <input v-model="deletePassword" type="password" :placeholder="t('输入登录密码以确认')" autocomplete="current-password"
           @keydown.enter.prevent="remove" />
         <button type="button" class="danger-btn" :disabled="deleting" @click="remove">
-          {{ deleting ? '删除中…' : `删除 ${server.name}` }}
+          {{ deleting ? t('删除中…') : t('删除 {name}', { name: server.name }) }}
         </button>
       </div>
       <small v-if="deleteError" class="err">{{ deleteError }}</small>
