@@ -134,7 +134,7 @@ func cmdUpgrade(args []string) int {
 	fs := flag.NewFlagSet("upgrade", flag.ExitOnError)
 	target := fs.String("version", "", "target version, e.g. v0.3.0 (default: latest stable release)")
 	allowDowngrade := fs.Bool("allow-downgrade", false, "allow installing an older signed version (local only, design 29.7.4)")
-	mirror := fs.String("mirror", "", "download from a panel mirror instead of GitHub, e.g. https://monitor.example.com/releases")
+	mirror := fs.String("mirror", "", "download only from this panel mirror, e.g. https://monitor.example.com/releases (default: GitHub, then the configured panel after 2 failures)")
 	_ = fs.Parse(args)
 	if runtime.GOOS != "linux" {
 		fmt.Fprintln(os.Stderr, "✗ upgrade 只支持 Linux")
@@ -144,7 +144,7 @@ func cmdUpgrade(args []string) int {
 		// 用户模式（设计 27.13）：程序在自己的家目录下，不需要 root；同样只安装官方签名、版本更高的版本
 		if p, user := setup.CurrentPaths(); user && setup.IsUserInstall(p) {
 			us := setup.RealUserSystem{}
-			o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
+			o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror, Fallback: p.PanelMirror(),
 				Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, WorkDir: filepath.Join(p.StateDir, "upgrade"),
 				Out: os.Stdout, ReadStatus: readStatus(p), Restart: func() error { return setup.RestartUser(p, us) }}
 			if err := upgrade.Run(context.Background(), o); err != nil {
@@ -157,7 +157,7 @@ func cmdUpgrade(args []string) int {
 		return 1
 	}
 	p := setup.DefaultPaths
-	o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror,
+	o := upgrade.Options{Current: version, Target: *target, AllowDowngrade: *allowDowngrade, Mirror: *mirror, Fallback: p.PanelMirror(),
 		Keys: release.TrustedKeys(), Bin: p.Bin, StateDir: p.StateDir, WorkDir: upgrade.RootWorkDir, Out: os.Stdout,
 		ReadStatus: readStatus(p)}
 	// 只有安装了服务（systemd 或 OpenRC）时才重启并做健康检查；否则替换后由使用者自行重启

@@ -41,6 +41,7 @@ type Options struct {
 	Target         string // 目标版本，如 v0.3.0；空表示最新正式版
 	AllowDowngrade bool   // 只能在本机显式指定（设计 29.7.4）
 	Mirror         string // 面板镜像地址，如 https://monitor.example.com/releases；空表示官方地址
+	Fallback       string // 官方地址失败 2 次后改用的面板镜像地址；空表示不回退（设计 27.5.3）
 	Keys           []release.PublicKey
 
 	Bin      string // 要替换的程序：/usr/local/bin/vpsmon-agent
@@ -174,6 +175,7 @@ func (o *Options) defaults() {
 		o.Out = io.Discard
 	}
 	o.Mirror = strings.TrimRight(o.Mirror, "/")
+	o.Fallback = strings.TrimRight(o.Fallback, "/")
 	if o.Source == nil {
 		o.Source = &httpSource{o: o}
 	}
@@ -194,22 +196,57 @@ type Source interface {
 type httpSource struct{ o *Options }
 
 func (h *httpSource) Manifest(ctx context.Context) ([]byte, []byte, error) {
-	mURL, sURL := h.o.manifestURLs()
-	data, err := h.o.get(ctx, mURL, maxManifest)
-	if err != nil {
-		return nil, nil, fmt.Errorf("下载发布清单失败：%w", err)
-	}
-	sig, err := h.o.get(ctx, sURL, maxSignature)
-	if err != nil {
-		return nil, nil, fmt.Errorf("下载清单签名失败：%w", err)
-	}
-	return data, sig, nil
+	var data, sig []byte
+	err := h.o.withFallback(ctx, func(ctx context.Context) error {
+		mURL, sURL := h.o.manifestURLs()
+		var err error
+		if data, err = h.o.get(ctx, mURL, maxManifest); err != nil {
+			return fmt.Errorf("下载发布清单失败：%w", err)
+		}
+		if sig, err = h.o.get(ctx, sURL, maxSignature); err != nil {
+			return fmt.Errorf("下载清单签名失败：%w", err)
+		}
+		return nil
+	})
+	return data, sig, err
 }
 
 func (h *httpSource) Binary(ctx context.Context, version, file, dst string, size int64) error {
-	url := h.o.fileURL(version, file)
-	fmt.Fprintf(h.o.Out, "下载 %s\n", url)
-	return h.o.download(ctx, url, dst, size)
+	return h.o.withFallback(ctx, func(ctx context.Context) error {
+		url := h.o.fileURL(version, file)
+		fmt.Fprintf(h.o.Out, "下载 %s\n", url)
+		return h.o.download(ctx, url, dst, size)
+	})
+}
+
+// withFallback 运行 fetch：官方地址失败 officialAttempts 次后，把 Mirror 换成 Fallback 再运行一次（设计 27.5.3）。
+// 换过之后 Mirror 保持不变，后面的文件直接从镜像下载，不再等官方地址超时。指定了 Mirror 时只运行一次。
+func (o *Options) withFallback(ctx context.Context, fetch func(context.Context) error) error {
+	if o.Mirror != "" {
+		return fetch(ctx)
+	}
+	var err error
+	for i := 1; i <= officialAttempts; i++ {
+		tryCtx, cancel := ctx, context.CancelFunc(func() {})
+		if o.Fallback != "" {
+			tryCtx, cancel = context.WithTimeout(ctx, officialAttemptTimeout)
+		}
+		err = fetch(tryCtx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		fmt.Fprintf(o.Out, "· 第 %d 次失败：%v\n", i, err)
+	}
+	if o.Fallback == "" {
+		return err
+	}
+	fmt.Fprintf(o.Out, "· 官方地址失败 %d 次，改从面板下载\n", officialAttempts)
+	o.Mirror = o.Fallback
+	if perr := fetch(ctx); perr != nil {
+		return fmt.Errorf("官方地址：%v；面板镜像：%w", err, perr)
+	}
+	return nil
 }
 
 // DirSource 从暂存目录读取（特权 updater 使用，不联网，设计 29.13）。目录中的内容视为不可信，照常完整复验。

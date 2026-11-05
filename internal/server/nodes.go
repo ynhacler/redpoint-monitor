@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"vpsmon/internal/protocol"
+	"vpsmon/internal/release"
 )
 
 // Web 新建节点与安装命令（设计 19.11、27.1～27.4）。全部接口要求 Web 管理员权限（设计 17.2）。
@@ -321,7 +322,7 @@ func (s *Server) installCommand(r *http.Request, code string) installView {
 type installerSrc struct {
 	rel    *agentRelease
 	script string // 安装脚本的下载地址
-	mirror string // 已镜像时追加到命令的 " --mirror …"，否则为空
+	mirror string // 已镜像时追加到命令的 " --fallback …"（旧版脚本为 " --mirror …"），否则为空
 }
 
 func (s *Server) installerSource(panel string) (installerSrc, bool) {
@@ -329,13 +330,29 @@ func (s *Server) installerSource(panel string) (installerSrc, bool) {
 	if rel == nil {
 		return installerSrc{}, false
 	}
-	// 已镜像时脚本与构建都从本面板下载（设计 27.5.3）；哈希仍来自已验签的清单
+	// 已镜像时脚本从本面板下载（只有几 KB），构建先试官方地址，失败 2 次后改从本面板下载（设计 27.5.3）；
+	// 哈希仍来自已验签的清单。发布后脚本内容不变，旧版脚本没有 --fallback，仍全部从本面板下载
 	src := installerSrc{rel: rel, script: strings.TrimRight(s.releaseBase, "/") + "/download/v" + rel.Version + "/" + rel.InstallerFile}
 	if rel.Mirrored && s.mirrorRoot != "" {
 		src.script = panel + "/releases/v" + rel.Version + "/" + rel.InstallerFile
 		src.mirror = " --mirror " + panel + "/releases"
+		if installerHasFallback(rel.Version) {
+			src.mirror = " --fallback " + panel + "/releases"
+		}
 	}
 	return src, true
+}
+
+// installerFallbackSince 是第一个支持 --fallback 的安装脚本版本。
+const installerFallbackSince = "0.9.14"
+
+func installerHasFallback(version string) bool {
+	v, err := release.ParseVersion(version)
+	if err != nil {
+		return false
+	}
+	since, err := release.ParseVersion(installerFallbackSince)
+	return err == nil && v.Compare(since) >= 0
 }
 
 // handleCreateServer：POST /api/v1/servers，admin。新建“待安装”节点并生成注册码（设计 19.11、27.2）。

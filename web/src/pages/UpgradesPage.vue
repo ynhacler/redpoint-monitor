@@ -209,7 +209,7 @@ function name(id: number) {
     <p class="muted small">
       <template v-if="latest">{{ t('官方最新稳定版') }} <b class="num">{{ latest.version }}</b>{{ t('（签名公钥 {key_id}，同步于 {dateTime}）。', { key_id: latest.key_id, dateTime: fmtDateTime(latest.synced_at) }) }}</template>
       <template v-else>{{ t('尚未同步到官方版本，点击“同步官方版本”。') }}</template>
-      <template v-if="latest?.mirrored">{{ t('已镜像到本面板，节点从本面板下载。') }}</template>
+      <template v-if="latest?.mirrored">{{ t('已镜像到本面板，无法访问 GitHub 的节点从本面板下载。') }}</template>
       <template v-else-if="latest && mirrorOn">{{ t('镜像已开启，同步时会一并下载全部构建。') }}</template>
       {{ t('只能升级到官方签名的更高版本；节点需启用远程升级（新安装默认启用，已安装的执行') }}
       <code>sudo vpsmon-agent enable-remote-upgrade</code>{{ t('）。') }}

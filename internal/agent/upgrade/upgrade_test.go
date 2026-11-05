@@ -21,6 +21,9 @@ import (
 	"golang.org/x/crypto/blake2b"
 
 	"vpsmon/internal/release"
+
+	"errors"
+	"sync/atomic"
 )
 
 // fixture 是一个假的发布镜像：清单、签名与“二进制”（打印版本号的 shell 脚本）。
@@ -227,5 +230,45 @@ func TestManifestURLs(t *testing.T) {
 		if got, _ := o.manifestURLs(); got != c.want {
 			t.Errorf("%+v → %s，应为 %s", c, got, c.want)
 		}
+	}
+}
+
+// githubDown 让发往官方地址的请求失败并计数，其余请求正常发出。
+type githubDown struct{ calls atomic.Int32 }
+
+func (g *githubDown) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host == "github.com" {
+		g.calls.Add(1)
+		return nil, errors.New("connection reset")
+	}
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// 本机升级：官方地址失败 2 次后改从面板下载，之后的文件直接走面板，不再等官方地址（设计 27.5.3）。
+func TestUpgradeFallsBackToPanel(t *testing.T) {
+	f := newFixture(t)
+	f.publish("0.3.0", nil, "0.1.0")
+	for _, n := range []string{"manifest.json", "manifest.json.minisig"} {
+		f.files["/latest/"+n] = f.files["/v0.3.0/"+n]
+	}
+	f.status = func() (string, int64, error) { return "v0.3.0", f.now.Unix(), nil }
+	g := &githubDown{}
+	if _, err := f.run("", func(o *Options) {
+		o.Fallback, o.Mirror, o.HTTP = f.srv.URL+"/", "", &http.Client{Transport: g}
+	}); err != nil {
+		t.Fatalf("应改从面板升级：%v", err)
+	}
+	if n := g.calls.Load(); n != 2 {
+		t.Errorf("官方地址请求 %d 次，应为 2 次", n)
+	}
+
+	// 没有回退地址时，官方地址失败 2 次即报错
+	f2 := newFixture(t)
+	g2 := &githubDown{}
+	if _, err := f2.run("", func(o *Options) { o.Mirror, o.HTTP = "", &http.Client{Transport: g2} }); err == nil {
+		t.Error("没有面板可退时应失败")
+	}
+	if n := g2.calls.Load(); n != 2 {
+		t.Errorf("官方地址请求 %d 次，应为 2 次", n)
 	}
 }

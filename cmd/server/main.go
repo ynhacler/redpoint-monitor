@@ -54,7 +54,7 @@ usage:
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080 | PORT] [--log-format json|text] [--log-level info]
                            (every run flag can also be set via VPSMON_<FLAG>, e.g. VPSMON_LISTEN=9090)
                            [--public-url https://monitor.example.com] [--push-relay https://push.example.com]
-                           [--release-mirror] [--no-release-sync]
+                           [--release-mirror=false] [--no-release-sync]
                            [--domain monitor.example.com [--acme-email EMAIL] [--https-listen :443] [--http-listen :80]]
   vpsmon-server release import --data DIR PATH   import an official release (all files of a GitHub Release) for offline panels
   vpsmon-server audit      --data DIR [--category login|operation] [--result success|failure] [--action NAME|PREFIX.]
@@ -244,7 +244,7 @@ func main() {
 		logLevel := fsx.String("log-level", "info", "log level: debug, info, warn, error (design 24.4)")
 		noCaptcha := fsx.Bool("no-login-captcha", false, "disable the login slider captcha (design 17.4); login rate limiting stays on")
 		noReleaseSync := fsx.Bool("no-release-sync", false, "do not sync official agent releases from GitHub automatically (offline panels; manual sync in the Web UI still works)")
-		releaseMirror := fsx.Bool("release-mirror", false, "also mirror every file of synced official releases into DATA/releases and serve them at /releases (hosts that cannot reach GitHub)")
+		releaseMirror := fsx.Bool("release-mirror", true, "also mirror every file of synced official releases into DATA/releases and serve them at /releases, so hosts that cannot reach GitHub can fall back to this panel (about 200 MB; --release-mirror=false turns it off)")
 		publicURL := fsx.String("public-url", "", "public base URL used in agent install commands, e.g. https://monitor.example.com (default: derived from the request)")
 		pushRelay := fsx.String("push-relay", "", "Push Relay URL for encrypted App notifications (design 30), e.g. https://push.example.com; empty disables App push")
 		domain := fsx.String("domain", "", "built-in HTTPS: obtain certificates via ACME (Let's Encrypt) for these comma-separated domains; implies accepting the CA's terms (design 25)")

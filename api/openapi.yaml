@@ -740,7 +740,7 @@ paths:
       description: |
         只提供已完整镜像（--release-mirror 同步或 release import 导入）且仍能验签的版本中，清单列出的构建与安装脚本，
         以及 manifest.json(.minisig)、签名的 SHA256SUMS(.minisig)、脚本的 .minisig。构建与脚本发出前核对清单中的 SHA256；
-        不一致或不在清单中的文件返回 404。注意此路径不在 /api/v1 之下。
+        不一致或不在清单中的文件返回 404。version 为 latest 时只提供最新正式版的 manifest.json(.minisig)。注意此路径不在 /api/v1 之下。
       security: []
       parameters:
         - { name: version, in: path, required: true, schema: { type: string, example: v0.3.0 } }
@@ -773,7 +773,7 @@ paths:
                   version: { type: string }
                   manifest: { type: string, format: byte, description: 签名清单原文（base64） }
                   manifest_signature: { type: string, description: manifest.json.minisig 原文 }
-                  mirror_path: { type: string, example: /releases, description: 可选：目标版本已镜像时，Agent 从“自己配置的面板地址 + 此路径”下载构建（设计 27.5.3） }
+                  mirror_path: { type: string, example: /releases, description: 可选：目标版本已镜像时，Agent 先试官方地址，失败 2 次后从“自己配置的面板地址 + 此路径”下载构建（设计 27.5.3） }
         '401': { $ref: '#/components/responses/Error' }
 
   /agent/upgrade/status:

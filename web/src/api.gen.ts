@@ -2243,7 +2243,7 @@ export interface Paths {
         manifest?: string
         /** manifest.json.minisig 原文 */
         manifest_signature?: string
-        /** 可选：目标版本已镜像时，Agent 从“自己配置的面板地址 + 此路径”下载构建（设计 27.5.3） */
+        /** 可选：目标版本已镜像时，Agent 先试官方地址，失败 2 次后从“自己配置的面板地址 + 此路径”下载构建（设计 27.5.3） */
         mirror_path?: string
       }
     }

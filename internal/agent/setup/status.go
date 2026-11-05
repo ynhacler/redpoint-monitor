@@ -63,6 +63,15 @@ func ReadStatus(path string) (*Status, error) {
 // 文件中的值（如来自面板的节点名）不会被当作命令执行（设计 28）。
 func ReadEnv(path string) map[string]string { return readEnv(path) }
 
+// PanelMirror 返回本机配置的面板上的镜像地址，没有配置面板时为空（设计 27.5.3）。
+func (p Paths) PanelMirror() string {
+	server := strings.TrimRight(readEnv(p.envFile())["VPSMON_SERVER"], "/")
+	if server == "" {
+		return ""
+	}
+	return server + "/releases"
+}
+
 // readEnv 读取 install 写入的 env 文件（KEY=VALUE，每行一项）。
 func readEnv(path string) map[string]string {
 	out := map[string]string{}
