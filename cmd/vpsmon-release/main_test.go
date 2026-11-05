@@ -80,6 +80,7 @@ func TestInstallerSources(t *testing.T) {
 	writeExec("uname", "#!/bin/sh\nif [ \"$1\" = -s ]; then echo Linux; else echo x86_64; fi\n")
 	// 假 curl：按地址选择模式 good / bad / fail，并记录请求的来源
 	writeExec("curl", `#!/bin/sh
+all="$*"
 while [ $# -gt 1 ]; do
   [ "$1" = -o ] && out="$2"
   shift
@@ -91,8 +92,12 @@ case "$1" in
   *github.com*) src=github; mode="$GITHUB_MODE" ;;
   *) src=panel; mode="$PANEL_MODE" ;;
 esac
-echo "$src" >> "$CURL_LOG"
+case "$all" in
+  *--max-time*) echo "$src+limit" >> "$CURL_LOG" ;;
+  *) echo "$src" >> "$CURL_LOG" ;;
+esac
 case "$mode" in
+  interrupt) kill -INT "$PPID"; exit 130 ;; # 等同用户按 Ctrl+C
   good) cp "$GOOD" "$out" ;;
   bad) echo tampered > "$out" ;;
   *) exit 22 ;;
@@ -106,11 +111,12 @@ esac
 		want          string // 依次访问的来源
 		ok            bool
 	}{
-		{"官方可用", []string{"--fallback", panel}, "good", "good", "github", true},
-		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github github panel", true},
-		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github github panel", true},
-		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github github panel", false},
-		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github github panel", false},
+		{"官方可用", []string{"--fallback", panel}, "good", "good", "github+limit", true},
+		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github+limit github+limit panel", true},
+		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github+limit github+limit panel", true},
+		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github+limit github+limit panel", false},
+		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github+limit github+limit panel", false},
+		{"Ctrl+C 立即退出，不试下一个来源", []string{"--fallback", panel}, "interrupt", "good", "github+limit", false},
 		{"没有回退地址", nil, "fail", "good", "github github", false},
 		{"--mirror 只用镜像", []string{"--mirror", panel}, "good", "good", "panel", true},
 	}

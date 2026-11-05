@@ -74,9 +74,17 @@ fi
 
 # ---- 工具 ----
 # 被拦截的连接可能一直卡住：连接 10 秒超时，30 秒内低于 1 KB/s 视为失败，才能换下一个来源
-fetch() { # fetch URL 输出文件
-  if command -v curl >/dev/null 2>&1; then curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
-  elif command -v wget >/dev/null 2>&1; then wget -q -T 30 -t 1 -O "$2" "$1"
+fetch() { # fetch URL 输出文件 [有退路时单次最长秒数]
+  if command -v curl >/dev/null 2>&1; then
+    if [ -n "${3:-}" ]; then
+      # 还有来源可换：很慢的连接也不值得等（低于 50 KB/s 持续 15 秒，或总时长超过上限）
+      curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 5 --speed-time 15 --speed-limit 51200 --max-time "$3" -o "$2" "$1"
+    else
+      curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if [ -n "${3:-}" ] && command -v timeout >/dev/null 2>&1; then timeout "$3" wget -q -T 15 -t 1 -O "$2" "$1"
+    else wget -q -T 30 -t 1 -O "$2" "$1"; fi
   else die "需要 curl 或 wget"; fi
 }
 sha256() {
@@ -93,7 +101,10 @@ BASE="$REPO_URL"
 [ -n "$MIRROR" ] && BASE="$MIRROR/v$VERSION"
 
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t vpsmon)"
-trap 'rm -rf "$TMP"' EXIT INT TERM
+# 中断时要退出：只清理不退出的话，脚本会带着已删除的临时目录继续试下一个来源
+trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP"; exit 130' INT
+trap 'rm -rf "$TMP"; exit 143' TERM
 
 # ---- 下载与校验 ----
 # 来源依次尝试：--mirror 只用镜像；否则官方地址 2 次，再换 --fallback。每个来源都按内置 SHA256 校验（设计 27.5.3）
@@ -104,8 +115,14 @@ if [ -z "$MIRROR" ]; then
 fi
 DONE=0
 for SRC in $SOURCES; do
-  say "下载 $SRC/$FILE"
-  if ! fetch "$SRC/$FILE" "$TMP/vpsmon-agent"; then
+  LIMIT=""
+  if [ -n "$FALLBACK" ] && [ -z "$MIRROR" ] && [ "$SRC" = "$REPO_URL" ]; then
+    LIMIT=60
+    say "下载 $SRC/$FILE（最多等 $LIMIT 秒，失败 2 次后自动改从面板下载）"
+  else
+    say "下载 $SRC/$FILE"
+  fi
+  if ! fetch "$SRC/$FILE" "$TMP/vpsmon-agent" "$LIMIT"; then
     say "· 下载失败：$SRC/$FILE"
     continue
   fi
