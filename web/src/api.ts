@@ -253,8 +253,8 @@ export function revokeAgentToken(id: number) {
 }
 
 /** 健康摘要（设计 1.5.7）：面板归纳的结论，Web 与 App 相同 */
-export function getHealth(id: number) {
-  return request('get', '/servers/{id}/health', { params: { id } })
+export function getHealth(id: number, lang: 'zh' | 'en') {
+  return request('get', '/servers/{id}/health', { params: { id }, query: { lang } })
 }
 
 /** 节点的历史曲线（1h / 6h / 24h / 7d / 30d，设计 19.7） */

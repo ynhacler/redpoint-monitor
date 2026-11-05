@@ -6755,6 +6755,19 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ServerID"
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "zh",
+                "en"
+              ],
+              "default": "zh"
+            },
+            "description": "摘要文字的语言；其他值按中文（设计 52.2）"
           }
         ],
         "responses": {

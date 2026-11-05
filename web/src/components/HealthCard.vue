@@ -3,7 +3,7 @@
 // 结论在面板计算（GET /servers/{id}/health），App 显示同样的文字；摘要变化慢，每分钟刷新一次。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { errorText, getHealth, type HealthSummary } from '../api'
-import { t } from '../i18n'
+import { locale, t } from '../i18n'
 
 const props = defineProps<{ serverId: number }>()
 const health = ref<HealthSummary | null>(null)
@@ -20,7 +20,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 async function load() {
   clearTimeout(timer)
   try {
-    health.value = await getHealth(props.serverId)
+    health.value = await getHealth(props.serverId, locale.value)
     error.value = ''
   } catch (e) {
     error.value = errorText(e, t('健康摘要加载失败'))

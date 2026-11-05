@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -169,5 +171,72 @@ func TestHealthAPI(t *testing.T) {
 	}
 	if rec := do(h, "GET", "/api/v1/servers/"+itoa(b.ServerID)+"/health", dev, nil); rec.Code != 404 {
 		t.Fatalf("范围外应为 404：%d", rec.Code)
+	}
+}
+
+// 英文摘要（设计 52.2）：所有分支都不能留下中文；不传语言时仍是中文，App 不受影响。
+func TestHealthSummaryEnglish(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	full := points(now, 30*24*time.Hour, func(i int, p *healthPoint) {
+		p.CPU, p.CPUMax, p.MemUsed, p.MemUsedMax, p.DiskUsed = 20, 60, uint64(200+i%700), 950, uint64(40e9)+uint64(i)*20e6
+	})
+	short := points(now, 3*time.Hour, func(_ int, p *healthPoint) { p.CPU, p.MemUsed, p.MemUsedMax, p.DiskUsed = 20, 500, 500, 40e9 })
+	flat := points(now, 10*24*time.Hour, func(i int, p *healthPoint) {
+		p.MemUsed, p.MemUsedMax, p.DiskUsed = 500+uint64(i%2)*30, 530, 40e9
+	})
+	shrink := points(now, 10*24*time.Hour, func(i int, p *healthPoint) { p.DiskUsed = 60e9 - uint64(i)*10e6 })
+	disk := []protocol.Disk{{Mount: "/", Total: 100e9, Used: 95e9, Available: 5e9}}
+	limited := trafficView{CycleStart: "2026-10-01", Used: 900e9, Limit: 1000e9, Unit: "decimal", Forecast: &forecastView{Total: 1200e9, Over: true}}
+	unlimited := trafficView{CycleStart: "2026-10-01", Used: 900e9, Unit: "decimal"}
+	alerts := []alertBrief{{Type: "memory", Severity: "critical", Value: 95}, {Type: "disk", Severity: "warning", Value: 90},
+		{Type: "load", Severity: "warning", Value: 3}, {Type: "traffic", Severity: "warning", Value: 85},
+		{Type: "traffic_forecast", Severity: "warning"}, {Type: "agent_clock", Severity: "warning", Value: 12}}
+	cases := []healthInput{
+		{Status: "online", Now: now},
+		{Status: "pending", Now: now},
+		{Status: "online", Maintenance: true, Now: now},
+		{Status: "offline", Now: now},
+		{Status: "offline", LastSeenAt: now.Unix() - 30, Now: now},
+		{Status: "offline", LastSeenAt: now.Unix() - 600, Now: now},
+		{Status: "offline", LastSeenAt: now.Unix() - 7200, Now: now},
+		{Status: "offline", LastSeenAt: now.Unix() - 200000, Now: now},
+		{Status: "unknown", Now: now},
+		{Status: "online", Alerts: alerts, Now: now},
+		{Status: "online", Alerts: alerts[1:], Now: now},
+		{Status: "online", Points: full, Disks: disk, Traffic: limited, Now: now},
+		{Status: "online", Points: short, Disks: disk, Traffic: unlimited, Now: now},
+		{Status: "online", Points: flat, Disks: disk, Now: now},
+		{Status: "online", Points: shrink, Disks: disk, Now: now},
+	}
+	han := regexp.MustCompile(`\p{Han}`)
+	for i, in := range cases {
+		zh := healthSummary(in)
+		in.Lang = "en"
+		en := healthSummary(in)
+		if zh.Level != en.Level || len(zh.Items) != len(en.Items) {
+			t.Errorf("第 %d 组：语言不能改变结论：%+v / %+v", i, zh, en)
+		}
+		texts := []string{en.Status}
+		for _, it := range en.Items {
+			texts = append(texts, it.Title, it.Text)
+		}
+		for _, s := range texts {
+			if han.MatchString(s) || strings.Contains(s, "%!") {
+				t.Errorf("第 %d 组：%q", i, s)
+			}
+		}
+	}
+	if s := healthSummary(healthInput{Status: "online", Now: now}).Status; s != "正常" {
+		t.Errorf("默认应为中文：%q", s)
+	}
+}
+
+// 每条译文的占位符要和中文一致，否则运行时才会出现 %!s(MISSING)。
+func TestHealthENVerbs(t *testing.T) {
+	verbs := regexp.MustCompile(`%[.0-9]*[a-z]`)
+	for zh, en := range healthEN {
+		if a, b := verbs.FindAllString(zh, -1), verbs.FindAllString(en, -1); !slices.Equal(a, b) {
+			t.Errorf("%q 与 %q 的占位符不同", zh, en)
+		}
 	}
 }

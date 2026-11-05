@@ -3289,6 +3289,10 @@ export interface Paths {
       params: {
         id: number
       }
+      query?: {
+        /** 摘要文字的语言；其他值按中文（设计 52.2） */
+        lang?: 'zh' | 'en'
+      }
       response: HealthSummary
     }
   }
