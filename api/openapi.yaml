@@ -1262,6 +1262,17 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
+  /public/subscriptions:
+    get:
+      tags: [system]
+      summary: 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有
+      description: '未开启时返回 404。只有未结束的订阅和下列字段，不含电话号码、备注、支付方式、VPS 地址、上传的图标与内部 ID；名称中的 IP、邮箱与电话号码遮盖为 ***。服务端缓存 5 秒，与 /public/servers 共用按 IP 每分钟 60 次的限额。'
+      security: []
+      responses:
+        '200': { description: 公开的订阅, content: { application/json: { schema: { $ref: '#/components/schemas/PublicSubscriptionList' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
   /settings/status-page:
     get:
       tags: [system]
@@ -2820,9 +2831,10 @@ components:
 
     StatusPageSetting:
       type: object
-      required: [enabled, server_ids]
+      required: [enabled, subscriptions, server_ids]
       properties:
         enabled: { type: boolean, description: 是否开启公开展示页 }
+        subscriptions: { type: boolean, description: 是否在展示页公开订阅（只读），默认关闭 }
         server_ids: { type: array, items: { type: integer, format: int64 }, description: 公开的节点 }
 
     PublicServer:
@@ -2842,11 +2854,31 @@ components:
 
     PublicServerList:
       type: object
-      required: [items, next_cursor, updated_at]
+      required: [items, next_cursor, updated_at, subscriptions]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/PublicServer' } }
         next_cursor: { type: string, description: 恒为空 }
         updated_at: { type: integer, format: int64, description: 数据组装时间，Unix 秒 }
+        subscriptions: { type: boolean, description: 订阅是否公开，决定展示页是否显示订阅标签 }
+
+    PublicSubscription:
+      type: object
+      required: [name, brand, category, price_cents, currency, cycle, next_charge]
+      properties:
+        name: { type: string, description: 名称，其中的 IP、邮箱与电话号码遮盖为 *** }
+        brand: { type: string, description: 目录键，用来显示品牌标志；可为空 }
+        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other] }
+        price_cents: { type: integer, format: int64 }
+        currency: { type: string }
+        cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once] }
+        next_charge: { type: string, description: 下次扣费日 YYYY-MM-DD }
+
+    PublicSubscriptionList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PublicSubscription' } }
+        next_cursor: { type: string, description: 恒为空 }
 
     ListenSettingInput:
       type: object

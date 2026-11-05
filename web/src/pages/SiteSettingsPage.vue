@@ -41,18 +41,18 @@ async function save() {
 
 // 公开展示页（设计 45.3）：默认关闭，节点逐个选择
 const statusUrl = `${location.origin}/status`
-const pub = reactive({ enabled: false, ids: [] as number[] })
-const pubSaved = ref({ enabled: false, ids: '' })
+const pub = reactive({ enabled: false, subs: false, ids: [] as number[] })
+const pubSaved = ref({ enabled: false, subs: false, ids: '' })
 const pubKey = () => [...pub.ids].sort((a, b) => a - b).join()
-const pubDirty = computed(() => pub.enabled !== pubSaved.value.enabled || pubKey() !== pubSaved.value.ids)
+const pubDirty = computed(() => pub.enabled !== pubSaved.value.enabled || pub.subs !== pubSaved.value.subs || pubKey() !== pubSaved.value.ids)
 const pubError = ref('')
 const pubSaving = ref(false)
 const pubDone = ref(false)
 const pubAt = ref(0)
 const pubStatus = computed(() => saveStatus({ saving: pubSaving.value, error: pubError.value, dirty: pubDirty.value, saved: pubDone.value }))
-function applyPub(v: { enabled: boolean; server_ids: number[] }) {
-  Object.assign(pub, { enabled: v.enabled, ids: [...v.server_ids] })
-  pubSaved.value = { enabled: v.enabled, ids: pubKey() }
+function applyPub(v: { enabled: boolean; subscriptions: boolean; server_ids: number[] }) {
+  Object.assign(pub, { enabled: v.enabled, subs: v.subscriptions, ids: [...v.server_ids] })
+  pubSaved.value = { enabled: v.enabled, subs: v.subscriptions, ids: pubKey() }
 }
 onMounted(async () => {
   try {
@@ -66,7 +66,7 @@ async function savePub() {
   pubDone.value = false
   pubError.value = ''
   try {
-    applyPub(await putStatusPage({ enabled: pub.enabled, server_ids: pub.ids }))
+    applyPub(await putStatusPage({ enabled: pub.enabled, subscriptions: pub.subs, server_ids: pub.ids }))
     pubDone.value = true
     pubAt.value = Date.now()
   } catch (e) {
@@ -136,13 +136,23 @@ async function savePub() {
 
       <div class="field">
         <span class="label">{{ t('开启展示页') }}</span>
-        <p class="small muted">{{ t('任何知道地址的人都能打开。只显示名称、国家、在线状态、资源使用率、网速、运行时间和流量比例，不显示 IP、主机名、服务商、价格和到期时间') }}</p>
+        <p class="small muted">{{ t('任何知道地址的人都能打开。节点只显示名称、国家、在线状态、资源使用率、网速、运行时间和流量比例，不显示 IP、主机名、服务商、价格和到期时间。云平台不会显示') }}</p>
         <label class="switch">
           <input v-model="pub.enabled" type="checkbox" role="switch" />
           <span class="track" aria-hidden="true" />
           <span>{{ pub.enabled ? t('已启用') : t('已关闭') }}</span>
         </label>
         <a v-if="pubSaved.enabled" class="small" href="/status" target="_blank" rel="noopener">{{ statusUrl }}</a>
+      </div>
+
+      <div class="field">
+        <span class="label">{{ t('公开订阅') }}</span>
+        <p class="small muted">{{ t('增加“订阅”标签，只能查看。显示名称、分类、金额、周期和下次扣费日，不显示电话号码、备注、支付方式和 VPS 地址') }}</p>
+        <label class="switch">
+          <input v-model="pub.subs" type="checkbox" role="switch" />
+          <span class="track" aria-hidden="true" />
+          <span>{{ pub.subs ? t('已启用') : t('已关闭') }}</span>
+        </label>
       </div>
 
       <div class="field">

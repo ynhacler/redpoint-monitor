@@ -794,6 +794,14 @@ export function getPublicServers() {
 /** 公开展示页上的一个节点 */
 export type PublicServer = G.PublicServer
 
+/** 公开展示页的订阅（无需登录，只读）；未开启时返回 404 */
+export function getPublicSubscriptions() {
+  return request('get', '/public/subscriptions')
+}
+
+/** 公开展示页上的一个订阅 */
+export type PublicSubscription = G.PublicSubscription
+
 /** 公开展示页设置 */
 export function getStatusPage() {
   return request('get', '/settings/status-page')

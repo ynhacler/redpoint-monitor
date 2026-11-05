@@ -137,6 +137,79 @@ func TestStatusPage(t *testing.T) {
 	}
 }
 
+// 订阅（设计 45.3）：默认不公开；只读；不含电话、备注、支付方式与 VPS 地址；已结束的不显示
+func TestStatusPageSubscriptions(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	for _, b := range []string{
+		`{"name":"sim 13800138000","category":"sim","price_cents":990,"currency":"CNY","cycle":"monthly","start_date":"2026-01-01","country":"CN","note":"secret-note","payment":"paypal","phones":[{"cc":"+86","number":"13900139000"}]}`,
+		`{"name":"my vps","category":"vps","price_cents":500,"currency":"USD","cycle":"monthly","start_date":"2026-01-01","country":"US","payment":"credit","vps":{"ips":["203.0.113.9"]}}`,
+		`{"name":"ended","category":"tools","price_cents":100,"currency":"USD","cycle":"monthly","start_date":"2020-01-01","end_date":"2020-02-01","country":"US","payment":"credit"}`,
+	} {
+		if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(b)); rec.Code != 201 {
+			t.Fatalf("创建：%d %s", rec.Code, rec.Body)
+		}
+	}
+	put := func(body string) {
+		t.Helper()
+		if rec := do(h, "PUT", "/api/v1/settings/status-page", admin, []byte(body)); rec.Code != 200 {
+			t.Fatalf("保存：%d %s", rec.Code, rec.Body)
+		}
+	}
+	get := func() (int, string) {
+		rec := do(h, "GET", "/api/v1/public/subscriptions", "", nil)
+		return rec.Code, rec.Body.String()
+	}
+	if code, _ := get(); code != 404 {
+		t.Fatalf("默认应关闭：%d", code)
+	}
+	put(`{"enabled":true,"subscriptions":false,"server_ids":[]}`)
+	if code, _ := get(); code != 404 {
+		t.Fatalf("开启展示页不等于公开订阅：%d", code)
+	}
+	if body := do(h, "GET", "/api/v1/public/servers", "", nil).Body.String(); !strings.Contains(body, `"subscriptions":false`) {
+		t.Fatalf("应告知订阅未公开：%s", body)
+	}
+	put(`{"enabled":true,"subscriptions":true,"server_ids":[]}`)
+	code, body := get()
+	if code != 200 {
+		t.Fatalf("%d %s", code, body)
+	}
+	for _, secret := range []string{"13800138000", "13900139000", "secret-note", "paypal", "203.0.113", "ended", `"id"`, "start_date", "logo"} {
+		if strings.Contains(body, secret) {
+			t.Errorf("不应出现 %q：%s", secret, body)
+		}
+	}
+	var out struct {
+		Items []map[string]any `json:"items"`
+	}
+	json.Unmarshal([]byte(body), &out)
+	if len(out.Items) != 2 || !strings.Contains(body, `"name":"sim ***"`) || !strings.Contains(body, `"price_cents":990`) {
+		t.Fatalf("内容：%s", body)
+	}
+	allowed := []string{"name", "brand", "category", "price_cents", "currency", "cycle", "next_charge"}
+	for _, it := range out.Items {
+		for k := range it {
+			if !slices.Contains(allowed, k) {
+				t.Errorf("字段 %q 不在白名单中", k)
+			}
+		}
+	}
+	// 只读：公开路由没有写方法，无凭证的修改被拒绝
+	for _, m := range []string{"POST", "PUT", "DELETE"} {
+		if rec := do(h, m, "/api/v1/public/subscriptions", "", []byte(`{}`)); rec.Code < 400 {
+			t.Errorf("%s 应被拒绝：%d", m, rec.Code)
+		}
+	}
+	if rec := do(h, "POST", "/api/v1/subscriptions", "", []byte(`{"name":"x"}`)); rec.Code != 401 {
+		t.Errorf("无凭证创建订阅：%d", rec.Code)
+	}
+	put(`{"enabled":false,"subscriptions":true,"server_ids":[]}`)
+	if code, _ := get(); code != 404 {
+		t.Fatalf("关闭展示页后订阅也应关闭：%d", code)
+	}
+}
+
 // 【安全】节点 ID 删除后会复用：新节点不能继承已删除节点的公开状态
 func TestStatusPageDeletedIDNotInherited(t *testing.T) {
 	s, _, _ := testServer(t)

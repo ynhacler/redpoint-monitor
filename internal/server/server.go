@@ -273,8 +273,9 @@ func (s *Server) routes() http.Handler {
 	handle("GET /releases/{version}/{file}", accessPublic, s.handleMirror)
 
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
-	handle("GET /api/v1/site", accessPublic, s.handleGetSite)                 // 应用名称与语言：登录页也要用（设计 52）
-	handle("GET /api/v1/public/servers", accessPublic, s.handlePublicServers) // 公开展示页：默认关闭，只含白名单字段（设计 45.3）
+	handle("GET /api/v1/site", accessPublic, s.handleGetSite)                             // 应用名称与语言：登录页也要用（设计 52）
+	handle("GET /api/v1/public/servers", accessPublic, s.handlePublicServers)             // 公开展示页：默认关闭，只含白名单字段（设计 45.3）
+	handle("GET /api/v1/public/subscriptions", accessPublic, s.handlePublicSubscriptions) // 同上，订阅单独开启，只读
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
 	handle("POST /api/v1/auth/login/totp", accessPublic, s.handleLoginTOTP)

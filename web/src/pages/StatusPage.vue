@@ -2,14 +2,20 @@
 // 公开展示页（设计 45.3，修订第 303 条）：不用登录就能看的大屏，地址 /status，适合放在电视或副屏上常开。
 // 一屏放下全部内容：汇总指标、地区分布与节点卡片，异常的节点排在前面；节点多到放不下时自动翻页。手机宽度改为上下滚动。
 // 【安全】数据只来自 GET /api/v1/public/servers，只有管理员选中的节点与白名单字段；本页不读 store 中的节点，登录后打开看到的也一样。
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+// 标签：节点、订阅（管理员开启后才有，只读）、连通性测试（在访客自己的浏览器里运行）。云平台不在展示页中。
+// 当前标签记在地址中（?tab=），电视可以固定打开某个标签。
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError, getPublicServers, type PublicServer } from '../api'
 import Flag from '../components/Flag.vue'
+import WallSubscriptions from '../components/WallSubscriptions.vue'
 import { countryName } from '../countries'
 import { fmtAgo, fmtBytes, fmtPct, fmtTime, fmtUptimeShort } from '../format'
 import { t } from '../i18n'
 import { gaugeLevel } from '../metrics'
 import { site } from '../site'
+
+const ConnectivityPage = defineAsyncComponent(() => import('./ConnectivityPage.vue'))
 
 const POLL_MS = 5000
 const PAGE_MS = 12000
@@ -20,6 +26,17 @@ const loaded = ref(false)
 const closed = ref(false) // 未开启
 const lost = ref(false) // 最近一次刷新失败，显示的是之前的数据
 const now = ref(Date.now())
+const showSubs = ref(false)
+
+const route = useRoute()
+const router = useRouter()
+const tabs = computed(() => [
+  { k: 'nodes', t: t('节点') },
+  ...(showSubs.value ? [{ k: 'subscriptions', t: t('订阅') }] : []),
+  { k: 'connectivity', t: t('连通性测试') },
+])
+const tab = computed(() => (tabs.value.some((x) => x.k === route.query.tab) ? String(route.query.tab) : 'nodes'))
+const pick = (k: string) => router.replace({ query: k === 'nodes' ? {} : { tab: k } })
 
 async function load() {
   now.value = Date.now()
@@ -27,12 +44,14 @@ async function load() {
     const r = await getPublicServers()
     items.value = r.items
     updatedAt.value = r.updated_at
+    showSubs.value = r.subscriptions
     closed.value = false
     lost.value = false
   } catch (e) {
     if (e instanceof ApiError && e.code === 'not_found') {
       closed.value = true
       items.value = []
+      showSubs.value = false
     } else lost.value = true
   } finally {
     loaded.value = true
@@ -116,9 +135,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="wall">
+  <div class="wall" :class="{ scroll: tab !== 'nodes' }">
     <header class="head">
       <h1>{{ site.app_name }}</h1>
+      <nav v-if="loaded && !closed" class="tabs" :aria-label="t('分组')">
+        <button v-for="x in tabs" :key="x.k" type="button" :class="{ active: tab === x.k }" :aria-current="tab === x.k ? 'page' : undefined" @click="pick(x.k)">{{ x.t }}</button>
+      </nav>
       <p class="clock num">
         <span v-if="lost" class="bad">{{ t('连接中断，显示的是 {ago}的数据', { ago: fmtAgo(updatedAt, now / 1000) }) }}</span>
         <span v-else-if="updatedAt" class="muted">{{ t('更新于 {ago}', { ago: fmtAgo(updatedAt, now / 1000) }) }}</span>
@@ -131,6 +153,8 @@ onUnmounted(() => {
       <h2>{{ t('展示页未开启') }}</h2>
       <p class="muted">{{ t('管理员可以在“系统 → 网站配置”中开启') }}</p>
     </div>
+    <WallSubscriptions v-else-if="tab === 'subscriptions'" />
+    <ConnectivityPage v-else-if="tab === 'connectivity'" />
     <p v-else-if="!items.length" class="notice muted">{{ t('还没有公开的节点') }}</p>
 
     <template v-else>
@@ -172,7 +196,7 @@ onUnmounted(() => {
 
       <p v-if="pages > 1" class="pager num muted">{{ page + 1 }} / {{ pages }}</p>
     </template>
-  </main>
+  </div>
 </template>
 
 <style scoped>
@@ -182,7 +206,11 @@ onUnmounted(() => {
 @media (min-width: 1800px) { .wall { --z: 1.25; } }
 @media (min-width: 2500px) { .wall { --z: 1.75; } }
 @media (min-width: 3400px) { .wall { --z: 2.5; } }
-.head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
+.wall.scroll { overflow-y: auto; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex: none; }
+.tabs { display: flex; gap: var(--space-1); margin-right: auto; }
+.tabs button { background: none; border: 0; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+.tabs button.active { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
 .head h1 { margin: 0; font-size: var(--font-xl); line-height: var(--line-xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clock { margin: 0; display: flex; align-items: baseline; gap: var(--space-3); white-space: nowrap; }
 .clock strong { font-size: var(--font-xl); }
@@ -224,7 +252,9 @@ onUnmounted(() => {
 @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
 /* 手机：上下滚动，不翻页 */
 @media (max-width: 600px) {
-  .wall { height: auto; min-height: 100dvh; padding: var(--space-4); overflow: visible; }
+  .wall, .wall.scroll { height: auto; min-height: 100dvh; padding: var(--space-4); overflow: visible; }
+  .head { flex-wrap: wrap; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; }
   .clock .muted, .clock .bad { font-size: var(--font-sm); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .regions { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }

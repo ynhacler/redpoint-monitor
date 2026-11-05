@@ -68,6 +68,8 @@ export type SiteView = SiteSetting & {
 export interface StatusPageSetting {
   /** 是否开启公开展示页 */
   enabled: boolean
+  /** 是否在展示页公开订阅（只读），默认关闭 */
+  subscriptions: boolean
   /** 公开的节点 */
   server_ids: number[]
 }
@@ -100,6 +102,27 @@ export interface PublicServerList {
   next_cursor: string
   /** 数据组装时间，Unix 秒 */
   updated_at: number
+  /** 订阅是否公开，决定展示页是否显示订阅标签 */
+  subscriptions: boolean
+}
+
+export interface PublicSubscription {
+  /** 名称，其中的 IP、邮箱与电话号码遮盖为 *** */
+  name: string
+  /** 目录键，用来显示品牌标志；可为空 */
+  brand: string
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  price_cents: number
+  currency: string
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  /** 下次扣费日 YYYY-MM-DD */
+  next_charge: string
+}
+
+export interface PublicSubscriptionList {
+  items: PublicSubscription[]
+  /** 恒为空 */
+  next_cursor: string
 }
 
 export interface ListenSettingInput {
@@ -2606,6 +2629,12 @@ export interface Paths {
     /** 公开展示页的数据（设计 45.3）：无需凭证，默认关闭，只含管理员选中的节点 */
     get: {
       response: PublicServerList
+    }
+  }
+  '/public/subscriptions': {
+    /** 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有 */
+    get: {
+      response: PublicSubscriptionList
     }
   }
   '/settings/status-page': {
