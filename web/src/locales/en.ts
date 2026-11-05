@@ -1474,4 +1474,15 @@ export const en: Record<string, string> = {
   '7 天内到期或已过期时仍显示': 'Still shown when expiring within 7 days or expired',
   '只在电脑宽度的卡片上': 'Wide cards only',
   '用到 80% 以上时仍显示': 'Still shown at 80% or more',
+  // 云账户费用历史（修订第 289 条）
+  '费用历史': 'Cost history',
+  '费用历史加载失败': 'Failed to load cost history',
+  '{m} 月': 'Month {m}',
+  '{y} 年 {m} 月': '{m}/{y}',
+  '还没有费用记录。面板从添加账户、开启同步费用起逐月记录。': 'No cost records yet. The panel records each month from when the account is added with cost sync on.',
+  '近半年 {n} 个月平均 {amount}': 'Average of {n} months in the last half year: {amount}',
+  '上月较前月 {sign}{n}%': 'last month {sign}{n}% vs the month before',
+  '预估 {amount}': 'forecast {amount}',
+  '往月为当月最后一次同步的金额，月末后的补录可能未计入，以云厂商账单为准。': 'Past months show the last sync of that month; charges posted after month end may be missing. The provider bill is authoritative.',
+  '超过预算的月份标为橙色。': 'Months over budget are shown in orange.',
 }
