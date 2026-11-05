@@ -16,6 +16,7 @@ import {
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
+import SubCharges from '../components/SubCharges.vue'
 import { countryName, countryOptions, flagUrl } from '../countries'
 import { fmtMoney, fmtPct } from '../format'
 import { locale, t } from '../i18n'
@@ -541,6 +542,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         </template>
         <label class="wide">{{ t('描述') }}<input v-model="form.note" maxlength="200" :placeholder="t('可选，如 家庭版、和朋友合租')" /></label>
       </div>
+      <!-- 历史扣费（修订第 293 条）：编辑时可展开；免费的订阅不显示 -->
+      <SubCharges v-if="editing && editing.price_cents" :key="editing.id" :sub="editing" />
       <p v-if="fieldErrors._" class="small bad">{{ fieldErrors._ }}</p>
       <div class="actions">
         <button type="submit" :disabled="saving || !form.name.trim()">{{ saving ? t('保存中…') : t('保存') }}</button>

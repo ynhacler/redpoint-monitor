@@ -1605,4 +1605,10 @@ export const en: Record<string, string> = {
   '{msg}（{n} 秒后可重试）': '{msg} (retry in {n} s)',
   '无法连接面板，请检查网络': 'Can’t reach the panel; check your network',
   '请求失败（HTTP {n}）': 'Request failed (HTTP {n})',
+  // 订阅历史扣费（修订第 293 条）
+  '历史扣费': 'Past charges',
+  '还没有到首次扣费日。': 'The first charge date has not been reached yet.',
+  '共 {n} 次，合计约 {amount}': 'Charges: {n}, about {amount} in total',
+  '显示全部 {n} 次': 'Show all {n}',
+  '按开始日期与周期推算，金额按当前价格；改过价格时与实际付款不同，以账单为准。': 'Calculated from the start date and cycle at the current price; it differs from what you paid if the price changed. Your bill is authoritative.',
 }
