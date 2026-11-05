@@ -5,6 +5,7 @@ import { onMounted, ref } from 'vue'
 import { errorText, listSystemEvents, type SystemEvent } from '../api'
 import { fmtDateTime } from '../format'
 import EmptyState from './EmptyState.vue'
+import { t } from '../i18n'
 
 const kindNames: Record<SystemEvent['kind'], string> = { upgrade: '升级', reminder: '提醒', panel: '面板', change: '变更' }
 const items = ref<SystemEvent[]>([])
@@ -20,7 +21,7 @@ async function load(more = false) {
     cursor.value = p.next_cursor
     error.value = ''
   } catch (e) {
-    error.value = errorText(e, '系统事件加载失败')
+    error.value = errorText(e, t('系统事件加载失败'))
   } finally {
     loading.value = false
   }
@@ -29,21 +30,21 @@ onMounted(() => load())
 </script>
 
 <template>
-  <p class="muted small intro">Agent 升级结果、节点 / 证书 / 云账户到期提醒、面板自身异常、节点配置变更；保留 180 天。</p>
+  <p class="muted small intro">{{ t('Agent 升级结果、节点 / 证书 / 云账户到期提醒、面板自身异常、节点配置变更；保留 180 天。') }}</p>
   <p v-if="error" class="banner">{{ error }}</p>
-  <EmptyState v-else-if="!loading && !items.length" text="还没有系统事件。" />
+  <EmptyState v-else-if="!loading && !items.length" :text="t('还没有系统事件。')" />
   <ul v-if="items.length" class="panel list">
     <li v-for="e in items" :key="e.id" :class="[e.severity, { ok: e.title.startsWith('✅') }]">
-      <span class="kind">{{ kindNames[e.kind] }}</span>
+      <span class="kind">{{ t(kindNames[e.kind]) }}</span>
       <div class="main">
         <span class="title">{{ e.title }}</span>
-        <RouterLink v-if="e.server_id && e.server_name" :to="`/servers/${e.server_id}`" class="small">节点详情</RouterLink>
+        <RouterLink v-if="e.server_id && e.server_name" :to="`/servers/${e.server_id}`" class="small">{{ t('节点详情') }}</RouterLink>
         <span v-if="e.message" class="msg muted small">{{ e.message }}</span>
       </div>
       <span class="when muted small num">{{ fmtDateTime(e.created_at) }}</span>
     </li>
   </ul>
-  <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loading" @click="load(true)">加载更多</button></div>
+  <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loading" @click="load(true)">{{ t('加载更多') }}</button></div>
 </template>
 
 <style scoped>

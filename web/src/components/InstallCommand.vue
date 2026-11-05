@@ -10,6 +10,7 @@ import { fmtTime } from '../format'
 import { connected, subscribe } from '../ws'
 import CommandBlock from './CommandBlock.vue'
 import StatusDot from './StatusDot.vue'
+import { t } from '../i18n'
 
 const props = defineProps<{
   /** 节点 ID */
@@ -58,10 +59,10 @@ async function sync() {
   syncMsg.value = ''
   try {
     const r = await syncReleases()
-    syncMsg.value = `已同步并验签 v${r.version}`
+    syncMsg.value = t('已同步并验签 v{version}', { version: r.version })
     await refresh()
   } catch (e) {
-    syncMsg.value = errorText(e, '同步失败')
+    syncMsg.value = errorText(e, t('同步失败'))
   } finally {
     syncing.value = false
   }
@@ -102,7 +103,7 @@ function stop() {
 }
 
 async function regenerate() {
-  if (enrolled.value && !confirm('该节点已注册。重新生成注册码用于重装或更换主机，新主机注册后旧主机将无法再上报。继续？')) return
+  if (enrolled.value && !confirm(t('该节点已注册。重新生成注册码用于重装或更换主机，新主机注册后旧主机将无法再上报。继续？'))) return
   busy.value = true
   try {
     const v = await regenerateEnrollCode(props.serverId)
@@ -136,71 +137,69 @@ onUnmounted(() => {
 
 <template>
   <section class="panel">
-    <h2>安装命令 —— {{ view?.server_name ?? '…' }}</h2>
+    <h2>{{ t('安装命令 —— {v}', { v: view?.server_name ?? '…' }) }}</h2>
     <p v-if="error" class="banner">{{ error }}</p>
 
     <template v-if="view">
       <!-- 默认命令：下载按版本固定的脚本 → 按已验签清单中的 SHA256 校验 → 执行（设计 27.3.1） -->
       <p v-if="view.install.mode === 'default' && view.install.release" class="muted small">
-        在主机上以 root 执行。命令会先校验安装脚本的 SHA256（来自官方签名的 v{{ view.install.release.version }} 发布清单，
-        公钥 {{ view.install.release.key_id }}，{{ fmtTime(view.install.release.synced_at) }} 同步），不一致时不会执行。
-        <template v-if="view.install.release.mirrored">脚本与程序从<b>本面板镜像</b>下载，适合访问 GitHub 不稳定的主机。</template>
-        <template v-else>脚本与程序从 GitHub 官方发布下载。</template>
+        {{ t('在主机上以 root 执行。命令会先校验安装脚本的 SHA256（来自官方签名的 v{version} 发布清单，公钥 {key_id}，{time} 同步），不一致时不会执行。', { version: view.install.release.version, key_id: view.install.release.key_id, time: fmtTime(view.install.release.synced_at) }) }}
+        <template v-if="view.install.release.mirrored">{{ t('脚本与程序从') }}<b>{{ t('本面板镜像') }}</b>{{ t('下载，适合访问 GitHub 不稳定的主机。') }}</template>
+        <template v-else>{{ t('脚本与程序从 GitHub 官方发布下载。') }}</template>
       </p>
       <!-- 没有已验签的官方版本时只能手动安装（设计 27.3.3） -->
       <div v-else class="note">
-        面板尚未同步官方签名版本，暂时需要手动安装：把 <code>vpsmon-agent</code> 放到主机上，再以 root 执行下面的命令。
+        {{ t('面板尚未同步官方签名版本，暂时需要手动安装：把') }} <code>vpsmon-agent</code> {{ t('放到主机上，再以 root 执行下面的命令。') }}
         <div class="sync">
-          <button type="button" class="secondary" :disabled="syncing" @click="sync">{{ syncing ? '同步中…' : '同步官方版本' }}</button>
+          <button type="button" class="secondary" :disabled="syncing" @click="sync">{{ syncing ? t('同步中…') : t('同步官方版本') }}</button>
           <span v-if="syncMsg" class="small">{{ syncMsg }}</span>
         </div>
       </div>
 
       <template v-if="status === 'ACTIVE' && fullCode">
         <CommandBlock :command="command" />
-        <p class="muted">注册码 {{ expiresText }} 前有效，仅可使用一次。完整注册码只显示这一次，离开本页后需重新生成。</p>
+        <p class="muted">{{ t('注册码 {expiresText} 前有效，仅可使用一次。完整注册码只显示这一次，离开本页后需重新生成。', { expiresText }) }}</p>
       </template>
       <template v-else-if="status === 'ACTIVE'">
         <CommandBlock :command="command" />
-        <p class="muted">完整注册码只在生成时显示一次，上面的命令中已隐藏。如果没有保存，请重新生成。</p>
+        <p class="muted">{{ t('完整注册码只在生成时显示一次，上面的命令中已隐藏。如果没有保存，请重新生成。') }}</p>
       </template>
       <template v-if="status === 'ACTIVE' && view.install.mode === 'default' && supportsUserMode && command.includes('sudo ')">
-        <button type="button" class="text" @click="showUser = !showUser">{{ showUser ? '▾' : '▸' }} 没有 root 权限？以当前用户安装</button>
+        <button type="button" class="text" @click="showUser = !showUser">{{ showUser ? '▾' : '▸' }} {{ t('没有 root 权限？以当前用户安装') }}</button>
         <template v-if="showUser">
           <CommandBlock :command="userCommand" />
           <p class="muted small">
-            不使用 sudo 时安装到 ~/.local/bin，配置在 ~/.config/vpsmon-agent；开机启动与掉线拉起由 systemd 用户服务
-            （需已开启 linger）或 crontab 完成。用户模式不支持从面板远程升级，升级请在主机上执行 vpsmon-agent upgrade。
+            {{ t('不使用 sudo 时安装到 ~/.local/bin，配置在 ~/.config/vpsmon-agent；开机启动与掉线拉起由 systemd 用户服务（需已开启 linger）或 crontab 完成。用户模式不支持从面板远程升级，升级请在主机上执行 vpsmon-agent upgrade。') }}
           </p>
         </template>
       </template>
       <template v-if="status === 'ACTIVE' && view.install.mode === 'default'">
-        <button type="button" class="text" @click="showManual = !showManual">{{ showManual ? '▾' : '▸' }} 程序已在主机上？使用手动命令</button>
+        <button type="button" class="text" @click="showManual = !showManual">{{ showManual ? '▾' : '▸' }} {{ t('程序已在主机上？使用手动命令') }}</button>
         <CommandBlock v-if="showManual" :command="manualCommand" />
       </template>
       <template v-if="status === 'ACTIVE'">
-        <button type="button" class="text" @click="showRotate = !showRotate">{{ showRotate ? '▾' : '▸' }} 主机上已安装 Agent（如 Token 已吊销）？更换 Token</button>
+        <button type="button" class="text" @click="showRotate = !showRotate">{{ showRotate ? '▾' : '▸' }} {{ t('主机上已安装 Agent（如 Token 已吊销）？更换 Token') }}</button>
         <template v-if="showRotate">
           <CommandBlock :command="rotateCommand" />
-          <p class="muted small">不需要卸载重装：用这个一次性注册码换取新 Token 并重启服务，该节点之前的 Token 随即失效。</p>
+          <p class="muted small">{{ t('不需要卸载重装：用这个一次性注册码换取新 Token 并重启服务，该节点之前的 Token 随即失效。') }}</p>
         </template>
       </template>
-      <p v-else-if="status === 'EXPIRED'" class="muted">注册码已过期，请重新生成。</p>
-      <p v-else-if="status === 'REVOKED'" class="muted">注册码已撤销，请重新生成。</p>
-      <p v-else-if="status === 'NONE'" class="muted">该节点还没有注册码。</p>
+      <p v-else-if="status === 'EXPIRED'" class="muted">{{ t('注册码已过期，请重新生成。') }}</p>
+      <p v-else-if="status === 'REVOKED'" class="muted">{{ t('注册码已撤销，请重新生成。') }}</p>
+      <p v-else-if="status === 'NONE'" class="muted">{{ t('该节点还没有注册码。') }}</p>
 
       <p class="state">
-        <template v-if="enrolled"><span class="ok">✓ 已连接 {{ view.server_name }}</span></template>
-        <template v-else-if="status === 'ACTIVE'"><StatusDot status="pending" dot-only /> 等待主机连接…</template>
+        <template v-if="enrolled"><span class="ok">{{ t('✓ 已连接 {server_name}', { server_name: view.server_name }) }}</span></template>
+        <template v-else-if="status === 'ACTIVE'"><StatusDot status="pending" dot-only /> {{ t('等待主机连接…') }}</template>
       </p>
     </template>
-    <p v-else class="muted">加载中…</p>
+    <p v-else class="muted">{{ t('加载中…') }}</p>
 
     <div class="actions">
       <button type="button" :disabled="busy" @click="regenerate">
-        {{ enrolled ? '重新安装 / 更换主机' : '重新生成注册码' }}
+        {{ enrolled ? t('重新安装 / 更换主机') : t('重新生成注册码') }}
       </button>
-      <button type="button" class="secondary" @click="emit('back')">{{ enrolled ? '查看节点' : '稍后安装' }}</button>
+      <button type="button" class="secondary" @click="emit('back')">{{ enrolled ? t('查看节点') : t('稍后安装') }}</button>
     </div>
   </section>
 </template>

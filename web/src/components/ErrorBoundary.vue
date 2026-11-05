@@ -4,6 +4,7 @@
 import { onErrorCaptured, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import EmptyState from './EmptyState.vue'
+import { t } from '../i18n'
 
 const failed = ref(false)
 const route = useRoute()
@@ -22,8 +23,8 @@ function reload() {
 
 <template>
   <div v-if="failed" class="page">
-    <EmptyState text="页面出错了，请刷新重试。若反复出现，请把浏览器控制台中的错误附在问题反馈里。">
-      <button type="button" @click="reload">刷新页面</button>
+    <EmptyState :text="t('页面出错了，请刷新重试。若反复出现，请把浏览器控制台中的错误附在问题反馈里。')">
+      <button type="button" @click="reload">{{ t('刷新页面') }}</button>
     </EmptyState>
   </div>
   <slot v-else />

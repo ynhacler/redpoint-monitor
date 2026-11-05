@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { auditExportURL, errorText, listAuditLogs, type AuditLog, type AuditQuery } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import { DASH, fmtDateTime, uaSummary } from '../format'
+import { t } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,7 +56,7 @@ async function load(more = false) {
     items.value = more ? [...items.value, ...p.items] : p.items
     cursor.value = p.next_cursor
   } catch (e) {
-    error.value = errorText(e, '加载失败，请稍后重试')
+    error.value = errorText(e, t('加载失败，请稍后重试'))
   } finally {
     loading.value = false
   }
@@ -96,22 +97,22 @@ const reasonNames: Record<string, string> = {
 
 function actor(l: AuditLog) {
   if (l.actor_type === 'agent') return l.actor_id ? `Agent（${l.actor_id}）` : 'Agent'
-  if (l.actor_type === 'cli') return '命令行'
+  if (l.actor_type === 'cli') return t('命令行')
   if (l.actor_type === 'apikey') return `API Key #${l.actor_id}`
-  if (l.actor_type === 'system') return '系统'
+  if (l.actor_type === 'system') return t('系统')
   if (l.actor_type === 'app') return l.actor_id ? `App（${l.actor_id}）` : 'App'
-  if (l.actor_type === 'viewer') return `${l.actor_id}（查看者）`
+  if (l.actor_type === 'viewer') return t('{actor_id}（查看者）', { actor_id: l.actor_id })
   return l.actor_id || DASH
 }
 function target(l: AuditLog) {
   if (l.target_type !== 'server' || !l.target_id) return ''
-  return l.target_name || `#${l.target_id}（已删除）`
+  return l.target_name || t('#{target_id}（已删除）', { target_id: l.target_id })
 }
 // 一行摘要：登录失败原因、记住登录等；其他细节点开后查看
 function summary(l: AuditLog) {
   const d = l.details
-  if (typeof d.reason === 'string') return reasonNames[d.reason] ?? d.reason
-  if (l.action === 'auth.login' && d.remember) return '记住登录 7 天'
+  if (typeof d.reason === 'string') return t(reasonNames[d.reason] ?? d.reason)
+  if (l.action === 'auth.login' && d.remember) return t('记住登录 7 天')
   return ''
 }
 const device = uaSummary
@@ -121,54 +122,53 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
 <template>
   <main class="page">
     <div class="head">
-      <h1>日志</h1>
-      <div class="segmented" role="group" aria-label="日志类型">
-        <button type="button" :class="{ active: tab === 'login' }" @click="setQuery({ tab: 'login' })">登录日志</button>
-        <button type="button" :class="{ active: tab === 'operation' }" @click="setQuery({ tab: 'operation' })">操作日志</button>
+      <h1>{{ t('日志') }}</h1>
+      <div class="segmented" role="group" :aria-label="t('日志类型')">
+        <button type="button" :class="{ active: tab === 'login' }" @click="setQuery({ tab: 'login' })">{{ t('登录日志') }}</button>
+        <button type="button" :class="{ active: tab === 'operation' }" @click="setQuery({ tab: 'operation' })">{{ t('操作日志') }}</button>
       </div>
       <button type="button" class="btn secondary" :aria-expanded="showFilters" @click="showFilters = !showFilters">
-        筛选<template v-if="filterCount">（{{ filterCount }}）</template>
+        {{ t('筛选') }}<template v-if="filterCount">（{{ filterCount }}）</template>
       </button>
-      <a class="btn secondary" :href="exportURL" download title="按当前筛选导出，最多 10000 条">导出 CSV</a>
+      <a class="btn secondary" :href="exportURL" download :title="t('按当前筛选导出，最多 10000 条')">{{ t('导出 CSV') }}</a>
     </div>
     <div v-if="showFilters" class="filters">
-      <select :value="result" aria-label="结果" @change="setQuery({ result: ($event.target as HTMLSelectElement).value })">
-        <option value="">全部结果</option>
-        <option value="success">成功</option>
-        <option value="failure">失败</option>
+      <select :value="result" :aria-label="t('结果')" @change="setQuery({ result: ($event.target as HTMLSelectElement).value })">
+        <option value="">{{ t('全部结果') }}</option>
+        <option value="success">{{ t('成功') }}</option>
+        <option value="failure">{{ t('失败') }}</option>
       </select>
-      <select :value="actorQ" aria-label="主体" @change="setQuery({ actor: ($event.target as HTMLSelectElement).value })">
-        <option value="">全部主体</option>
-        <option value="admin">管理员</option>
+      <select :value="actorQ" :aria-label="t('主体')" @change="setQuery({ actor: ($event.target as HTMLSelectElement).value })">
+        <option value="">{{ t('全部主体') }}</option>
+        <option value="admin">{{ t('管理员') }}</option>
         <option value="agent">Agent</option>
         <option value="apikey">API Key</option>
         <option value="app">App</option>
-        <option value="cli">命令行</option>
-        <option value="system">系统</option>
+        <option value="cli">{{ t('命令行') }}</option>
+        <option value="system">{{ t('系统') }}</option>
       </select>
-      <select :value="actionQ" aria-label="操作" @change="setQuery({ action: ($event.target as HTMLSelectElement).value })">
-        <option value="">全部操作</option>
-        <option v-for="[k, name] in actionOptions" :key="k" :value="k">{{ name }}</option>
+      <select :value="actionQ" :aria-label="t('操作')" @change="setQuery({ action: ($event.target as HTMLSelectElement).value })">
+        <option value="">{{ t('全部操作') }}</option>
+        <option v-for="[k, name] in actionOptions" :key="k" :value="k">{{ t(name) }}</option>
       </select>
-      <label class="date small muted">从 <input type="date" :value="fromQ" @change="setQuery({ from: ($event.target as HTMLInputElement).value })" /></label>
-      <label class="date small muted">到 <input type="date" :value="toQ" @change="setQuery({ to: ($event.target as HTMLInputElement).value })" /></label>
-      <button v-if="filtered" type="button" class="text small" @click="setQuery({ result: '', actor: '', action: '', from: '', to: '' })">清除筛选</button>
+      <label class="date small muted">{{ t('从') }} <input type="date" :value="fromQ" @change="setQuery({ from: ($event.target as HTMLInputElement).value })" /></label>
+      <label class="date small muted">{{ t('到') }} <input type="date" :value="toQ" @change="setQuery({ to: ($event.target as HTMLInputElement).value })" /></label>
+      <button v-if="filtered" type="button" class="text small" @click="setQuery({ result: '', actor: '', action: '', from: '', to: '' })">{{ t('清除筛选') }}</button>
     </div>
     <p class="muted small">
-      {{ tab === 'login' ? '登录、退出与敏感操作前的密码验证。' : '节点、注册码、流量校准、修改密码与 Agent 注册等操作。' }}
-      记录只读，保留 1 年。
+      {{ tab === 'login' ? t('登录、退出与敏感操作前的密码验证。') : t('节点、注册码、流量校准、修改密码与 Agent 注册等操作。') }}{{ t('记录只读，保留 1 年。') }}
     </p>
 
     <p v-if="error" class="banner">{{ error }}</p>
-    <EmptyState v-else-if="!loading && !items.length" text="暂无记录" />
+    <EmptyState v-else-if="!loading && !items.length" :text="t('暂无记录')" />
 
     <ul v-if="items.length" class="panel list">
       <li v-for="l in items" :key="l.id" :class="{ fail: l.result === 'failure' }">
         <button type="button" class="row" :disabled="!hasDetails(l)" :aria-expanded="open === l.id" @click="open = open === l.id ? null : l.id">
           <span class="time num small">{{ fmtDateTime(l.ts) }}</span>
-          <span class="result small" :class="l.result === 'success' ? 'ok' : 'bad'">{{ l.result === 'success' ? '成功' : '失败' }}</span>
+          <span class="result small" :class="l.result === 'success' ? 'ok' : 'bad'">{{ l.result === 'success' ? t('成功') : t('失败') }}</span>
           <span class="what">
-            <strong>{{ actionNames[l.action] ?? l.action }}</strong>
+            <strong>{{ t(actionNames[l.action] ?? l.action) }}</strong>
             <span v-if="target(l)"> · {{ target(l) }}</span>
             <span v-if="summary(l)" class="muted"> · {{ summary(l) }}</span>
           </span>
@@ -185,8 +185,8 @@ const hasDetails = (l: AuditLog) => Object.keys(l.details).length > 0 || !!l.use
     </ul>
 
     <div v-if="cursor || loading" class="more">
-      <button v-if="cursor" type="button" class="secondary" :disabled="loading" @click="load(true)">{{ loading ? '加载中…' : '加载更多' }}</button>
-      <span v-else class="muted small">加载中…</span>
+      <button v-if="cursor" type="button" class="secondary" :disabled="loading" @click="load(true)">{{ loading ? t('加载中…') : t('加载更多') }}</button>
+      <span v-else class="muted small">{{ t('加载中…') }}</span>
     </div>
   </main>
 </template>

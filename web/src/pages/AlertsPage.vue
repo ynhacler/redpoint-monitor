@@ -17,18 +17,19 @@ import SslMonitors from '../components/SslMonitors.vue'
 import SystemEvents from '../components/SystemEvents.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
 import { installed, isViewer } from '../store'
+import { t } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
 const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '规则', silences: '静音', notify: '通知' }
 // 查看者只有告警与系统事件（修订第 161 条）
 const tabKeys = computed(() => (isViewer.value ? ['alerts', 'system'] : Object.keys(tabTitles)))
-const setTab = (t: string) => router.replace({ query: { tab: t === 'alerts' ? undefined : t } })
+const setTab = (tab: string) => router.replace({ query: { tab: tab === 'alerts' ? undefined : tab } })
 const tab = computed(() => (['system', 'rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
-  set(errorText(e, '加载失败，请稍后重试') || '登录已过期，请刷新页面')
+  set(errorText(e, t('加载失败，请稍后重试')) || t('登录已过期，请刷新页面'))
 }
 
 // ---- 告警 ----
@@ -73,8 +74,8 @@ async function loadRules() {
 }
 const globals = computed(() => rules.value.filter((r) => r.scope_type === 'global'))
 const overrides = computed(() => rules.value.filter((r) => r.scope_type !== 'global'))
-const serverName = (id: string) => installed.value.find((s) => String(s.id) === id)?.name ?? `#${id}（已删除）`
-const scopeLabel = (r: AlertRule) => (r.scope_type === 'group' ? `分组 ${r.scope_id}` : `节点 ${serverName(r.scope_id)}`)
+const serverName = (id: string) => installed.value.find((s) => String(s.id) === id)?.name ?? t('#{id}（已删除）', { id })
+const scopeLabel = (r: AlertRule) => (r.scope_type === 'group' ? t('分组 {name}', { name: r.scope_id }) : t('节点 {name}', { name: serverName(r.scope_id) }))
 
 async function toggle(r: AlertRule) {
   try {
@@ -84,7 +85,7 @@ async function toggle(r: AlertRule) {
   }
 }
 async function remove(r: AlertRule) {
-  if (!confirm(`删除“${scopeLabel(r)} · ${ruleNames[r.rule_key] ?? r.rule_key}”的覆盖？删除后回到上一层的设置。`)) return
+  if (!confirm(t('删除“{scope} · {rule}”的覆盖？删除后回到上一层的设置。', { scope: scopeLabel(r), rule: t(ruleNames[r.rule_key] ?? r.rule_key) }))) return
   try {
     await deleteAlertRule(r.id)
     await loadRules()
@@ -140,9 +141,10 @@ async function stopSilence(x: Silence) {
     fail(e, (m) => (silencesError.value = m))
   }
 }
+const silenceDurations = [['1h', '1 小时'], ['8h', '8 小时'], ['24h', '24 小时'], ['', '直到手动恢复']] as const
 const silenceScope = (x: Silence) =>
-  x.scope_type === 'global' ? '全部节点' : x.scope_type === 'group' ? `分组 ${x.scope_id}`
-    : x.scope_type === 'rule' ? `规则 ${ruleNames[x.scope_id] ?? x.scope_id}` : `节点 ${serverName(x.scope_id)}`
+  x.scope_type === 'global' ? t('全部节点') : x.scope_type === 'group' ? t('分组 {name}', { name: x.scope_id })
+    : x.scope_type === 'rule' ? t('规则 {name}', { name: t(ruleNames[x.scope_id] ?? x.scope_id) }) : t('节点 {name}', { name: serverName(x.scope_id) })
 
 watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' || tab.value === 'system' ? undefined : loadEvents()), { immediate: true })
 </script>
@@ -150,11 +152,11 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>告警</h1>
+      <h1>{{ t('告警') }}</h1>
     </div>
-    <nav class="tabs" role="tablist" aria-label="告警">
+    <nav class="tabs" role="tablist" :aria-label="t('告警')">
       <button v-for="k in tabKeys" :key="k" type="button" role="tab" :aria-selected="tab === k" :class="{ active: tab === k }"
-        @click="setTab(k)">{{ tabTitles[k] }}</button>
+        @click="setTab(k)">{{ t(tabTitles[k]) }}</button>
     </nav>
     <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
     <NotifyWarning v-if="tab !== 'notify'" />
@@ -163,31 +165,31 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
     <template v-if="tab === 'alerts'">
       <div class="bar">
         <div class="segmented">
-          <button type="button" :class="{ active: stateFilter === 'active' }" @click="setQuery({ state: undefined })">进行中</button>
-          <button type="button" :class="{ active: stateFilter === 'all' }" @click="setQuery({ state: 'all' })">全部</button>
+          <button type="button" :class="{ active: stateFilter === 'active' }" @click="setQuery({ state: undefined })">{{ t('进行中') }}</button>
+          <button type="button" :class="{ active: stateFilter === 'all' }" @click="setQuery({ state: 'all' })">{{ t('全部') }}</button>
         </div>
-        <span class="muted small">告警事件保留 180 天；通知渠道见“通知”标签</span>
+        <span class="muted small">{{ t('告警事件保留 180 天；通知渠道见“通知”标签') }}</span>
       </div>
       <p v-if="eventsError" class="banner">{{ eventsError }}</p>
-      <p v-else-if="loadingEvents && !events.length" class="muted small">加载中…</p>
+      <p v-else-if="loadingEvents && !events.length" class="muted small">{{ t('加载中…') }}</p>
       <!-- 两个标签的空状态说法一致（修订第 173 条） -->
       <EmptyState v-else-if="!events.length"
-        :text="stateFilter === 'active' ? '没有进行中的告警，全部节点运行正常。' : '最近 180 天没有告警记录，全部节点一直运行正常。'" />
+        :text="stateFilter === 'active' ? t('没有进行中的告警，全部节点运行正常。') : t('最近 180 天没有告警记录，全部节点一直运行正常。')" />
       <ul v-if="events.length" class="panel list">
         <li v-for="e in events" :key="e.id" :class="[e.severity, e.state]">
-          <span class="sev">{{ severityNames[e.severity] }}</span>
+          <span class="sev">{{ t(severityNames[e.severity]) }}</span>
           <div class="main">
             <RouterLink :to="`/servers/${e.server_id}`" class="node">{{ e.server_name || `#${e.server_id}` }}</RouterLink>
             <span class="msg">{{ e.message }}</span>
           </div>
           <span class="when muted small num">
             {{ fmtDateTime(e.fired_at) }} ·
-            <b v-if="e.state === 'firing'" class="ongoing">进行中 {{ duration(e) }}</b>
-            <template v-else>持续 {{ duration(e) }} 后恢复</template>
+            <b v-if="e.state === 'firing'" class="ongoing">{{ t('进行中 {v}', { v: duration(e) }) }}</b>
+            <template v-else>{{ t('持续 {v} 后恢复', { v: duration(e) }) }}</template>
           </span>
         </li>
       </ul>
-      <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loadingEvents" @click="loadEvents(true)">加载更多</button></div>
+      <div v-if="cursor" class="more"><button type="button" class="secondary" :disabled="loadingEvents" @click="loadEvents(true)">{{ t('加载更多') }}</button></div>
     </template>
 
     <!-- 系统事件（修订第 163 条） -->
@@ -198,47 +200,47 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 
     <!-- 静音与维护 -->
     <template v-else-if="tab === 'silences'">
-      <p class="muted small intro">静音期间照常记录告警，但不发送通知、不计入“需要关注”；单个节点的静音与维护在节点详情页设置。</p>
+      <p class="muted small intro">{{ t('静音期间照常记录告警，但不发送通知、不计入“需要关注”；单个节点的静音与维护在节点详情页设置。') }}</p>
       <p v-if="silencesError" class="banner">{{ silencesError }}</p>
       <div class="panel add">
         <div class="add-fields">
-          <label>静音对象
+          <label>{{ t('静音对象') }}
             <select v-model="sil.scopeType" @change="sil.scopeId = ''">
-              <option value="global">全部节点</option>
-              <option value="group">分组</option>
-              <option value="rule">规则</option>
+              <option value="global">{{ t('全部节点') }}</option>
+              <option value="group">{{ t('分组') }}</option>
+              <option value="rule">{{ t('规则') }}</option>
             </select>
           </label>
-          <label v-if="sil.scopeType === 'group'">分组
+          <label v-if="sil.scopeType === 'group'">{{ t('分组') }}
             <select v-model="sil.scopeId">
-              <option value="" disabled>请选择</option>
+              <option value="" disabled>{{ t('请选择') }}</option>
               <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
             </select>
           </label>
-          <label v-if="sil.scopeType === 'rule'">规则
+          <label v-if="sil.scopeType === 'rule'">{{ t('规则') }}
             <select v-model="sil.scopeId">
-              <option value="" disabled>请选择</option>
-              <option v-for="g in globals" :key="g.rule_key" :value="g.rule_key">{{ ruleNames[g.rule_key] ?? g.rule_key }}</option>
+              <option value="" disabled>{{ t('请选择') }}</option>
+              <option v-for="g in globals" :key="g.rule_key" :value="g.rule_key">{{ t(ruleNames[g.rule_key] ?? g.rule_key) }}</option>
             </select>
           </label>
-          <label>原因<input v-model="sil.reason" maxlength="200" placeholder="可选" /></label>
+          <label>{{ t('原因') }}<input v-model="sil.reason" maxlength="200" :placeholder="t('可选')" /></label>
         </div>
         <div class="choices">
-          <span class="muted small">静音</span>
-          <button v-for="d in ([['1h', '1 小时'], ['8h', '8 小时'], ['24h', '24 小时'], ['', '直到手动恢复']] as const)" :key="d[0]" type="button" class="secondary"
-            :disabled="sil.scopeType !== 'global' && !sil.scopeId" @click="addSilence(d[0])">{{ d[1] }}</button>
+          <span class="muted small">{{ t('静音') }}</span>
+          <button v-for="d in silenceDurations" :key="d[0]" type="button" class="secondary"
+            :disabled="sil.scopeType !== 'global' && !sil.scopeId" @click="addSilence(d[0])">{{ t(d[1]) }}</button>
         </div>
       </div>
-      <EmptyState v-if="silencesReady && !silences.length" text="没有生效中的静音或维护。" />
+      <EmptyState v-if="silencesReady && !silences.length" :text="t('没有生效中的静音或维护。')" />
       <ul v-else-if="silences.length" class="panel rules">
         <li v-for="x in silences" :key="x.id">
           <div class="rule">
-            <span class="sev small">{{ x.kind === 'maintenance' ? '维护' : '静音' }}</span>
+            <span class="sev small">{{ x.kind === 'maintenance' ? t('维护') : t('静音') }}</span>
             <div class="rule-main">
               <div class="rule-name">{{ silenceScope(x) }}</div>
-              <div class="muted small">{{ x.ends_at ? `至 ${fmtTime(x.ends_at)}` : '直到手动恢复' }}<template v-if="x.reason"> · {{ x.reason }}</template></div>
+              <div class="muted small">{{ x.ends_at ? t('至 {time}', { time: fmtTime(x.ends_at) }) : t('直到手动恢复') }}<template v-if="x.reason"> · {{ x.reason }}</template></div>
             </div>
-            <button type="button" class="text" @click="stopSilence(x)">{{ x.kind === 'maintenance' ? '结束维护' : '取消静音' }}</button>
+            <button type="button" class="text" @click="stopSilence(x)">{{ x.kind === 'maintenance' ? t('结束维护') : t('取消静音') }}</button>
           </div>
         </li>
       </ul>
@@ -247,25 +249,25 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
     <!-- 规则 -->
     <template v-else>
       <p class="muted small intro">
-        规则分三层：默认规则 → 分组覆盖 → 节点覆盖，下层覆盖上层。修改后下一轮评估（10 秒内）生效。
+        {{ t('规则分三层：默认规则 → 分组覆盖 → 节点覆盖，下层覆盖上层。修改后下一轮评估（10 秒内）生效。') }}
       </p>
       <p v-if="rulesError" class="banner">{{ rulesError }}</p>
 
       <section class="section">
-        <h3>默认规则</h3>
-        <p v-if="loadingRules && !globals.length" class="muted small">加载中…</p>
-        <p v-else-if="!globals.length && !rulesError" class="muted small">没有读到默认规则，请刷新页面。</p>
+        <h3>{{ t('默认规则') }}</h3>
+        <p v-if="loadingRules && !globals.length" class="muted small">{{ t('加载中…') }}</p>
+        <p v-else-if="!globals.length && !rulesError" class="muted small">{{ t('没有读到默认规则，请刷新页面。') }}</p>
         <ul v-if="globals.length" class="panel rules">
           <li v-for="r in globals" :key="r.id" :class="{ off: !r.enabled }">
             <div class="rule">
-              <label class="switch" :title="r.enabled ? '点击关闭' : '点击启用'">
+              <label class="switch" :title="r.enabled ? t('点击关闭') : t('点击启用')">
                 <input type="checkbox" :checked="r.enabled" @change="toggle(r)" />
               </label>
               <div class="rule-main">
-                <div class="rule-name">{{ ruleNames[r.rule_key] ?? r.rule_key }} <span class="sev small" :class="r.severity">{{ severityNames[r.severity] }}</span></div>
+                <div class="rule-name">{{ t(ruleNames[r.rule_key] ?? r.rule_key) }} <span class="sev small" :class="r.severity">{{ t(severityNames[r.severity]) }}</span></div>
                 <div class="muted small">{{ ruleSummary(r) }}</div>
               </div>
-              <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? '收起' : '编辑' }}</button>
+              <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? t('收起') : t('编辑') }}</button>
             </div>
             <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" />
           </li>
@@ -274,25 +276,25 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 
       <section class="section">
         <div class="section-head">
-          <h3>分组与节点覆盖</h3>
-          <button v-if="!adding" type="button" class="secondary" @click="adding = true">添加覆盖</button>
+          <h3>{{ t('分组与节点覆盖') }}</h3>
+          <button v-if="!adding" type="button" class="secondary" @click="adding = true">{{ t('添加覆盖') }}</button>
         </div>
         <div v-if="adding" class="panel add">
           <div class="add-fields">
-            <label>规则
+            <label>{{ t('规则') }}
               <select v-model="add.ruleKey">
-                <option v-for="g in globals" :key="g.rule_key" :value="g.rule_key">{{ ruleNames[g.rule_key] ?? g.rule_key }}</option>
+                <option v-for="g in globals" :key="g.rule_key" :value="g.rule_key">{{ t(ruleNames[g.rule_key] ?? g.rule_key) }}</option>
               </select>
             </label>
-            <label>对象
+            <label>{{ t('对象') }}
               <select v-model="add.scopeType" @change="add.scopeId = ''">
-                <option value="group">分组</option>
-                <option value="server">节点</option>
+                <option value="group">{{ t('分组') }}</option>
+                <option value="server">{{ t('节点') }}</option>
               </select>
             </label>
-            <label>{{ add.scopeType === 'group' ? '分组' : '节点' }}
+            <label>{{ add.scopeType === 'group' ? t('分组') : t('节点') }}
               <select v-model="add.scopeId">
-                <option value="" disabled>请选择</option>
+                <option value="" disabled>{{ t('请选择') }}</option>
                 <template v-if="add.scopeType === 'group'">
                   <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
                 </template>
@@ -300,28 +302,28 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
                   <option v-for="s in installed" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
                 </template>
               </select>
-              <small v-if="add.scopeType === 'group' && !groups.length" class="muted">还没有分组：在节点信息中填写分组</small>
+              <small v-if="add.scopeType === 'group' && !groups.length" class="muted">{{ t('还没有分组：在节点信息中填写分组') }}</small>
             </label>
           </div>
-          <p v-if="addTaken" class="small warn-text">该对象已有这条规则的覆盖，请在下方列表中直接修改。</p>
+          <p v-if="addTaken" class="small warn-text">{{ t('该对象已有这条规则的覆盖，请在下方列表中直接修改。') }}</p>
           <AlertRuleEditor v-if="addBase && add.scopeId && !addTaken" :key="`${add.ruleKey}-${add.scopeType}-${add.scopeId}`"
             :rule="addBase" :scope="{ type: add.scopeType, id: add.scopeId }" @saved="saved" @cancel="adding = false" />
-          <div v-else class="add-cancel"><button type="button" class="secondary" @click="adding = false">取消</button></div>
+          <div v-else class="add-cancel"><button type="button" class="secondary" @click="adding = false">{{ t('取消') }}</button></div>
         </div>
-        <p v-if="rulesReady && !overrides.length && !adding" class="muted small">还没有覆盖。例如：为“落地”分组把流量阈值改为 70%，或为某台机器关闭 CPU 告警。</p>
+        <p v-if="rulesReady && !overrides.length && !adding" class="muted small">{{ t('还没有覆盖。例如：为“落地”分组把流量阈值改为 70%，或为某台机器关闭 CPU 告警。') }}</p>
         <ul v-if="overrides.length" class="panel rules">
           <li v-for="r in overrides" :key="r.id" :class="{ off: !r.enabled }">
             <div class="rule">
               <label class="switch"><input type="checkbox" :checked="r.enabled" @change="toggle(r)" /></label>
               <div class="rule-main">
                 <div class="rule-name">
-                  <span class="scope">{{ scopeLabel(r) }}</span> · {{ ruleNames[r.rule_key] ?? r.rule_key }}
-                  <span class="sev small" :class="r.severity">{{ severityNames[r.severity] }}</span>
+                  <span class="scope">{{ scopeLabel(r) }}</span> · {{ t(ruleNames[r.rule_key] ?? r.rule_key) }}
+                  <span class="sev small" :class="r.severity">{{ t(severityNames[r.severity]) }}</span>
                 </div>
-                <div class="muted small">{{ r.enabled ? ruleSummary(r) : '已关闭（覆盖上一层）' }}</div>
+                <div class="muted small">{{ r.enabled ? ruleSummary(r) : t('已关闭（覆盖上一层）') }}</div>
               </div>
-              <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? '收起' : '编辑' }}</button>
-              <button type="button" class="text danger-text" @click="remove(r)">删除</button>
+              <button type="button" class="text" @click="editing = editing === r.id ? null : r.id">{{ editing === r.id ? t('收起') : t('编辑') }}</button>
+              <button type="button" class="text danger-text" @click="remove(r)">{{ t('删除') }}</button>
             </div>
             <AlertRuleEditor v-if="editing === r.id" :rule="r" @saved="saved" @cancel="editing = null" />
           </li>
@@ -330,7 +332,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 
       <!-- 证书到期（设计 33.3）：原“监测 → 证书”页并入这里（修订第 173 条），提醒经通知渠道发送 -->
       <section id="ssl" class="section">
-        <h3>证书到期</h3>
+        <h3>{{ t('证书到期') }}</h3>
         <SslMonitors />
       </section>
     </template>

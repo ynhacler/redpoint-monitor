@@ -440,7 +440,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
       <ul class="pick-list">
         <li v-for="c in picks" :key="c.key">
           <button type="button" class="pick" @click="choose(c)">
-            <SubAvatar :brand="c.key" :name="c.name" />
+            <SubAvatar :brand="c.key" :name="t(c.name)" />
             <span class="pick-name">{{ t(c.name) }}<small v-if="c.country" class="muted"> {{ countryOf(c.country)?.flag }} {{ c.dial }}</small></span>
             <Icon name="plus" class="muted" />
           </button>

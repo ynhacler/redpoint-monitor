@@ -6,6 +6,7 @@ import {
   type CaptchaAnswer, type EnrollCodeView, type Me, type ServerView,
 } from './api'
 import { connected, subscribe } from './ws'
+import { t } from './i18n'
 
 /** 全局状态：当前用户、节点列表、加载与错误状态 */
 export const state = reactive({
@@ -48,7 +49,7 @@ export async function refresh() {
     state.error = ''
     state.loaded = true
   } catch (e) {
-    state.error = errorText(e, '无法连接面板，正在重试')
+    state.error = errorText(e, t('无法连接面板，正在重试'))
   }
 }
 
@@ -86,7 +87,7 @@ export function startPolling() {
       state.servers[i] = v
       state.updatedAt = new Date()
     }),
-    ...(['server.online', 'server.offline', 'alert.triggered', 'alert.recovered'] as const).map((t) => subscribe(t, scheduleRefresh)),
+    ...(['server.online', 'server.offline', 'alert.triggered', 'alert.recovered'] as const).map((ev) => subscribe(ev, scheduleRefresh)),
   ]
   refresh()
   tick()

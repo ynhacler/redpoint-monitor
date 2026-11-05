@@ -54,6 +54,7 @@ const query = ref(String(route.query.q ?? ''))
 const group = ref(String(route.query.g ?? ''))
 const line = ref(String(route.query.l ?? '')) // 线路 / 协议栈筛选（修订第 280 条）
 const provider = ref(String(route.query.p ?? '')) // 供应商（手机 UI 规范 3.4）
+const allChip = { v: '', t: '全部' }
 const expiryOptions = [{ v: '7', t: '7 天内到期' }, { v: '30', t: '30 天内到期' }] as const
 const expiry = ref(expiryOptions.some((o) => o.v === route.query.e) ? String(route.query.e) : '') // 到期范围（含已过期）
 // 路由的 hash 保留：底部抽屉打开时为 #sheet（系统返回关闭抽屉）
@@ -336,13 +337,13 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
       <fieldset v-if="lineOptions.length || line" class="sheet-group">
         <legend>{{ t('网络线路') }}</legend>
         <div class="chips wrap">
-          <button v-for="o in [{ v: '', t: '全部' }, ...lineOptions]" :key="o.v" type="button" class="chip" :class="{ active: line === o.v }" :aria-pressed="line === o.v" @click="line = o.v">{{ t(o.t) }}</button>
+          <button v-for="o in [allChip, ...lineOptions]" :key="o.v" type="button" class="chip" :class="{ active: line === o.v }" :aria-pressed="line === o.v" @click="line = o.v">{{ t(o.t) }}</button>
         </div>
       </fieldset>
       <fieldset v-if="hasExpiry || expiry" class="sheet-group">
         <legend>{{ t('到期') }}</legend>
         <div class="chips wrap">
-          <button v-for="o in [{ v: '', t: '全部' }, ...expiryOptions]" :key="o.v" type="button" class="chip" :class="{ active: expiry === o.v }" :aria-pressed="expiry === o.v" @click="expiry = o.v">{{ t(o.t) }}</button>
+          <button v-for="o in [allChip, ...expiryOptions]" :key="o.v" type="button" class="chip" :class="{ active: expiry === o.v }" :aria-pressed="expiry === o.v" @click="expiry = o.v">{{ t(o.t) }}</button>
         </div>
       </fieldset>
       <p v-if="!groups.length && providers.length < 2 && !lineOptions.length && !hasExpiry" class="muted small">{{ t('节点设置了分组、供应商、线路或到期日后，可以在这里筛选。') }}</p>
