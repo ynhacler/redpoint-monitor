@@ -386,6 +386,7 @@
 | 270 | 电脑侧边栏层级：“系统”父级可收起（箭头，记在本机；当前页在其中时总是展开），子项缩进约 22px、文字与图标更浅，一级项为正文色；手机触控区域不小于 44px（顶栏工具、分段选择、云账户操作、待处理展开行） | 41.3、41.5 |
 | 271 | 省流量：Agent 在面板声明 X-Report-Features: unchanged 后省略与上一份相同的监听端口、防火墙、代理（Report.unchanged），面板用实时状态补全，没有上一份时 409、Agent 改发完整上报，每 5 分钟一份完整上报；WebSocket 协商 permessage-deflate（双向不保留上下文，事件压缩一次共用） | 6.1、20 |
 | 272 | 历史“仅有约 N 的数据”不到 1 小时写分钟（此前 28 分钟也写成“约 1 小时”，Web 与 App）；Web 的这条说明改在曲线上方，不再代替曲线；App 日期计算按日历日：试用结束日与“还有几天”跨夏令时切换不再差一天 | 41.5 |
+| 293 | 订阅历史扣费（手机 UI 规范 P2，Web）：编辑订阅时可展开“历史扣费”，按开始日期、试用期、周期与结束日期推算到今天的扣费日（chargesBetween），列出最近 12 次并可显示全部，给出次数与合计；面板不记录实际付款与改价历史，金额一律按当前价格，界面上写明是推算值，以账单为准；不新增接口与数据表 | 47 |
 | 292 | 面板提示信息的英文（Web）：面板返回的错误信息仍是中文（设计 43.4），Web 在收到错误时按界面语言翻译（i18n.ts tServer，ApiError 的 message 与字段 details 都经过它）：locales/enServer.ts 收录默认错误提示与全部字段校验信息（约 210 条），带变量的信息按模式匹配；errorText 的通用提示同样翻译；没有收录的信息显示中文原文；告警与通知内容不在此列 | 43.6、52 |
 | 291 | 英文界面补译与卡片名称行（Web）：节点新建 / 编辑表单（ServerForm、ServerEditPage）、节点测速设置（NodeProbeSettings）与测速目标勾选表（ProbeTargetPicker）的文字全部经 t() 翻译，补上约 100 条英文译文与列表分隔符“、”“；”的译文；电脑节点卡片的名称独占一行，到期 / 运行时间 / 负载 / 温度在第二行，v4 / v6 与线路标志在其右侧（放不下时换行），与手机一致 | 41.3、52 |
 | 290 | 订阅标志更新（Web 与 App）：核对 Simple Icons 16.36.0（已用的 48 个图形未变）；它仍未收录的 Disney+、Amazon Prime、爱奇艺、腾讯视频、优酷、芒果 TV、QQ 音乐、ChatGPT Plus、Microsoft 365、Adobe Creative Cloud、Kindle Unlimited、Keep、Nintendo Switch Online、Xbox Game Pass 改用各服务官网声明的图标（缩小为 64 px PNG 内置，不加载外部图片，brandLogos.ts），Apple Fitness+ 用 Simple Icons 的 Apple 标志；搬瓦工（网站没有图标）、GreenCloud（拒绝自动请求）、BuyVM（只有 16 px 图标）仍为色块加首字母；App 的 catalog.gen.dart 同步重新生成 | 47.2 |
