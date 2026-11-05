@@ -15,6 +15,8 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { title: '登录', public: true } },
+    // 公开展示页（设计 45.3）：不用登录，也不显示导航
+    { path: '/status', name: 'status', component: () => import('./pages/StatusPage.vue'), meta: { title: '运行状态', public: true } },
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { viewer: true, title: '账号' } },
     { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '告警' } },
     // 测速设置与服务合并为“监测”（修订第 176 条）
@@ -68,7 +70,7 @@ export const router = createRouter({
 // 会话失效（任意请求返回 401）或退出时回到登录页，并记住原页面
 setSignedOutHandler(() => {
   const cur = router.currentRoute.value
-  if (cur.name !== 'login') router.push({ name: 'login', query: { redirect: cur.fullPath } })
+  if (!cur.meta.public) router.push({ name: 'login', query: { redirect: cur.fullPath } })
 })
 
 

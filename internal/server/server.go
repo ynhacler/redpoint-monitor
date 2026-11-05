@@ -96,6 +96,8 @@ type Server struct {
 	apiKeys       apiKeyLimiter   // 只读 API Key 的限流（设计 45.2）
 	appLimit      apiKeyLimiter   // App 设备的限流（每台每分钟 120 次，设计 23.6）
 	pairLimit     *enrollLimiter  // App 配对与刷新：按 IP 限流，失败过多临时封禁（设计 23.6）
+	statusLimit   *enrollLimiter  // 公开展示页：按 IP 每分钟 60 次（设计 45.3）
+	statusPage    statusPageCache // 公开展示页的 5 秒缓存（设计 45.3）
 	push          *pushState      // App 原生推送（设计 30）
 	sslRoots      *x509.CertPool  // SSL 证书监控的根证书；nil 表示系统根证书（测试中替换，设计 33.3）
 	services      serviceRunner   // 服务监控：正在检查的监控（设计 33.2）
@@ -149,6 +151,7 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		mirrorRoot: opts.MirrorDir, releaseMirror: opts.ReleaseMirror && opts.MirrorDir != "", mirrorHTTP: &http.Client{Timeout: 10 * time.Minute},
 		store: store, web: web, log: opts.Logger, version: opts.Version, lis: &listens{log: opts.Logger},
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(), pairLimit: newEnrollLimiter(),
+		statusLimit: &enrollLimiter{perMinute: statusPagePerMin, now: time.Now, ips: map[string]*ipState{}},
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
@@ -270,7 +273,9 @@ func (s *Server) routes() http.Handler {
 	handle("GET /releases/{version}/{file}", accessPublic, s.handleMirror)
 
 	// Web 登录（设计 19.1）。登录本身无需认证，单独限流
-	handle("GET /api/v1/site", accessPublic, s.handleGetSite) // 应用名称与语言：登录页也要用（设计 52）
+	handle("GET /api/v1/site", accessPublic, s.handleGetSite)                             // 应用名称与语言：登录页也要用（设计 52）
+	handle("GET /api/v1/public/servers", accessPublic, s.handlePublicServers)             // 公开展示页：默认关闭，只含白名单字段（设计 45.3）
+	handle("GET /api/v1/public/subscriptions", accessPublic, s.handlePublicSubscriptions) // 同上，订阅单独开启，只读
 	handle("GET /api/v1/auth/captcha", accessPublic, s.handleCaptcha)
 	handle("POST /api/v1/auth/login", accessPublic, s.handleLogin)
 	handle("POST /api/v1/auth/login/totp", accessPublic, s.handleLoginTOTP)
@@ -364,6 +369,8 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/settings/listen", accessAdmin, s.handlePutListen)
 	handle("POST /api/v1/settings/listen/close-old", accessAdmin, s.handleCloseOldListen)
 	handle("PUT /api/v1/settings/site", accessAdmin, s.handlePutSite)
+	handle("GET /api/v1/settings/status-page", accessAdmin, s.handleGetStatusPage)
+	handle("PUT /api/v1/settings/status-page", accessAdmin, s.handlePutStatusPage)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）
 	handle("PUT /api/v1/settings/digest", accessAdmin, s.handlePutDigest)

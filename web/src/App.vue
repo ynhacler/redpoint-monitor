@@ -20,7 +20,9 @@ const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } 
 // 使用初始密码时只显示账号页，不显示导航（设计 17.4）
 // 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
 const alertCount = computed(() => activeAlertCount(state.servers))
-const signedIn = computed(() => !!state.me && !state.me.must_change_password)
+// 公开展示页（设计 45.3）没有任何导航，登录后打开也一样；路由就绪前按地址判断，避免顶栏闪一下
+const bare = computed(() => route.name === 'status' || (!route.name && location.pathname === '/status'))
+const signedIn = computed(() => !!state.me && !state.me.must_change_password && !bare.value)
 const groups = computed(() => groupsFor(isViewer.value))
 const group = computed(() => activeGroup(route, groups.value))
 const currentItem = computed(() => (group.value ? group.value.items.find((x) => itemActive(x, route, group.value!)) : undefined))
@@ -128,7 +130,7 @@ onUnmounted(stopPolling)
       <Icon :name="collapsed ? 'panel-open' : 'panel-close'" :size="18" /><span class="sb-text">{{ t('收起') }}</span>
     </button>
   </aside>
-  <header ref="topbar" class="topbar">
+  <header v-if="!bare" ref="topbar" class="topbar">
     <div class="inner">
       <RouterLink to="/" class="brand">{{ site.app_name }}</RouterLink>
       <span v-if="signedIn && pageTitle" class="page-title">{{ pageTitle }}</span>

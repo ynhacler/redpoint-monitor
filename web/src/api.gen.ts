@@ -65,6 +65,66 @@ export type SiteView = SiteSetting & {
   captcha_forced_off: boolean
 }
 
+export interface StatusPageSetting {
+  /** 是否开启公开展示页 */
+  enabled: boolean
+  /** 是否在展示页公开订阅（只读），默认关闭 */
+  subscriptions: boolean
+  /** 公开的节点 */
+  server_ids: number[]
+}
+
+export interface PublicServer {
+  /** 节点名称，其中的 IP、邮箱与电话号码遮盖为 *** */
+  name: string
+  /** ISO 3166-1 两位代码，空表示未填 */
+  country: string
+  status: 'online' | 'unknown' | 'offline'
+  /** CPU 使用率，百分比 */
+  cpu?: number
+  /** 内存使用率，百分比 */
+  memory?: number
+  /** 全部磁盘合计使用率，百分比 */
+  disk?: number
+  /** 下行速率，字节 / 秒 */
+  rx_speed?: number
+  /** 上行速率，字节 / 秒 */
+  tx_speed?: number
+  /** 运行时间，秒 */
+  uptime?: number
+  /** 本周期流量用量比例，百分比；不限流量时省略 */
+  traffic_pct?: number
+}
+
+export interface PublicServerList {
+  items: PublicServer[]
+  /** 恒为空 */
+  next_cursor: string
+  /** 数据组装时间，Unix 秒 */
+  updated_at: number
+  /** 订阅是否公开，决定展示页是否显示订阅标签 */
+  subscriptions: boolean
+}
+
+export interface PublicSubscription {
+  /** 名称，其中的 IP、邮箱与电话号码遮盖为 *** */
+  name: string
+  /** 目录键，用来显示品牌标志；可为空 */
+  brand: string
+  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  price_cents: number
+  currency: string
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
+  /** 下次扣费日 YYYY-MM-DD */
+  next_charge: string
+}
+
+export interface PublicSubscriptionList {
+  items: PublicSubscription[]
+  /** 恒为空 */
+  next_cursor: string
+}
+
 export interface ListenSettingInput {
   /** Web 监听地址（host:port，或只写端口）；反向代理模式只写端口时为 127.0.0.1:端口 */
   web: string
@@ -2563,6 +2623,29 @@ export interface Paths {
     /** 网站配置中显示用的部分（设计 52）：应用名称、界面语言、登录是否需要验证码；无需登录（登录页使用） */
     get: {
       response: SiteView
+    }
+  }
+  '/public/servers': {
+    /** 公开展示页的数据（设计 45.3）：无需凭证，默认关闭，只含管理员选中的节点 */
+    get: {
+      response: PublicServerList
+    }
+  }
+  '/public/subscriptions': {
+    /** 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有 */
+    get: {
+      response: PublicSubscriptionList
+    }
+  }
+  '/settings/status-page': {
+    /** 公开展示页设置（设计 45.3） */
+    get: {
+      response: StatusPageSetting
+    }
+    /** 修改公开展示页设置，保存后立即生效（记入操作日志 setting.update） */
+    put: {
+      body: StatusPageSetting
+      response: StatusPageSetting
     }
   }
   '/settings/site': {

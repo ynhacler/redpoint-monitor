@@ -3458,6 +3458,120 @@
         }
       }
     },
+    "/public/servers": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "公开展示页的数据（设计 45.3）：无需凭证，默认关闭，只含管理员选中的节点",
+        "description": "未开启时返回 404。只有下列字段，不含 IP、主机名、服务商、价格、到期、端口、告警内容与内部 ID；名称中的 IP、邮箱与电话号码遮盖为 ***。离线节点没有指标。服务端缓存 5 秒，按 IP 每分钟 60 次。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "公开的节点",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicServerList"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/public/subscriptions": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有",
+        "description": "未开启时返回 404。只有未结束的订阅和下列字段，不含电话号码、备注、支付方式、VPS 地址、上传的图标与内部 ID；名称中的 IP、邮箱与电话号码遮盖为 ***。服务端缓存 5 秒，与 /public/servers 共用按 IP 每分钟 60 次的限额。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "公开的订阅",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSubscriptionList"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/status-page": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "公开展示页设置（设计 45.3）",
+        "responses": {
+          "200": {
+            "description": "当前设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "修改公开展示页设置，保存后立即生效（记入操作日志 setting.update）",
+        "description": "server_ids 是要公开的全部节点，不在其中的节点取消公开。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusPageSetting"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/site": {
       "put": {
         "tags": [
@@ -8103,6 +8217,197 @@
             }
           }
         ]
+      },
+      "StatusPageSetting": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "subscriptions",
+          "server_ids"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "是否开启公开展示页"
+          },
+          "subscriptions": {
+            "type": "boolean",
+            "description": "是否在展示页公开订阅（只读），默认关闭"
+          },
+          "server_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "公开的节点"
+          }
+        }
+      },
+      "PublicServer": {
+        "type": "object",
+        "required": [
+          "name",
+          "country",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "节点名称，其中的 IP、邮箱与电话号码遮盖为 ***"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 两位代码，空表示未填"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "online",
+              "unknown",
+              "offline"
+            ]
+          },
+          "cpu": {
+            "type": "number",
+            "description": "CPU 使用率，百分比"
+          },
+          "memory": {
+            "type": "number",
+            "description": "内存使用率，百分比"
+          },
+          "disk": {
+            "type": "number",
+            "description": "全部磁盘合计使用率，百分比"
+          },
+          "rx_speed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "下行速率，字节 / 秒"
+          },
+          "tx_speed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "上行速率，字节 / 秒"
+          },
+          "uptime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "运行时间，秒"
+          },
+          "traffic_pct": {
+            "type": "number",
+            "description": "本周期流量用量比例，百分比；不限流量时省略"
+          }
+        }
+      },
+      "PublicServerList": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "updated_at",
+          "subscriptions"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicServer"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "恒为空"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "数据组装时间，Unix 秒"
+          },
+          "subscriptions": {
+            "type": "boolean",
+            "description": "订阅是否公开，决定展示页是否显示订阅标签"
+          }
+        }
+      },
+      "PublicSubscription": {
+        "type": "object",
+        "required": [
+          "name",
+          "brand",
+          "category",
+          "price_cents",
+          "currency",
+          "cycle",
+          "next_charge"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "名称，其中的 IP、邮箱与电话号码遮盖为 ***"
+          },
+          "brand": {
+            "type": "string",
+            "description": "目录键，用来显示品牌标志；可为空"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "video",
+              "tools",
+              "reading",
+              "social",
+              "health",
+              "game",
+              "cloud",
+              "sim",
+              "vps",
+              "other"
+            ]
+          },
+          "price_cents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "cycle": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "semiannually",
+              "annually",
+              "once"
+            ]
+          },
+          "next_charge": {
+            "type": "string",
+            "description": "下次扣费日 YYYY-MM-DD"
+          }
+        }
+      },
+      "PublicSubscriptionList": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicSubscription"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "恒为空"
+          }
+        }
       },
       "ListenSettingInput": {
         "type": "object",

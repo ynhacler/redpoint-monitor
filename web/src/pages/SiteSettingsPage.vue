@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 系统 → 网站配置（设计 52，修订第 201 条）：应用名称、界面语言与登录验证码，以及监听端口（设计 51）。
 // 保存后立即生效：语言与名称在本页面马上切换，其他已打开的浏览器在刷新后生效。
-import { computed, reactive, ref, watch } from 'vue'
-import { ApiError, errorText, putSite } from '../api'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { ApiError, errorText, getStatusPage, putSite, putStatusPage } from '../api'
+import Flag from '../components/Flag.vue'
 import ListenSettings from '../components/ListenSettings.vue'
 import SaveState, { saveStatus } from '../components/SaveState.vue'
 import { localeNames, t, type Locale } from '../i18n'
 import { applySite, site } from '../site'
+import { state } from '../store'
 
 const form = reactive({ app_name: site.app_name, language: site.language as Locale, captcha: site.captcha })
 watch(() => [site.app_name, site.language, site.captcha], () => Object.assign(form, { app_name: site.app_name, language: site.language, captcha: site.captcha }))
@@ -34,6 +36,43 @@ async function save() {
     else error.value = errorText(e, t('保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+// 公开展示页（设计 45.3）：默认关闭，节点逐个选择
+const statusUrl = `${location.origin}/status`
+const pub = reactive({ enabled: false, subs: false, ids: [] as number[] })
+const pubSaved = ref({ enabled: false, subs: false, ids: '' })
+const pubKey = () => [...pub.ids].sort((a, b) => a - b).join()
+const pubDirty = computed(() => pub.enabled !== pubSaved.value.enabled || pub.subs !== pubSaved.value.subs || pubKey() !== pubSaved.value.ids)
+const pubError = ref('')
+const pubSaving = ref(false)
+const pubDone = ref(false)
+const pubAt = ref(0)
+const pubStatus = computed(() => saveStatus({ saving: pubSaving.value, error: pubError.value, dirty: pubDirty.value, saved: pubDone.value }))
+function applyPub(v: { enabled: boolean; subscriptions: boolean; server_ids: number[] }) {
+  Object.assign(pub, { enabled: v.enabled, subs: v.subscriptions, ids: [...v.server_ids] })
+  pubSaved.value = { enabled: v.enabled, subs: v.subscriptions, ids: pubKey() }
+}
+onMounted(async () => {
+  try {
+    applyPub(await getStatusPage())
+  } catch (e) {
+    pubError.value = errorText(e, t('读取失败'))
+  }
+})
+async function savePub() {
+  pubSaving.value = true
+  pubDone.value = false
+  pubError.value = ''
+  try {
+    applyPub(await putStatusPage({ enabled: pub.enabled, subscriptions: pub.subs, server_ids: pub.ids }))
+    pubDone.value = true
+    pubAt.value = Date.now()
+  } catch (e) {
+    pubError.value = errorText(e, t('保存失败'))
+  } finally {
+    pubSaving.value = false
   }
 }
 </script>
@@ -83,6 +122,52 @@ async function save() {
 
     </form>
 
+    <form id="status-page" class="panel card" novalidate @submit.prevent="savePub">
+      <div class="card-head">
+        <div>
+          <h2>{{ t('公开展示页') }}</h2>
+          <p class="small muted">{{ t('不用登录就能看的大屏，适合放在电视或副屏上') }}</p>
+        </div>
+        <div class="save">
+          <SaveState :state="pubStatus" :error="pubError || undefined" :saved-at="pubAt" />
+          <button type="submit" :disabled="pubSaving || !pubDirty" :title="!pubDirty ? t('没有修改') : undefined">{{ pubSaving ? t('保存中…') : t('保存配置') }}</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">{{ t('开启展示页') }}</span>
+        <p class="small muted">{{ t('任何知道地址的人都能打开。节点只显示名称、国家、在线状态、资源使用率、网速、运行时间和流量比例，不显示 IP、主机名、服务商、价格和到期时间。云平台不会显示') }}</p>
+        <label class="switch">
+          <input v-model="pub.enabled" type="checkbox" role="switch" />
+          <span class="track" aria-hidden="true" />
+          <span>{{ pub.enabled ? t('已启用') : t('已关闭') }}</span>
+        </label>
+        <a v-if="pubSaved.enabled" class="small" href="/status" target="_blank" rel="noopener">{{ statusUrl }}</a>
+      </div>
+
+      <div class="field">
+        <span class="label">{{ t('公开订阅') }}</span>
+        <p class="small muted">{{ t('增加“订阅”标签，只能查看。显示名称、分类、金额、周期和下次扣费日，不显示电话号码、备注、支付方式和 VPS 地址') }}</p>
+        <label class="switch">
+          <input v-model="pub.subs" type="checkbox" role="switch" />
+          <span class="track" aria-hidden="true" />
+          <span>{{ pub.subs ? t('已启用') : t('已关闭') }}</span>
+        </label>
+      </div>
+
+      <div class="field">
+        <span class="label">{{ t('公开的节点') }}（{{ pub.ids.length }} / {{ state.servers.length }}）</span>
+        <p class="small muted">{{ t('节点名称会公开显示，其中的 IP、邮箱和电话号码显示为 ***；域名等其他内容不会遮盖，请先检查名称') }}</p>
+        <div class="pick-actions">
+          <button type="button" class="ghost" @click="pub.ids = state.servers.map((s) => s.id)">{{ t('全选') }}</button>
+          <button type="button" class="ghost" @click="pub.ids = []">{{ t('全不选') }}</button>
+        </div>
+        <div class="picks">
+          <label v-for="s in state.servers" :key="s.id"><input v-model="pub.ids" type="checkbox" :value="s.id" /> <Flag :code="s.country" /> <span>{{ s.name }}</span></label>
+        </div>
+      </div>
+    </form>
+
     <section class="listen-wrap">
       <h2 id="listen">{{ t('监听端口') }}</h2>
       <ListenSettings />
@@ -116,6 +201,10 @@ async function save() {
 .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .switch input:disabled + .track { opacity: .5; }
 .listen-wrap h2 { margin-top: 0; }
+.pick-actions { display: flex; gap: var(--space-2); }
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-1) var(--space-3); margin-top: var(--space-1); }
+.picks label { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 28px; cursor: pointer; }
+.picks span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) {
   .card-head, .field { padding: var(--space-3) var(--space-4); }
 }
