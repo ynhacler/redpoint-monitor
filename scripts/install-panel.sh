@@ -171,7 +171,7 @@ fi
 # ================= 重置密码 =================
 if [ "$ACTION" = reset-password ]; then
   if [ ! -x "$BIN" ] || [ ! -f "$DATA/monitor.db" ]; then die "没有找到已安装的面板（$BIN、$DATA）"; fi
-  ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT INT TERM
+  ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT; trap 'rm -f "$ERR"; exit 130' INT; trap 'rm -f "$ERR"; exit 143' TERM
   OUT="$(as_vpsmon "$BIN" admin reset-password --data "$DATA" 2>"$ERR")" || die "重置失败：$(cat "$ERR")"
   PW="$(printf '%s\n' "$OUT" | tail -n 1)"
   say ""
@@ -368,7 +368,10 @@ FILE="vpsmon-server-linux-$ARCH"
 WANT="$(printf '%s\n' "$HASHES" | awk -v f="$FILE" '$2 == f {print $1}')"
 [ -n "$WANT" ] || die "本版本没有 linux/$ARCH 的面板构建"
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t vpsmon)"
-trap 'rm -rf "$TMP"' EXIT INT TERM
+# 中断时要退出：只清理不退出的话，脚本会带着已删除的临时目录继续往下执行
+trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP"; exit 130' INT
+trap 'rm -rf "$TMP"; exit 143' TERM
 if [ -n "$LOCAL" ]; then
   [ -f "$LOCAL/$FILE" ] || die "没有找到 $LOCAL/$FILE"
   cp "$LOCAL/$FILE" "$TMP/vpsmon-server"

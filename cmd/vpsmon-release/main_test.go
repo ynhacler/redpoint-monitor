@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -80,10 +81,20 @@ func TestInstallerSources(t *testing.T) {
 	writeExec("uname", "#!/bin/sh\nif [ \"$1\" = -s ]; then echo Linux; else echo x86_64; fi\n")
 	// 假 curl：按地址选择模式 good / bad / fail，并记录请求的来源
 	writeExec("curl", `#!/bin/sh
+all="$*"
 while [ $# -gt 1 ]; do
   [ "$1" = -o ] && out="$2"
   shift
 done
+case "$1" in
+  */healthz) # 面板检查：不计入下载记录
+    case "$HEALTH" in
+      ok) echo '{"status":"ok","version":"v9.9.9"}' > "$out"; printf '200 203.0.113.7 0.120' ;;
+      notpanel) echo '<html>nginx</html>' > "$out"; printf '200 203.0.113.7 0.120' ;;
+      *) echo "curl: (7) Failed to connect" >&2; exit 7 ;;
+    esac
+    exit 0 ;;
+esac
 case "$1" in
   *SHA256SUMS*) exit 22 ;; # 主机装有 minisign 时也跳过签名校验（这里的构建没有签名）
 esac
@@ -91,8 +102,14 @@ case "$1" in
   *github.com*) src=github; mode="$GITHUB_MODE" ;;
   *) src=panel; mode="$PANEL_MODE" ;;
 esac
-echo "$src" >> "$CURL_LOG"
+case "$all" in
+  *"--speed-limit 51200"*) echo "$src+strict" >> "$CURL_LOG" ;;
+  *) echo "$src" >> "$CURL_LOG" ;;
+esac
 case "$mode" in
+  interrupt) kill -INT "$PPID"; exit 130 ;; # 等同用户按 Ctrl+C
+  slow) echo partial > "$out"; exit 28 ;;    # 收到部分数据后速度不够
+  timeout) exit 28 ;;                        # 连接超时，没有数据
   good) cp "$GOOD" "$out" ;;
   bad) echo tampered > "$out" ;;
   *) exit 22 ;;
@@ -106,11 +123,14 @@ esac
 		want          string // 依次访问的来源
 		ok            bool
 	}{
-		{"官方可用", []string{"--fallback", panel}, "good", "good", "github", true},
-		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github github panel", true},
-		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github github panel", true},
-		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github github panel", false},
-		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github github panel", false},
+		{"官方可用", []string{"--fallback", panel}, "good", "good", "github+strict", true},
+		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github+strict github+strict panel", true},
+		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github+strict github+strict panel", true},
+		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github+strict github+strict panel", false},
+		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github+strict github+strict panel", false},
+		{"速度太慢时不重试，直接用面板", []string{"--fallback", panel}, "slow", "good", "github+strict panel", true},
+		{"连接超时时仍试 2 次", []string{"--fallback", panel}, "timeout", "good", "github+strict github+strict panel", true},
+		{"Ctrl+C 立即退出，不试下一个来源", []string{"--fallback", panel}, "interrupt", "good", "github+strict", false},
 		{"没有回退地址", nil, "fail", "good", "github github", false},
 		{"--mirror 只用镜像", []string{"--mirror", panel}, "good", "good", "panel", true},
 	}
@@ -130,8 +150,37 @@ esac
 			if got := strings.Join(strings.Fields(string(b)), " "); got != c.want {
 				t.Errorf("访问顺序 %q，应为 %q\n%s", got, c.want, out)
 			}
+			if c.ok && !strings.Contains(string(out), "[第 "+strconv.Itoa(len(strings.Fields(c.want)))+" 次] 已从") {
+				t.Errorf("应显示第几次成功：\n%s", out)
+			}
 			if _, err := os.Stat(filepath.Join(dir, "vpsmon-agent")); (err == nil) != c.ok {
 				t.Errorf("下载结果不符：%v\n%s", err, out)
+			}
+		})
+	}
+
+	// 安装前先检查面板：显示结果，连不上或不是面板时不下载（设计 27.5.3）
+	for _, c := range []struct {
+		name, health, want string
+		ok                 bool
+	}{
+		{"面板正常", "ok", "面板可访问：HTTP 200 · IP 203.0.113.7 · 耗时 0.12 秒 · 面板版本 v9.9.9", true},
+		{"连接被拒绝", "down", "无法访问面板：连接被拒绝", false},
+		{"不是面板", "notpanel", "不是 vpsmon 面板", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			log := filepath.Join(dir, "curl.log")
+			cmd := exec.Command("sh", filepath.Join(dist, "agent-1.2.3.sh"), "--download-only", "--server", "https://panel.example/")
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CURL_LOG="+log, "HEALTH="+c.health,
+				"GITHUB_MODE=good", "PANEL_MODE=good", "GOOD="+filepath.Join(dist, "vpsmon-agent-linux-amd64"))
+			out, err := cmd.CombinedOutput()
+			if (err == nil) != c.ok || !strings.Contains(string(out), c.want) {
+				t.Fatalf("退出状态 %v，应包含 %q：\n%s", err, c.want, out)
+			}
+			if b, _ := os.ReadFile(log); !c.ok && len(b) > 0 {
+				t.Errorf("面板不可用时不应下载：%s", b)
 			}
 		})
 	}
