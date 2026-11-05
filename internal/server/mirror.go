@@ -270,6 +270,16 @@ type fileStamp struct {
 func (s *Server) handleMirror(w http.ResponseWriter, r *http.Request) {
 	notFound := func() { http.NotFound(w, r) }
 	ver := r.PathValue("version")
+	// latest 只提供最新正式版的清单与签名：本机 upgrade 不指定版本时用它确定版本，文件再按版本号下载
+	if ver == "latest" {
+		file := r.PathValue("file")
+		rel := s.latestStable()
+		if rel == nil || (file != "manifest.json" && file != "manifest.json.minisig") {
+			notFound()
+			return
+		}
+		ver = "v" + rel.Version
+	}
 	if !strings.HasPrefix(ver, "v") || s.mirrorRoot == "" {
 		notFound()
 		return

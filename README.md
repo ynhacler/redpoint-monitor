@@ -276,7 +276,7 @@ curl -fsSLo agent.sh https://github.com/…/agent-0.3.1.sh && echo "<哈希>  ag
 
 **没有 root 权限的主机**：去掉命令中的 `sudo` 直接执行，Agent 会安装到当前用户（`~/.local/bin`），用 systemd 用户服务（需 `loginctl enable-linger`）或 crontab 保活。用户模式不支持从面板远程升级，在主机上执行 `vpsmon-agent upgrade` 即可。
 
-**无法访问 GitHub 的主机**：面板默认把已验签的官方版本镜像到本地（约 200 MB，`VPSMON_RELEASE_MIRROR=false` 可关闭）。Agent 先从 GitHub 下载，失败 2 次后自动改从面板下载，安装和远程升级都是如此，文件仍按签名清单中的哈希校验。面板自己也连不上 GitHub 时，用 `vpsmon-server release import` 离线导入。
+**无法访问 GitHub 的主机**：面板默认把已验签的官方版本镜像到本地（约 200 MB，`VPSMON_RELEASE_MIRROR=false` 可关闭）。Agent 先从 GitHub 下载，失败 2 次后自动改从面板下载，安装、远程升级和本机 `upgrade` 都是如此，文件仍按签名清单中的哈希校验。面板自己也连不上 GitHub 时，用 `vpsmon-server release import` 离线导入。
 
 Agent 常用命令：
 

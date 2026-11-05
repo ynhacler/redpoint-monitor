@@ -69,6 +69,28 @@ func mirrorServer(t *testing.T) (*Server, *fakeReleases, string) {
 	return s, f, adminToken(t, s)
 }
 
+// /releases/latest/ 只提供最新已镜像正式版的清单与签名（本机 upgrade 不指定版本时使用，设计 27.5.3）。
+func TestMirrorLatestManifest(t *testing.T) {
+	s, f, admin := mirrorServer(t)
+	h := s.routes()
+	if rec := do(h, "GET", "/releases/latest/manifest.json", "", nil); rec.Code != 404 {
+		t.Errorf("还没有版本时应为 404：%d", rec.Code)
+	}
+	f.publishFull("0.3.0")
+	if rec := do(h, "POST", "/api/v1/agent-releases/sync", admin, nil); rec.Code != 200 {
+		t.Fatalf("同步：%d %s", rec.Code, rec.Body)
+	}
+	for _, n := range []string{"manifest.json", "manifest.json.minisig"} {
+		got, want := do(h, "GET", "/releases/latest/"+n, "", nil), do(h, "GET", "/releases/v0.3.0/"+n, "", nil)
+		if got.Code != 200 || got.Body.String() != want.Body.String() {
+			t.Errorf("%s：%d，内容应与 v0.3.0 相同", n, got.Code)
+		}
+	}
+	if rec := do(h, "GET", "/releases/latest/vpsmon-agent-linux-amd64", "", nil); rec.Code != 404 {
+		t.Errorf("latest 不提供构建：%d", rec.Code)
+	}
+}
+
 // 安装脚本从 v0.9.14 起支持 --fallback：之前的版本内容已固定，只能继续用 --mirror（设计 27.5.3）。
 func TestInstallerFallbackArg(t *testing.T) {
 	for _, c := range []struct {
