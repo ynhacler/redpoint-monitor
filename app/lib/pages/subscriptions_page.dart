@@ -348,7 +348,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             ]),
           ),
           const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          // 金额不能截断：系统大字号时整列缩小到放得下，平时布局不变
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.4),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text.rich(
               TextSpan(children: [
                 // 人民币为主金额，原币在下一行（修订第 253 条）
@@ -359,7 +365,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             ),
             if (_cnyText(s) != null) Text(_price(s), style: TextStyle(fontSize: 11, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
             if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: soon ? colors.bad : dueColor)),
-          ]),
+              ]),
+            ),
+          ),
         ]),
         ),
         // 快到期：右上角红点

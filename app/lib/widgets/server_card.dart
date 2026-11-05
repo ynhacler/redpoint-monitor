@@ -72,11 +72,18 @@ class ServerCard extends StatelessWidget {
                   Tooltip(
                       message: '${stale ? '上次' : ''}${statusText[s.status] ?? s.status}',
                       child: Icon(Icons.circle, size: 9, color: stale ? colors.muted : colors.status(s.status))),
-                  if (s.maintenance != null) ...[const SizedBox(width: 6), _Pill('维护中', c.textMuted, c.border)]
-                  else if (s.muted != null) ...[const SizedBox(width: 6), _Pill('已静音', c.textMuted, c.border)],
+                  if (s.maintenance != null) ...[const SizedBox(width: 6), Flexible(child: _Pill('维护中', c.textMuted, c.border))]
+                  else if (s.muted != null) ...[const SizedBox(width: 6), Flexible(child: _Pill('已静音', c.textMuted, c.border))],
                 ]),
               ),
-              if (exp != null) ...[const SizedBox(width: 6), _Pill(exp.text, expColor ?? c.textMuted, expColor ?? c.border, icon: Icons.event)],
+              // 限宽而不是 Flexible：平时布局不变，系统大字号时才截断，名称仍有位置
+              if (exp != null) ...[
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.35),
+                  child: _Pill(exp.text, expColor ?? c.textMuted, expColor ?? c.border, icon: Icons.event),
+                ),
+              ],
               SizedBox(
                 width: 32,
                 height: 28,
@@ -161,10 +168,16 @@ class ServerCard extends StatelessWidget {
             DefaultTextStyle.merge(
                 style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]),
                 child: Row(children: [
-                  Text('流量', style: muted),
+                  _Capped(child: Text('流量', style: muted)),
                   const SizedBox(width: 8),
-                  Text(fmtTraffic(s.traffic.used, s.traffic.unit)),
-                  Text(' / ${s.traffic.limit > 0 ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限'}', style: muted),
+                  // 限宽：系统大字号时截断总量，进度条和百分比仍然可见；平时布局不变
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.42),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(child: Text(fmtTraffic(s.traffic.used, s.traffic.unit), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Flexible(child: Text(' / ${s.traffic.limit > 0 ? fmtTraffic(s.traffic.limit, s.traffic.unit) : '不限'}', style: muted, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    ]),
+                  ),
                   if (pct != null) ...[
                     const SizedBox(width: 8),
                     Expanded(
@@ -179,7 +192,7 @@ class ServerCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(fmtPct(pct), style: TextStyle(color: pct >= 95 ? c.bad : (pct >= 80 ? c.warn : null))),
+                    _Capped(child: Text(fmtPct(pct), style: TextStyle(color: pct >= 95 ? c.bad : (pct >= 80 ? c.warn : null)))),
                   ],
                 ]),
             ),
@@ -246,6 +259,18 @@ class ServerCard extends StatelessWidget {
 }
 
 /// 维护中 / 已静音：圆角小标签（与 Web 的 .tag 一致）
+/// 短文字限宽：平时不影响布局，系统大字号时缩小到放得下
+class _Capped extends StatelessWidget {
+  const _Capped({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.16),
+        child: FittedBox(fit: BoxFit.scaleDown, child: child),
+      );
+}
+
 class _Pill extends StatelessWidget {
   const _Pill(this.text, this.color, this.border, {this.icon});
   final String text;
@@ -259,7 +284,7 @@ class _Pill extends StatelessWidget {
         decoration: BoxDecoration(border: Border.all(color: border), borderRadius: BorderRadius.circular(99)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) Padding(padding: const EdgeInsets.only(right: 3), child: Icon(icon, size: 11, color: color)),
-          Text(text, style: TextStyle(fontSize: 11, height: 1.6, color: color, fontFeatures: const [FontFeature.tabularFigures()])),
+          Flexible(child: Text(text, style: TextStyle(fontSize: 11, height: 1.6, color: color, fontFeatures: const [FontFeature.tabularFigures()]), maxLines: 1, overflow: TextOverflow.ellipsis)),
         ]),
       );
 }
