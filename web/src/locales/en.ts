@@ -1597,4 +1597,12 @@ export const en: Record<string, string> = {
   '最近 24 小时几乎没有一次成功：地址可能已失效，或被防火墙拦截，建议更换': 'Almost nothing succeeded in the last 24 hours: the address may be dead or firewalled; consider replacing it',
   '疑似失效': 'Likely dead',
   '丢包偏高': 'High loss',
+  // 接口错误的通用提示（修订第 292 条）
+  '操作失败，请稍后重试': 'Something went wrong; try again later',
+  '无法连接面板，正在重试': 'Can’t reach the panel, retrying',
+  '服务器内部错误，请稍后重试（编号 {id}）': 'Internal server error; try again later (ID {id})',
+  '服务器内部错误，请稍后重试': 'Internal server error; try again later',
+  '{msg}（{n} 秒后可重试）': '{msg} (retry in {n} s)',
+  '无法连接面板，请检查网络': 'Can’t reach the panel; check your network',
+  '请求失败（HTTP {n}）': 'Request failed (HTTP {n})',
 }

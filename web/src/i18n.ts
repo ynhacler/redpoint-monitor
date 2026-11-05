@@ -3,6 +3,7 @@
 // locale 是响应式的：模板中调用 t() 的地方在切换语言后自动更新。语言由“系统 → 网站配置”设置（全站一致）。
 import { ref } from 'vue'
 import { en } from './locales/en'
+import { enServer, enServerPatterns } from './locales/enServer'
 
 /** 支持的语言 */
 export type Locale = 'zh' | 'en'
@@ -19,6 +20,15 @@ export const locale = ref<Locale>('zh')
 export function setLocale(l: string) {
   locale.value = l === 'en' ? 'en' : 'zh'
   document.documentElement.lang = locale.value === 'en' ? 'en' : 'zh-CN'
+}
+
+/** 翻译面板返回的提示信息（修订第 292 条）：先查界面译文与固定信息，再按带变量的模式匹配；都没有时显示中文原文 */
+export function tServer(msg: string): string {
+  if (locale.value === 'zh') return msg
+  const hit = en[msg] ?? enServer[msg]
+  if (hit) return hit
+  for (const [re, tmpl] of enServerPatterns) if (re.test(msg)) return msg.replace(re, tmpl)
+  return msg
 }
 
 /** 翻译：key 为中文原文；vars 替换其中的 {名称} */
