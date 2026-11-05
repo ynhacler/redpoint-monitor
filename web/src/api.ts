@@ -786,6 +786,24 @@ export function getSite() {
   return request('get', '/site')
 }
 
+/** 公开展示页的节点（无需登录，设计 45.3）；未开启时返回 404 */
+export function getPublicServers() {
+  return request('get', '/public/servers')
+}
+
+/** 公开展示页上的一个节点 */
+export type PublicServer = G.PublicServer
+
+/** 公开展示页设置 */
+export function getStatusPage() {
+  return request('get', '/settings/status-page')
+}
+
+/** 修改公开展示页设置 */
+export function putStatusPage(body: G.StatusPageSetting) {
+  return request('put', '/settings/status-page', { body })
+}
+
 /** 修改网站配置 */
 export function putSite(body: G.SiteSetting) {
   return request('put', '/settings/site', { body })

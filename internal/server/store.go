@@ -1052,6 +1052,8 @@ var migrations = []string{
 	INSERT INTO fx_history (day, currency, cny)
 		SELECT date(as_of, 'unixepoch'), currency, cny FROM fx_rates
 		WHERE as_of > 0 AND currency IN (SELECT currency FROM subscriptions WHERE currency <> 'CNY');`,
+	// 迁移 65：公开展示页（设计 45.3，修订第 303 条）：节点是否公开。存在节点行上，删除节点时一起消失（节点 ID 会复用）
+	`ALTER TABLE servers ADD COLUMN status_public INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {
@@ -1172,6 +1174,42 @@ type ServerRow struct {
 	// SortOrder 是自定义顺序（从 1 开始，0 表示未排），由 PUT /servers/order 写入（修订第 150 条）
 	SortOrder int   `json:"sort_order"`
 	CreatedAt int64 `json:"created_at"`
+}
+
+// PublicServerIDs 返回公开展示页选中的节点（设计 45.3）。
+func (s *Store) PublicServerIDs() ([]int64, error) {
+	rows, err := s.DB.Query(`SELECT id FROM servers WHERE status_public = 1 ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// SetPublicServers 把公开的节点设为 ids，其余节点取消公开。
+func (s *Store) SetPublicServers(ids []int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE servers SET status_public = 0`); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := tx.Exec(`UPDATE servers SET status_public = 1 WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ListServers 返回全部节点，按名称排序。
