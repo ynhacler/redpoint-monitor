@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,11 +94,13 @@ case "$1" in
   *) src=panel; mode="$PANEL_MODE" ;;
 esac
 case "$all" in
-  *--max-time*) echo "$src+limit" >> "$CURL_LOG" ;;
+  *"--speed-limit 51200"*) echo "$src+strict" >> "$CURL_LOG" ;;
   *) echo "$src" >> "$CURL_LOG" ;;
 esac
 case "$mode" in
   interrupt) kill -INT "$PPID"; exit 130 ;; # 等同用户按 Ctrl+C
+  slow) echo partial > "$out"; exit 28 ;;    # 收到部分数据后速度不够
+  timeout) exit 28 ;;                        # 连接超时，没有数据
   good) cp "$GOOD" "$out" ;;
   bad) echo tampered > "$out" ;;
   *) exit 22 ;;
@@ -111,12 +114,14 @@ esac
 		want          string // 依次访问的来源
 		ok            bool
 	}{
-		{"官方可用", []string{"--fallback", panel}, "good", "good", "github+limit", true},
-		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github+limit github+limit panel", true},
-		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github+limit github+limit panel", true},
-		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github+limit github+limit panel", false},
-		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github+limit github+limit panel", false},
-		{"Ctrl+C 立即退出，不试下一个来源", []string{"--fallback", panel}, "interrupt", "good", "github+limit", false},
+		{"官方可用", []string{"--fallback", panel}, "good", "good", "github+strict", true},
+		{"官方失败 2 次后用面板", []string{"--fallback", panel}, "fail", "good", "github+strict github+strict panel", true},
+		{"官方内容不对时用面板", []string{"--fallback", panel}, "bad", "good", "github+strict github+strict panel", true},
+		{"面板内容不对时失败", []string{"--fallback", panel}, "fail", "bad", "github+strict github+strict panel", false},
+		{"全部失败", []string{"--fallback", panel}, "fail", "fail", "github+strict github+strict panel", false},
+		{"速度太慢时不重试，直接用面板", []string{"--fallback", panel}, "slow", "good", "github+strict panel", true},
+		{"连接超时时仍试 2 次", []string{"--fallback", panel}, "timeout", "good", "github+strict github+strict panel", true},
+		{"Ctrl+C 立即退出，不试下一个来源", []string{"--fallback", panel}, "interrupt", "good", "github+strict", false},
 		{"没有回退地址", nil, "fail", "good", "github github", false},
 		{"--mirror 只用镜像", []string{"--mirror", panel}, "good", "good", "panel", true},
 	}
@@ -135,6 +140,9 @@ esac
 			b, _ := os.ReadFile(log)
 			if got := strings.Join(strings.Fields(string(b)), " "); got != c.want {
 				t.Errorf("访问顺序 %q，应为 %q\n%s", got, c.want, out)
+			}
+			if c.ok && !strings.Contains(string(out), "[第 "+strconv.Itoa(len(strings.Fields(c.want)))+" 次] 已从") {
+				t.Errorf("应显示第几次成功：\n%s", out)
 			}
 			if _, err := os.Stat(filepath.Join(dir, "vpsmon-agent")); (err == nil) != c.ok {
 				t.Errorf("下载结果不符：%v\n%s", err, out)

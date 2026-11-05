@@ -73,18 +73,24 @@ if [ "$DOWNLOAD_ONLY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ---- 工具 ----
-# 被拦截的连接可能一直卡住：连接 10 秒超时，30 秒内低于 1 KB/s 视为失败，才能换下一个来源
-fetch() { # fetch URL 输出文件 [有退路时单次最长秒数]
+# 小文件（签名）：被拦截的连接可能一直卡住，所以都带超时
+fetch() { # fetch URL 输出文件
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q -T 30 -t 1 -O "$2" "$1"
+  else die "需要 curl 或 wget"; fi
+}
+# 程序本体：显示进度条。strict 为 1 表示还有来源可换：连接 10 秒超时，低于 50 KB/s 持续 10 秒就放弃（设计 27.5.3）
+fetch_build() { # fetch_build URL 输出文件 strict
   if command -v curl >/dev/null 2>&1; then
-    if [ -n "${3:-}" ]; then
-      # 还有来源可换：很慢的连接也不值得等（低于 50 KB/s 持续 15 秒，或总时长超过上限）
-      curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 5 --speed-time 15 --speed-limit 51200 --max-time "$3" -o "$2" "$1"
+    if [ "$3" -eq 1 ]; then
+      curl -fSL --progress-bar --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 10 --speed-limit 51200 -o "$2" "$1"
     else
-      curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
+      curl -fSL --progress-bar --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
     fi
   elif command -v wget >/dev/null 2>&1; then
-    if [ -n "${3:-}" ] && command -v timeout >/dev/null 2>&1; then timeout "$3" wget -q -T 15 -t 1 -O "$2" "$1"
-    else wget -q -T 30 -t 1 -O "$2" "$1"; fi
+    # wget 不能按速度放弃，只有 10 秒读超时；GNU wget 用 --show-progress，busybox wget 默认就显示进度
+    if wget --help 2>&1 | grep -q -- --show-progress; then wget -q --show-progress -T 10 -t 1 -O "$2" "$1"
+    else wget -T 10 -O "$2" "$1"; fi
   else die "需要 curl 或 wget"; fi
 }
 sha256() {
@@ -114,27 +120,44 @@ if [ -z "$MIRROR" ]; then
   if [ -n "$FALLBACK" ]; then SOURCES="$SOURCES $FALLBACK/v$VERSION"; fi
 fi
 DONE=0
+ATTEMPT=0
+SLOW=0
 for SRC in $SOURCES; do
-  LIMIT=""
-  if [ -n "$FALLBACK" ] && [ -z "$MIRROR" ] && [ "$SRC" = "$REPO_URL" ]; then
-    LIMIT=60
-    say "下载 $SRC/$FILE（最多等 $LIMIT 秒，失败 2 次后自动改从面板下载）"
-  else
-    say "下载 $SRC/$FILE"
+  STRICT=0
+  NAME="面板"
+  if [ "$SRC" = "$REPO_URL" ]; then
+    NAME="GitHub"
+    if [ -n "$FALLBACK" ]; then STRICT=1; fi
+    # 速度太慢时不再重试官方地址，直接换面板
+    if [ "$SLOW" -eq 1 ]; then continue; fi
   fi
-  if ! fetch "$SRC/$FILE" "$TMP/vpsmon-agent" "$LIMIT"; then
-    say "· 下载失败：$SRC/$FILE"
+  ATTEMPT=$((ATTEMPT + 1))
+  say "[第 $ATTEMPT 次] 从 $NAME 下载 $SRC/$FILE"
+  rm -f "$TMP/vpsmon-agent"
+  RC=0
+  fetch_build "$SRC/$FILE" "$TMP/vpsmon-agent" "$STRICT" || RC=$?
+  if [ "$RC" -ne 0 ]; then
+    # curl 28 为超时：已经收到数据说明是速度太慢，没有数据说明连不上
+    if [ "$STRICT" -eq 1 ] && [ "$RC" -eq 28 ] && [ -s "$TMP/vpsmon-agent" ]; then
+      SLOW=1
+      say "[第 $ATTEMPT 次] 速度低于 50 KB/s，改从面板下载"
+    elif [ "$RC" -eq 28 ]; then
+      say "[第 $ATTEMPT 次] 超时"
+    else
+      say "[第 $ATTEMPT 次] 下载失败（错误码 $RC）"
+    fi
     continue
   fi
   GOT="$(sha256 "$TMP/vpsmon-agent")"
   if [ "$GOT" = "$WANT" ]; then
     BASE="$SRC"
     DONE=1
+    say "[第 $ATTEMPT 次] 已从 $NAME 下载完成"
     break
   fi
-  say "· SHA256 校验失败，已丢弃（期望 ${WANT}，实际 ${GOT}）"
+  say "[第 $ATTEMPT 次] SHA256 校验失败，已丢弃（期望 ${WANT}，实际 ${GOT}）"
 done
-[ "$DONE" -eq 1 ] || die "下载失败或 SHA256 校验失败，已中止安装：$FILE"
+[ "$DONE" -eq 1 ] || die "尝试 $ATTEMPT 次都没有成功，已中止安装：$FILE"
 say "✓ SHA256 校验通过"
 
 if command -v minisign >/dev/null 2>&1 && [ -n "$PUBKEY" ]; then
