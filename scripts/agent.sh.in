@@ -29,6 +29,8 @@ MIRROR=""
 FALLBACK=""
 DOWNLOAD_ONLY=0
 PASS=""
+SERVER=""
+keep() { PASS="$PASS $(printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")")"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --mirror) [ $# -ge 2 ] || die "--mirror 需要地址"; MIRROR="${2%/}"; shift 2 ;;
@@ -37,7 +39,9 @@ while [ $# -gt 0 ]; do
     --fallback=*) FALLBACK="${1#--fallback=}"; FALLBACK="${FALLBACK%/}"; shift ;;
     --download-only) DOWNLOAD_ONLY=1; shift ;;
     -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
-    *) PASS="$PASS $(printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")")"; shift ;;
+    --server) [ $# -ge 2 ] || die "--server 需要地址"; SERVER="${2%/}"; keep "$1"; keep "$2"; shift 2 ;;
+    --server=*) SERVER="${1#--server=}"; SERVER="${SERVER%/}"; keep "$1"; shift ;;
+    *) keep "$1"; shift ;;
   esac
 done
 
@@ -111,6 +115,43 @@ TMP="$(mktemp -d 2>/dev/null || mktemp -d -t vpsmon)"
 trap 'rm -rf "$TMP"' EXIT
 trap 'rm -rf "$TMP"; exit 130' INT
 trap 'rm -rf "$TMP"; exit 143' TERM
+
+# ---- 检查面板（设计 27.5.3）：注册要访问面板，连不上就不必下载，直接说明原因 ----
+check_panel() {
+  [ -n "$SERVER" ] || return 0
+  say "检查面板 $SERVER/healthz"
+  RC=0
+  INFO=""
+  if command -v curl >/dev/null 2>&1; then
+    INFO="$(curl -sSL --connect-timeout 10 --max-time 15 -o "$TMP/healthz" -w '%{http_code} %{remote_ip} %{time_total}' "$SERVER/healthz" 2>"$TMP/healthz.err")" || RC=$?
+  else
+    wget -q -T 10 -t 1 -O "$TMP/healthz" "$SERVER/healthz" 2>"$TMP/healthz.err" || RC=$?
+  fi
+  if [ "$RC" -ne 0 ]; then
+    case "$RC" in
+      6) WHY="无法解析域名" ;;
+      7) WHY="连接被拒绝（面板没有运行，或端口没有开放）" ;;
+      28) WHY="连接超时（防火墙或网络拦截）" ;;
+      35) WHY="TLS 握手失败" ;;
+      60) WHY="证书校验失败" ;;
+      *) WHY="错误码 $RC" ;;
+    esac
+    say "  $(sed -n 1p "$TMP/healthz.err" 2>/dev/null)"
+    die "无法访问面板：${WHY}。请先确认这台主机能访问 $SERVER，再重新安装"
+  fi
+  VER="$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$TMP/healthz" 2>/dev/null)"
+  if ! grep -q '"status":"ok"' "$TMP/healthz" 2>/dev/null; then
+    die "这个地址不是 vpsmon 面板：$SERVER（${INFO:-没有返回内容}）"
+  fi
+  if [ -n "$INFO" ]; then
+    # shellcheck disable=SC2086 # 按空格拆成状态码、IP 与耗时
+    set -- $INFO
+    say "✓ 面板可访问：HTTP $1 · IP $2 · 耗时 $(printf '%.2f' "$3") 秒 · 面板版本 ${VER:-未知}"
+  else
+    say "✓ 面板可访问 · 面板版本 ${VER:-未知}"
+  fi
+}
+check_panel
 
 # ---- 下载与校验 ----
 # 来源依次尝试：--mirror 只用镜像；否则官方地址 2 次，再换 --fallback。每个来源都按内置 SHA256 校验（设计 27.5.3）

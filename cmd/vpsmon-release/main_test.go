@@ -87,6 +87,15 @@ while [ $# -gt 1 ]; do
   shift
 done
 case "$1" in
+  */healthz) # 面板检查：不计入下载记录
+    case "$HEALTH" in
+      ok) echo '{"status":"ok","version":"v9.9.9"}' > "$out"; printf '200 203.0.113.7 0.120' ;;
+      notpanel) echo '<html>nginx</html>' > "$out"; printf '200 203.0.113.7 0.120' ;;
+      *) echo "curl: (7) Failed to connect" >&2; exit 7 ;;
+    esac
+    exit 0 ;;
+esac
+case "$1" in
   *SHA256SUMS*) exit 22 ;; # 主机装有 minisign 时也跳过签名校验（这里的构建没有签名）
 esac
 case "$1" in
@@ -146,6 +155,32 @@ esac
 			}
 			if _, err := os.Stat(filepath.Join(dir, "vpsmon-agent")); (err == nil) != c.ok {
 				t.Errorf("下载结果不符：%v\n%s", err, out)
+			}
+		})
+	}
+
+	// 安装前先检查面板：显示结果，连不上或不是面板时不下载（设计 27.5.3）
+	for _, c := range []struct {
+		name, health, want string
+		ok                 bool
+	}{
+		{"面板正常", "ok", "面板可访问：HTTP 200 · IP 203.0.113.7 · 耗时 0.12 秒 · 面板版本 v9.9.9", true},
+		{"连接被拒绝", "down", "无法访问面板：连接被拒绝", false},
+		{"不是面板", "notpanel", "不是 vpsmon 面板", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			log := filepath.Join(dir, "curl.log")
+			cmd := exec.Command("sh", filepath.Join(dist, "agent-1.2.3.sh"), "--download-only", "--server", "https://panel.example/")
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CURL_LOG="+log, "HEALTH="+c.health,
+				"GITHUB_MODE=good", "PANEL_MODE=good", "GOOD="+filepath.Join(dist, "vpsmon-agent-linux-amd64"))
+			out, err := cmd.CombinedOutput()
+			if (err == nil) != c.ok || !strings.Contains(string(out), c.want) {
+				t.Fatalf("退出状态 %v，应包含 %q：\n%s", err, c.want, out)
+			}
+			if b, _ := os.ReadFile(log); !c.ok && len(b) > 0 {
+				t.Errorf("面板不可用时不应下载：%s", b)
 			}
 		})
 	}
