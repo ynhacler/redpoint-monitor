@@ -6,9 +6,11 @@
 // 整张卡片可点击进入详情（设计 11）。
 // 手机（手机 UI 规范 3.2）分四层：名称与状态（名称最多两行）→ 到期 · 运行 · 负载 · 温度与 v4 / v6、线路标志（同一行，放不下时换行）
 // → CPU / 内存 / 磁盘三列等宽 → 上下行速率单独一行（带 /s 单位）与流量配额。
+// 显示哪些字段由“卡片显示”设置决定（cardFields.ts，修订第 288 条）。
 import { computed } from 'vue'
 import type { ServerView } from '../api'
 import { DASH, fmtBytes, fmtBytesShort, fmtDuration, fmtExpiry, fmtPct, fmtTraffic, fmtUptimeShort } from '../format'
+import { cardShows } from '../cardFields'
 import { t } from '../i18n'
 import { cpu, diskSummary, displayStatus, gaugeLevel, isLive, issues, mem, rx, trafficPct, tx } from '../metrics'
 import Flag from './Flag.vue'
@@ -58,6 +60,10 @@ const io = computed(() => {
     { read: 0, write: 0, readTotal: 0, writeTotal: 0 },
   )
 })
+// 隐藏的到期与流量在需要关注时仍显示（修订第 288 条）
+const showExpiry = computed(() => !!expiry.value && (cardShows('expiry') || expiry.value.level === 'bad'))
+const showTraffic = computed(() => cardShows('traffic') || (traffic.value ?? 0) >= 80)
+const wideCols = computed(() => 3 + (cardShows('network') ? 1 : 0) + (cardShows('io') ? 1 : 0))
 const tlv = computed(() => (traffic.value == null ? 'ok' : traffic.value >= 95 ? 'bad' : traffic.value >= 80 ? 'warn' : ''))
 // 卡片显示全部磁盘的合计，悬停列出每个挂载点
 const diskTip = computed(() => {
@@ -79,22 +85,22 @@ const diskTip = computed(() => {
         <span v-else-if="s.muted" class="tag muted small" :title="t('告警已静音')">{{ t('已静音') }}</span>
       </div>
       <div v-if="live && r" class="meta num">
-        <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
+        <span v-if="showExpiry && expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
         <!-- 手机上显示文字标签（修订第 246 条，UI-005）：“已运行 1天 · 负载 0.30”，不只靠图标；温度排在最后 -->
-        <span :title="t('开机时间')"><Icon name="power" :size="15" /><span class="lbl">{{ t('已运行') }}</span>{{ uptime }}</span>
-        <span :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" /><span class="lbl">{{ t('负载') }}</span>{{ load1 }}</span>
-        <span v-if="r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
+        <span v-if="cardShows('uptime')" :title="t('开机时间')"><Icon name="power" :size="15" /><span class="lbl">{{ t('已运行') }}</span>{{ uptime }}</span>
+        <span v-if="cardShows('load')" :title="t('1 分钟负载')" :class="{ warn: r.cpu.cores > 0 && r.cpu.load1 > r.cpu.cores }"><Icon name="activity" :size="15" /><span class="lbl">{{ t('负载') }}</span>{{ load1 }}</span>
+        <span v-if="cardShows('temp') && r.cpu.temp_c" :class="tempLv" :title="t('CPU 温度')"><Icon name="thermometer" :size="15" />{{ Math.round(r.cpu.temp_c) }}℃</span>
       </div>
       <div v-else class="meta">
-        <span v-if="expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
+        <span v-if="showExpiry && expiry" :class="expiry.level" :title="expiry.title"><Icon name="calendar" :size="15" />{{ expiry.text }}</span>
         <span :class="s.status === 'offline' ? 'bad' : ''">{{ offlineFor }}</span>
       </div>
       <!-- v4 / v6 与网络线路（修订第 279 条）：单独一行，不挤占名称 -->
-      <NodeBadges :server="s" class="badge-row" />
+      <NodeBadges v-if="cardShows('badges')" :server="s" class="badge-row" />
     </div>
 
     <!-- 离线时不显示旧指标：旧数值看起来像实时数据，会误导（设计 43.6） -->
-    <div v-if="live && r" class="metrics num">
+    <div v-if="live && r" class="metrics num" :style="{ gridTemplateColumns: `repeat(${wideCols}, minmax(0, 1fr))` }">
       <div class="col">
         <span class="label">CPU</span>
         <Ring :pct="cpu(s)" :level="gaugeLevel(cpu(s), 'cpu')" :size="52" tinted label="CPU" />
@@ -110,7 +116,7 @@ const diskTip = computed(() => {
         <Ring :pct="disk?.usage" :level="disk?.level ?? 'ok'" :size="52" tinted :label="t('磁盘')" />
         <span class="cap">{{ fmtBytesShort(disk?.total) }}</span>
       </div>
-      <div class="col" :title="t('上行 {up}，开机以来 {upTotal}\n下行 {down}，开机以来 {downTotal}', { up: fmtBytes(tx(s), true), upTotal: fmtBytes(netTotal.tx), down: fmtBytes(rx(s), true), downTotal: fmtBytes(netTotal.rx) })">
+      <div v-if="cardShows('network')" class="col" :title="t('上行 {up}，开机以来 {upTotal}\n下行 {down}，开机以来 {downTotal}', { up: fmtBytes(tx(s), true), upTotal: fmtBytes(netTotal.tx), down: fmtBytes(rx(s), true), downTotal: fmtBytes(netTotal.rx) })">
         <span class="label">{{ t('网络') }}</span>
         <div class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(tx(s)) }}</span>
@@ -119,7 +125,7 @@ const diskTip = computed(() => {
           <span class="t">{{ fmtBytesShort(netTotal.rx) }}</span>
         </div>
       </div>
-      <div class="col" :title="io ? t('写 {w}，开机以来 {wTotal}\n读 {r}，开机以来 {rTotal}', { w: fmtBytes(io.write, true), wTotal: fmtBytes(io.writeTotal), r: fmtBytes(io.read, true), rTotal: fmtBytes(io.readTotal) }) : t('旧版 Agent 未上报磁盘 IO')">
+      <div v-if="cardShows('io')" class="col" :title="io ? t('写 {w}，开机以来 {wTotal}\n读 {r}，开机以来 {rTotal}', { w: fmtBytes(io.write, true), wTotal: fmtBytes(io.writeTotal), r: fmtBytes(io.read, true), rTotal: fmtBytes(io.readTotal) }) : t('旧版 Agent 未上报磁盘 IO')">
         <span class="label">IO</span>
         <div v-if="io" class="flow">
           <span class="v"><Icon name="arrow-up" :size="12" />{{ fmtBytesShort(io.write) }}</span>
@@ -140,12 +146,12 @@ const diskTip = computed(() => {
       </div>
     </div>
     <!-- 手机：上下行速率单独一行，带完整单位（手机 UI 规范 3.2） -->
-    <div v-if="live && r" class="netrow num">
+    <div v-if="live && r && cardShows('network')" class="netrow num">
       <span :aria-label="t('上行 {v}', { v: fmtBytes(tx(s), true) })"><Icon name="arrow-up" :size="12" />{{ fmtBytes(tx(s), true) }}</span>
       <span :aria-label="t('下行 {v}', { v: fmtBytes(rx(s), true) })"><Icon name="arrow-down" :size="12" />{{ fmtBytes(rx(s), true) }}</span>
     </div>
 
-    <div class="traffic num" :title="t('本计费周期 {start} 起', { start: s.traffic.cycle_start })">
+    <div v-if="showTraffic" class="traffic num" :title="t('本计费周期 {start} 起', { start: s.traffic.cycle_start })">
       <span class="muted">{{ t('流量') }}</span>
       <span>{{ fmtTraffic(s.traffic.used, s.traffic.unit) }}<span class="muted"> / {{ s.traffic.limit ? fmtTraffic(s.traffic.limit, s.traffic.unit) : t('不限') }}</span></span>
       <span v-if="traffic != null" class="tbar"><span :class="tlv" :style="{ width: `${Math.min(100, traffic)}%` }" /></span>

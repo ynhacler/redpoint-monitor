@@ -1463,4 +1463,15 @@ export const en: Record<string, string> = {
   '按周期折算的月均，不是本月扣款': 'Monthly average spread over the billing cycle, not this month\'s charge',
   '{y} 年 {m} 月 {d} 日扣费': 'Charged on {m}/{d}/{y}',
   '{cycle}，下次 {y} 年 {m} 月 {d} 日': '{cycle}, next on {m}/{d}/{y}',
+  // 卡片显示字段（修订第 288 条）
+  '卡片显示': 'Card fields',
+  '名称、状态与 CPU / 内存 / 磁盘始终显示。设置只保存在本浏览器。': 'Name, status and CPU / memory / disk are always shown. Saved in this browser only.',
+  '全部显示': 'Show all',
+  '运行时间': 'Uptime',
+  '温度': 'Temperature',
+  'v4 / v6 与线路': 'v4 / v6 and routes',
+  '网络速率': 'Network speed',
+  '7 天内到期或已过期时仍显示': 'Still shown when expiring within 7 days or expired',
+  '只在电脑宽度的卡片上': 'Wide cards only',
+  '用到 80% 以上时仍显示': 'Still shown at 80% or more',
 }
