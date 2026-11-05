@@ -147,11 +147,15 @@ class _LatencyComparePageState extends State<LatencyComparePage> {
             child: Text('最快', style: TextStyle(fontSize: 11, color: colors.ok, fontWeight: FontWeight.w600)),
           ),
       ]),
-      trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(lat == null ? '不可达' : fmtLatency(lat),
-            style: TextStyle(fontSize: 14, color: color, fontWeight: best ? FontWeight.w600 : null, fontFeatures: tabular)),
-        Text('丢包 ${fmtPct(c.loss)}', style: TextStyle(fontSize: 11, color: c.loss > 5 ? colors.warn : muted, fontFeatures: tabular)),
-      ]),
+      // ListTile 的高度有上限：系统大字号时缩小到放得下
+      trailing: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(lat == null ? '不可达' : fmtLatency(lat),
+              style: TextStyle(fontSize: 14, color: color, fontWeight: best ? FontWeight.w600 : null, fontFeatures: tabular)),
+          Text('丢包 ${fmtPct(c.loss)}', style: TextStyle(fontSize: 11, color: c.loss > 5 ? colors.warn : muted, fontFeatures: tabular)),
+        ]),
+      ),
       onTap: widget.onOpenServer == null ? null : () => widget.onOpenServer!(c.serverId),
     );
   }

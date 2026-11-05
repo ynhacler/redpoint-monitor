@@ -178,9 +178,10 @@ class _AccountCardState extends State<_AccountCard> {
                   child: Text(btext, style: TextStyle(fontSize: 12, color: tone(blv) ?? c.textMuted)),
                 ),
                 const SizedBox(width: 8),
-                if (a.syncedAt > 0) Text('上次成功 ${fmtTime(a.syncedAt)}', style: small),
+                // 系统大字号时时间截断，“查看详情”始终可点
+                Expanded(child: a.syncedAt > 0 ? Text('上次成功 ${fmtTime(a.syncedAt)}', style: small, maxLines: 1, overflow: TextOverflow.ellipsis) : const SizedBox()),
                 if (hasDetail) ...[
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Text(_detail ? '收起' : '查看详情', style: TextStyle(fontSize: 12, color: c.accent)),
                 ],
               ]),
@@ -198,7 +199,10 @@ class _AccountCardState extends State<_AccountCard> {
             if (pct != null) ...[
               const SizedBox(height: 10),
               Row(children: [
-                Text('预算 ${fmtMoney(a.budgetCents, cost!.currency)}', style: small),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.45),
+                  child: Text('预算 ${fmtMoney(a.budgetCents, cost!.currency)}', style: small, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ClipRRect(

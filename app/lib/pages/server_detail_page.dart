@@ -303,7 +303,10 @@ class _ServerDetailPageState extends State<ServerDetailPage> {
               boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))] : null,
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(label, style: TextStyle(fontSize: 14, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? c.text : c.textMuted)),
+              Flexible(
+                child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? c.text : c.textMuted)),
+              ),
               if (badge > 0) ...[
                 const SizedBox(width: 4),
                 Container(
