@@ -454,7 +454,7 @@ const pendingFiltered = computed(() => pending.value.filter(matches))
 .sort-select { display: inline-flex; align-items: center; gap: var(--space-2); }
 .sort-select select { width: auto; }
 .sheet-btn .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-full); background: var(--accent); color: var(--on-accent);
-  font-size: var(--font-xs); line-height: 18px; text-align: center; }
+  font-size: var(--font-xs); line-height: 1.125rem; text-align: center; }
 .sheet-btn.on { border-color: var(--accent); color: var(--accent); }
 .sheet-group { border: 0; margin: 0; padding: var(--space-3) 0 0; min-width: 0; }
 .sheet-group legend { padding: 0; margin-bottom: var(--space-2); font-size: var(--font-sm); color: var(--text-muted); }

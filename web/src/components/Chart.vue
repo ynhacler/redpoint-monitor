@@ -78,7 +78,8 @@ function render() {
   const colors = [token('accent'), token('ok'), token('warn')]
   const muted = token('text-muted')
   const border = token('border')
-  const fs = parseInt(token('font-xs')) || 11
+  // 字号 token 是 rem，ECharts 要 px：按根字号换算，跟随浏览器字号设置
+  const fs = Math.round(parseFloat(token('font-xs')) * parseFloat(getComputedStyle(document.documentElement).fontSize)) || 11
   chart.setOption(
     {
       animation: false,
@@ -181,11 +182,11 @@ function niceMax(v: number): number {
 .chart { padding: var(--space-4); min-width: 0; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .axis { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.axis button { background: transparent; border: 0; border-radius: 0; padding: 0 var(--space-2); font-size: var(--font-xs); line-height: 20px;
+.axis button { background: transparent; border: 0; border-radius: 0; padding: 0 var(--space-2); font-size: var(--font-xs); line-height: 1.25rem;
   color: var(--text-muted); }
 .axis button + button { border-left: 1px solid var(--border); }
 /* 触屏上加高，便于点中（手机 UI 规范 P2） */
-@media (pointer: coarse) { .axis button { line-height: 28px; } }
+@media (pointer: coarse) { .axis button { line-height: 1.75rem; } }
 .axis button.on { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
 .stats { margin: 2px 0 0; font-size: var(--font-xs); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 0 var(--space-3); }
 .chart h3 { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); font-weight: var(--weight-strong); }

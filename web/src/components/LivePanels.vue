@@ -203,7 +203,7 @@ dl, dd { margin: 0; }
 dt { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); display: flex; align-items: center; gap: 6px;
   white-space: nowrap; letter-spacing: .04em; }
 dt i { width: 5px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
-dd { font-size: 22px; line-height: 28px; white-space: nowrap; font-family: var(--font-mono); letter-spacing: -0.02em; }
+dd { font-size: 1.375rem; line-height: 1.75rem; white-space: nowrap; font-family: var(--font-mono); letter-spacing: -0.02em; }
 dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 
 
@@ -287,7 +287,7 @@ dd :deep(.u), .io :deep(.u), .cap :deep(.u) { font-family: var(--font-family); }
 @media (max-width: 600px) {
   .block { padding: var(--space-4); }
   dt { font-size: var(--font-xs); letter-spacing: .02em; gap: 4px; }
-  dd { font-size: 20px; line-height: 26px; }
+  dd { font-size: 1.25rem; line-height: 1.625rem; }
   .mounts li { grid-template-columns: minmax(0, 1fr) auto 44px; row-gap: var(--space-1); column-gap: var(--space-3); }
   .mounts .bar { grid-column: 1 / -1; grid-row: 2; }
   .io th, .io td { padding-left: var(--space-3); }

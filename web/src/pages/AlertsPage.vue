@@ -354,7 +354,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 .list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-4); }
 .list li + li, .rules li + li { border-top: 1px solid var(--border); }
 .main { min-width: 0; display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: baseline; }
-.node { font-weight: var(--weight-strong); }
+.node { font-weight: var(--weight-strong); overflow-wrap: anywhere; }
 .resolved .msg, .resolved .node { color: var(--text-muted); }
 .sev { font-size: var(--font-xs); line-height: var(--line-xs); padding: 1px var(--space-2); border-radius: var(--radius-full);
   border: 1px solid currentColor; color: var(--text-muted); white-space: nowrap; font-weight: var(--weight-regular); }

@@ -258,7 +258,7 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 .renew { margin-left: var(--space-2); font-size: var(--font-sm); }
 .renew-msg { margin-left: var(--space-2); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
-.name-row { display: flex; align-items: center; gap: var(--space-3); min-width: 0; font-size: 22px; }
+.name-row { display: flex; align-items: center; gap: var(--space-3); min-width: 0; font-size: 1.375rem; }
 .names { min-width: 0; }
 .names h1 { margin: 0; font-size: var(--font-xl); line-height: var(--line-xl); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge { padding: 3px var(--space-3); border-radius: var(--radius-full); flex: none; border: 1px solid var(--border); background: var(--surface-2); }

@@ -1,17 +1,17 @@
 /* 自动生成，请勿手工编辑：修改 design/tokens.json 后运行 npm run tokens（设计 41.2） */
 :root {
-  --font-xs: 11px;
-  --line-xs: 16px;
-  --font-sm: 12px;
-  --line-sm: 18px;
-  --font-md: 14px;
-  --line-md: 22px;
-  --font-lg: 16px;
-  --line-lg: 24px;
-  --font-xl: 20px;
-  --line-xl: 28px;
-  --font-num: 28px;
-  --line-num: 32px;
+  --font-xs: 0.6875rem;
+  --line-xs: 1rem;
+  --font-sm: 0.75rem;
+  --line-sm: 1.125rem;
+  --font-md: 0.875rem;
+  --line-md: 1.375rem;
+  --font-lg: 1rem;
+  --line-lg: 1.5rem;
+  --font-xl: 1.25rem;
+  --line-xl: 1.75rem;
+  --font-num: 1.75rem;
+  --line-num: 2rem;
   --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --weight-regular: 400;

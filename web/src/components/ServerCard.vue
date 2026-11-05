@@ -181,7 +181,7 @@ const diskTip = computed(() => {
 .badge-row { flex-basis: auto; margin-left: auto; }
 .title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1 1 100%; }
 .name { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 18px; }
+.tag { flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-full); line-height: 1.125rem; }
 .meta { display: flex; align-items: center; gap: var(--space-1) var(--space-3); color: var(--text-muted); font-size: var(--font-md); line-height: var(--line-md); white-space: nowrap; flex: 0 1 auto; flex-wrap: wrap; }
 .meta span { display: inline-flex; align-items: center; gap: 3px; }
 /* 窄卡片（网格最小列宽 320px）：第二行信息缩小一档 */
@@ -193,9 +193,9 @@ const diskTip = computed(() => {
 .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); column-gap: var(--space-1); padding: var(--space-3) 0; }
 .col { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-width: 0; }
 .label { font-size: var(--font-md); line-height: var(--line-md); color: var(--text); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
-.cap { font-size: var(--font-sm); line-height: 18px; color: var(--text); white-space: nowrap; }
+.cap { font-size: var(--font-sm); line-height: 1.125rem; color: var(--text); white-space: nowrap; }
 .flow { height: var(--body-h); display: flex; flex-direction: column; justify-content: space-between; align-items: center;
-  font-size: var(--font-sm); line-height: 18px; white-space: nowrap; }
+  font-size: var(--font-sm); line-height: 1.125rem; white-space: nowrap; }
 .flow.empty { justify-content: center; }
 .flow .v { display: inline-flex; align-items: center; gap: 1px; color: var(--text); }
 .flow .v svg { color: var(--text-muted); }
