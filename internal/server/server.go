@@ -381,6 +381,7 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/notification-deliveries", accessAdmin, s.handleDeliveries)
 	handle("GET /api/v1/subscriptions", accessAdmin, s.handleSubscriptions) // 订阅（设计 47）
 	handle("GET /api/v1/fx-rates", accessRead, s.handleFxRates)             // 汇率（修订第 223 条），不含用户数据
+	handle("GET /api/v1/fx-rates/history", accessRead, s.handleFxHistory)   // 汇率历史（修订第 295 条）
 	handle("POST /api/v1/subscriptions", accessAdmin, s.handleCreateSubscription)
 	handle("POST /api/v1/subscriptions/{id}/renew", accessAdmin, s.handleRenewSubscription) // 已续费（修订第 224 条）
 	handle("PUT /api/v1/subscriptions/{id}", accessAdmin, s.handleUpdateSubscription)

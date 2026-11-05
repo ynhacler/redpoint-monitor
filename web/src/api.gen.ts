@@ -1685,6 +1685,13 @@ export interface FxRates {
   error: string
 }
 
+export interface FxDay {
+  /** 来源数据的日期（UTC，YYYY-MM-DD） */
+  day: string
+  /** 1 单位折合多少人民币 */
+  cny: number
+}
+
 export interface AppSubscriptions {
   /** 授权范围不是“全部节点”：不返回订阅 */
   limited: boolean
@@ -2830,6 +2837,20 @@ export interface Paths {
     /** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
     get: {
       response: FxRates
+    }
+  }
+  '/fx-rates/history': {
+    /** 某币种的汇率历史（修订第 295 条） */
+    get: {
+      query: {
+        /** 币种，如 USD */
+        currency: string
+      }
+      response: {
+        /** 总为空，一次返回全部 */
+        next_cursor: string
+        items: FxDay[]
+      }
     }
   }
   '/subscriptions': {

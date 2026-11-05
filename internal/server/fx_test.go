@@ -87,6 +87,64 @@ func TestFxRates(t *testing.T) {
 	}
 }
 
+// 汇率历史（修订第 295 条）：只记订阅用到的外币，同一天以最后一次为准，超过两年的删除，升级前的汇率作为第一条。
+func TestFxHistory(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"Netflix","category":"video","price_cents":100,"currency":"USD","cycle":"monthly","start_date":"2026-01-01","country":"US","payment":"paypal"}`))
+	if rec.Code != 201 {
+		t.Fatalf("添加：%d %s", rec.Code, rec.Body)
+	}
+	get := func(c string) []FxDay {
+		t.Helper()
+		rec := do(h, "GET", "/api/v1/fx-rates/history?currency="+c, admin, nil)
+		if rec.Code != 200 {
+			t.Fatalf("history：%d %s", rec.Code, rec.Body)
+		}
+		var b struct {
+			Items []FxDay `json:"items"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &b)
+		return b.Items
+	}
+	if got := get("USD"); len(got) != 0 {
+		t.Errorf("初始应为空：%+v", got)
+	}
+	if rec := do(h, "GET", "/api/v1/fx-rates/history?currency=usd", admin, nil); rec.Code != 422 {
+		t.Errorf("非法币种：%d", rec.Code)
+	}
+
+	day1 := time.Date(2026, 3, 1, 0, 0, 1, 0, time.UTC)
+	rates := map[string]float64{"CNY": 1, "USD": 7.1, "EUR": 7.8}
+	if err := s.saveFx(rates, day1.Unix(), day1); err != nil {
+		t.Fatal(err)
+	}
+	rates["USD"] = 7.2 // 同一来源日期再刷新一次
+	if err := s.saveFx(rates, day1.Unix(), day1.Add(12*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	day2 := day1.AddDate(0, 0, 1)
+	rates["USD"] = 7.3
+	if err := s.saveFx(rates, day2.Unix(), day2); err != nil {
+		t.Fatal(err)
+	}
+	if got := get("USD"); len(got) != 2 || got[0] != (FxDay{"2026-03-01", 7.2}) || got[1] != (FxDay{"2026-03-02", 7.3}) {
+		t.Errorf("USD：%+v", got)
+	}
+	if got := get("EUR"); len(got) != 0 {
+		t.Errorf("没有订阅用到的币种不记录：%+v", got)
+	}
+
+	// 两年后：旧记录被删除
+	far := day2.AddDate(0, 0, fxKeepDays+1)
+	if err := s.saveFx(rates, far.Unix(), far); err != nil {
+		t.Fatal(err)
+	}
+	if got := get("USD"); len(got) != 1 || got[0].Day != far.Format(time.DateOnly) {
+		t.Errorf("超过保留期：%+v", got)
+	}
+}
+
 // 订阅的国家 / 地区与支付方式必选（修订第 223 条）
 func TestSubscriptionCountryPayment(t *testing.T) {
 	s, h, _ := testServer(t)

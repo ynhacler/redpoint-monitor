@@ -6,7 +6,7 @@
 // 按类别、国家 / 地区、支付方式汇总并排行。每条订阅须选择国家 / 地区与支付方式。
 // VPS（修订第 198 条）：每台 VPS 一条订阅，记录厂商、地址（可多个）、配置与机房；列表中显示地址与配置，
 // 地址与已接入的节点相同时链接到该节点。
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, renewSubscription, subscriptionLogoURL,
@@ -87,6 +87,9 @@ const cnyText = (cents: number, currency: string) => {
   const v = toCny(cents, currency, rates.value)
   return v == null ? '' : `≈ ${fmtMoney(v, 'CNY')}`
 }
+// 图表库较大，展开“汇率走势”时才加载
+const FxHistory = defineAsyncComponent(() => import('../components/FxHistory.vue'))
+const fxOpen = ref(false)
 const rateDate = computed(() => (fx.value?.as_of ? ymd(new Date(fx.value.as_of * 1000)) : ''))
 // 列表中用到的外币及其汇率：“1 USD = ¥7.12”
 const usedRates = computed(() => [...new Set(list.value.map((s) => s.currency))].filter((c) => c !== 'CNY')
@@ -377,13 +380,13 @@ const mainPrice = (s: Subscription) => {
   const v = toCny(s.price_cents, s.currency, rates.value)
   return v == null ? fmtMoney(s.price_cents, s.currency) : `≈ ${fmtMoney(v, 'CNY')}`
 }
-// 不是按月付费的订阅在金额下注明月均（手机 UI 规范 5.1）：“≈ ¥44.98/月”，与本月实际扣款分开
+// 不是按月付费的订阅在金额下注明月均（手机 UI 规范 5.1）：“月均 ≈ ¥44.98”，与本月实际扣款分开；“/月”由“月均 {v}”表达，这里不再重复
 const monthlyLine = (s: Subscription) => {
   if (s.ended || s.cycle === 'monthly' || s.cycle === 'once') return ''
   const m = monthlyCents(s)
-  if (s.currency === 'CNY') return `${fmtMoney(Math.round(m), 'CNY')}/${t('月')}`
+  if (s.currency === 'CNY') return fmtMoney(Math.round(m), 'CNY')
   const v = toCny(m, s.currency, rates.value)
-  return v == null ? `${fmtMoney(Math.round(m), s.currency)}/${t('月')}` : `≈ ${fmtMoney(Math.round(v), 'CNY')}/${t('月')}`
+  return v == null ? fmtMoney(Math.round(m), s.currency) : `≈ ${fmtMoney(Math.round(v), 'CNY')}`
 }
 // 电脑宽度名称下的一行（修订第 269 条）：类别与备注；按类别排列时类别已在分组标题中，只写备注
 const descText = (s: Subscription) =>
@@ -755,6 +758,11 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           <template v-if="rateDate">{{ t('（{source}，{date}）', { source: fx?.source ?? '', date: rateDate }) }}</template>
           <template v-if="fx?.error"> · {{ t('最近一次更新失败：{e}', { e: fx.error }) }}</template>
         </p>
+        <!-- 汇率走势（修订第 295 条）：展开时才加载图表 -->
+        <details v-if="usedRates.length" class="fx-trend small" @toggle="fxOpen = ($event.target as HTMLDetailsElement).open">
+          <summary class="muted">{{ t('汇率走势') }}</summary>
+          <FxHistory v-if="fxOpen" :currencies="usedRates.map((r) => r.c)" />
+        </details>
       </template>
     </template>
   </main>
@@ -845,6 +853,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 .ana-top li + li { border-top: 1px solid var(--border); }
 .rank { width: 20px; text-align: center; color: var(--text-muted); font-size: var(--font-sm); flex: none; }
 .rate-note { margin: var(--space-3) 0 0; }
+.fx-trend { margin-top: var(--space-2); }
+.fx-trend summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 .rate { margin-right: var(--space-3); }
 .flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; }
 .meta-line { display: flex; align-items: center; gap: 4px; min-width: 0; } /* 国旗、地区与支付方式同一基线居中（修订第 267 条，UI2-013） */
