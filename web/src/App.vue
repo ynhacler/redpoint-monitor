@@ -213,8 +213,8 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
 .subnav a:hover { color: var(--text); text-decoration: none; }
 .subnav a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
 .with-badge { display: inline-flex; align-items: center; gap: 4px; }
-.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-full); background: var(--bad); color: var(--on-accent);
-  font-size: 10px; line-height: 16px; text-align: center; font-weight: var(--weight-strong); }
+.badge { min-width: 1rem; height: 1rem; padding: 0 4px; border-radius: var(--radius-full); background: var(--bad); color: var(--on-accent);
+  font-size: 0.625rem; line-height: 1rem; text-align: center; font-weight: var(--weight-strong); }
 .tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
 .tools button { padding: var(--space-1); }
 .user { color: var(--text-muted); display: flex; align-items: center; gap: var(--space-1); }
@@ -280,11 +280,13 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
     height: 40px; font-size: var(--font-md); }
   .menu-back a { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text); text-decoration: none; min-height: 40px; }
   .tools .logout { display: none; }
-  .tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  .tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
   .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; color: var(--text-muted);
-    font-size: 10px; line-height: 12px; text-decoration: none; }
+    font-size: 0.625rem; line-height: 0.75rem; text-decoration: none; min-width: 0; }
+  /* 大字体下五个标签放不下时截断，不撑宽页面 */
+  .tabbar a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tabbar a.active { color: var(--accent); font-weight: var(--weight-strong); }
   .footer { margin: var(--space-5) auto var(--space-3); }
   .footer.phone-hide { display: none; }

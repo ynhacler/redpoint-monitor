@@ -109,7 +109,7 @@ const minutes = computed(() => {
 .label { display: flex; align-items: center; gap: 6px; font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); white-space: nowrap; min-width: 0; }
 .label svg { flex: none; }
 .extra { margin-left: auto; font-size: var(--font-xs); overflow: hidden; text-overflow: ellipsis; }
-.big { font-size: 30px; line-height: 36px; font-weight: 700; letter-spacing: -0.01em; }
+.big { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; letter-spacing: -0.01em; }
 .big :deep(.u) { font-size: .6em; font-weight: var(--weight-strong); margin-left: 1px; color: inherit; opacity: .85; }
 .nowrap { white-space: nowrap; }
 .big.warn { color: var(--warn); }
@@ -126,7 +126,7 @@ const minutes = computed(() => {
 .ring-icon.warn { color: var(--warn); }
 .ring-icon.bad { color: var(--bad); }
 .no-trend { margin-top: auto; padding-bottom: var(--space-3); }
-.counts b { font-size: 24px; line-height: 30px; font-weight: 700; }
+.counts b { font-size: 1.5rem; line-height: 1.875rem; font-weight: 700; }
 .counts span, .values span { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-xs); color: var(--text-muted); white-space: nowrap; }
 .values span { font-size: var(--font-sm); color: var(--text); }
 i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
@@ -147,8 +147,8 @@ i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: no
 @media (max-width: 600px) {
   .tile { padding: var(--space-3); }
   .edge { margin-left: calc(-1 * var(--space-3)); margin-right: calc(-1 * var(--space-3)); width: calc(100% + 2 * var(--space-3)); }
-  .big { font-size: 26px; line-height: 32px; }
-  .counts b { font-size: 20px; line-height: 26px; }
+  .big { font-size: 1.625rem; line-height: 2rem; }
+  .counts b { font-size: 1.25rem; line-height: 1.625rem; }
   .disk-ring-wrap { transform: scale(.86); transform-origin: right center; margin-left: -8px; }
 }
 </style>

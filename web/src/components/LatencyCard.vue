@@ -186,7 +186,7 @@ const series = computed<{ lat: Series[]; loss: Series[] }>(() => {
 td.muted { color: var(--text-muted); }
 table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
 /* 行高收紧（修订第 266 条，UI2-011）：约 36px */
-th, td { padding: 6px var(--space-3); line-height: 22px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+th, td { padding: 6px var(--space-3); line-height: 1.375rem; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
 .unset { font-size: var(--font-xs); text-decoration: underline dotted; }
 thead th { color: var(--text-muted); font-weight: var(--weight-regular); }
 th:first-child { text-align: left; padding-left: 0; }

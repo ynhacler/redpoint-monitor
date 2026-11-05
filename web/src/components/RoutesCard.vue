@@ -126,7 +126,7 @@ function toggle(id: number) {
 .isp { flex: none; width: 3em; font-weight: var(--weight-strong); }
 .where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .when { flex: none; margin-left: auto; padding-right: var(--space-1); }
-.badge { flex: none; font-size: var(--font-xs); line-height: 18px; padding: 0 6px; border-radius: var(--radius-sm);
+.badge { flex: none; font-size: var(--font-xs); line-height: 1.125rem; padding: 0 6px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); color: var(--text-muted); font-weight: var(--weight-strong); white-space: nowrap; }
 .badge.premium { color: var(--accent); border-color: var(--accent); }
 .warn { color: var(--warn); }

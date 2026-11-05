@@ -17,7 +17,8 @@ const colors = (mode) =>
 const lines = []
 const f = tokens.font
 for (const k of ['xs', 'sm', 'md', 'lg', 'xl', 'num']) {
-  lines.push(`  --font-${k}: ${f[k].size}px;`, `  --line-${k}: ${f[k].line}px;`)
+  // 字号与行高用 rem：跟随浏览器的默认字号设置（16px 时与设计稿一致，手机 UI 规范 P2）
+  lines.push(`  --font-${k}: ${f[k].size / 16}rem;`, `  --line-${k}: ${f[k].line / 16}rem;`)
 }
 lines.push(`  --font-family: ${f.family};`, `  --font-mono: ${f.mono};`)
 lines.push(`  --weight-regular: ${f['weight-regular']};`, `  --weight-strong: ${f['weight-strong']};`)
