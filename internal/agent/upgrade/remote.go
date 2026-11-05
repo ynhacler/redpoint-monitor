@@ -39,6 +39,11 @@ type Result struct {
 	To     string `json:"to,omitempty"`
 }
 
+// 官方地址的下载次数，用完后改从面板镜像下载；单次时长上限只在有镜像可退时生效（设计 27.5.3）。
+const officialAttempts = 2
+
+var officialAttemptTimeout = 2 * time.Minute
+
 // RemoteOptions 是 Agent 侧检查升级任务的参数。
 type RemoteOptions struct {
 	Server    string // 面板地址
@@ -134,21 +139,15 @@ func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string,
 		return fmt.Errorf("版本 %s 没有 %s/%s 的构建", m.Version, runtime.GOOS, ArchLabel())
 	}
 	cleanStage(o.StageDir)
-	dl := &Options{HTTP: o.HTTP, Out: io.Discard}
 	part := filepath.Join(o.StageDir, art.File+".part")
-	url := strings.TrimRight(o.Downloads, "/") + "/download/v" + m.Version + "/" + art.File
-	// 面板已镜像时从本面板下载：只接受以 / 开头的路径，拼在 Agent 自己配置的面板地址后面，
-	// 不会被引导到其他主机；下载内容仍按签名清单校验
+	official := strings.TrimRight(o.Downloads, "/") + "/download/v" + m.Version + "/" + art.File
+	// 面板镜像只接受以 / 开头的路径，拼在 Agent 自己配置的面板地址后面，不会被引导到其他主机
+	panel := ""
 	if strings.HasPrefix(mirror, "/") && !strings.HasPrefix(mirror, "//") {
-		url = strings.TrimRight(o.Server, "/") + mirror + "/v" + m.Version + "/" + art.File
+		panel = strings.TrimRight(o.Server, "/") + mirror + "/v" + m.Version + "/" + art.File
 	}
-	if err := dl.download(ctx, url, part, art.Size); err != nil {
-		os.Remove(part)
+	if err := o.fetchBuild(ctx, official, panel, art, part); err != nil {
 		return err
-	}
-	if got, err := fileSHA256(part); err != nil || got != art.SHA256 {
-		os.Remove(part)
-		return fmt.Errorf("SHA256 校验失败（期望 %s，实际 %s）", art.SHA256, got)
 	}
 	if err := os.Rename(part, filepath.Join(o.StageDir, art.File)); err != nil {
 		return err
@@ -165,6 +164,47 @@ func (o *RemoteOptions) stage(ctx context.Context, taskID int64, version string,
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(o.StageDir, "request.json")) // 触发 updater（systemd path 单元，或 OpenRC 的定时检查）
+}
+
+// fetchBuild 先从官方地址下载，失败 officialAttempts 次后改从面板镜像下载（panel 为空表示面板没有镜像，设计 27.5.3）。
+// 每个来源的内容都按签名清单校验，所以换来源不影响安全；校验不通过也算一次失败。
+func (o *RemoteOptions) fetchBuild(ctx context.Context, official, panel string, art *release.Artifact, part string) error {
+	var err error
+	for i := 1; i <= officialAttempts; i++ {
+		tryCtx, cancel := ctx, context.CancelFunc(func() {})
+		if panel != "" {
+			// 有退路时限制单次时长：被拦截的连接可能一直卡住，不值得等到 HTTP 客户端的总超时
+			tryCtx, cancel = context.WithTimeout(ctx, officialAttemptTimeout)
+		}
+		err = o.fetchVerified(tryCtx, official, art, part)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		o.Log("download from official releases failed (attempt %d/%d): %v", i, officialAttempts, err)
+	}
+	if panel == "" {
+		return err
+	}
+	o.Log("falling back to the panel mirror")
+	if perr := o.fetchVerified(ctx, panel, art, part); perr != nil {
+		return fmt.Errorf("官方地址：%v；面板镜像：%w", err, perr)
+	}
+	return nil
+}
+
+// fetchVerified 下载一次并核对 SHA256；失败时不留下文件。
+func (o *RemoteOptions) fetchVerified(ctx context.Context, url string, art *release.Artifact, part string) error {
+	dl := &Options{HTTP: o.HTTP, Out: io.Discard}
+	if err := dl.download(ctx, url, part, art.Size); err != nil {
+		os.Remove(part)
+		return err
+	}
+	if got, err := fileSHA256(part); err != nil || got != art.SHA256 {
+		os.Remove(part)
+		return fmt.Errorf("SHA256 校验失败（期望 %s，实际 %s）", art.SHA256, got)
+	}
+	return nil
 }
 
 // reportResult 上报 updater 留下的结果，成功送达（或任务已不存在）后删除。

@@ -5,7 +5,8 @@
 #   sudo sh agent-@VERSION@.sh --server https://monitor.example.com --enroll ENR-XXXX-XXXX-XXXX-XXXX
 #   sh agent-@VERSION@.sh --server … --enroll …       没有 root 权限：安装到当前用户（~/.local/bin，设计 27.13）
 #   sh agent-@VERSION@.sh --download-only            只下载、校验、试运行，不安装
-#   --mirror https://monitor.example.com/releases     从面板镜像下载（仍按内置 SHA256 校验）
+#   --mirror https://monitor.example.com/releases     只从面板镜像下载（仍按内置 SHA256 校验）
+#   --fallback https://monitor.example.com/releases   先从官方地址下载，失败 2 次后改从面板镜像下载
 #
 # 步骤：识别系统与架构 → 下载对应构建 → 按内置 SHA256 校验 → （装有 minisign 时）校验官方签名
 #       → 试运行 → 安装到 /usr/local/bin（非 root：~/.local/bin）→ exec vpsmon-agent install（注册与保活）
@@ -25,14 +26,17 @@ say() { printf '%s\n' "$*"; }
 die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
 MIRROR=""
+FALLBACK=""
 DOWNLOAD_ONLY=0
 PASS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mirror) [ $# -ge 2 ] || die "--mirror 需要地址"; MIRROR="${2%/}"; shift 2 ;;
     --mirror=*) MIRROR="${1#--mirror=}"; MIRROR="${MIRROR%/}"; shift ;;
+    --fallback) [ $# -ge 2 ] || die "--fallback 需要地址"; FALLBACK="${2%/}"; shift 2 ;;
+    --fallback=*) FALLBACK="${1#--fallback=}"; FALLBACK="${FALLBACK%/}"; shift ;;
     --download-only) DOWNLOAD_ONLY=1; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) PASS="$PASS $(printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")")"; shift ;;
   esac
 done
@@ -69,9 +73,10 @@ if [ "$DOWNLOAD_ONLY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ---- 工具 ----
+# 被拦截的连接可能一直卡住：连接 10 秒超时，30 秒内低于 1 KB/s 视为失败，才能换下一个来源
 fetch() { # fetch URL 输出文件
-  if command -v curl >/dev/null 2>&1; then curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"
-  elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --speed-time 30 --speed-limit 1024 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q -T 30 -t 1 -O "$2" "$1"
   else die "需要 curl 或 wget"; fi
 }
 sha256() {
@@ -91,10 +96,28 @@ TMP="$(mktemp -d 2>/dev/null || mktemp -d -t vpsmon)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 # ---- 下载与校验 ----
-say "下载 $BASE/$FILE"
-fetch "$BASE/$FILE" "$TMP/vpsmon-agent" || die "下载失败：$BASE/$FILE"
-GOT="$(sha256 "$TMP/vpsmon-agent")"
-[ "$GOT" = "$WANT" ] || die "SHA256 校验失败，已中止安装（期望 ${WANT}，实际 ${GOT}）"
+# 来源依次尝试：--mirror 只用镜像；否则官方地址 2 次，再换 --fallback。每个来源都按内置 SHA256 校验（设计 27.5.3）
+SOURCES="$BASE"
+if [ -z "$MIRROR" ]; then
+  SOURCES="$BASE $BASE"
+  if [ -n "$FALLBACK" ]; then SOURCES="$SOURCES $FALLBACK/v$VERSION"; fi
+fi
+DONE=0
+for SRC in $SOURCES; do
+  say "下载 $SRC/$FILE"
+  if ! fetch "$SRC/$FILE" "$TMP/vpsmon-agent"; then
+    say "· 下载失败：$SRC/$FILE"
+    continue
+  fi
+  GOT="$(sha256 "$TMP/vpsmon-agent")"
+  if [ "$GOT" = "$WANT" ]; then
+    BASE="$SRC"
+    DONE=1
+    break
+  fi
+  say "· SHA256 校验失败，已丢弃（期望 ${WANT}，实际 ${GOT}）"
+done
+[ "$DONE" -eq 1 ] || die "下载失败或 SHA256 校验失败，已中止安装：$FILE"
 say "✓ SHA256 校验通过"
 
 if command -v minisign >/dev/null 2>&1 && [ -n "$PUBKEY" ]; then

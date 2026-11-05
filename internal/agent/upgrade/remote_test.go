@@ -1,8 +1,10 @@
 package upgrade
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,11 +21,12 @@ import (
 
 // fakePanel 模拟面板的 /api/v1/agent/upgrade 与 /status，记录上报的状态。
 type fakePanel struct {
-	mu       sync.Mutex
-	task     map[string]any // GET 的响应；nil 表示没有任务
-	statuses []string
-	mirror   map[string][]byte // 面板镜像 /releases/... 提供的文件
-	srv      *httptest.Server
+	mu          sync.Mutex
+	task        map[string]any // GET 的响应；nil 表示没有任务
+	statuses    []string
+	mirror      map[string][]byte // 面板镜像 /releases/... 提供的文件
+	mirrorProxy string            // 非空时 /releases/... 转给这个地址（用于计数）
+	srv         *httptest.Server
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -30,6 +34,16 @@ func newFakePanel(t *testing.T) *fakePanel {
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
+		if p.mirrorProxy != "" && strings.HasPrefix(r.URL.Path, "/releases/") {
+			resp, err := http.Get(p.mirrorProxy + r.URL.Path)
+			if err != nil {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			io.Copy(w, resp.Body)
+			return
+		}
 		if b, ok := p.mirror[r.URL.Path]; ok { // 镜像无需凭证
 			w.Write(b)
 			return
@@ -158,6 +172,83 @@ func TestRemoteUpgradeFromMirror(t *testing.T) {
 	o2.Downloads = "http://127.0.0.1:1"
 	if err := CheckRemote(context.Background(), o2); err == nil {
 		t.Error("指向其他主机的镜像路径应被忽略")
+	}
+}
+
+// 官方地址优先，失败 2 次后改从面板镜像下载；校验不通过也算失败，镜像的内容同样要校验（设计 27.5.3）。
+func TestRemoteUpgradeFallback(t *testing.T) {
+	name := "vpsmon-agent-" + runtime.GOOS + "-" + ArchLabel()
+	cases := []struct {
+		name         string
+		official     func(good []byte, w http.ResponseWriter) // 官方地址的响应
+		panelBad     bool                                     // 镜像返回被篡改的内容
+		wantOfficial int
+		wantPanel    int
+		wantStaged   bool
+	}{
+		{"官方可用时不碰面板", func(g []byte, w http.ResponseWriter) { w.Write(g) }, false, 1, 0, true},
+		{"官方失败 2 次后用面板", func(_ []byte, w http.ResponseWriter) { w.WriteHeader(http.StatusBadGateway) }, false, 2, 1, true},
+		{"官方内容被篡改时用面板", func(g []byte, w http.ResponseWriter) { w.Write(bytes.Repeat([]byte("x"), len(g))) }, false, 2, 1, true},
+		{"面板内容被篡改时失败", func(_ []byte, w http.ResponseWriter) { w.WriteHeader(http.StatusBadGateway) }, true, 2, 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, panel, o := remoteFixture(t)
+			good := f.files["/v0.3.0/"+name]
+			var official, mirrored atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				official.Add(1)
+				c.official(good, w)
+			}))
+			t.Cleanup(srv.Close)
+			o.Downloads = srv.URL
+			mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mirrored.Add(1)
+				if c.panelBad {
+					w.Write(bytes.Repeat([]byte("y"), len(good)))
+					return
+				}
+				w.Write(good)
+			}))
+			t.Cleanup(mirror.Close)
+			// 镜像路径拼在面板地址后：把面板上的这条路径转给上面的计数服务
+			panel.task["mirror_path"] = "/releases"
+			panel.mirrorProxy = mirror.URL
+			err := CheckRemote(context.Background(), o)
+			if (err == nil) != c.wantStaged {
+				t.Fatalf("CheckRemote：%v", err)
+			}
+			if int(official.Load()) != c.wantOfficial || int(mirrored.Load()) != c.wantPanel {
+				t.Errorf("官方 %d 次、面板 %d 次，应为 %d、%d", official.Load(), mirrored.Load(), c.wantOfficial, c.wantPanel)
+			}
+			if _, err := os.Stat(filepath.Join(o.StageDir, name)); (err == nil) != c.wantStaged {
+				t.Errorf("暂存结果不符：%v", err)
+			}
+		})
+	}
+}
+
+// 官方地址卡住时，单次超时后换面板，而不是等到 HTTP 客户端的总超时。
+func TestRemoteUpgradeOfficialHangs(t *testing.T) {
+	old := officialAttemptTimeout
+	officialAttemptTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { officialAttemptTimeout = old })
+	f, panel, o := remoteFixture(t)
+	name := "vpsmon-agent-" + runtime.GOOS + "-" + ArchLabel()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+	o.Downloads = srv.URL
+	panel.mirror = map[string][]byte{"/releases/v0.3.0/" + name: f.files["/v0.3.0/"+name]}
+	panel.task["mirror_path"] = "/releases"
+	if err := CheckRemote(context.Background(), o); err != nil {
+		t.Fatalf("应改从面板下载：%v", err)
 	}
 }
 
