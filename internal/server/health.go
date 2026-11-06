@@ -38,12 +38,7 @@ type healthInput struct {
 type healthLang string
 
 func (l healthLang) f(format string, a ...any) string {
-	if l == "en" {
-		if e, ok := healthEN[format]; ok {
-			format = e
-		}
-	}
-	return fmt.Sprintf(format, a...)
+	return fmt.Sprintf(l.t(format), a...)
 }
 
 // healthEN 是健康摘要的英文译文（设计 52.2），键为中文格式串，%s、%d 的个数与顺序要一致。

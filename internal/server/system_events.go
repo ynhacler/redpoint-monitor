@@ -121,6 +121,7 @@ func (s *Server) recordEvent(kind, severity string, serverID int64, title, messa
 
 // recordNotice 把一条通知另存为系统事件：标题与通知相同，正文去掉标题与链接。
 func (s *Server) recordNotice(kind string, m notifyMessage, now time.Time) {
+	m = m.withLang(s.lang())
 	title := m.title()
 	var lines []string
 	for _, l := range strings.Split(strings.TrimPrefix(m.text(now), title), "\n") {

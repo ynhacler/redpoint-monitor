@@ -267,7 +267,8 @@ func trackItem[T any](s *Server, sid int64, item, what string, cur T, diff func(
 	if len(lines) == 0 {
 		return // 只有顺序、可读性等不影响判断的变化
 	}
-	s.recordChange(sid, item, fmt.Sprintf("%s有 %d 项变化", what, len(lines)), lines, sev, now)
+	l := s.lang()
+	s.recordChange(sid, item, l.f("%s有 %d 项变化", l.t(what), len(lines)), lines, sev, now)
 }
 
 // acctState 是账号与权限组用于比较的状态：账号名 → UID 与 shell，组名 → 成员。
@@ -453,7 +454,7 @@ func (s *Server) recordChange(sid int64, item, summary string, lines []string, s
 		return
 	}
 	m := notifyMessage{Kind: NotifyChange, ServerID: sid, ServerName: row.Name, RuleKey: ruleKeyChange, Type: eventChange,
-		Severity: sev, StartedAt: now, Message: summary + "（详情见 Web 节点详情 · 安全）"}
+		Severity: sev, StartedAt: now, Message: s.lang().f("%s（详情见 Web 节点详情 · 安全）", summary)}
 	// 【安全】账号名、文件路径与防火墙规则一样只在事件正文中（只给 Web 管理员），通知中只有类别与条数
 	if s.publicURL != "" {
 		m.Link = s.publicURL + "/servers/" + itoa64(sid) + "?tab=security"

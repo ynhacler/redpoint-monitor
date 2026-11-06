@@ -141,13 +141,14 @@ func (s *Server) checkDigest(now time.Time) {
 // buildDigest 汇总报告区间内的概况。
 func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 	from, to, _ := d.span(now)
+	l := s.lang()
 	label := "周报"
 	ahead := 7
 	if d.Period == "monthly" {
 		label, ahead = "月报", 30
 	}
-	m := notifyMessage{Kind: NotifyDigest, StartedAt: from, ResolvedAt: to,
-		Message: fmt.Sprintf("📊 VPS Monitor %s（%s～%s）", label, from.Format("01-02"), to.Add(-time.Second).Format("01-02"))}
+	m := notifyMessage{Kind: NotifyDigest, StartedAt: from, ResolvedAt: to, Lang: l,
+		Message: l.f("📊 VPS Monitor %s（%s～%s）", l.t(label), from.Format("01-02"), to.Add(-time.Second).Format("01-02"))}
 	if s.publicURL != "" {
 		m.Link = s.publicURL + "/"
 	}
@@ -186,24 +187,24 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		}
 		if t := v.Traffic; t.Limit > 0 {
 			pct := float64(t.Used) / float64(t.Limit) * 100
-			traffic = append(traffic, usage{row.Name, fmt.Sprintf("%s %.0f%%（%s / %s，%s 重置）", row.Name, pct,
+			traffic = append(traffic, usage{row.Name, l.f("%s %.0f%%（%s / %s，%s 重置）", row.Name, pct,
 				fmtTrafficUnit(int64(t.Used), t.Unit), fmtTrafficUnit(t.Limit, t.Unit), digestDate(t.CycleEnd)), pct})
 		}
 	}
-	node := fmt.Sprintf("节点：共 %d 台，在线 %d", len(rows), len(rows)-len(offline))
+	node := l.f("节点：共 %d 台，在线 %d", len(rows), len(rows)-len(offline))
 	if len(offline) > 0 {
-		node += fmt.Sprintf("，离线 %d（%s）", len(offline), namesBrief(offline))
+		node += l.f("，离线 %d（%s）", len(offline), namesBrief(offline, l))
 	}
 	lines = append(lines, node)
 	if len(reboot) > 0 || len(security) > 0 {
 		var parts []string
 		if len(reboot) > 0 {
-			parts = append(parts, fmt.Sprintf("需要重启 %d 台（%s）", len(reboot), namesBrief(reboot)))
+			parts = append(parts, l.f("需要重启 %d 台（%s）", len(reboot), namesBrief(reboot, l)))
 		}
 		if len(security) > 0 {
-			parts = append(parts, fmt.Sprintf("有安全更新 %d 台（%s）", len(security), namesBrief(security)))
+			parts = append(parts, l.f("有安全更新 %d 台（%s）", len(security), namesBrief(security, l)))
 		}
-		lines = append(lines, "系统："+strings.Join(parts, "，"))
+		lines = append(lines, l.f("系统：%s", strings.Join(parts, l.t("，"))))
 	}
 
 	// 告警与离线时长
@@ -233,20 +234,20 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		}
 	}
 	if fired == 0 {
-		lines = append(lines, "告警：没有触发")
+		lines = append(lines, l.t("告警：没有触发"))
 	} else {
-		line := fmt.Sprintf("告警：触发 %d 次", fired)
+		line := l.f("告警：触发 %d 次", fired)
 		if critical > 0 {
-			line += fmt.Sprintf("（严重 %d 次）", critical)
+			line += l.f("（严重 %d 次）", critical)
 		}
-		lines = append(lines, line+"，最多："+topCounts(perNode, names, "%s %d 次"))
+		lines = append(lines, l.f("%s，最多：%s", line, topCounts(perNode, names, "%s %d 次", l)))
 	}
 	if len(down) > 0 {
 		var parts []string
 		for _, id := range topKeys(down) {
-			parts = append(parts, names[id]+" "+fmtSpan(time.Duration(down[id])*time.Second))
+			parts = append(parts, names[id]+" "+fmtSpan(time.Duration(down[id])*time.Second, l))
 		}
-		lines = append(lines, "离线累计："+strings.Join(parts, "、"))
+		lines = append(lines, l.f("离线累计：%s", strings.Join(parts, l.t("、"))))
 	}
 
 	// 流量：≥ 80% 的全部列出，否则列出最高的几台
@@ -264,7 +265,7 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		for n < len(traffic) && traffic[n].pct >= 80 {
 			n++
 		}
-		lines = append(lines, "本周期流量用量最高：")
+		lines = append(lines, l.t("本周期流量用量最高："))
 		for _, u := range traffic[:min(n, len(traffic))] {
 			lines = append(lines, "  "+u.text)
 		}
@@ -282,11 +283,11 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 			continue
 		}
 		if days := calendarDays(now.In(loc), exp); days <= ahead {
-			expiring = append(expiring, fmt.Sprintf("%s %s", row.Name, digestDays(days, row.ExpireDate)))
+			expiring = append(expiring, fmt.Sprintf("%s %s", row.Name, digestDays(days, row.ExpireDate, l)))
 		}
 	}
 	if len(expiring) > 0 {
-		lines = append(lines, fmt.Sprintf("%d 天内到期的节点：%s", ahead, strings.Join(expiring, "、")))
+		lines = append(lines, l.f("%d 天内到期的节点：%s", ahead, strings.Join(expiring, l.t("、"))))
 	}
 
 	// 将扣费的订阅
@@ -306,11 +307,11 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 			continue
 		}
 		if days := calendarDays(today, at); days >= 0 && days <= ahead {
-			charges = append(charges, fmt.Sprintf("%s %s（%s）", x.Name, fmtCents(x.PriceCents, x.Currency), digestDate(x.NextCharge)))
+			charges = append(charges, l.f("%s %s（%s）", x.Name, fmtCents(x.PriceCents, x.Currency), digestDate(x.NextCharge)))
 		}
 	}
 	if len(charges) > 0 {
-		lines = append(lines, fmt.Sprintf("%d 天内扣费的订阅 %d 笔：%s", ahead, len(charges), strings.Join(charges, "、")))
+		lines = append(lines, l.f("%d 天内扣费的订阅 %d 笔：%s", ahead, len(charges), strings.Join(charges, l.t("、"))))
 	}
 
 	// 云账户本月费用
@@ -330,12 +331,12 @@ func (s *Server) buildDigest(d Digest, now time.Time) (notifyMessage, error) {
 		}
 		c := a.Name + " " + fmtCents(cs[0].AmountCents, cs[0].Currency)
 		if cs[0].ForecastCents != nil {
-			c += "（预估 " + fmtCents(*cs[0].ForecastCents, cs[0].Currency) + "）"
+			c = l.f("%s（预估 %s）", c, fmtCents(*cs[0].ForecastCents, cs[0].Currency))
 		}
 		costs = append(costs, c)
 	}
 	if len(costs) > 0 {
-		lines = append(lines, "云账户本月费用："+strings.Join(costs, "、"))
+		lines = append(lines, l.f("云账户本月费用：%s", strings.Join(costs, l.t("、"))))
 	}
 	if len(lines) > digestMaxLines {
 		lines = append(lines[:digestMaxLines], "…")
@@ -362,16 +363,16 @@ func topKeys(m map[int64]int64) []int64 {
 	return keys[:min(digestTopN, len(keys))]
 }
 
-func topCounts(m map[int64]int, names map[int64]string, format string) string {
+func topCounts(m map[int64]int, names map[int64]string, format string, l healthLang) string {
 	wide := make(map[int64]int64, len(m))
 	for k, v := range m {
 		wide[k] = int64(v)
 	}
 	var parts []string
 	for _, id := range topKeys(wide) {
-		parts = append(parts, fmt.Sprintf(format, orText(names[id], "已删除的节点"), m[id]))
+		parts = append(parts, l.f(format, orText(names[id], l.t("已删除的节点")), m[id]))
 	}
-	return strings.Join(parts, "、")
+	return strings.Join(parts, l.t("、"))
 }
 
 // digestDate：2026-11-05 → 11-05
@@ -382,14 +383,14 @@ func digestDate(s string) string {
 	return s
 }
 
-func digestDays(days int, date string) string {
+func digestDays(days int, date string, l healthLang) string {
 	switch {
 	case days < 0:
-		return fmt.Sprintf("已过期 %d 天", -days)
+		return l.f("已过期 %d 天", -days)
 	case days == 0:
-		return "今天到期"
+		return l.t("今天到期")
 	}
-	return fmt.Sprintf("%s（%d 天后）", digestDate(date), days)
+	return l.f("%s（%d 天后）", digestDate(date), days)
 }
 
 // fmtCents：1599 USD → 15.99 USD

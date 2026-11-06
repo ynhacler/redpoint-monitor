@@ -66,7 +66,7 @@ func (s *Server) trackLogins(sid int64, list []protocol.Login, now time.Time) {
 		lines = append(lines, fmt.Sprintf("%s 从 %s 登录（%s，%s）", l.User, l.Host, orText(l.Line, "未知终端"),
 			time.Unix(l.Time, 0).In(time.Local).Format("01-02 15:04")))
 	}
-	s.recordChange(sid, changeLogins, fmt.Sprintf("有 %d 次来自新地址的登录", len(fresh)), lines, SeverityWarning, now)
+	s.recordChange(sid, changeLogins, s.lang().f("有 %d 次来自新地址的登录", len(fresh)), lines, SeverityWarning, now)
 }
 
 func orText(s, def string) string {

@@ -59,7 +59,7 @@ func TestProbeAlertValues(t *testing.T) {
 	if _, _, ok := alertValue(AlertProbeLoss, alertInput{}); ok {
 		t.Error("没有探测结果时不应评估")
 	}
-	msg := alertMessage(AlertRule{Type: AlertProbeLatency, Threshold: 300}, 320, "最慢：上海电信 400 ms")
+	msg := alertMessage(AlertRule{Type: AlertProbeLatency, Threshold: 300}, 320, "最慢：上海电信 400 ms", "")
 	if msg != "测速延迟 320 ms（阈值 300 ms），最慢：上海电信 400 ms" {
 		t.Errorf("消息 = %q", msg)
 	}
@@ -88,7 +88,7 @@ func TestProbeLossAlertFires(t *testing.T) {
 	if err := s.evaluateAlerts(now); err != nil {
 		t.Fatal(err)
 	}
-	if f := s.alerts.firingFor(ServerRow{ID: sid}); len(f) != 0 {
+	if f := s.alerts.firingFor(ServerRow{ID: sid}, ""); len(f) != 0 {
 		t.Fatalf("规则默认不启用，不应触发：%+v", f)
 	}
 	if _, err := s.store.DB.Exec(`UPDATE alert_rules SET enabled = 1, duration_s = 0 WHERE rule_key = 'probe_loss'`); err != nil {
@@ -98,7 +98,7 @@ func TestProbeLossAlertFires(t *testing.T) {
 	if err := s.evaluateAlerts(now.Add(alertInterval)); err != nil {
 		t.Fatal(err)
 	}
-	f := s.alerts.firingFor(ServerRow{ID: sid})
+	f := s.alerts.firingFor(ServerRow{ID: sid}, "")
 	if len(f) != 1 || !strings.HasPrefix(f[0].Message, "测速丢包率 100%（阈值 20%），丢包最多：") {
 		t.Fatalf("应触发测速丢包告警：%+v", f)
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -173,11 +172,11 @@ func mergeOffline(kind string, list []notifyMessage) notifyMessage {
 }
 
 // namesBrief：HK-1、HK-2、JP-1 等
-func namesBrief(names []string) string {
+func namesBrief(names []string, l healthLang) string {
 	if len(names) <= 3 {
-		return strings.Join(names, "、")
+		return strings.Join(names, l.t("、"))
 	}
-	return strings.Join(names[:3], "、") + " 等"
+	return strings.Join(names[:3], l.t("、")) + l.t(" 等")
 }
 
 // checkPanel 面板自检（设计 16.4）：返回本轮是否暂停离线规则评估。
@@ -231,9 +230,10 @@ func (s *Server) checkPanel(rows []ServerRow, snaps map[int64]snapshot, now time
 
 // panelText 是面板自检通知的说明。
 func panelText(m notifyMessage) (string, string) {
+	l := m.Lang
 	if m.Kind == NotifyPanelDown {
-		return fmt.Sprintf("⚠️ 全部 %d 台节点同时停止上报", m.Count),
-			"优先检查面板一侧：网络、进程、反向代理。期间暂停离线告警，任一节点恢复上报后自动解除。"
+		return l.f("⚠️ 全部 %d 台节点同时停止上报", m.Count),
+			l.t("优先检查面板一侧：网络、进程、反向代理。期间暂停离线告警，任一节点恢复上报后自动解除。")
 	}
-	return fmt.Sprintf("✅ 面板恢复接收上报（%d 台节点）", m.Count), ""
+	return l.f("✅ 面板恢复接收上报（%d 台节点）", m.Count), ""
 }

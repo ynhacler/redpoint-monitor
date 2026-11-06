@@ -178,7 +178,7 @@ func TestClockSkew(t *testing.T) {
 		}
 	}
 	r := AlertRule{Type: AlertAgentClock}
-	if m := alertMessage(r, 120, "慢"); m != "Agent 时钟比面板慢 120 秒，请检查主机的时间同步（NTP）" {
+	if m := alertMessage(r, 120, "慢", ""); m != "Agent 时钟比面板慢 120 秒，请检查主机的时间同步（NTP）" {
 		t.Errorf("告警消息：%s", m)
 	}
 }
@@ -225,7 +225,7 @@ func TestOfflineForWithoutEnrollTime(t *testing.T) {
 	if in.OfflineFor != 10*time.Minute {
 		t.Errorf("离线时长应从创建时间算起：%v", in.OfflineFor)
 	}
-	if m := alertMessage(AlertRule{Type: AlertOffline}, in.OfflineFor.Seconds(), ""); !strings.Contains(m, "10 分钟") {
+	if m := alertMessage(AlertRule{Type: AlertOffline}, in.OfflineFor.Seconds(), "", ""); !strings.Contains(m, "10 分钟") {
 		t.Errorf("告警消息：%s", m)
 	}
 }

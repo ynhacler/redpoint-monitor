@@ -87,6 +87,21 @@ func TestDigestContent(t *testing.T) {
 			t.Errorf("预览缺少 %q：\n%s", want, v.Preview)
 		}
 	}
+	// 网站语言为英文时报告全文是英文（修订第 304 条）
+	en := s.siteSetting()
+	en.Language = "en"
+	zh := s.siteSetting()
+	s.site.v.Store(&en)
+	m, err := s.buildDigest(s.digestCfg(), now)
+	s.site.v.Store(&zh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := m.text(now); hasHan(text) || !strings.Contains(text, "Weekly report") {
+		t.Errorf("英文报告：\n%s", text)
+	} else {
+		t.Log(text)
+	}
 	if rec := do(h, "POST", "/api/v1/settings/digest/send", admin, nil); rec.Code != 204 {
 		t.Fatal(rec.Code, rec.Body)
 	}

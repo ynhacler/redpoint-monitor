@@ -1043,7 +1043,7 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 	v.Traffic = t
 	v.Alerts = []alertBrief{}
 	if s.alertsEnabled() { // 告警关闭时不带告警、静音与维护（修订第 175 条）
-		v.Alerts = s.alerts.firingFor(row)
+		v.Alerts = s.alerts.firingFor(row, s.lang())
 		v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
 		v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
 	}

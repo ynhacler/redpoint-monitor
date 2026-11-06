@@ -262,11 +262,11 @@ func TestReachEndToEnd(t *testing.T) {
 	if err := s.evaluateAlerts(later); err != nil {
 		t.Fatal(err)
 	}
-	f := s.alerts.firingFor(ServerRow{ID: 2})
+	f := s.alerts.firingFor(ServerRow{ID: 2}, "")
 	if len(f) != 1 || !strings.HasPrefix(f[0].Message, "国内不可达（疑似被墙）") || f[0].Severity != SeverityCritical {
 		t.Fatalf("应触发疑似被墙告警：%+v", f)
 	}
-	if f := s.alerts.firingFor(ServerRow{ID: 3}); len(f) != 0 {
+	if f := s.alerts.firingFor(ServerRow{ID: 3}, ""); len(f) != 0 {
 		t.Errorf("hk-b 不应告警：%+v", f)
 	}
 

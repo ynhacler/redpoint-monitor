@@ -204,7 +204,7 @@ func (s *Server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	m := notifyMessage{Kind: NotifyTest}
+	m := notifyMessage{Kind: NotifyTest, Lang: s.lang()}
 	if s.publicURL != "" {
 		m.Link = s.publicURL
 	}

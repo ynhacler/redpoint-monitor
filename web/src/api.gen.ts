@@ -54,7 +54,7 @@ export interface SystemEvent {
 export interface SiteSetting {
   /** 顶栏、登录页与浏览器标签中显示的名称；默认 VPS Monitor */
   app_name: string
-  /** 界面语言：zh 简体中文（默认）、en English */
+  /** 界面与通知的语言：zh 简体中文（默认）、en English */
   language: 'zh' | 'en'
   /** 登录时是否需要滑动验证码（默认打开） */
   captcha: boolean

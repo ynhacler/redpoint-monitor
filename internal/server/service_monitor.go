@@ -652,12 +652,13 @@ func (s *Server) applyServiceResult(m ServiceMonitor, r serviceResult, now time.
 func (s *Server) serviceNotice(m ServiceMonitor, kind string, r serviceResult, now time.Time) notifyMessage {
 	n := notifyMessage{Kind: kind, ServerID: m.ServerID, ServerName: m.Name, RuleKey: "service:" + strconv.FormatInt(m.ID, 10),
 		Type: "service", Severity: m.Severity, StartedAt: time.Unix(m.eventStarted, 0)}
-	kindName := map[string]string{"http": "网址", "tcp": "端口", "dns": "域名解析", "icmp": "Ping"}[m.Kind]
+	l := s.lang()
+	kindName := l.t(map[string]string{"http": "网址", "tcp": "端口", "dns": "域名解析", "icmp": "Ping"}[m.Kind])
 	if kind == NotifyResolved {
 		n.ResolvedAt = now
-		n.Message = fmt.Sprintf("%s访问正常（%d ms）", kindName, r.latency.Milliseconds())
+		n.Message = l.f("%s访问正常（%d ms）", kindName, r.latency.Milliseconds())
 	} else {
-		n.Message = fmt.Sprintf("%s无法访问：%s（%s）", kindName, r.err, m.Target)
+		n.Message = l.f("%s无法访问：%s（%s）", kindName, l.detail(r.err), m.Target)
 	}
 	if s.publicURL != "" {
 		n.Link = s.publicURL + "/settings?tab=services"
