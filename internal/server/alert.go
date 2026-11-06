@@ -205,57 +205,57 @@ func alertValue(typ string, in alertInput) (v float64, detail string, ok bool) {
 }
 
 // alertMessage 生成告警消息（设计 16.5 模板的第一行，不含节点名与图标）。
-func alertMessage(r AlertRule, v float64, detail string) string {
+func alertMessage(r AlertRule, v float64, detail string, l healthLang) string {
 	pct := func(x float64) string { return fmt.Sprintf("%.0f%%", math.Round(x)) }
 	switch r.Type {
 	case AlertOffline:
-		return "节点离线，已 " + fmtAge(time.Duration(v)*time.Second) + "未收到上报"
+		return l.f("节点离线，已 %s未收到上报", fmtAge(time.Duration(v)*time.Second, l))
 	case AlertCPU:
-		return fmt.Sprintf("CPU 使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
+		return l.f("CPU 使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertMemory:
-		return fmt.Sprintf("内存使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
+		return l.f("内存使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertDisk:
-		return fmt.Sprintf("磁盘 %s 使用率 %s（阈值 %s）", detail, pct(v), pct(r.Threshold))
+		return l.f("磁盘 %s 使用率 %s（阈值 %s）", detail, pct(v), pct(r.Threshold))
 	case AlertSwap:
-		return fmt.Sprintf("Swap 使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
+		return l.f("Swap 使用率 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertLoad:
-		return fmt.Sprintf("负载为核数的 %.1f 倍（阈值 %.1f 倍）", v, r.Threshold)
+		return l.f("负载为核数的 %.1f 倍（阈值 %.1f 倍）", v, r.Threshold)
 	case AlertTraffic:
-		return fmt.Sprintf("本周期流量已用 %s（阈值 %s）", pct(v), pct(r.Threshold))
+		return l.f("本周期流量已用 %s（阈值 %s）", pct(v), pct(r.Threshold))
 	case AlertTrafficForecast:
-		return fmt.Sprintf("预计周期结束用量为额度的 %s", pct(v))
+		return l.f("预计周期结束用量为额度的 %s", pct(v))
 	case AlertProcess:
-		return "进程没有在运行：" + detail
+		return l.f("进程没有在运行：%s", l.detail(detail))
 	case AlertContainer:
-		return "容器已停止：" + detail
+		return l.f("容器已停止：%s", l.detail(detail))
 	case AlertProxy:
-		return "代理异常：" + detail
+		return l.f("代理异常：%s", l.detail(detail))
 	case AlertPortNew:
-		return "未知监听端口（不在端口基线中）：" + detail
+		return l.f("未知监听端口（不在端口基线中）：%s", l.detail(detail))
 	case AlertPortGone:
-		return "基线端口没有在监听：" + detail
+		return l.f("基线端口没有在监听：%s", l.detail(detail))
 	case AlertContainerLoop:
-		return "容器反复重启（10 分钟内）：" + detail
+		return l.f("容器反复重启（10 分钟内）：%s", l.detail(detail))
 	case AlertProbeLatency:
-		return fmt.Sprintf("测速延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, detail)
+		return l.f("测速延迟 %.0f ms（阈值 %g ms），%s", v, r.Threshold, l.detail(detail))
 	case AlertProbeLoss:
-		return fmt.Sprintf("测速丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), detail)
+		return l.f("测速丢包率 %s（阈值 %s），%s", pct(v), pct(r.Threshold), l.detail(detail))
 	case AlertAgentClock:
-		return fmt.Sprintf("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", detail, v)
+		return l.f("Agent 时钟比面板%s %.0f 秒，请检查主机的时间同步（NTP）", l.t(detail), v)
 	case AlertReach:
-		return detail + "（国内探针连续多轮探测失败，原因可能是封锁、运营商故障或路由问题）"
+		return l.f("%s（国内探针连续多轮探测失败，原因可能是封锁、运营商故障或路由问题）", l.reach(detail))
 	}
 	return r.Type
 }
 
-func fmtAge(d time.Duration) string {
+func fmtAge(d time.Duration, l healthLang) string {
 	switch {
 	case d >= time.Hour:
-		return fmt.Sprintf("%d 小时", int(d.Hours()))
+		return l.f("%d 小时", int(d.Hours()))
 	case d >= time.Minute:
-		return fmt.Sprintf("%d 分钟", int(d.Minutes()))
+		return l.f("%d 分钟", int(d.Minutes()))
 	}
-	return fmt.Sprintf("%d 秒", int(d.Seconds()))
+	return l.f("%d 秒", int(d.Seconds()))
 }
 
 // 告警状态（设计 16.3）。pending 只保存在内存中：面板重启后重新计时，宁可晚一点也不误报。

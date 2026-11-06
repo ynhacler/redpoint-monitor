@@ -414,29 +414,31 @@ type notifyMessage struct {
 	Count      int             // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数 / 汇总条数
 	Items      []notifyMessage // 免打扰汇总包含的通知
 	Lines      []string        // 定期报告的正文（修订第 277 条）；标题在 Message
+	Lang       healthLang      // 渲染语言，发送时设为网站语言（修订第 304 条）
 }
 
 var severityIcons = map[string]string{"critical": "🔴", "warning": "🟠", "info": "🔵"}
 
 // title 是一行摘要，用于投递记录与 Telegram 第一行。
 func (m notifyMessage) title() string {
+	l := m.Lang
 	if len(m.Servers) > 0 { // 批量离线（设计 16.4）
 		if m.Kind == NotifyResolved {
-			return fmt.Sprintf("✅ %d 台节点恢复上报：%s", m.Count, namesBrief(m.Servers))
+			return l.f("✅ %d 台节点恢复上报：%s", m.Count, namesBrief(m.Servers, l))
 		}
-		return fmt.Sprintf("%s %d 台节点同时离线：%s", severityIcons[m.Severity], m.Count, namesBrief(m.Servers))
+		return l.f("%s %d 台节点同时离线：%s", severityIcons[m.Severity], m.Count, namesBrief(m.Servers, l))
 	}
 	switch m.Kind {
 	case NotifyQuietSummary:
-		return fmt.Sprintf("🌙 免打扰期间 %d 条告警通知", m.Count)
+		return l.f("🌙 免打扰期间 %d 条告警通知", m.Count)
 	case NotifyResolved:
-		return "✅ " + m.ServerName + " 已恢复：" + m.Message
+		return l.f("✅ %s 已恢复：%s", m.ServerName, m.Message)
 	case NotifyRepeat:
-		return severityIcons[m.Severity] + " 仍未恢复 · " + m.ServerName + " " + m.Message
+		return l.f("%s 仍未恢复 · %s %s", severityIcons[m.Severity], m.ServerName, m.Message)
 	case NotifyFlapping:
-		return "〰️ " + m.ServerName + " 状态频繁变化：" + m.Message
+		return l.f("〰️ %s 状态频繁变化：%s", m.ServerName, m.Message)
 	case NotifyStillFiring:
-		return severityIcons[m.Severity] + " 状态已稳定，仍在告警 · " + m.ServerName + " " + m.Message
+		return l.f("%s 状态已稳定，仍在告警 · %s %s", severityIcons[m.Severity], m.ServerName, m.Message)
 	case NotifyPanelDown, NotifyPanelUp:
 		t, _ := panelText(m)
 		return t
@@ -444,7 +446,7 @@ func (m notifyMessage) title() string {
 		t, _ := panelIssueText(m)
 		return t
 	case NotifyTest:
-		return "🔔 测试通知"
+		return l.t("🔔 测试通知")
 	case NotifyDigest:
 		return m.Message
 	}
@@ -453,6 +455,7 @@ func (m notifyMessage) title() string {
 
 // text 是完整的纯文本（设计 16.5 的模板）。
 func (m notifyMessage) text(now time.Time) string {
+	l := m.Lang
 	lines := []string{m.title()}
 	if m.Kind == NotifyQuietSummary {
 		lines = append(lines, m.quietText()...)
@@ -463,16 +466,16 @@ func (m notifyMessage) text(now time.Time) string {
 	}
 	if len(m.Servers) > 0 {
 		if m.Kind == NotifyFiring {
-			lines = append(lines, "可能是面板网络或同一服务商故障")
+			lines = append(lines, l.t("可能是面板网络或同一服务商故障"))
 		}
 		if len(m.Servers) > 3 {
-			lines = append(lines, "全部："+strings.Join(m.Servers, "、"))
+			lines = append(lines, l.f("全部：%s", strings.Join(m.Servers, l.t("、"))))
 		}
 		return strings.Join(lines, "\n")
 	}
 	switch m.Kind {
 	case NotifyFlapping:
-		lines = append(lines, fmt.Sprintf("30 分钟内触发 %d 次，暂停这条告警的通知；稳定 30 分钟后恢复。", m.Count))
+		lines = append(lines, l.f("30 分钟内触发 %d 次，暂停这条告警的通知；稳定 30 分钟后恢复。", m.Count))
 	case NotifyPanelDown:
 		_, d := panelText(m)
 		lines = append(lines, d)
@@ -482,13 +485,13 @@ func (m notifyMessage) text(now time.Time) string {
 	case NotifyFiring, NotifyRepeat, NotifyStillFiring:
 		// 刚触发时持续时间不足 1 分钟（离线等规则的时长已写在 Message 里），不显示“已持续”
 		if d := now.Sub(m.StartedAt); d >= time.Minute {
-			lines = append(lines, "已持续 "+fmtSpan(d))
+			lines = append(lines, l.f("已持续 %s", fmtSpan(d, l)))
 		}
-		lines = append(lines, "开始时间 "+m.StartedAt.Format("2006-01-02 15:04"))
+		lines = append(lines, l.f("开始时间 %s", m.StartedAt.Format("2006-01-02 15:04")))
 	case NotifyResolved:
-		lines = append(lines, "持续时长 "+fmtSpan(m.ResolvedAt.Sub(m.StartedAt)))
+		lines = append(lines, l.f("持续时长 %s", fmtSpan(m.ResolvedAt.Sub(m.StartedAt), l)))
 	case NotifyTest:
-		lines = append(lines, "这是一条来自 VPS Monitor 的测试通知，收到说明渠道配置正确。")
+		lines = append(lines, l.t("这是一条来自 VPS Monitor 的测试通知，收到说明渠道配置正确。"))
 	case NotifyDigest:
 		lines = append(lines, m.Lines...)
 	}
@@ -499,20 +502,20 @@ func (m notifyMessage) text(now time.Time) string {
 }
 
 // fmtSpan：1 小时 24 分钟 / 12 分钟 / 30 秒
-func fmtSpan(d time.Duration) string {
+func fmtSpan(d time.Duration, l healthLang) string {
 	if d < time.Minute {
-		return fmt.Sprintf("%d 秒", int(d.Seconds()))
+		return l.f("%d 秒", int(d.Seconds()))
 	}
 	h, m := int(d.Hours()), int(d.Minutes())%60
 	switch {
 	case h >= 24:
-		return fmt.Sprintf("%d 天 %d 小时", h/24, h%24)
+		return l.f("%d 天 %d 小时", h/24, h%24)
 	case h > 0 && m > 0:
-		return fmt.Sprintf("%d 小时 %d 分钟", h, m)
+		return l.f("%d 小时 %d 分钟", h, m)
 	case h > 0:
-		return fmt.Sprintf("%d 小时", h)
+		return l.f("%d 小时", h)
 	}
-	return fmt.Sprintf("%d 分钟", m)
+	return l.f("%d 分钟", m)
 }
 
 // webhookPayload 是 Webhook 的请求体（version 1，只增加字段）。
@@ -617,6 +620,7 @@ func (n *notifier) dispatch(m notifyMessage) {
 	if !n.s.alertsEnabled() { // 告警关闭时不发送任何通知（修订第 175 条）
 		return
 	}
+	m = m.withLang(n.s.lang())
 	channels, err := n.s.store.ListChannels()
 	if err != nil {
 		n.s.log.Error("list notification channels failed", "component", "notify", "err", err)

@@ -51,14 +51,14 @@ func expireSeverity(m int) string {
 	return SeverityWarning
 }
 
-func expireText(date string, days int) string {
+func expireText(date string, days int, l healthLang) string {
 	switch {
 	case days < 0:
-		return fmt.Sprintf("已于 %s 到期（%d 天前），请尽快续费或处理", date, -days)
+		return l.f("已于 %s 到期（%d 天前），请尽快续费或处理", date, -days)
 	case days == 0:
-		return fmt.Sprintf("今天（%s）到期", date)
+		return l.f("今天（%s）到期", date)
 	}
-	return fmt.Sprintf("将于 %s 到期（%d 天后）", date, days)
+	return l.f("将于 %s 到期（%d 天后）", date, days)
 }
 
 // MarkReminder 记录去重键；已存在时返回 false（之前已发送）。
@@ -133,7 +133,7 @@ func (s *Server) checkReminders(now time.Time) {
 			continue
 		}
 		msg := notifyMessage{ServerID: row.ID, ServerName: row.Name, Type: "expire", Severity: expireSeverity(m),
-			Message: expireText(row.ExpireDate, days)}
+			Message: expireText(row.ExpireDate, days, s.lang())}
 		if s.publicURL != "" {
 			msg.Link = s.publicURL + "/servers/" + itoa64(row.ID)
 		}
@@ -159,6 +159,7 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 	if err != nil || len(accounts) == 0 {
 		return
 	}
+	l := s.lang()
 	link := ""
 	if s.publicURL != "" {
 		link = s.publicURL + "/cloud"
@@ -167,15 +168,15 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 		if !a.Enabled {
 			continue
 		}
-		label := "云账户“" + a.Name + "”"
+		label := l.f("云账户“%s”", a.Name)
 		// 同步故障：凭证失效立即提醒；其他错误连续 24 小时后提醒
 		if a.ErrorSince > 0 && (a.AuthFailed || now.Unix()-a.ErrorSince >= 24*3600) {
-			why := "连续 24 小时同步失败"
+			why := l.t("连续 24 小时同步失败")
 			if a.AuthFailed {
-				why = "凭证失效或权限不足，已停止自动同步"
+				why = l.t("凭证失效或权限不足，已停止自动同步")
 			}
 			s.remind(fmt.Sprintf("cloud_sync:%d:%d", a.ID, a.ErrorSince), notifyMessage{ServerName: label, Type: "cloud_sync",
-				Severity: SeverityWarning, Message: why + "：" + a.LastError, Link: link}, now)
+				Severity: SeverityWarning, Message: l.f("%s：%s", why, a.LastError), Link: link}, now)
 		}
 		// CDT 免费额度（修订第 181 条）：用到 90% 警告、95% 严重，每个周期各一次；超出部分按量收费
 		if pools, _, err := s.store.CloudPools(a.ID); err == nil {
@@ -191,7 +192,7 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 					if pct >= step.at {
 						s.remind(fmt.Sprintf("cloud_pool:%d:%s:%s:%.0f", a.ID, p.Key, p.PeriodStart, step.at), notifyMessage{
 							ServerName: label, Type: "cloud_traffic", Severity: step.sev, Link: link,
-							Message: fmt.Sprintf("%s 免费额度已用 %.0f%%（%s / %s），超出部分按量收费", p.Name, pct,
+							Message: l.f("%s 免费额度已用 %.0f%%（%s / %s），超出部分按量收费", p.Name, pct,
 								fmtGiB(p.UsedBytes), fmtGiB(p.LimitBytes))}, now)
 						break
 					}
@@ -204,20 +205,20 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 		if a.BalanceAlertCents > 0 && current && costs[0].BalanceCents != nil && *costs[0].BalanceCents < a.BalanceAlertCents {
 			c := costs[0]
 			s.remind(fmt.Sprintf("cloud_balance:%d:%s", a.ID, c.Period), notifyMessage{ServerName: label, Type: "cloud_balance",
-				Severity: SeverityCritical, Link: link, Message: fmt.Sprintf("余额 %s %.2f，低于提醒阈值 %s %.2f，请及时充值以免实例停机",
+				Severity: SeverityCritical, Link: link, Message: l.f("余额 %s %.2f，低于提醒阈值 %s %.2f，请及时充值以免实例停机",
 					c.Currency, float64(*c.BalanceCents)/100, c.Currency, float64(a.BalanceAlertCents)/100)}, now)
 		}
 		// 费用超预算：有预估时按预估（提前提醒），每月一次
 		if a.BudgetCents > 0 {
 			if current {
 				c := costs[0]
-				v, what := c.AmountCents, "本月已产生"
+				v, what := c.AmountCents, l.t("本月已产生")
 				if c.ForecastCents != nil && *c.ForecastCents > v {
-					v, what = *c.ForecastCents, "本月预估"
+					v, what = *c.ForecastCents, l.t("本月预估")
 				}
 				if v > a.BudgetCents {
 					s.remind(fmt.Sprintf("cloud_cost:%d:%s", a.ID, c.Period), notifyMessage{ServerName: label, Type: "cloud_cost",
-						Severity: SeverityWarning, Link: link, Message: fmt.Sprintf("%s %s %.2f，超过预算 %s %.2f",
+						Severity: SeverityWarning, Link: link, Message: l.f("%s %s %.2f，超过预算 %s %.2f",
 							what, c.Currency, float64(v)/100, c.Currency, float64(a.BudgetCents)/100)}, now)
 				}
 			}
@@ -244,7 +245,7 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 				if pct >= step.at {
 					s.remind(fmt.Sprintf("cloud_traffic:%d:%s:%.0f", in.ID, in.TrafficPeriodStart, step.at), notifyMessage{
 						ServerName: label, Type: "cloud_traffic", Severity: step.sev, Link: link,
-						Message: fmt.Sprintf("流量包已用 %.0f%%（%s / %s）", pct, fmtBytesSI(in.TrafficUsedBytes), fmtBytesSI(in.TrafficLimitBytes))}, now)
+						Message: l.f("流量包已用 %.0f%%（%s / %s）", pct, fmtBytesSI(in.TrafficUsedBytes), fmtBytesSI(in.TrafficLimitBytes))}, now)
 					break
 				}
 			}
@@ -258,7 +259,7 @@ func (s *Server) checkCloudReminders(now time.Time, nodeExpire map[int64]bool) {
 		days := calendarDays(now.In(time.Local), time.Date(exp.Year(), exp.Month(), exp.Day(), 0, 0, 0, 0, time.Local))
 		if m, ok := expireBracket(days); ok {
 			s.remind(fmt.Sprintf("expire:instance:%d:%s:%d", in.ID, date, m), notifyMessage{ServerName: label, Type: "expire",
-				Severity: expireSeverity(m), Message: "云实例" + expireText(date, days), Link: link}, now)
+				Severity: expireSeverity(m), Message: l.f("云实例%s", expireText(date, days, l)), Link: link}, now)
 		}
 	}
 }

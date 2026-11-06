@@ -104,7 +104,7 @@ func (e *alertEngine) silenceForLocked(row ServerRow, kind, ruleKey string, now 
 // firingFor 返回节点的活动告警，严重在前；同一类型只保留最严重的一条
 // （例如磁盘 96% 同时满足 85% 与 95% 两条规则，只显示严重那条）。
 // 依赖抑制（设计 16.4）：节点离线时只返回离线告警，资源告警仍保留记录，重新上报后照常显示。
-func (e *alertEngine) firingFor(row ServerRow) []alertBrief {
+func (e *alertEngine) firingFor(row ServerRow, l healthLang) []alertBrief {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	serverID, now := row.ID, time.Now()
@@ -115,7 +115,7 @@ func (e *alertEngine) firingFor(row ServerRow) []alertBrief {
 		}
 		r := e.meta[k]
 		b := alertBrief{EventID: st.EventID, RuleKey: k.ruleKey, Type: r.Type, Severity: r.Severity,
-			Message: alertMessage(r, st.Value, st.Detail), Value: st.Value, FiredAt: st.FiredAt.Unix(),
+			Message: alertMessage(r, st.Value, st.Detail, l), Value: st.Value, FiredAt: st.FiredAt.Unix(),
 			Silenced: e.silenceForLocked(row, SilenceMute, k.ruleKey, now) != nil}
 		if cur, ok := best[r.Type]; !ok || severityRank(b.Severity) > severityRank(cur.Severity) ||
 			(b.Severity == cur.Severity && r.Threshold > e.meta[alertKey{serverID, cur.RuleKey}].Threshold) {
@@ -349,7 +349,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 	switch tr {
 	case alertFired:
 		ev := AlertEvent{RuleID: r.ID, RuleKey: r.RuleKey, ServerID: row.ID, Type: r.Type, Severity: r.Severity,
-			Value: v, Threshold: r.Threshold, Message: alertMessage(r, v, detail),
+			Value: v, Threshold: r.Threshold, Message: alertMessage(r, v, detail, s.lang()),
 			StartedAt: next.StartedAt.Unix(), FiredAt: now.Unix()}
 		id, err := s.store.InsertAlertEvent(ev)
 		if err != nil {
@@ -373,7 +373,7 @@ func (s *Server) applyAlert(k alertKey, row ServerRow, r AlertRule, v float64, d
 			s.emit(k, s.alertNotice(NotifyResolved, row, r, st, v, detail, now), now)
 		}
 		s.log.Info("alert resolved", "component", "alert", "server_id", row.ID, "server", row.Name, "rule", r.RuleKey, "value", v)
-		s.publishAlert(evAlertRecovered, row, r, st.EventID, v, alertMessage(r, v, detail), now)
+		s.publishAlert(evAlertRecovered, row, r, st.EventID, v, alertMessage(r, v, detail, s.lang()), now)
 	case alertNone:
 		// 仍在 firing：到达重复间隔时再提醒一次（设计 16.4）。静音期间跳过但照样推进计时
 		if next != nil && next.State == StateFiring && r.RepeatIntervalS > 0 {
@@ -406,15 +406,16 @@ func (s *Server) muted(row ServerRow, r AlertRule, now time.Time) bool {
 
 // alertNotice 组装一条告警通知。st 为告警状态（firing 时为新状态，恢复时为恢复前的状态）。
 func (s *Server) alertNotice(kind string, row ServerRow, r AlertRule, st *alertState, v float64, detail string, now time.Time) notifyMessage {
+	l := s.lang()
 	m := notifyMessage{Kind: kind, ServerID: row.ID, ServerName: row.Name, RuleKey: r.RuleKey, Type: r.Type,
-		Severity: r.Severity, Value: v, Threshold: r.Threshold, Message: alertMessage(r, v, detail)}
+		Severity: r.Severity, Value: v, Threshold: r.Threshold, Message: alertMessage(r, v, detail, l)}
 	if st != nil {
 		m.EventID, m.StartedAt = st.EventID, st.StartedAt
 	}
 	if kind == NotifyResolved {
 		m.ResolvedAt = now
 		if r.Type == AlertOffline {
-			m.Message = "节点恢复上报" // 离线的“当前值”是距上次上报的秒数，恢复时没有意义
+			m.Message = l.t("节点恢复上报") // 离线的“当前值”是距上次上报的秒数，恢复时没有意义
 		}
 	}
 	if s.publicURL != "" {

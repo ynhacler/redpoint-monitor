@@ -106,7 +106,7 @@ func (s *Server) taskCrashed(name string, now time.Time) {
 	}
 	key := panelIssueTaskPf + name
 	if !s.health.isActive(key) {
-		s.panelIssue(key, true, fmt.Sprintf("10 分钟内崩溃 %d 次，已自动重启", n), n)
+		s.panelIssue(key, true, s.lang().f("10 分钟内崩溃 %d 次，已自动重启", n), n)
 		s.scheduleTaskCheck(name, now)
 	}
 }
@@ -153,7 +153,7 @@ func (s *Server) dbWriteResult(ok bool) {
 	case ok:
 		s.panelIssue(panelIssueDB, false, "", 0)
 	case n >= dbFailAlertAt:
-		s.panelIssue(panelIssueDB, true, fmt.Sprintf("连续 %d 次写入失败，上报暂存在内存中", n), n)
+		s.panelIssue(panelIssueDB, true, s.lang().f("连续 %d 次写入失败，上报暂存在内存中", n), n)
 	}
 }
 
@@ -172,7 +172,7 @@ func (s *Server) pushResult(ok bool) {
 	case ok:
 		s.panelIssue(panelIssuePush, false, "", 0)
 	case n >= pushFailAlertAt:
-		s.panelIssue(panelIssuePush, true, fmt.Sprintf("连续 %d 次无法送达 Push Relay，App 收不到推送", n), n)
+		s.panelIssue(panelIssuePush, true, s.lang().f("连续 %d 次无法送达 Push Relay，App 收不到推送", n), n)
 	}
 }
 
@@ -201,7 +201,7 @@ func (s *Server) checkDisk() {
 	}
 	switch {
 	case pct < diskLowPct:
-		s.panelIssue(panelIssueDisk, true, fmt.Sprintf("数据目录所在磁盘剩余 %.1f%%（%s）", pct, fmtGB(free)), 0)
+		s.panelIssue(panelIssueDisk, true, s.lang().f("数据目录所在磁盘剩余 %.1f%%（%s）", pct, fmtGB(free)), 0)
 	case pct >= diskOKPct:
 		s.panelIssue(panelIssueDisk, false, "", 0)
 	}
@@ -218,28 +218,29 @@ func fmtGB(b uint64) string {
 
 // panelIssueText 是面板自身告警的标题与说明。
 func panelIssueText(m notifyMessage) (string, string) {
+	l := m.Lang
 	what, okText, hint := m.Type, m.Type, ""
 	switch {
 	case strings.HasPrefix(m.Type, panelIssueTaskPf):
 		name := strings.TrimPrefix(m.Type, panelIssueTaskPf)
 		if n := taskNames[name]; n != "" {
-			name = n
+			name = l.t(n)
 		}
-		what, okText = "后台任务反复出错："+name, "后台任务运行正常："+name
-		hint = "相关功能可能暂时失效；在面板主机上执行 vpsmon-server diag 生成诊断包查看原因。"
+		what, okText = l.f("后台任务反复出错：%s", name), l.f("后台任务运行正常：%s", name)
+		hint = l.t("相关功能可能暂时失效；在面板主机上执行 vpsmon-server diag 生成诊断包查看原因。")
 	case m.Type == panelIssueDisk:
-		what, okText, hint = "磁盘空间不足", "磁盘空间已恢复", "清理磁盘或缩短指标保留时间；空间耗尽后面板无法写入数据。"
+		what, okText, hint = l.t("磁盘空间不足"), l.t("磁盘空间已恢复"), l.t("清理磁盘或缩短指标保留时间；空间耗尽后面板无法写入数据。")
 	case m.Type == panelIssueDB:
-		what, okText, hint = "数据库写入失败", "数据库写入已恢复", "检查磁盘空间与数据目录权限；面板重启前未写入的上报会丢失。"
+		what, okText, hint = l.t("数据库写入失败"), l.t("数据库写入已恢复"), l.t("检查磁盘空间与数据目录权限；面板重启前未写入的上报会丢失。")
 	case m.Type == panelIssuePush:
-		what, okText, hint = "App 推送失败", "App 推送已恢复", "检查面板到 Push Relay 的网络与 --push-relay 设置；告警仍会通过其他渠道发送。"
+		what, okText, hint = l.t("App 推送失败"), l.t("App 推送已恢复"), l.t("检查面板到 Push Relay 的网络与 --push-relay 设置；告警仍会通过其他渠道发送。")
 	}
 	if m.Kind == NotifyPanelIssueResolved {
-		return "✅ 面板" + okText, ""
+		return l.f("✅ 面板%s", okText), ""
 	}
 	body := m.Message
 	if hint != "" {
-		body += "。" + hint
+		body = l.f("%s。%s", body, hint)
 	}
-	return "⚠️ 面板异常：" + what, body
+	return l.f("⚠️ 面板异常：%s", what), body
 }

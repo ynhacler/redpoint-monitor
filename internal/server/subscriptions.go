@@ -276,6 +276,7 @@ func (s *Server) subscriptionReminders(now time.Time) {
 	if err != nil {
 		return
 	}
+	l := s.lang()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	for _, x := range list {
 		if x.RemindDays <= 0 {
@@ -289,13 +290,17 @@ func (s *Server) subscriptionReminders(now time.Time) {
 		if days > x.RemindDays {
 			continue
 		}
-		when := fmt.Sprintf("%d 天后（%s）", days, t.Format("1 月 2 日"))
-		if days == 0 {
-			when = "今天"
+		date := t.Format("1 月 2 日")
+		if l == "en" {
+			date = t.Format("Jan 2")
 		}
-		s.remind(fmt.Sprintf("subscription:%d:%s", x.ID, t.Format("2006-01-02")), notifyMessage{ServerName: "订阅“" + x.Name + "”",
+		when := l.f("%d 天后（%s）", days, date)
+		if days == 0 {
+			when = l.t("今天")
+		}
+		s.remind(fmt.Sprintf("subscription:%d:%s", x.ID, t.Format("2006-01-02")), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
 			Type: "subscription", Severity: SeverityWarning,
-			Message: fmt.Sprintf("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
+			Message: l.f("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
 	}
 }
 

@@ -228,8 +228,9 @@ func (s *Server) sslReminders(now time.Time) {
 	if err != nil {
 		return
 	}
+	l := s.lang()
 	for _, m := range list {
-		label := "证书 " + m.Host
+		label := l.f("证书 %s", m.Host)
 		if m.Port != 443 {
 			label += ":" + strconv.Itoa(m.Port)
 		}
@@ -239,13 +240,13 @@ func (s *Server) sslReminders(now time.Time) {
 			days := calendarDays(now.In(time.Local), time.Date(exp.Year(), exp.Month(), exp.Day(), 0, 0, 0, 0, time.Local))
 			if b, ok := expireBracket(days); ok {
 				s.remind(fmt.Sprintf("ssl:%d:%d:%d", m.ID, m.NotAfter, b), notifyMessage{ServerName: label, Type: "ssl_expire",
-					Severity: expireSeverity(b), Message: "SSL 证书" + expireText(date, days)}, now)
+					Severity: expireSeverity(b), Message: l.f("SSL 证书%s", expireText(date, days, l))}, now)
 			}
 		}
 		if m.LastError != "" && m.NotAfter > now.Unix() && !strings.HasPrefix(m.LastError, "无法连接") {
 			h := sha256.Sum256([]byte(m.LastError))
 			s.remind(fmt.Sprintf("ssl_invalid:%d:%s", m.ID, hex.EncodeToString(h[:6])), notifyMessage{ServerName: label,
-				Type: "ssl_invalid", Severity: SeverityWarning, Message: m.LastError}, now)
+				Type: "ssl_invalid", Severity: SeverityWarning, Message: l.detail(m.LastError)}, now)
 		}
 	}
 }
