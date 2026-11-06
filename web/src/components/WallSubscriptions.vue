@@ -1,16 +1,18 @@
 <script setup lang="ts">
 // 公开展示页的订阅标签（设计 45.3）：只读，没有任何修改入口。数据来自 GET /api/v1/public/subscriptions，
-// 只有名称、分类、金额、周期与下次扣费日；上传的图标不公开，这里只显示内置标志或首字母。
+// 只有名称、分类、金额、周期与下次扣费日；上传的图标不公开，这里只显示内置标志或首字母。放不下时和节点一样自动翻页。
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { errorText, getPublicSubscriptions, type PublicSubscription } from '../api'
 import { daysUntil, fmtMoney } from '../format'
 import { t } from '../i18n'
 import { categoryNames, cycleNames } from '../subscriptions'
+import { useWallPaging } from '../wallPaging'
 import SubAvatar from './SubAvatar.vue'
 
 const items = ref<PublicSubscription[]>([])
 const loaded = ref(false)
 const error = ref('')
+const { grid, page, pages, shown } = useWallPaging(items)
 
 async function load() {
   try {
@@ -39,7 +41,7 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <section :aria-label="t('订阅')">
+  <section class="wall-subs" :aria-label="t('订阅')">
     <p v-if="error" class="bad">{{ error }}</p>
     <p v-if="loaded && !items.length && !error" class="muted empty">{{ t('还没有订阅') }}</p>
     <template v-if="items.length">
@@ -47,8 +49,8 @@ onUnmounted(() => clearInterval(timer))
         <b>{{ t('{n} 个订阅', { n: items.length }) }}</b>
         <span :class="{ warn: soon }">{{ t('7 天内扣费') }} {{ soon }}</span>
       </p>
-      <ul class="subs">
-        <li v-for="(s, i) in items" :key="i">
+      <ul ref="grid" class="subs">
+        <li v-for="(s, i) in shown" :key="i">
           <SubAvatar :brand="s.brand" :name="s.name" :size="36" />
           <div class="main">
             <strong :title="s.name">{{ s.name }}</strong>
@@ -60,21 +62,28 @@ onUnmounted(() => clearInterval(timer))
           </div>
         </li>
       </ul>
+      <p v-if="pages > 1" class="pager num muted">{{ page + 1 }} / {{ pages }}</p>
     </template>
   </section>
 </template>
 
 <style scoped>
-.sum { display: flex; gap: var(--space-4); align-items: baseline; margin: 0 0 var(--space-3); }
+.wall-subs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sum { flex: none; display: flex; gap: var(--space-4); align-items: baseline; margin: 0 0 var(--space-3); }
 .sum b { font-size: var(--font-xl); }
-.subs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-3); }
+.subs { flex: 1; min-height: 0; overflow: hidden; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); grid-auto-rows: min-content; align-content: start; gap: var(--space-3); }
 .subs li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); min-width: 0; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .right { flex: none; display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; }
+.pager { flex: none; margin: var(--space-3) 0 0; text-align: center; }
 .empty { text-align: center; }
 .muted { color: var(--text-muted); }
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
-@media (max-width: 600px) { .subs { grid-template-columns: minmax(0, 1fr); } }
+/* 手机：上下滚动，不翻页 */
+@media (max-width: 600px) {
+  .wall-subs { flex: none; }
+  .subs { flex: none; overflow: visible; grid-template-columns: minmax(0, 1fr); }
+}
 </style>
