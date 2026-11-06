@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from
 
 const PAGE_MS = 12000
 
+/** 给列表加上自动翻页：把 grid 绑到列表容器上，模板渲染 shown，page / pages 用于显示页码。 */
 export function useWallPaging<T>(list: Readonly<Ref<T[]>>) {
   const grid = ref<HTMLElement>()
   const perPage = ref(Number.POSITIVE_INFINITY)
