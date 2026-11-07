@@ -252,6 +252,7 @@ func main() {
 		httpsListen := fsx.String("https-listen", ":443", "with --domain: HTTPS listen address; a bare port listens on all addresses")
 		httpListen := fsx.String("http-listen", ":80", "with --domain: HTTP listen address for ACME http-01 and redirects to HTTPS (empty = disabled)")
 		acmeDir := fsx.String("acme-directory", "", "with --domain: ACME directory URL (default: Let's Encrypt production)")
+		insecureListen := fsx.Bool("insecure-listen", false, "allow --listen on a non-loopback address without TLS; passwords and session cookies then travel in plain text (only for trusted networks, e.g. inside a container behind a proxy)")
 		envFile := fsx.String("env-file", "", "also read VPSMON_* settings from this KEY=VALUE file (OpenRC; parsed by the panel, never sourced by a shell)")
 		_ = fsx.Parse(args)
 		// 参数也可以来自环境变量 VPSMON_*（/etc/vpsmon/server.env，设计 28.1）或 --env-file（修订第 208 条）；监听地址可以只写端口
@@ -295,7 +296,14 @@ func main() {
 		}
 		slog.SetDefault(logger)
 		if domains == nil {
-			warnIfPublic(logger, *listen)
+			if err := checkPlainListen(*listen, *insecureListen); err != nil {
+				fmt.Fprintln(os.Stderr, "✗ "+err.Error())
+				os.Exit(1)
+			}
+			if *insecureListen && !isLoopbackListen(*listen) {
+				logger.Warn("listening on a non-loopback address without TLS (--insecure-listen); passwords and session cookies travel in plain text",
+					"component", "server", "listen", *listen)
+			}
 		}
 		// 运行期间锁定数据目录：restore 据此拒绝在面板运行时替换数据库；同一数据目录也不能启动两个面板
 		unlock, err := server.LockDataDir(*data)
@@ -383,19 +391,27 @@ func open(dir string) *server.Store {
 	return st
 }
 
-// warnIfPublic 在面板监听非回环地址时告警。
-// 【安全】内置 HTTPS（A6）完成前，面板应只监听回环地址，由 Caddy 或 SSH 隧道对外（设计 23.1、26）。
-func warnIfPublic(logger *slog.Logger, listen string) {
+// isLoopbackListen 判断监听地址是否只在本机：localhost 或回环 IP；0.0.0.0、[::] 与空主机都不算。
+func isLoopbackListen(listen string) bool {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
-		return
+		return false
 	}
 	ip := net.ParseIP(host)
-	if host == "localhost" || (ip != nil && ip.IsLoopback()) {
-		return
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
+}
+
+// checkPlainListen 检查反向代理模式（无 TLS）的监听地址（修订第 307 条）。
+//
+// 【安全】没有 TLS 时只允许回环地址，由 Caddy 或 SSH 隧道对外（约束 6，设计 23.1、26）；
+// 否则登录密码与会话 Cookie 会明文经过网络。确需如此（如容器内由代理转发）须显式加 --insecure-listen。
+func checkPlainListen(listen string, insecure bool) error {
+	if insecure || isLoopbackListen(listen) {
+		return nil
 	}
-	logger.Warn("listening on a non-loopback address without TLS; keep the server on 127.0.0.1 behind Caddy or an SSH tunnel",
-		"component", "server", "listen", listen)
+	return fmt.Errorf("refusing to listen on %s without TLS: passwords and session cookies would travel in plain text. "+
+		"Keep --listen on 127.0.0.1 behind Caddy or an SSH tunnel, use --domain for built-in HTTPS, "+
+		"or pass --insecure-listen if this network is trusted", listen)
 }
 
 // printAudit 按时间倒序打印审计记录。详情在写入时已脱敏（设计 24.7）。
