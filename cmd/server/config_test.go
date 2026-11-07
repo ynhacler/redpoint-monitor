@@ -110,3 +110,26 @@ func TestDefaultPublicURL(t *testing.T) {
 		t.Error(got)
 	}
 }
+
+// 【安全】无 TLS 时非回环地址拒绝启动，除非显式 --insecure-listen（修订第 307 条）。
+func TestCheckPlainListen(t *testing.T) {
+	cases := []struct {
+		listen   string
+		insecure bool
+		ok       bool
+	}{
+		{"127.0.0.1:8080", false, true},
+		{"[::1]:8080", false, true},
+		{"localhost:8080", false, true},
+		{"0.0.0.0:8080", false, false},
+		{":8080", false, false},
+		{"[::]:8080", false, false},
+		{"203.0.113.5:8080", false, false},
+		{"0.0.0.0:8080", true, true},
+	}
+	for _, c := range cases {
+		if err := checkPlainListen(c.listen, c.insecure); (err == nil) != c.ok {
+			t.Errorf("checkPlainListen(%q, %v) = %v，期望通过 = %v", c.listen, c.insecure, err, c.ok)
+		}
+	}
+}

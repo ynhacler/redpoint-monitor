@@ -408,7 +408,7 @@ sudo userdel vpsmon
 
 ## 7. 从源码构建与开发
 
-需要 Go ≥ 1.26 与 Node ≥ 20.19。
+需要 Go ≥ 1.26 与 Node ≥ 20.19。go.mod 指定了带安全修复的工具链（go1.27.3），较旧的 Go 会自动下载它，需能访问 proxy.golang.org。
 
 ```bash
 make build                  # 构建本机的面板与 Agent 到 bin/
