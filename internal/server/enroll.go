@@ -268,8 +268,33 @@ func (l *enrollLimiter) fail(ip string) {
 	}
 }
 
+// blocked 只查询该键当前是否处于封禁中，不计入请求次数；用于按账号的失败锁定。
+func (l *enrollLimiter) blocked(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	st := l.state(key, now)
+	if now.Before(st.bannedUntil) {
+		return true, st.bannedUntil.Sub(now)
+	}
+	return false, 0
+}
+
+// limitKey 把来源地址换成限流用的键。
+//
+// 【安全】IPv6 按 /64 前缀计数：一个用户通常分到整个 /64，可以随意更换其中的地址，
+// 按单个地址计数等于没有限制。IPv4（含 IPv4 映射地址）与无法解析的键保持原样。
+func limitKey(ip string) string {
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() != nil {
+		return ip
+	}
+	return p.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
 // state 取出或创建 IP 的计数；记录过多时清理 1 小时未活动的条目，保证内存有上限。
 func (l *enrollLimiter) state(ip string, now time.Time) *ipState {
+	ip = limitKey(ip)
 	if len(l.ips) > 10000 {
 		for k, v := range l.ips {
 			if now.Sub(v.lastSeen) > time.Hour && now.After(v.bannedUntil) {

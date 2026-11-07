@@ -340,6 +340,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		s.loginLimit.fail(ip)
+		s.accountLimit.fail(accountKey(u.Username))
 		s.audit(r, AuditEntry{ActorType: u.actor(), ActorID: u.Username, Action: "auth.login", Success: false,
 			Details: map[string]any{"reason": "bad_" + method}})
 		s.writeError(w, r, errorf(CodeUnauthorized, "验证码不正确"))

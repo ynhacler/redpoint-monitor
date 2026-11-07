@@ -13,29 +13,32 @@ import (
 
 // channelBody 是创建 / 修改渠道的请求。修改时凭证字段留空表示保持原值（界面不回显完整凭证）。
 type channelBody struct {
-	Type           string `json:"type"`
-	Name           string `json:"name"`
-	Enabled        *bool  `json:"enabled"`
-	MinSeverity    string `json:"min_severity"`
-	NotifyResolved *bool  `json:"notify_resolved"`
-	Config         struct {
-		BotToken    string `json:"bot_token"`
-		ChatID      string `json:"chat_id"`
-		URL         string `json:"url"`
-		Secret      string `json:"secret"`
-		ClearSecret bool   `json:"clear_secret"`
-		Topic       string `json:"topic"`
-		Token       string `json:"token"`
-		ClearToken  bool   `json:"clear_token"`
-		// 邮件
-		SMTPHost     string `json:"smtp_host"`
-		SMTPPort     int    `json:"smtp_port"`
-		SMTPSecurity string `json:"smtp_security"`
-		Username     string `json:"username"`
-		Password     string `json:"password"`
-		From         string `json:"from"`
-		To           string `json:"to"`
-	} `json:"config"`
+	Type           string            `json:"type"`
+	Name           string            `json:"name"`
+	Enabled        *bool             `json:"enabled"`
+	MinSeverity    string            `json:"min_severity"`
+	NotifyResolved *bool             `json:"notify_resolved"`
+	Config         channelBodyConfig `json:"config"`
+}
+
+// channelBodyConfig 是请求中的连接参数；整体为空（如 Web 上切换启用开关时的 {}）表示不修改。
+type channelBodyConfig struct {
+	BotToken    string `json:"bot_token"`
+	ChatID      string `json:"chat_id"`
+	URL         string `json:"url"`
+	Secret      string `json:"secret"`
+	ClearSecret bool   `json:"clear_secret"`
+	Topic       string `json:"topic"`
+	Token       string `json:"token"`
+	ClearToken  bool   `json:"clear_token"`
+	// 邮件
+	SMTPHost     string `json:"smtp_host"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPSecurity string `json:"smtp_security"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	From         string `json:"from"`
+	To           string `json:"to"`
 }
 
 func decodeChannel(w http.ResponseWriter, r *http.Request) (*channelBody, error) {
@@ -72,7 +75,7 @@ func (b *channelBody) apply(c *NotifyChannel) {
 	if b.Config.Topic != "" {
 		c.Config.Topic = b.Config.Topic
 	}
-	if c.Type == ChannelEmail || b.Type == ChannelEmail {
+	if (c.Type == ChannelEmail || b.Type == ChannelEmail) && b.Config != (channelBodyConfig{}) {
 		// 邮件：非凭证字段按提交的值整体替换；密码留空保持原值。
 		// 【安全】SMTP 服务器或用户名变了就不沿用旧密码，避免把已保存的密码发给另一台服务器
 		if !strings.EqualFold(strings.TrimSpace(b.Config.SMTPHost), c.Config.SMTPHost) || b.Config.Username != c.Config.Username {
@@ -111,7 +114,12 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateChannel：POST /api/v1/notification-channels，admin。成功 201，返回脱敏后的渠道。
+// 【安全】敏感操作：告警会发到新的地址，需在 10 分钟内重新输入过密码，否则 403 reauth_required（修订第 306 条）。
 func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
+	if err := requireReauth(r); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	b, err := decodeChannel(w, r)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -133,6 +141,7 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdateChannel：PUT /api/v1/notification-channels/{id}，admin。类型不可修改；凭证留空保持原值。
+// 【安全】连接参数（地址、凭证、收件人）有变化时需重新验证密码，只改名称、开关、级别不需要（修订第 306 条）。
 func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
@@ -153,7 +162,14 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "type", Message: "渠道类型不可修改"}}})
 		return
 	}
+	before := c.Config
 	b.apply(&c)
+	if c.Config != before {
+		if err := requireReauth(r); err != nil {
+			s.writeError(w, r, err)
+			return
+		}
+	}
 	if errs := c.validate(); len(errs) > 0 {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: errs})
 		return

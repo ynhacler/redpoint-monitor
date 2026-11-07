@@ -13,6 +13,7 @@ import DigestSettings from './DigestSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
 import { setNotifyChannels } from './NotifyWarning.vue'
 import { t } from '../i18n'
+import { ReauthCancelled, withReauth } from '../reauth'
 
 
 const channels = ref<NotifyChannel[]>([])
@@ -83,11 +84,14 @@ async function save() {
           : { url: form.url.trim() || undefined, secret: form.secret || undefined, clear_secret: form.clear_secret || undefined },
   }
   try {
-    if (editing.value === 'new') await createChannel({ ...body, type: form.type })
-    else await updateChannel(editing.value as number, body)
+    // 新建或改了连接参数时面板要求重新输入密码（修订第 306 条）
+    const id = editing.value
+    if (id === 'new') await withReauth(() => createChannel({ ...body, type: form.type }))
+    else await withReauth(() => updateChannel(id as number, body))
     editing.value = null
     await load()
   } catch (e) {
+    if (e instanceof ReauthCancelled) return
     if (e instanceof ApiError && e.details.length) {
       fieldErrors.value = Object.fromEntries(e.details.map((d) => [d.field.replace('config.', ''), d.message]))
     } else fail(e)
