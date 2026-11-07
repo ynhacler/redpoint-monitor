@@ -2,9 +2,9 @@
 // 公开展示页（设计 45.3，修订第 303 条）：不用登录就能看的大屏，地址 /status，适合放在电视或副屏上常开。
 // 一屏放下全部内容：汇总指标、地区分布与节点卡片，异常的节点排在前面；节点多到放不下时自动翻页。手机宽度改为上下滚动。
 // 【安全】数据只来自 GET /api/v1/public/servers，只有管理员选中的节点与白名单字段；本页不读 store 中的节点，登录后打开看到的也一样。
-// 标签：节点、订阅（管理员开启后才有，只读）、连通性测试（在访客自己的浏览器里运行）。云平台不在展示页中。
+// 标签：节点、订阅（管理员开启后才有，只读，同样自动翻页）、连通性测试（在访客自己的浏览器里运行，内容多时上下滚动）。云平台不在展示页中。
 // 当前标签记在地址中（?tab=），电视可以固定打开某个标签。
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, getPublicServers, type PublicServer } from '../api'
 import Flag from '../components/Flag.vue'
@@ -14,11 +14,11 @@ import { fmtAgo, fmtBytes, fmtPct, fmtTime, fmtUptimeShort } from '../format'
 import { t } from '../i18n'
 import { gaugeLevel } from '../metrics'
 import { site } from '../site'
+import { useWallPaging } from '../wallPaging'
 
 const ConnectivityPage = defineAsyncComponent(() => import('./ConnectivityPage.vue'))
 
 const POLL_MS = 5000
-const PAGE_MS = 12000
 
 const items = ref<PublicServer[]>([])
 const updatedAt = ref(0)
@@ -85,32 +85,9 @@ const bars = (s: PublicServer) => [
   { k: t('磁盘'), v: s.disk, level: gaugeLevel(s.disk, 'disk') },
 ]
 
-// ---- 放不下时翻页：每页的数量按实际的卡片高度与列数计算 ----
-const grid = ref<HTMLElement>()
-const perPage = ref(Number.POSITIVE_INFINITY)
-const page = ref(0)
-const pages = computed(() => Math.max(1, Math.ceil(sorted.value.length / perPage.value)))
-const shown = computed(() => (pages.value === 1 ? sorted.value : sorted.value.slice(page.value * perPage.value, (page.value + 1) * perPage.value)))
-const phone = window.matchMedia('(max-width: 600px)')
-
-function measure() {
-  const el = grid.value
-  const first = el?.firstElementChild as HTMLElement | null | undefined
-  if (phone.matches) perPage.value = Number.POSITIVE_INFINITY
-  if (!el || !first || phone.matches) return
-  const cs = getComputedStyle(el)
-  const gap = parseFloat(cs.rowGap) || 0
-  const rows = Math.max(1, Math.floor((el.clientHeight + gap) / (first.offsetHeight + gap)))
-  perPage.value = cs.gridTemplateColumns.split(' ').length * rows
-}
-watch(pages, (n) => {
-  if (page.value >= n) page.value = 0
-})
-watch(() => items.value.length > 0, () => nextTick(measure))
+const { grid, page, pages, shown } = useWallPaging(sorted)
 
 let poll: ReturnType<typeof setInterval>
-let flip: ReturnType<typeof setInterval>
-let observer: ResizeObserver | undefined
 const robots = document.createElement('meta')
 robots.name = 'robots'
 robots.content = 'noindex'
@@ -119,23 +96,15 @@ onMounted(() => {
   document.head.append(robots)
   load()
   poll = setInterval(load, POLL_MS)
-  flip = setInterval(() => (page.value = (page.value + 1) % pages.value), PAGE_MS)
-  observer = new ResizeObserver(measure)
-})
-watch(grid, (el) => {
-  observer?.disconnect()
-  if (el) observer?.observe(el)
 })
 onUnmounted(() => {
   robots.remove()
   clearInterval(poll)
-  clearInterval(flip)
-  observer?.disconnect()
 })
 </script>
 
 <template>
-  <div class="wall" :class="{ scroll: tab !== 'nodes' }">
+  <div class="wall" :class="{ scroll: tab === 'connectivity' }">
     <header class="head">
       <h1>{{ site.app_name }}</h1>
       <nav v-if="loaded && !closed" class="tabs" :aria-label="t('分组')">
