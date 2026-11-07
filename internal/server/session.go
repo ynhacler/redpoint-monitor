@@ -336,6 +336,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(body.Username)
+	if locked, wait := s.accountLocked(name, ip); locked {
+		s.audit(r, AuditEntry{ActorType: "admin", ActorID: name, Action: "auth.login", Success: false,
+			Details: map[string]any{"reason": "account_locked"}})
+		s.writeError(w, r, &APIError{Code: CodeRateLimited, Message: "登录失败次数过多，请稍后再试", RetryAfter: wait})
+		return
+	}
 	// 先校验验证码再核对密码：未通过验证码的请求不会触发密码比对（设计 17.4）
 	if s.captchaOn() && !s.captcha.verify(body.CaptchaID, body.CaptchaX, body.CaptchaMs, time.Now()) {
 		s.loginLimit.fail(ip)
@@ -346,6 +352,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	fail := func(reason string) {
 		s.loginLimit.fail(ip)
+		s.accountLimit.fail(accountKey(name)) // 用户名不存在也计数，锁定与否不暴露账号是否存在
 		s.audit(r, AuditEntry{ActorType: "admin", ActorID: name, Action: "auth.login", Success: false,
 			Details: map[string]any{"reason": reason}})
 		s.log.Warn("login failed", "component", "auth", "ip", ip, "reason", reason)
@@ -392,6 +399,35 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.startSession(w, r, *u, body.Remember, map[string]any{"remember": body.Remember})
 }
 
+// accountKey 是按账号限流的键，加前缀避免与 IP 键混在一起。
+func accountKey(name string) string { return "user:" + name }
+
+// accountLocked 判断该账号是否因失败过多被锁定（修订第 306 条）。
+//
+// 【安全】锁定只针对陌生来源：该账号近期成功登录过的地址（IPv6 按 /64）照常可以登录，
+// 攻击者用大量 IP 猜密码时无法顺带把管理员挡在外面。查库失败时按锁定处理（设计 43.1）。
+func (s *Server) accountLocked(name, ip string) (bool, time.Duration) {
+	locked, wait := s.accountLimit.blocked(accountKey(name))
+	if !locked {
+		return false, 0
+	}
+	u, err := s.store.UserByName(name)
+	if err != nil {
+		return true, wait
+	}
+	ips, err := s.store.loginIPs(u.ID, u.Username, time.Now())
+	if err != nil {
+		s.log.Warn("login ip lookup failed", "component", "auth", "err", err)
+		return true, wait
+	}
+	for _, known := range ips {
+		if limitKey(known) == limitKey(ip) {
+			return false, 0
+		}
+	}
+	return true, wait
+}
+
 // handleMe：GET /api/v1/auth/me，admin。返回当前账号与 CSRF 值；页面刷新后用它恢复登录状态。
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	ri := info(r)
@@ -417,6 +453,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleChangePassword：POST /api/v1/auth/password，admin。{current_password, new_password}。
 // 成功 204；当前密码错误 422；新密码不符合要求 422。修改后其他会话全部失效（设计 17.4）。
+//
+// 【安全】与登录共用 IP 限流：失败过多 429，防止拿到会话的人借此猜出当前密码（修订第 306 条）。
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	ri := info(r)
 	var body struct {
@@ -427,13 +465,18 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	ip := clientIP(r)
+	if ok, wait := s.loginLimit.allow(ip); !ok {
+		s.writeError(w, r, &APIError{Code: CodeRateLimited, Message: "失败次数过多，请稍后再试", RetryAfter: wait})
+		return
+	}
 	u, err := s.store.UserByName(ri.session.User.Username)
 	if err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
 	if ok, _, err := VerifyPassword(body.Current, u.PasswordHash); err != nil || !ok {
-		s.loginLimit.fail(clientIP(r)) // 与登录共用失败计数，防止借此暴力尝试密码
+		s.loginLimit.fail(ip) // 与登录共用失败计数，防止借此暴力尝试密码
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed,
 			Details: []FieldError{{Field: "current_password", Message: "当前密码不正确"}}})
 		return

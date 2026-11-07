@@ -764,9 +764,14 @@ func (s *Server) handleInstallCommand(w http.ResponseWriter, r *http.Request) {
 // handleRegenerateCode：POST /api/v1/servers/{id}/enroll-code，admin。
 // 生成新注册码，旧码立即失效（设计 27.4）；对已注册节点即“重新安装 / 更换主机”（设计 27.8）。
 // 请求体可选：{"enroll_ttl": "24h"}。
+// 【安全】敏感操作：新注册码能顶替已注册节点的主机，需在 10 分钟内重新输入过密码，否则 403 reauth_required（修订第 306 条）。
 func (s *Server) handleRegenerateCode(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := requireReauth(r); err != nil {
 		s.writeError(w, r, err)
 		return
 	}

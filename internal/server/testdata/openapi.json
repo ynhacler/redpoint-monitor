@@ -130,7 +130,7 @@
           "auth"
         ],
         "summary": "用户名 + 密码登录，写入会话 Cookie",
-        "description": "同一 IP 1 分钟内失败 5 次锁定 15 分钟（设计 17.4）。用户名不存在与密码错误返回相同结果。",
+        "description": "同一 IP（IPv6 按 /64）1 分钟内失败 5 次锁定 15 分钟（设计 17.4）；同一账号 15 分钟内失败 10 次，对没有成功登录过该账号的来源锁定 15 分钟（修订第 306 条）。用户名不存在与密码错误返回相同结果。",
         "security": [],
         "requestBody": {
           "required": true,
@@ -568,7 +568,7 @@
           "auth"
         ],
         "summary": "修改密码；成功后该账号其他会话全部失效（设计 17.4）",
-        "description": "使用初始 / 重置密码登录时，除 /auth/* 以外的接口都返回 403 password_change_required，直到修改密码。",
+        "description": "使用初始 / 重置密码登录时，除 /auth/* 以外的接口都返回 403 password_change_required，直到修改密码。当前密码错误与登录共用 IP 失败计数，过多时 429（修订第 306 条）。",
         "requestBody": {
           "required": true,
           "content": {
@@ -600,6 +600,9 @@
             "$ref": "#/components/responses/Error"
           },
           "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3899,6 +3902,7 @@
           "alerts"
         ],
         "summary": "添加通知渠道（记入操作日志）",
+        "description": "敏感操作：需在 10 分钟内调用过 /auth/reauth，否则 403 reauth_required（修订第 306 条）。",
         "requestBody": {
           "required": true,
           "content": {
@@ -3926,6 +3930,9 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
           "422": {
             "$ref": "#/components/responses/Error"
           }
@@ -3938,6 +3945,7 @@
           "alerts"
         ],
         "summary": "修改通知渠道；类型不可修改，凭证字段留空保持原值",
+        "description": "config 为空对象表示不修改连接参数。连接参数有变化时需在 10 分钟内调用过 /auth/reauth，否则 403 reauth_required；只改名称、开关、级别不需要（修订第 306 条）。",
         "parameters": [
           {
             "name": "id",
@@ -3970,6 +3978,9 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -6690,6 +6701,7 @@
           "servers"
         ],
         "summary": "重新生成注册码，旧码立即失效（设计 27.4）；对已注册节点即重新安装 / 更换主机（设计 27.8）",
+        "description": "敏感操作：需在 10 分钟内调用过 /auth/reauth，否则 403 reauth_required（修订第 306 条）。",
         "parameters": [
           {
             "$ref": "#/components/parameters/ServerID"
@@ -6722,6 +6734,9 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {

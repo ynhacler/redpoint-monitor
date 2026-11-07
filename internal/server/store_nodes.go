@@ -552,3 +552,24 @@ func deref(p *string) string {
 	}
 	return *p
 }
+
+// loginIPs 返回该账号近期成功登录用过的来源地址：现存会话的地址，加上 90 天内审计日志里的成功登录。
+// 用于按账号锁定时放行熟悉的地址（修订第 306 条）。
+func (s *Store) loginIPs(userID int64, username string, now time.Time) ([]string, error) {
+	rows, err := s.DB.Query(`SELECT client_ip FROM sessions WHERE user_id = ? AND client_ip != ''
+		UNION SELECT client_ip FROM audit_logs WHERE action = 'auth.login' AND result = 'success'
+		AND actor_id = ? AND ts >= ? AND client_ip != '' LIMIT 500`, userID, username, now.Add(-90*24*time.Hour).Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return nil, err
+		}
+		out = append(out, ip)
+	}
+	return out, rows.Err()
+}

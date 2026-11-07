@@ -58,11 +58,14 @@ type Server struct {
 	lis         *listens  // Web 与 Agent 监听，可在运行中修改（设计 51）
 	site        siteCache // 网站配置：应用名称、语言、登录验证码（设计 52）
 	enrollLimit *enrollLimiter
-	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP 1 分钟失败 5 次锁定 15 分钟（设计 17.4）
-	captcha     *captchaStore  // 登录滑动验证码；为 nil 表示已关闭
-	alerts      *alertEngine   // 告警引擎（设计 16.7）
-	alertsOn    alertsSwitch   // 告警总开关（修订第 175 条）
-	ipinfoBase  string         // ipinfo.io 地址（测试中替换，设计 49）
+	loginLimit  *enrollLimiter // 登录与重新验证：同一 IP（IPv6 为同一 /64）1 分钟失败 5 次锁定 15 分钟（设计 17.4）
+	// accountLimit 按账号计登录失败：15 分钟内 10 次锁定 15 分钟，挡住换 IP 的分布式猜密码（修订第 306 条）。
+	// 曾成功登录过该账号的 IP 不受影响，攻击者无法借此把管理员锁在门外。
+	accountLimit *enrollLimiter
+	captcha      *captchaStore // 登录滑动验证码；为 nil 表示已关闭
+	alerts       *alertEngine  // 告警引擎（设计 16.7）
+	alertsOn     alertsSwitch  // 告警总开关（修订第 175 条）
+	ipinfoBase   string        // ipinfo.io 地址（测试中替换，设计 49）
 	// 汇率（修订第 223 条）：fxURL 在测试中替换
 	fx         fxState
 	fxURL      string
@@ -153,6 +156,8 @@ func New(store *Store, web fs.FS, opts Options) (*Server, error) {
 		publicURL: strings.TrimRight(opts.PublicURL, "/"), enrollLimit: newEnrollLimiter(), pairLimit: newEnrollLimiter(),
 		statusLimit: &enrollLimiter{perMinute: statusPagePerMin, now: time.Now, ips: map[string]*ipState{}},
 		loginLimit: &enrollLimiter{perMinute: 20, maxFails: 5, failWindow: time.Minute, ban: 15 * time.Minute,
+			now: time.Now, ips: map[string]*ipState{}},
+		accountLimit: &enrollLimiter{maxFails: 10, failWindow: 15 * time.Minute, ban: 15 * time.Minute,
 			now: time.Now, ips: map[string]*ipState{}},
 		latest: map[int64]*snapshot{}, counters: c, nodeConfs: map[int64]nodeConf{}, watched: map[int64]time.Time{}, captcha: captchaFor(opts), ws: newWSHub(), cloud: newCloudState(),
 		push: &pushState{relay: strings.TrimRight(opts.PushRelay, "/")}}

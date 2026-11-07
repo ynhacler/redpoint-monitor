@@ -11,6 +11,7 @@ import { connected, subscribe } from '../ws'
 import CommandBlock from './CommandBlock.vue'
 import StatusDot from './StatusDot.vue'
 import { t } from '../i18n'
+import { ReauthCancelled, withReauth } from '../reauth'
 
 const props = defineProps<{
   /** 节点 ID */
@@ -106,12 +107,12 @@ async function regenerate() {
   if (enrolled.value && !confirm(t('该节点已注册。重新生成注册码用于重装或更换主机，新主机注册后旧主机将无法再上报。继续？'))) return
   busy.value = true
   try {
-    const v = await regenerateEnrollCode(props.serverId)
+    const v = await withReauth(() => regenerateEnrollCode(props.serverId)) // 敏感操作：需重新输入密码（修订第 306 条）
     view.value = v
     fullCode.value = v.enroll_code ?? ''
     start()
   } catch (e) {
-    error.value = errorText(e)
+    if (!(e instanceof ReauthCancelled)) error.value = errorText(e)
   } finally {
     busy.value = false
   }

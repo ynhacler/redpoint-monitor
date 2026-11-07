@@ -3,8 +3,10 @@ package server
 import (
 	"bufio"
 	"encoding/base64"
+	"fmt"
 	"mime"
 	"net"
+	"net/http"
 	"net/mail"
 	"slices"
 	"strings"
@@ -202,5 +204,25 @@ func TestEmailKeepPassword(t *testing.T) {
 	errs := c.validate()
 	if !slices.ContainsFunc(errs, func(e FieldError) bool { return e.Field == "config.password" }) {
 		t.Fatalf("应要求重新填写密码：%v", errs)
+	}
+}
+
+// Web 上切换邮件渠道的启用开关时 config 为 {}：不能清空已保存的 SMTP 设置（修订第 306 条）。
+func TestEmailChannelToggleKeepsConfig(t *testing.T) {
+	s, h, _ := testServer(t)
+	tok := adminToken(t, s)
+	rec := do(h, "POST", "/api/v1/notification-channels", tok, []byte(`{"type":"email","name":"mail","config":{"smtp_host":"smtp.example.com","smtp_port":587,"smtp_security":"starttls","username":"u","password":"p","from":"a@example.com","to":"b@example.com"}}`))
+	if rec.Code != http.StatusCreated {
+		t.Fatal(rec.Code, rec.Body)
+	}
+	chs, _ := s.store.ListChannels()
+	id := chs[len(chs)-1].ID
+	rec = do(h, "PUT", fmt.Sprintf("/api/v1/notification-channels/%d", id), tok, []byte(`{"name":"mail","enabled":false,"config":{}}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("切换开关 %d：%s", rec.Code, rec.Body)
+	}
+	c, _ := s.store.GetChannel(id)
+	if c.Enabled || c.Config.SMTPHost != "smtp.example.com" || c.Config.Password != "p" || c.Config.To != "b@example.com" {
+		t.Fatalf("切换开关后设置被改动：enabled=%v %+v", c.Enabled, c.Config)
 	}
 }

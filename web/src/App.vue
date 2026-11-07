@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { getPanelVersion } from './api'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import Icon from './components/Icon.vue'
+import ReauthDialog from './components/ReauthDialog.vue'
 import { t } from './i18n'
 import { activeAlertCount } from './metrics'
 import { activeGroup, groupsFor, itemActive } from './nav'
@@ -180,6 +181,8 @@ onUnmounted(stopPolling)
   <footer v-if="signedIn && panelVersion" class="footer small" :class="{ 'phone-hide': route.name !== 'system' }">
     {{ site.app_name }} {{ t('面板') }} <span class="num" :title="t('面板版本（Agent 版本见“Agent 升级”页）')">{{ panelVersion }}</span>
   </footer>
+  <!-- 敏感操作的重新输入密码（修订第 306 条） -->
+  <ReauthDialog v-if="signedIn" />
   <!-- 手机底部标签栏（修订第 199 条）：宽屏不显示 -->
   <nav v-if="signedIn && !secondLevel" class="tabbar" :aria-label="t('分组')">
     <RouterLink v-for="g in groups" :key="g.key" :to="g.mobileTo ?? g.items[0].to" :class="{ active: group?.key === g.key }">

@@ -650,6 +650,9 @@ export const en: Record<string, string> = {
   '已同步 {time}': 'Synced {time}',
   '等待首次同步': 'Waiting for first sync',
   '请输入登录密码以确认': 'Enter your login password to confirm',
+  '确认身份': 'Confirm it’s you',
+  '这是敏感操作，请输入登录密码确认。10 分钟内不再询问。': 'This is a sensitive action. Enter your login password to confirm. You won’t be asked again for 10 minutes.',
+  '确认': 'Confirm',
   '请输入当前登录密码以确认': 'Enter your current login password to confirm',
   '面板服务器公网IP/32': 'PANEL_PUBLIC_IP/32',
   '{month} 自然月（北京时间）；只计按流量计费的 BGP（多线）流量，超出免费额度的部分按量收费':
