@@ -271,3 +271,58 @@ func TestSubscriptionVPS(t *testing.T) {
 		t.Fatalf("其他类别不应保存 VPS：%s", rec.Body)
 	}
 }
+
+func TestSubEndBracket(t *testing.T) {
+	cases := []struct {
+		days, m int
+		ok      bool
+	}{
+		{8, 0, false}, {7, 7, true}, {5, 7, true}, {3, 3, true}, {2, 3, true}, {1, 1, true},
+		{0, 0, true}, {-1, -1, true}, {-3, -1, true}, {-4, 0, false}, {-400, 0, false},
+	}
+	for _, c := range cases {
+		if m, ok := subEndBracket(c.days); ok != c.ok || (ok && m != c.m) {
+			t.Errorf("subEndBracket(%d) = %d, %v；期望 %d, %v", c.days, m, ok, c.m, c.ok)
+		}
+	}
+}
+
+// 订阅结束提醒（修订第 308 条）：每个区间只提醒一次；不看 remind_days；早已结束的不补发；续订后按新日期重新提醒。
+func TestSubscriptionEndReminders(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	day := func(n int) string { return time.Now().AddDate(0, 0, n).Format("2006-01-02") }
+	add := func(name, end string) int64 {
+		rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"`+name+`","category":"cloud","price_cents":600,"currency":"CNY",
+			"country":"US","payment":"credit","cycle":"annually","start_date":"`+day(-300)+`","end_date":"`+end+`"}`))
+		var x Subscription
+		json.Unmarshal(rec.Body.Bytes(), &x)
+		if rec.Code != 201 {
+			t.Fatalf("添加 %s：%d %s", name, rec.Code, rec.Body)
+		}
+		return x.ID
+	}
+	soon := add("Soon", day(2))
+	add("LongAgo", day(-30))
+	add("Later", day(60))
+	count := func() (n int) {
+		s.store.DB.QueryRow(`SELECT COUNT(*) FROM reminders_sent WHERE key LIKE 'subscription_end:%'`).Scan(&n)
+		return
+	}
+	s.subscriptionReminders(time.Now())
+	s.subscriptionReminders(time.Now())
+	if n := count(); n != 1 {
+		t.Fatalf("应只提醒“2 天后结束”的 1 次，实际 %d", n)
+	}
+	var key string
+	s.store.DB.QueryRow(`SELECT key FROM reminders_sent WHERE key LIKE 'subscription_end:%'`).Scan(&key)
+	if want := "subscription_end:" + itoa64(soon) + ":" + day(2) + ":3"; key != want {
+		t.Fatalf("去重键 %q，期望 %q", key, want)
+	}
+	// 续订：结束日期往后移到 5 天后，按新日期再提醒一次
+	s.store.DB.Exec(`UPDATE subscriptions SET end_date = ? WHERE id = ?`, day(5), soon)
+	s.subscriptionReminders(time.Now())
+	if n := count(); n != 2 {
+		t.Fatalf("续订后应按新日期再提醒，实际共 %d 次", n)
+	}
+}

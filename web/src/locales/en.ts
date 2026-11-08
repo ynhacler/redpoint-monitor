@@ -831,6 +831,7 @@ export const en: Record<string, string> = {
   '到期提醒': 'Reminder',
   '购买日期': 'Purchase date',
   '结束订阅': 'End date',
+  '结束前 7、3、1 天和当天各推送一次提醒': 'You’ll be notified 7, 3 and 1 days before it ends, and on the day',
   '留空表示仍在订阅': 'Leave empty if still subscribed',
   '手机号': 'Phone numbers',
   '区号': 'Country code',

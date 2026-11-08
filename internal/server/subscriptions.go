@@ -302,6 +302,63 @@ func (s *Server) subscriptionReminders(now time.Time) {
 			Type: "subscription", Severity: SeverityWarning,
 			Message: l.f("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
 	}
+	s.subscriptionEndReminders(list, today, now)
+}
+
+// subEndMilestones 是订阅结束提醒的里程碑（剩余天数），从大到小（修订第 308 条）。
+var subEndMilestones = []int{7, 3, 1, 0}
+
+// subEndBracket 返回剩余天数所在的提醒区间：满足 days ≤ m 的最小里程碑；刚结束 3 天内返回 -1（补发停机期间错过的提醒）。
+// 超过 7 天或结束已久返回 ok=false：升级后不会为早已结束的旧订阅补发一批通知。
+func subEndBracket(days int) (m int, ok bool) {
+	switch {
+	case days < -3 || days > subEndMilestones[0]:
+		return 0, false
+	case days < 0:
+		return -1, true
+	}
+	m = subEndMilestones[0]
+	for _, x := range subEndMilestones {
+		if days <= x {
+			m = x
+		}
+	}
+	return m, true
+}
+
+// subscriptionEndReminders 在订阅结束日期前 7 / 3 / 1 天与当天各提醒一次（修订第 308 条）。
+// 与扣费提醒独立：填了结束日期就提醒，不看 remind_days；续订把结束日期往后移后按新日期重新提醒。
+func (s *Server) subscriptionEndReminders(list []Subscription, today, now time.Time) {
+	l := s.lang()
+	link := ""
+	if s.publicURL != "" {
+		link = s.publicURL + "/subscriptions"
+	}
+	for _, x := range list {
+		if x.EndDate == "" {
+			continue
+		}
+		end, err := time.ParseInLocation("2006-01-02", x.EndDate, today.Location())
+		if err != nil {
+			continue
+		}
+		days := calendarDays(today, end)
+		m, ok := subEndBracket(days)
+		if !ok {
+			continue
+		}
+		var msg string
+		switch {
+		case days < 0:
+			msg = l.f("已于 %s 结束", x.EndDate)
+		case days == 0:
+			msg = l.f("今天（%s）结束，如需继续使用请续订", x.EndDate)
+		default:
+			msg = l.f("将于 %s 结束（%d 天后），如需继续使用请续订", x.EndDate, days)
+		}
+		s.remind(fmt.Sprintf("subscription_end:%d:%s:%d", x.ID, x.EndDate, m), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
+			Type: "subscription", Severity: expireSeverity(m), Message: msg, Link: link}, now)
+	}
 }
 
 // ---- 接口（Web 管理员） ----
