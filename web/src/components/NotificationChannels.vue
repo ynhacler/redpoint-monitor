@@ -11,6 +11,7 @@ import HeartbeatSettings from './HeartbeatSettings.vue'
 import ChangeNotifySettings from './ChangeNotifySettings.vue'
 import DigestSettings from './DigestSettings.vue'
 import QuietHoursSettings from './QuietHoursSettings.vue'
+import PushRoutes from './PushRoutes.vue'
 import { setNotifyChannels } from './NotifyWarning.vue'
 import { t } from '../i18n'
 import { ReauthCancelled, withReauth } from '../reauth'
@@ -176,6 +177,8 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
       {{ t('告警触发、恢复以及严重告警未恢复时的重复提醒，会发送到下列渠道；已静音的告警不发送。节点到期（剩 30 / 14 / 7 / 3 / 1 天、当天、已过期）与云账户提醒（超预算、流量包用到 90% / 95%、同步失败）也从这里发送，各发一次。同时有 5 台以上节点离线会合并为一条；状态频繁变化的告警只提醒一次；全部节点同时停止上报时发面板告警。渠道由本面板直接发送，凭证只保存在本面板。') }}
     </p>
     <p v-if="error" class="banner">{{ error }}</p>
+    <!-- 推送去向（修订第 320 条）：按渠道汇总会收到的告警与订阅提醒 -->
+    <PushRoutes v-if="loaded" :channels="channels" />
 
     <QuietHoursSettings />
     <ChangeNotifySettings />
