@@ -6,10 +6,11 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'sorting.dart';
+import 'subscriptions.dart';
 
 /// 本机界面偏好：收藏、排序方式与自定义顺序、隐私模式
 class Prefs {
-  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order, this.subGrouped = false})
+  Prefs({Set<int>? favorites, this.sortBy = SortBy.smart, this.privacy = false, List<int>? order, this.subView = const SubListView()})
       : favorites = favorites ?? {},
         order = order ?? [];
   final Set<int> favorites;
@@ -19,18 +20,18 @@ class Prefs {
   SortBy sortBy;
   bool privacy;
 
-  /// 订阅列表按类别分组显示（修订第 237 条）；默认不分类
-  bool subGrouped;
+  /// 订阅列表的筛选与排序（修订第 309 条，取代第 237 条的“不分类 / 按类别”）
+  SubListView subView;
 
   Map<String, dynamic> toJson() =>
-      {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy, 'order': order, 'sub_grouped': subGrouped};
+      {'favorites': favorites.toList()..sort(), 'sort_by': sortBy.name, 'privacy': privacy, 'order': order, 'sub_view': subView.toJson()};
 
   factory Prefs.fromJson(Map<String, dynamic> j) => Prefs(
         favorites: {for (final x in (j['favorites'] as List<dynamic>? ?? const [])) (x as num).toInt()},
         sortBy: SortBy.values.where((v) => v.name == j['sort_by']).firstOrNull ?? SortBy.smart,
         privacy: (j['privacy'] as bool?) ?? false,
         order: [for (final x in (j['order'] as List<dynamic>? ?? const [])) (x as num).toInt()],
-        subGrouped: (j['sub_grouped'] as bool?) ?? false,
+        subView: SubListView.fromJson(j['sub_view'] as Map<String, dynamic>?, legacyGrouped: (j['sub_grouped'] as bool?) ?? false),
       );
 }
 

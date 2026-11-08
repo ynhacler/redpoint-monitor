@@ -514,3 +514,130 @@ Analysis analyze(Iterable<Subscription> list, FxRates fx) {
   out.top.sort((a, b) => b.$2.compareTo(a.$2));
   return out;
 }
+
+// ---- 概览与列表（修订第 309 条，与 Web 相同） ----
+
+/// 当前账期已过去的比例（0～100）：上次扣费（或开始日期）到下次扣费；一次性、已结束、没有下次扣费时为 null
+double? billingProgress(Subscription s, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final to = _date(s.nextCharge);
+  if (s.ended || s.cycle == 'once' || to == null) return null;
+  final past = chargesBetween(s, DateTime(today.year - 2, today.month, today.day), DateTime(today.year, today.month, today.day + 1));
+  final from = past.isNotEmpty ? past.last : _date(s.startDate);
+  if (from == null) return null;
+  final span = _dayDiff(to, from);
+  if (span <= 0) return null;
+  return (_dayDiff(today, from) / span * 100).clamp(0, 100).toDouble();
+}
+
+/// 列表第二行的续订说明（与 Web 的 renewText 相同）：今天续订 / N 天后续订（7 天内）/ M 月 D 日续订 / 试用中 / 已结束
+String renewText(Subscription s, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  if (s.ended) return '已结束';
+  final start = _date(s.startDate);
+  if (start != null && s.trialDays > 0) {
+    final first = DateTime(start.year, start.month, start.day + s.trialDays);
+    if (first.isAfter(DateTime(n.year, n.month, n.day))) return '试用中，${first.month} 月 ${first.day} 日开始扣费';
+  }
+  final d = _date(s.nextCharge);
+  if (d == null) return s.cycle == 'once' ? '一次性，已扣费' : '没有下次扣费';
+  final days = _dayDiff(d, n);
+  final verb = s.cycle == 'once' ? '扣费' : '续订';
+  if (days == 0) return '今天$verb';
+  if (days <= 7) return '$days 天后$verb';
+  return d.year != n.year ? '${d.year} 年 ${d.month} 月 ${d.day} 日$verb' : '${d.month} 月 ${d.day} 日$verb';
+}
+
+/// 付款周期的短名
+const cyclePay = {'weekly': '周付', 'monthly': '月付', 'quarterly': '季付', 'semiannually': '半年付', 'annually': '年付', 'once': '一次性'};
+
+/// 订阅列表的筛选与排序（本机偏好，修订第 309 条）
+class SubListView {
+  /// 创建
+  const SubListView({this.filter = 'all', this.sort = 'date', this.desc = false});
+
+  /// 筛选：all / active / soon / ended / 类别键
+  final String filter;
+
+  /// 排序：date / price / name / category
+  final String sort;
+
+  /// 倒序
+  final bool desc;
+
+  /// 改其中几项
+  SubListView copyWith({String? filter, String? sort, bool? desc}) =>
+      SubListView(filter: filter ?? this.filter, sort: sort ?? this.sort, desc: desc ?? this.desc);
+
+  /// 保存到偏好
+  Map<String, dynamic> toJson() => {'filter': filter, 'sort': sort, 'desc': desc};
+
+  /// 从偏好读取；legacyGrouped 为旧版“按类别”的选择（修订第 237 条），沿用为按类别排序
+  factory SubListView.fromJson(Map<String, dynamic>? j, {bool legacyGrouped = false}) => SubListView(
+        filter: (j?['filter'] as String?) ?? 'all',
+        sort: (j?['sort'] as String?) ?? (legacyGrouped ? 'category' : 'date'),
+        desc: (j?['desc'] as bool?) ?? false,
+      );
+}
+
+/// 排序名称
+const subSortNames = {'date': '日期', 'price': '价格', 'name': '名称', 'category': '类别'};
+
+/// 7 天内续订（下次扣费在 0～7 天内）
+bool renewsSoon(Subscription s, {DateTime? now}) {
+  final d = daysUntilCharge(s, now: now);
+  return !s.ended && d != null && d >= 0 && d <= 7;
+}
+
+/// 是否符合筛选
+bool matchesFilter(Subscription s, String f, {DateTime? now}) => switch (f) {
+      'all' => true,
+      'active' => !s.ended,
+      'ended' => s.ended,
+      'soon' => renewsSoon(s, now: now),
+      _ => s.category == f,
+    };
+
+/// 排序（与 Web 的 sortSubs 相同）：已结束的总在最后；price 按月均折算人民币（没有汇率按原币）；date 没有下次扣费的在后
+List<Subscription> sortSubs(Iterable<Subscription> list, String key, bool desc, FxRates fx) {
+  final order = categoryNames.keys.toList();
+  num monthlyCny(Subscription s) {
+    final m = s.cycle == 'once' ? s.priceCents : s.monthlyCents;
+    return fx.toCny(m, s.currency) ?? m;
+  }
+
+  int cmp(Subscription a, Subscription b) => switch (key) {
+        'price' => monthlyCny(a).compareTo(monthlyCny(b)),
+        'name' => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        'category' => order.indexOf(a.category).compareTo(order.indexOf(b.category)) != 0
+            ? order.indexOf(a.category).compareTo(order.indexOf(b.category))
+            : (a.nextCharge.isEmpty ? '9' : a.nextCharge).compareTo(b.nextCharge.isEmpty ? '9' : b.nextCharge),
+        _ => (a.nextCharge.isEmpty ? '9999' : a.nextCharge).compareTo(b.nextCharge.isEmpty ? '9999' : b.nextCharge),
+      };
+  final xs = list.toList();
+  xs.sort((a, b) {
+    if (a.ended != b.ended) return a.ended ? 1 : -1;
+    return desc ? -cmp(a, b) : cmp(a, b);
+  });
+  return xs;
+}
+
+/// 本月待扣（人民币分）：今天到月底还要扣的；缺少汇率的币种列在 missing
+({int cents, List<String> missing}) dueRestOfMonth(Iterable<Subscription> list, FxRates fx, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final from = DateTime(n.year, n.month, n.day), to = DateTime(n.year, n.month + 1, 1);
+  var cents = 0;
+  final missing = <String>{};
+  for (final s in list) {
+    final k = chargesBetween(s, from, to).length;
+    if (k == 0) continue;
+    final v = fx.toCny(k * s.priceCents, s.currency);
+    if (v == null) {
+      missing.add(s.currency);
+    } else {
+      cents += v;
+    }
+  }
+  return (cents: cents, missing: missing.toList()..sort());
+}

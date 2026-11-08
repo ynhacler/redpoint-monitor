@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../subscriptions.dart';
 import 'cloud_page.dart';
 import 'subscriptions_page.dart';
 
@@ -11,7 +12,7 @@ import 'subscriptions_page.dart';
 class ToolsPage extends StatelessWidget {
   /// 创建工具页
   const ToolsPage({super.key, this.initialTab = 0, required this.api, required this.onRevoked, this.privacy = false, this.cloud,
-      this.serverNames = const {}, this.onOpenServer, this.subGrouped = false, this.onSubGrouped});
+      this.serverNames = const {}, this.onOpenServer, this.subView = const SubListView(), this.onSubView});
 
   /// 打开时的分页：0 订阅、1 云平台（修订第 242 条，从首页待处理跳转）
   final int initialTab;
@@ -34,11 +35,11 @@ class ToolsPage extends StatelessWidget {
   /// 点云实例关联的节点时打开详情
   final ValueChanged<int>? onOpenServer;
 
-  /// 订阅列表按类别分组（修订第 237 条，本机偏好）
-  final bool subGrouped;
+  /// 订阅列表的筛选与排序（修订第 309 条，本机偏好）
+  final SubListView subView;
 
-  /// 切换订阅列表的排列方式
-  final ValueChanged<bool>? onSubGrouped;
+  /// 改了筛选或排序
+  final ValueChanged<SubListView>? onSubView;
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
@@ -50,7 +51,7 @@ class ToolsPage extends StatelessWidget {
             bottom: const TabBar(tabs: [Tab(text: '订阅'), Tab(text: '云平台')]),
           ),
           body: TabBarView(children: [
-            SubscriptionsPage(api: api, onRevoked: onRevoked, privacy: privacy, embedded: true, grouped: subGrouped, onGrouped: onSubGrouped),
+            SubscriptionsPage(api: api, onRevoked: onRevoked, privacy: privacy, embedded: true, view: subView, onView: onSubView),
             CloudPage(api: api, onRevoked: onRevoked, initial: cloud, serverNames: serverNames, onOpenServer: onOpenServer, embedded: true),
           ]),
         ),
