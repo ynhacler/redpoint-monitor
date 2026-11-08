@@ -5,7 +5,7 @@ import { ref, watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { locale, t } from './i18n'
 import { site } from './site'
-import { alertsOn, checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
+import { checkAuth, isViewer, setSignedOutHandler, startPolling, state } from './store'
 
 // 原“设置”页各标签的新地址（修订第 158 条）；修订第 126 条前这些标签在告警页，/alerts?tab=… 同样转过去
 const settingsMoved: Record<string, string> = { probes: '/monitor', ssl: '/ssl', services: '/monitor', account: '/account' } // /ssl 再转到告警规则
@@ -18,7 +18,7 @@ export const router = createRouter({
     // 公开展示页（设计 45.3）：不用登录，也不显示导航
     { path: '/status', name: 'status', component: () => import('./pages/StatusPage.vue'), meta: { title: '运行状态', public: true } },
     { path: '/account', name: 'account', component: () => import('./pages/AccountPage.vue'), meta: { viewer: true, title: '账号' } },
-    { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '告警' } },
+    { path: '/alerts', name: 'alerts', component: () => import('./pages/AlertsPage.vue'), meta: { viewer: true, title: '推送' } },
     // 测速设置与服务合并为“监测”（修订第 176 条）
     { path: '/site', name: 'site', component: () => import('./pages/SiteSettingsPage.vue'), meta: { title: '网站配置' } }, // 设计 52
     { path: '/monitor', name: 'monitor', component: () => import('./pages/MonitorSettingsPage.vue'), meta: { title: '监测' } },
@@ -90,7 +90,6 @@ router.beforeEach(async (to) => {
     if (!to.meta.viewer) return '/'
     if (to.name === 'alerts' && to.query.tab && to.query.tab !== 'system') return { name: 'alerts' }
   }
-  if (to.name === 'alerts' && !alertsOn.value) return '/' // 告警已关闭（修订第 175 条）
   if (to.name === 'alerts' && ['probes', 'ssl', 'services'].includes(to.query.tab as string)) return { path: settingsMoved[to.query.tab as string], query: {} }
   return true
 })

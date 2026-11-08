@@ -183,6 +183,8 @@ export const enServer: Record<string, string> = {
   '请选择开始日期': 'Select a start date',
   '请选择支付方式': 'Select a payment method',
   '请选择类别': 'Select a category',
+  '请选择默认提醒天数': 'Choose the default reminder days',
+  '通知渠道过多': 'Too many notification channels',
   '请选择订阅周期': 'Select a billing cycle',
   '请选择订阅的国家 / 地区': 'Select the country / region of the subscription',
   '费用同步间隔只能是 6、12 或 24 小时': 'Cost sync interval must be 6, 12 or 24 hours',

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 告警总开关（修订第 175 条）：新面板默认关闭；关闭时节点不带静音与维护、不发送通知，/auth/me 告诉 Web 隐藏告警。
+// 告警推送开关（修订第 175、316 条）：新面板默认关闭；关闭时告警、静音与维护照常显示，只是不发送通知。
 func TestAlertsSwitch(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
@@ -45,8 +45,8 @@ func TestAlertsSwitch(t *testing.T) {
 
 	s.store.SetAlertsEnabled(false)
 	s.reloadAlertsSwitch()
-	if x := view(); x.Maintenance != nil || x.Alerts == nil || len(x.Alerts) != 0 {
-		t.Fatalf("关闭时不应带告警、静音与维护：%+v", x)
+	if x := view(); x.Maintenance == nil || x.Alerts == nil {
+		t.Fatalf("推送关闭时仍应带告警、静音与维护：%+v", x)
 	}
 	// 关闭时 dispatch 直接返回：有启用的渠道也不投递
 	if rec := do(h, "POST", "/api/v1/notification-channels", admin,

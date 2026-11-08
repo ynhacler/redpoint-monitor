@@ -344,6 +344,9 @@ List<(String, double)> monthlyByCurrency(Iterable<Subscription> list) {
 
 /// 订阅类别的固定颜色（修订第 233 条，与 Web 的 categoryColors 相同，来自 design/tokens.json 的 cat-*）
 /// 自定义类别（修订第 314 条）：键 c<编号> → （名称、取颜色的内置类别键）；由订阅列表的响应填入
+/// 新增订阅时“提醒”的默认天数（修订第 316 条，面板“推送 → 订阅”设置）；旧面板没有时为 1
+int defaultRemindDays = 1;
+
 final customCategories = <String, (String, String)>{};
 
 /// 用面板返回的自定义类别替换 [customCategories]

@@ -211,6 +211,7 @@ class ApiClient {
   Future<(bool, List<Subscription>, int)> subscriptions() async {
     final body = await getJson('/app/subscriptions') as Map<String, dynamic>;
     setCustomCategories(body['categories'] as List<dynamic>?); // 自定义类别（修订第 314 条）；旧面板没有此字段
+    defaultRemindDays = (body['default_remind_days'] as num?)?.toInt() ?? 1; // 修订第 316 条
     return (
       body['limited'] as bool? ?? false,
       [for (final e in (body['items'] as List<dynamic>? ?? const [])) Subscription.fromJson(e as Map<String, dynamic>)],

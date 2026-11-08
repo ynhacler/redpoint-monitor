@@ -1064,6 +1064,11 @@ var migrations = []string{
 		color      TEXT NOT NULL,      -- 内置类别键，取它的颜色
 		created_at INTEGER NOT NULL
 	);`,
+	// 迁移 68：订阅推送单独开关（修订第 316 条）。告警推送已打开的面板此前也推送订阅提醒，写入“开启”保持原状；新面板默认关闭
+	`INSERT INTO settings (key, value, updated_at)
+		SELECT 'subscription_push', '{"enabled":true}', CAST(strftime('%s', 'now') AS INTEGER)
+		WHERE EXISTS (SELECT 1 FROM settings WHERE key = 'alerts' AND value LIKE '%"enabled":true%')
+		AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'subscription_push');`,
 }
 
 func (s *Store) migrate() error {

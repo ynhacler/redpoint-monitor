@@ -3,7 +3,7 @@
 //	vpsmon-server init        --data DIR               创建数据库与管理员账号，输出初始密码
 //	vpsmon-server admin reset-password --data DIR      重置管理员密码（忘记密码时的恢复途径，设计 17.2）
 //	vpsmon-server admin disable-totp   --data DIR      关闭两步验证（丢失认证器且没有恢复码时，修订第 160 条）
-//	vpsmon-server admin alerts on|off  --data DIR      告警总开关（修订第 175 条，默认关闭）
+//	vpsmon-server admin alerts on|off  --data DIR      告警推送开关（修订第 175、316 条，默认关闭；也可在 Web“推送”页切换）
 //	vpsmon-server admin reset-listen   --data DIR      清除网页中修改的监听端口，回到启动参数（设计 51）
 //	vpsmon-server add-server  --data DIR --name NAME   新增节点，输出其 Agent Token（开发自测用）
 //	vpsmon-server run         --data DIR --listen ADDR|PORT [--log-format json|text] [--log-level info]（参数也可用环境变量 VPSMON_*）
@@ -48,7 +48,7 @@ usage:
   vpsmon-server init       --data DIR [--username admin]
   vpsmon-server admin reset-password --data DIR [--username admin]
   vpsmon-server admin disable-totp   --data DIR [--username admin]   turn off two-step login (lost authenticator and recovery codes)
-  vpsmon-server admin alerts on|off  --data DIR   turn alerts and all notifications on or off (default off)
+  vpsmon-server admin alerts on|off  --data DIR   turn alert push notifications on or off (default off; also on the web Push page)
   vpsmon-server admin reset-listen   --data DIR   forget the listen ports set in the Web UI; restart the panel to use the startup flags
   vpsmon-server add-server --data DIR --name NAME [--limit-gb N] [--reset-day D]
   vpsmon-server run        --data DIR [--listen 127.0.0.1:8080 | PORT] [--log-format json|text] [--log-level info]
@@ -112,7 +112,7 @@ func main() {
 			if err := open(*data).SetAlertsEnabled(args[1] == "on"); err != nil {
 				log.Fatal("save alerts setting failed: ", err)
 			}
-			fmt.Printf("alerts %s; the running panel picks this up within 10 seconds\n", args[1])
+			fmt.Printf("alert push %s; the running panel picks this up within 10 seconds\n", args[1])
 			return
 		}
 		username := fsx.String("username", "admin", "admin username")

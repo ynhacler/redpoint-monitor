@@ -303,7 +303,7 @@ func (s *Server) subscriptionReminders(now time.Time) {
 			when = l.t("今天")
 		}
 		s.remind(fmt.Sprintf("subscription:%d:%s", x.ID, t.Format("2006-01-02")), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
-			Type: "subscription", Severity: SeverityWarning,
+			Type: "subscription", Sub: subPushCharge, Severity: SeverityWarning,
 			Message: l.f("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
 	}
 	s.subscriptionEndReminders(list, today, now)
@@ -362,7 +362,7 @@ func (s *Server) subscriptionEndReminders(list []Subscription, today, now time.T
 			msg = l.f("将于 %s 结束（%d 天后），如需继续使用请续订", x.EndDate, days)
 		}
 		s.remind(fmt.Sprintf("subscription_end:%d:%s:%d", x.ID, x.EndDate, m), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
-			Type: "subscription", Severity: expireSeverity(m), Message: msg, Link: link}, now)
+			Type: "subscription", Sub: subPushEnd, Severity: expireSeverity(m), Message: msg, Link: link}, now)
 	}
 }
 

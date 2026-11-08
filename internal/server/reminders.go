@@ -95,6 +95,10 @@ func (s *Server) reminderLoop(ctx context.Context) {
 
 // remind 在去重键第一次出现时发送通知。
 func (s *Server) remind(key string, m notifyMessage, now time.Time) {
+	if m.Sub != "" { // 订阅提醒按订阅推送设置（修订第 316 条）
+		s.remindSub(key, m, now)
+		return
+	}
 	first, err := s.store.MarkReminder(key, now)
 	if err != nil {
 		s.log.Error("record reminder failed", "component", "reminder", "err", err)

@@ -667,6 +667,29 @@ export function putSubBudget(monthly_cents: number) {
   return request('put', '/settings/subscription-budget', { body: { monthly_cents } })
 }
 
+/** 订阅推送设置（修订第 316 条） */
+export type SubPush = G.SubPush
+
+/** 告警推送开关（修订第 316 条） */
+export function getAlertsPush() {
+  return request('get', '/settings/alerts-push')
+}
+
+/** 打开或关闭告警推送；打开时面板要求重新验证（用 withReauth 调用） */
+export function putAlertsPush(enabled: boolean) {
+  return request('put', '/settings/alerts-push', { body: { enabled } })
+}
+
+/** 订阅推送设置 */
+export function getSubPush() {
+  return request('get', '/settings/subscription-push')
+}
+
+/** 保存订阅推送设置；打开推送或改变渠道时面板要求重新验证（用 withReauth 调用） */
+export function putSubPush(v: SubPush) {
+  return request('put', '/settings/subscription-push', { body: v })
+}
+
 /** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
 export function getFxRates() {
   return request('get', '/fx-rates')

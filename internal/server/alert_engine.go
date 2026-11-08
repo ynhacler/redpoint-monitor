@@ -157,9 +157,7 @@ func (s *Server) alertLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-t.C:
-			if s.reloadAlertsSwitch(); !s.alertsEnabled() { // 告警关闭（修订第 175 条）
-				continue
-			}
+			s.reloadAlertsSwitch() // 开关只管推送，告警照常判定与记录（修订第 316 条）
 			if err := s.evaluateAlerts(now); err != nil {
 				s.log.Error("alert evaluation failed", "component", "alert", "err", err)
 			}

@@ -253,7 +253,7 @@ Open `https://monitor.example.com`, sign in with `admin` and the initial passwor
 
 > Forgot the password: run `sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon` on the panel host.
 > Lost the two-step device and the recovery codes: run `sudo -u vpsmon vpsmon-server admin disable-totp --data /var/lib/vpsmon`, then sign in with the password only.
-> Alerts are off by default (no evaluation, no notifications, no alerts page in the web UI). Turn them on with `sudo -u vpsmon vpsmon-server admin alerts on --data /var/lib/vpsmon` and refresh the page; `off` turns them off again.
+> Push is off by default: alerts are still evaluated and shown on **System → Push**, but not sent. Add a Telegram (or other) channel there, then turn on “Alert push” at the top of the page (asks for your password); subscription reminders are turned on separately in the Subscriptions tab. You can also run `sudo -u vpsmon vpsmon-server admin alerts on --data /var/lib/vpsmon` on the panel host.
 
 ---
 
