@@ -2280,4 +2280,5 @@ export const en: Record<string, string> = {
   '余额、费用、同步失败、实例': 'Balance, cost, sync failures, instances',
   'Agent 时钟偏差、变更通知等': 'Agent clock drift, change notices and more',
   '停止上报、批量离线': 'Stopped reporting, batch offline',
+  '扣费与结束提醒推送时会附上这个链接': 'Charge and end reminders include this link when pushed',
 }

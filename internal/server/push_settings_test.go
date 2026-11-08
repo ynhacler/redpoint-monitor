@@ -195,3 +195,42 @@ func TestSubPushTest(t *testing.T) {
 		t.Fatalf("内容 %s", body)
 	}
 }
+
+// 订阅提醒的补充行（修订第 319 条）：外币约合人民币、付款人、管理链接；人民币订阅不写约合。
+func TestSubReminderLines(t *testing.T) {
+	s, _, _ := testServer(t)
+	rcv := newReceiver(t)
+	c := NotifyChannel{Type: "webhook", Name: "wh", Enabled: true, MinSeverity: "info", Config: channelConfig{URL: rcv.srv.URL + "/hook"}}
+	s.store.SaveChannel(&c, time.Now())
+	p := defaultSubPush()
+	p.Enabled = true
+	s.store.PutSetting(settingSubPush, p, time.Now())
+	s.fx.mu.Lock()
+	if s.fx.rates == nil {
+		s.fx.rates = map[string]float64{}
+	}
+	s.fx.rates["USD"] = 7.2
+	s.fx.mu.Unlock()
+
+	now := time.Now()
+	day := now.AddDate(0, 0, 2).Format("2006-01-02")
+	x := Subscription{Name: "Netflix", Category: "video", PriceCents: 1000, Currency: "USD", Cycle: "monthly", Country: "US", Payment: "credit",
+		StartDate: day, RemindDays: 3, Payer: "小王", URL: "https://www.netflix.com/account"}
+	if err := s.store.SaveSubscription(&x, now); err != nil {
+		t.Fatal(err)
+	}
+	s.subscriptionReminders(now)
+	s.notify.wg.Wait()
+	if rcv.count() != 1 {
+		t.Fatalf("应发送 1 条：%d", rcv.count())
+	}
+	_, body, _ := rcv.last()
+	for _, want := range []string{"约合 ¥72.00", "付款人：小王", "管理：https://www.netflix.com/account"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("缺少 %q：%s", want, body)
+		}
+	}
+	if got := s.subReminderLines(Subscription{Currency: "CNY", PriceCents: 500}, s.lang(), true); len(got) != 0 {
+		t.Errorf("人民币且没有付款人与链接时不应有补充行：%v", got)
+	}
+}
