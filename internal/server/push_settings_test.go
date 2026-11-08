@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,5 +130,68 @@ func TestSubPushMigration(t *testing.T) {
 	p = defaultSubPush()
 	if ok, _ := st.GetSetting(settingSubPush, &p); !ok || !p.Enabled || !p.Charge || !p.App {
 		t.Fatalf("告警推送已打开的面板应保持推送订阅提醒：%v %+v", ok, p)
+	}
+}
+
+// 订阅推送预览（修订第 317 条）：与实际提醒规则一致；已发过的不再列出；关闭的种类标为不推送。
+func TestUpcomingSubReminders(t *testing.T) {
+	today := time.Date(2026, 11, 8, 0, 0, 0, 0, time.Local)
+	list := []Subscription{
+		// 每月 10 日扣费，提前 3 天：11-07 已进入区间（今天补发），12-10 在 14 天外
+		{ID: 1, Name: "A", Cycle: "monthly", StartDate: "2026-01-10", RemindDays: 3},
+		// 每月 20 日扣费，提前 1 天：11-19
+		{ID: 2, Name: "B", Cycle: "monthly", StartDate: "2026-01-20", RemindDays: 1},
+		// 不提醒扣费；11-12 结束：剩 4 天在 7 天区间（今天补发 7 天的），之后 3 天（11-09）、1 天（11-11）、当天（11-12）
+		{ID: 3, Name: "C", Cycle: "monthly", StartDate: "2026-01-12", EndDate: "2026-11-12"},
+	}
+	p := defaultSubPush()
+	p.Enabled, p.End = true, false
+	got := upcomingSubReminders(list, today, 14, p, nil)
+	var b strings.Builder
+	for _, x := range got {
+		fmt.Fprintf(&b, "%s %s %s %v; ", x.Date, x.Name, x.Kind, x.Push)
+	}
+	want := "2026-11-08 A charge true; 2026-11-08 C end false; 2026-11-09 C end false; 2026-11-11 C end false; 2026-11-12 C end false; 2026-11-19 B charge true; "
+	if b.String() != want {
+		t.Fatalf("预览\n得到 %s\n期望 %s", b.String(), want)
+	}
+	// 已发过的不再列出
+	sent := map[string]bool{"subscription:1:2026-11-10": true, "subscription_end:3:2026-11-12:7": true}
+	got = upcomingSubReminders(list, today, 14, p, func(k string) bool { return sent[k] })
+	if len(got) != 4 || got[0].Date != "2026-11-09" {
+		t.Fatalf("去掉已发过的：%+v", got)
+	}
+}
+
+// 发送测试（修订第 317 条）：只发到选中的渠道，返回每个渠道的结果；总开关关闭也能测试。
+func TestSubPushTest(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	a, b := newReceiver(t), newReceiver(t)
+	ca := NotifyChannel{Type: "webhook", Name: "a", Enabled: true, MinSeverity: "critical", Config: channelConfig{URL: a.srv.URL + "/hook"}}
+	cb := NotifyChannel{Type: "webhook", Name: "b", Enabled: true, MinSeverity: "warning", Config: channelConfig{URL: b.srv.URL + "/hook"}}
+	s.store.SaveChannel(&ca, time.Now())
+	s.store.SaveChannel(&cb, time.Now())
+	p := defaultSubPush()
+	p.ChannelIDs = []int64{cb.ID}
+	s.store.PutSetting(settingSubPush, p, time.Now())
+	rec := do(h, "POST", "/api/v1/settings/subscription-push/test", admin, nil)
+	var res struct {
+		Channels []struct {
+			ID int64 `json:"id"`
+			OK bool  `json:"ok"`
+		} `json:"channels"`
+		AppDevices int `json:"app_devices"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	// 没有配置推送中转：App 设备数为 0，不显示“已发出”
+	if rec.Code != 200 || len(res.Channels) != 1 || res.Channels[0].ID != cb.ID || !res.Channels[0].OK || res.AppDevices != 0 {
+		t.Fatalf("测试结果：%d %s", rec.Code, rec.Body)
+	}
+	if a.count() != 0 || b.count() != 1 {
+		t.Fatalf("应只发到 b：a=%d b=%d", a.count(), b.count())
+	}
+	if _, body, _ := b.last(); !strings.Contains(body, "示例订阅") {
+		t.Fatalf("内容 %s", body)
 	}
 }

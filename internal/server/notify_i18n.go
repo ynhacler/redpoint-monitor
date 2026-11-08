@@ -111,6 +111,7 @@ var notifyEN = map[string]string{
 	// 到期与费用提醒
 	"已于 %s 到期（%d 天前），请尽快续费或处理": "Expired on %s (%d days ago), please renew or act soon",
 	"今天（%s）到期": "Expires today (%s)", "将于 %s 到期（%d 天后）": "Expires on %s (in %d days)",
+	"示例订阅": "Sample subscription", "这是一条测试：订阅提醒会这样推送": "This is a test: subscription reminders will look like this",
 	"订阅预算": "Subscription budget", "本月订阅预计扣费 %s，超出每月预算 %s（多 %s）": "Subscriptions this month are expected to cost %s, over the monthly budget of %s (by %s)",
 	"已于 %s 结束": "Ended on %s", "今天（%s）结束，如需继续使用请续订": "Ends today (%s); renew to keep using it",
 	"将于 %s 结束（%d 天后），如需继续使用请续订": "Ends on %s (in %d days); renew to keep using it",

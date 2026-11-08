@@ -1039,6 +1039,18 @@ export interface SubPush {
   default_remind_days: 0 | 1 | 2 | 3 | 7
 }
 
+export interface SubPushPreviewItem {
+  /** 推送日期（面板本地时区） */
+  date: string
+  kind: 'charge' | 'end'
+  subscription_id: number
+  name: string
+  /** 扣费日或结束日期 */
+  target: string
+  /** 按当前设置是否推送；为 false 时只记入系统事件 */
+  push: boolean
+}
+
 export interface SubBudget {
   /** 每月预算（人民币分），0 为不设 */
   monthly_cents: number
@@ -2771,6 +2783,34 @@ export interface Paths {
     put: {
       body: SubPush
       response: SubPush
+    }
+  }
+  '/settings/subscription-push/preview': {
+    /** 接下来 14 天会推送的订阅提醒（修订第 317 条） */
+    get: {
+      response: {
+        days: number
+        /** 总是空：不分页 */
+        next_cursor: string
+        items: SubPushPreviewItem[]
+      }
+    }
+  }
+  '/settings/subscription-push/test': {
+    /** 按已保存的渠道发一条订阅提醒样例（修订第 317 条） */
+    post: {
+      response: {
+        /** 订阅推送是否勾选了 App 推送 */
+        app: boolean
+        /** 发出 App 推送的设备数；没有配置推送中转或没有打开推送的设备时为 0 */
+        app_devices: number
+        channels: {
+          id: number
+          name: string
+          ok: boolean
+          error?: string
+        }[]
+      }
     }
   }
   '/settings/status-page': {
