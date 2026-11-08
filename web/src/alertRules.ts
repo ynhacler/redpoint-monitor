@@ -28,6 +28,19 @@ export const ruleNames: Record<string, string> = {
   port_gone: '基线端口未监听',
 }
 
+/** 通知渠道可选的告警分组（修订第 318 条，与面板 alert_groups.go 一致）：名称与包含的告警（中文原文，显示时经 t() 翻译） */
+export const alertGroups: { key: string; name: string; desc: string }[] = [
+  { key: 'offline', name: '节点离线', desc: '停止上报、批量离线' },
+  { key: 'expire', name: '到期', desc: '节点到期、证书到期或无效' },
+  { key: 'traffic', name: '流量', desc: '流量 80%～100%、预计超额、云流量包' },
+  { key: 'resource', name: '资源', desc: 'CPU、内存、磁盘、Swap、负载' },
+  { key: 'network', name: '网络', desc: '测速延迟、丢包、国内不可达' },
+  { key: 'service', name: '服务', desc: '进程、容器、代理、服务监控' },
+  { key: 'port', name: '端口变化', desc: '未知监听端口、基线端口未监听' },
+  { key: 'cloud', name: '云账户', desc: '余额、费用、同步失败、实例' },
+  { key: 'other', name: '其他', desc: 'Agent 时钟偏差、变更通知等' },
+]
+
 /** 告警级别的名称（中文原文，显示时经 t() 翻译） */
 export const severityNames: Record<AlertSeverity, string> = { critical: '严重', warning: '警告', info: '提示' }
 

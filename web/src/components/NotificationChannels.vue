@@ -5,7 +5,7 @@ import { onMounted, reactive, ref } from 'vue'
 import {
   ApiError, createChannel, deleteChannel, errorText, listChannels, listDeliveries, testChannel, updateChannel, type ChannelType, type Delivery, type NotifyChannel, type NotifyChannelInput,
 } from '../api'
-import { severityNames } from '../alertRules'
+import { alertGroups, severityNames } from '../alertRules'
 import { fmtDateTime } from '../format'
 import HeartbeatSettings from './HeartbeatSettings.vue'
 import ChangeNotifySettings from './ChangeNotifySettings.vue'
@@ -45,14 +45,24 @@ const form = reactive({
   type: 'telegram' as ChannelType, name: '', enabled: true, min_severity: 'warning' as NotifyChannel['min_severity'],
   notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
   smtp_host: '', smtp_port: '' as string | number, smtp_security: 'starttls', username: '', password: '', from: '', to: '',
+  // 只接收选中的告警分组（修订第 318 条）；pick 为 false 时接收全部
+  pick: false, alert_groups: [] as string[],
 })
+// 按表单中的顺序列出分组名称
+const groupsText = (keys: string[]) => alertGroups.filter((g) => keys.includes(g.key)).map((g) => t(g.name)).join('、')
+function toggleGroup(k: string, on: boolean) {
+  const set = new Set(form.alert_groups)
+  if (on) set.add(k)
+  else set.delete(k)
+  form.alert_groups = alertGroups.map((g) => g.key).filter((x) => set.has(x))
+}
 const fieldErrors = ref<Record<string, string>>({})
 const saving = ref(false)
 
 function openNew(type: ChannelType) {
   Object.assign(form, { type, name: t(typeNames[type]), enabled: true, min_severity: 'warning',
     notify_resolved: true, bot_token: '', chat_id: '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
-    smtp_host: '', smtp_port: '', smtp_security: 'starttls', username: '', password: '', from: '', to: '' })
+    smtp_host: '', smtp_port: '', smtp_security: 'starttls', username: '', password: '', from: '', to: '', pick: false, alert_groups: [] })
   fieldErrors.value = {}
   editing.value = 'new'
 }
@@ -60,7 +70,8 @@ function openEdit(c: NotifyChannel) {
   Object.assign(form, { type: c.type, name: c.name, enabled: c.enabled, min_severity: c.min_severity, notify_resolved: c.notify_resolved,
     bot_token: '', chat_id: c.config.chat_id ?? '', url: '', secret: '', clear_secret: false, topic: '', token: '', clear_token: false,
     smtp_host: c.config.smtp_host ?? '', smtp_port: c.config.smtp_port ?? '', smtp_security: c.config.smtp_security ?? 'starttls',
-    username: c.config.username ?? '', password: '', from: c.config.from ?? '', to: c.config.to ?? '' })
+    username: c.config.username ?? '', password: '', from: c.config.from ?? '', to: c.config.to ?? '',
+    pick: c.alert_groups.length > 0, alert_groups: [...c.alert_groups] })
   fieldErrors.value = {}
   editing.value = c.id
 }
@@ -70,6 +81,7 @@ async function save() {
   fieldErrors.value = {}
   const body: NotifyChannelInput = {
     name: form.name, enabled: form.enabled, min_severity: form.min_severity, notify_resolved: form.notify_resolved,
+    alert_groups: form.pick ? form.alert_groups as NotifyChannelInput['alert_groups'] : [],
     config: form.type === 'telegram'
       ? { bot_token: form.bot_token.trim() || undefined, chat_id: form.chat_id.trim() }
       : form.type === 'ntfy'
@@ -296,9 +308,24 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
         </label>
         <label class="check"><input v-model="form.notify_resolved" type="checkbox" />{{ t('恢复时也通知') }}</label>
         <label class="check"><input v-model="form.enabled" type="checkbox" />{{ t('启用') }}</label>
+        <!-- 只接收选中的告警分组（修订第 318 条） -->
+        <fieldset class="groups">
+          <legend>{{ t('接收哪些告警') }}</legend>
+          <label class="check"><input v-model="form.pick" type="radio" :value="false" name="pick" />{{ t('全部告警') }}</label>
+          <label class="check"><input v-model="form.pick" type="radio" :value="true" name="pick" />{{ t('只接收选中的') }}</label>
+          <div v-if="form.pick" class="group-list">
+            <label v-for="g in alertGroups" :key="g.key" class="check">
+              <input type="checkbox" :checked="form.alert_groups.includes(g.key)" @change="toggleGroup(g.key, ($event.target as HTMLInputElement).checked)" />
+              <span>{{ t(g.name) }}<small class="muted">{{ t(g.desc) }}</small></span>
+            </label>
+          </div>
+          <small v-if="form.pick && !form.alert_groups.length" class="err">{{ t('请至少选一组') }}</small>
+          <small v-else-if="fieldErrors.alert_groups" class="err">{{ fieldErrors.alert_groups }}</small>
+          <small class="muted">{{ t('面板自检、测试通知与定期报告总是发送；订阅提醒在“订阅”标签选择渠道。') }}</small>
+        </fieldset>
       </div>
       <div class="actions">
-        <button type="submit" :disabled="saving">{{ saving ? t('保存中…') : t('保存') }}</button>
+        <button type="submit" :disabled="saving || (form.pick && !form.alert_groups.length)">{{ saving ? t('保存中…') : t('保存') }}</button>
         <button type="button" class="secondary" @click="editing = null">{{ t('取消') }}</button>
       </div>
     </form>
@@ -314,7 +341,7 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
               <span v-if="!c.enabled" class="muted small">{{ t('已停用') }}</span>
             </div>
             <div class="muted small ellipsis">{{ target(c) }}</div>
-            <div class="muted small">{{ c.min_severity === 'info' ? t('全部级别') : t('{v}及以上', { v: t(severityNames[c.min_severity]) }) }}{{ c.notify_resolved ? t(' · 含恢复通知') : '' }}</div>
+            <div class="muted small">{{ c.min_severity === 'info' ? t('全部级别') : t('{v}及以上', { v: t(severityNames[c.min_severity]) }) }}{{ c.notify_resolved ? t(' · 含恢复通知') : '' }}{{ c.alert_groups.length ? t(' · 只收：{v}', { v: groupsText(c.alert_groups) }) : '' }}</div>
             <div v-if="testResult[c.id]" class="small" :class="testResult[c.id].ok ? 'ok' : 'err'">
               {{ testResult[c.id].ok ? t('✓ 测试通知已发送，请在接收端确认') : `✗ ${testResult[c.id].error}` }}
             </div>
@@ -357,6 +384,13 @@ const target = (c: NotifyChannel) => (c.type === 'telegram' ? `Chat ${c.config.c
 .fields .wide { grid-column: 1 / -1; }
 .fields .check { flex-direction: row; align-items: center; gap: var(--space-2); }
 .check input { width: auto; }
+.groups { grid-column: 1 / -1; border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.groups legend { padding: 0; margin-bottom: var(--space-1); font-size: var(--font-sm); }
+.group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-1) var(--space-3);
+  padding-left: var(--space-4); }
+.group-list .check { align-items: flex-start; }
+.group-list .check input { margin-top: 3px; }
+.group-list span { display: flex; flex-direction: column; }
 .err { color: var(--bad); }
 .ok { color: var(--ok); }
 .empty { margin: var(--space-3) 0; }

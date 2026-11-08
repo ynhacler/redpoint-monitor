@@ -431,6 +431,8 @@ export interface NotifyChannel {
   /** 达到该级别才发送 */
   min_severity: 'critical' | 'warning' | 'info'
   notify_resolved: boolean
+  /** 只接收这些告警分组（修订第 318 条），空为全部 */
+  alert_groups: AlertGroup[]
   config: {
     bot_token?: string
     chat_id?: string
@@ -451,6 +453,9 @@ export interface NotifyChannel {
   updated_at: number
 }
 
+/** 告警分组（修订第 318 条）：offline 离线；resource CPU / 内存 / 磁盘 / Swap / 负载；traffic 流量与预计超额；expire 节点与证书到期； network 测速延迟 / 丢包、国内不可达；service 进程、容器、代理、服务监控；port 端口变化；cloud 云账户余额 / 费用 / 同步；other 其余（Agent 时钟、变更通知等）。 面板自检、测试通知与定期报告不分组；订阅提醒按订阅推送设置发送。 */
+export type AlertGroup = 'offline' | 'resource' | 'traffic' | 'expire' | 'network' | 'service' | 'port' | 'cloud' | 'other'
+
 export interface NotifyChannelInput {
   /** 创建时必填，不可修改。discord / wecom（企业微信）/ dingtalk（钉钉）/ feishu（飞书）填机器人地址 url，钉钉与飞书可选加签 secret；bark 填服务器 url（默认 https://api.day.app）与设备密钥 token */
   type?: 'telegram' | 'webhook' | 'ntfy' | 'email' | 'discord' | 'bark' | 'wecom' | 'dingtalk' | 'feishu'
@@ -458,6 +463,8 @@ export interface NotifyChannelInput {
   enabled?: boolean
   min_severity?: 'critical' | 'warning' | 'info'
   notify_resolved?: boolean
+  /** 省略表示不修改，空数组为全部（修订第 318 条） */
+  alert_groups?: AlertGroup[]
   /** 修改时凭证字段留空表示保持原值 */
   config: {
     /** Telegram Bot Token（@BotFather） */
