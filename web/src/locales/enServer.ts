@@ -87,6 +87,7 @@ export const enServer: Record<string, string> = {
   '指纹格式不正确（如 12:34:…:ef，16 组）': 'Invalid fingerprint (e.g. 12:34:…:ef, 16 groups)',
   '推送平台只能是 apns 或 fcm': 'Push platform must be apns or fcm',
   '链接须以 http:// 或 https:// 开头，最多 300 个字符': 'The link must start with http:// or https:// and be at most 300 characters',
+  '预算应在 0 ～ 10,000,000 之间': 'Budget must be between 0 and 10,000,000',
   '付款人最多 32 个字符': 'Payer can be at most 32 characters',
   '描述最多 200 个字符': 'Description can be at most 200 characters',
   '提醒可选：不提醒，或提前 1 / 2 / 3 / 7 天': 'Reminder options: none, or 1 / 2 / 3 / 7 days ahead',

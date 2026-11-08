@@ -3517,6 +3517,69 @@
         }
       }
     },
+    "/settings/subscription-budget": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "订阅每月预算（修订第 312 条）",
+        "responses": {
+          "200": {
+            "description": "预算",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubBudget"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "设置订阅每月预算；0 为不设。本月预计扣费超过预算时每月提醒一次（经通知渠道）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubBudget"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubBudget"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/status-page": {
       "get": {
         "tags": [
@@ -11524,6 +11587,20 @@
           }
         }
       },
+      "SubBudget": {
+        "type": "object",
+        "required": [
+          "monthly_cents"
+        ],
+        "properties": {
+          "monthly_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000,
+            "description": "每月预算（人民币分），0 为不设"
+          }
+        }
+      },
       "SubscriptionInput": {
         "type": "object",
         "required": [
@@ -13997,6 +14074,10 @@
           "limited": {
             "type": "boolean",
             "description": "授权范围不是“全部节点”：不返回订阅"
+          },
+          "budget_cents": {
+            "type": "integer",
+            "description": "订阅每月预算（人民币分），0 为不设（修订第 312 条；旧面板没有此字段）"
           },
           "items": {
             "type": "array",

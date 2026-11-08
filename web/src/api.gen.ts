@@ -1003,6 +1003,11 @@ export interface ServiceMonitor {
   created_at: number
 }
 
+export interface SubBudget {
+  /** 每月预算（人民币分），0 为不设 */
+  monthly_cents: number
+}
+
 export interface SubscriptionInput {
   name: string
   /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
@@ -1763,6 +1768,8 @@ export interface FxDay {
 export interface AppSubscriptions {
   /** 授权范围不是“全部节点”：不返回订阅 */
   limited: boolean
+  /** 订阅每月预算（人民币分），0 为不设（修订第 312 条；旧面板没有此字段） */
+  budget_cents?: number
   items: Subscription[]
 }
 
@@ -2643,6 +2650,17 @@ export interface Paths {
     /** 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有 */
     get: {
       response: PublicSubscriptionList
+    }
+  }
+  '/settings/subscription-budget': {
+    /** 订阅每月预算（修订第 312 条） */
+    get: {
+      response: SubBudget
+    }
+    /** 设置订阅每月预算；0 为不设。本月预计扣费超过预算时每月提醒一次（经通知渠道） */
+    put: {
+      body: SubBudget
+      response: SubBudget
     }
   }
   '/settings/status-page': {

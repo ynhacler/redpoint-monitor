@@ -9,7 +9,7 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, renewSubscription, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, listServers, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
@@ -71,7 +71,7 @@ async function load() {
     loaded.value = true
   }
 }
-onMounted(() => { load(); loadNodes() })
+onMounted(() => { load(); loadNodes(); loadBudget() })
 
 // ---- 概览 ----
 const now = new Date()
@@ -130,6 +130,33 @@ const halfPast = computed(() => progress.value.filter((x) => x.pct >= 50).length
 const yearly = ref(false)
 const dueRest = computed(() => spendCny(list.value, rates.value, today, monthStart(today, 1)))
 const infoOpen = ref(false)
+// 每月预算（修订第 312 条）：与本月预计扣费比较；超出时面板每月提醒一次
+const budget = ref(0)
+const budgetEdit = ref<string | null>(null)
+const budgetErr = ref('')
+const thisMonth = computed(() => spendCny(list.value, rates.value, monthStart(today), monthStart(today, 1)))
+const budgetPct = computed(() => (budget.value ? (thisMonth.value.cents / budget.value) * 100 : 0))
+async function loadBudget() {
+  try {
+    budget.value = (await getSubBudget()).monthly_cents
+  } catch {
+    budget.value = 0 // 旧面板没有此接口
+  }
+}
+async function saveBudget() {
+  const v = Number((budgetEdit.value ?? '').trim() || 0)
+  if (!Number.isFinite(v) || v < 0) {
+    budgetErr.value = t('请填写金额')
+    return
+  }
+  try {
+    budget.value = (await putSubBudget(Math.round(v * 100))).monthly_cents
+    budgetEdit.value = null
+    budgetErr.value = ''
+  } catch (e) {
+    budgetErr.value = errorText(e)
+  }
+}
 const logoSrc = (s: Subscription) => (s.logo_version ? subscriptionLogoURL(s) : '')
 
 // ---- 统计 ----
@@ -678,9 +705,28 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <b class="money-v num">{{ mainText(dueRest) }}</b>
               <small v-if="otherText(dueRest)" class="muted num">{{ otherText(dueRest) }}</small>
             </div>
+            <!-- 每月预算（修订第 312 条） -->
+            <div class="budget small">
+              <template v-if="budgetEdit != null">
+                <label class="budget-edit">{{ t('每月预算（人民币）') }}
+                  <input v-model="budgetEdit" inputmode="decimal" :placeholder="t('0 为不设')" @keyup.enter="saveBudget" /></label>
+                <button type="button" class="secondary" @click="saveBudget">{{ t('保存') }}</button>
+                <button type="button" class="text" @click="budgetEdit = null; budgetErr = ''">{{ t('取消') }}</button>
+                <span v-if="budgetErr" class="bad">{{ budgetErr }}</span>
+              </template>
+              <template v-else-if="budget">
+                <span class="budget-line">
+                  <span :class="{ bad: budgetPct > 100 }">{{ t('本月预计 {v} / 预算 {b}', { v: fmtMoney(thisMonth.cents, 'CNY'), b: fmtMoney(budget, 'CNY') }) }}</span>
+                  <button type="button" class="text" @click="budgetEdit = String(budget / 100)">{{ t('修改') }}</button>
+                </span>
+                <span class="prog"><span :style="{ width: `${Math.min(100, budgetPct)}%`, background: budgetPct > 100 ? 'var(--bad)' : budgetPct > 90 ? 'var(--warn)' : 'var(--ok)' }" /></span>
+              </template>
+              <button v-else type="button" class="text" @click="budgetEdit = ''">{{ t('设置每月预算') }}</button>
+            </div>
             <p v-if="infoOpen" class="small muted info-text">
               {{ t('月均花费：订阅中的订阅按周期折算为每月（年付 ÷ 12、季付 ÷ 3…），换算为人民币；一次性付费不计入。年均为月均 × 12。') }}
               {{ t('本月待扣：从今天到月底还要扣的金额。') }}
+              {{ t('每月预算与本月预计扣费（本月全部扣费）比较，超出时经通知渠道提醒一次。') }}
               {{ t('订阅中 {n} 个，共记录 {m} 个。', { n: active.length, m: list.length }) }}
             </p>
           </section>
@@ -920,6 +966,14 @@ button.money:hover { filter: none; }
 .money-label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); font-size: var(--font-sm); }
 .money-v { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .info-btn { background: none; border: 0; padding: 0 var(--space-1); color: var(--text-muted); min-height: 0; display: inline-flex; }
+.budget { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-3) var(--space-4) 0;
+  padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.budget:has(.budget-edit) { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); }
+.budget-edit { display: flex; flex-direction: column; gap: 2px; }
+.budget-edit input { width: 140px; }
+.budget-line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.budget .text { align-self: flex-start; padding: 0; min-height: 0; color: var(--accent); }
+.budget .bad { color: var(--bad); }
 .info-text { grid-column: 1 / -1; margin: var(--space-2) var(--space-4) 0; }
 .view-tabs { margin-bottom: var(--space-3); }
 

@@ -307,6 +307,7 @@ func (s *Server) subscriptionReminders(now time.Time) {
 			Message: l.f("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
 	}
 	s.subscriptionEndReminders(list, today, now)
+	s.subscriptionBudgetReminder(list, now) // 每月预算（修订第 312 条）
 }
 
 // subEndMilestones 是订阅结束提醒的里程碑（剩余天数），从大到小（修订第 308 条）。

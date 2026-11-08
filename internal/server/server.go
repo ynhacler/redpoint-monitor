@@ -376,6 +376,8 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/settings/site", accessAdmin, s.handlePutSite)
 	handle("GET /api/v1/settings/status-page", accessAdmin, s.handleGetStatusPage)
 	handle("PUT /api/v1/settings/status-page", accessAdmin, s.handlePutStatusPage)
+	handle("GET /api/v1/settings/subscription-budget", accessAdmin, s.handleGetSubBudget) // 订阅每月预算（修订第 312 条）
+	handle("PUT /api/v1/settings/subscription-budget", accessAdmin, s.handlePutSubBudget)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）
 	handle("PUT /api/v1/settings/digest", accessAdmin, s.handlePutDigest)

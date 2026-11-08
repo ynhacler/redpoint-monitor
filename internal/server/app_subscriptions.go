@@ -15,6 +15,7 @@ import (
 type appSubscriptionsView struct {
 	Limited bool           `json:"limited"`
 	Items   []Subscription `json:"items"`
+	Budget  int64          `json:"budget_cents"` // 每月预算（人民币分），0 为不设（修订第 312 条）
 }
 
 // fullScope 判断请求的 App 设备是否为“全部节点”授权。
@@ -42,6 +43,7 @@ func (s *Server) handleAppSubscriptions(w http.ResponseWriter, r *http.Request) 
 	}
 	sortSubscriptions(list)
 	out.Items = append(out.Items, list...)
+	out.Budget = s.subBudget().MonthlyCents
 	writeJSON(w, out)
 }
 

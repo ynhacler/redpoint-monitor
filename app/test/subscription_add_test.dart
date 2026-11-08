@@ -246,6 +246,32 @@ void main() {
     expect(changed?.filter, 'all');
     expect(_row('甲影音'), findsOneWidget);
   });
+
+  testWidgets('每月预算（修订第 312 条）：面板设了预算时显示本月预计与预算，没设时不显示', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 1400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final now = DateTime.now();
+    final start = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+    Map<String, dynamic> body(int budget) => {
+          'limited': false,
+          'budget_cents': budget,
+          'items': [
+            {'id': 1, 'name': '云主机', 'brand': '', 'category': 'cloud', 'price_cents': 10000, 'currency': 'CNY', 'cycle': 'monthly',
+              'trial_days': 0, 'start_date': start, 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [],
+              'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
+              'next_charge': '2099-01-01', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0},
+          ],
+        };
+    for (final (budget, shown) in [(5000, true), (0, false)]) {
+      final client = MockClient((req) async => http.Response.bytes(utf8.encode(jsonEncode(body(budget))), 200));
+      await tester.pumpWidget(MaterialApp(
+          home: SubscriptionsPage(key: UniqueKey(), api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('本月预计 ¥100.00 / 预算 ¥50.00'), shown ? findsOneWidget : findsNothing);
+    }
+  });
 }
 
 /// 列表中的行（概览卡片的“下一项续订”也会显示名称，修订第 309 条）

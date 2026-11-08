@@ -359,3 +359,72 @@ func TestSubscriptionURLPayer(t *testing.T) {
 		t.Fatalf("付款人超长应 422：%d", rec.Code)
 	}
 }
+
+// 每月预算（修订第 312 条）：校验；本月预计扣费超过预算时每月只提醒一次，没超或未设不提醒；App 列表带预算。
+func TestSubscriptionBudget(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	if rec := do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":-1}`)); rec.Code != 422 {
+		t.Fatalf("负数应 422：%d", rec.Code)
+	}
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).Format("2006-01-02")
+	// 每月 1 日扣 ¥100，本月一定有一次
+	do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"A","category":"cloud","price_cents":10000,"currency":"CNY","country":"CN","payment":"alipay","cycle":"monthly","start_date":"`+start+`"}`))
+	count := func() (n int) {
+		s.store.DB.QueryRow(`SELECT COUNT(*) FROM reminders_sent WHERE key LIKE 'subscription_budget:%'`).Scan(&n)
+		return
+	}
+	s.subscriptionReminders(now)
+	if count() != 0 {
+		t.Fatal("未设预算不应提醒")
+	}
+	if total, _ := s.monthSpendCny(mustSubs(t, s), now); total != 10000 {
+		t.Fatalf("本月预计扣费 %d，期望 10000", total)
+	}
+	do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":10000}`))
+	s.subscriptionReminders(now)
+	if count() != 0 {
+		t.Fatal("等于预算不应提醒")
+	}
+	do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":5000}`))
+	s.subscriptionReminders(now)
+	s.subscriptionReminders(now)
+	if count() != 1 {
+		t.Fatalf("超出预算应只提醒 1 次，实际 %d", count())
+	}
+	var b SubBudget
+	json.Unmarshal(do(h, "GET", "/api/v1/settings/subscription-budget", admin, nil).Body.Bytes(), &b)
+	if b.MonthlyCents != 5000 {
+		t.Fatalf("读取预算 %+v", b)
+	}
+}
+
+func mustSubs(t *testing.T, s *Server) []Subscription {
+	t.Helper()
+	list, err := s.store.ListSubscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
+}
+
+func TestChargesIn(t *testing.T) {
+	d := func(v string) time.Time { x, _ := time.ParseInLocation("2006-01-02", v, time.Local); return x }
+	cases := []struct {
+		sub      Subscription
+		from, to string
+		want     int
+	}{
+		{Subscription{Cycle: "monthly", StartDate: "2026-01-31"}, "2026-02-01", "2026-03-01", 1},
+		{Subscription{Cycle: "weekly", StartDate: "2026-11-02"}, "2026-11-01", "2026-12-01", 5},
+		{Subscription{Cycle: "once", StartDate: "2026-11-05"}, "2026-11-01", "2026-12-01", 1},
+		{Subscription{Cycle: "monthly", StartDate: "2026-01-10", EndDate: "2026-11-10"}, "2026-11-01", "2026-12-01", 0},
+		{Subscription{Cycle: "annually", StartDate: "2025-03-01"}, "2026-11-01", "2026-12-01", 0},
+	}
+	for _, c := range cases {
+		if got := chargesIn(c.sub, d(c.from), d(c.to)); got != c.want {
+			t.Errorf("%+v [%s, %s) = %d，期望 %d", c.sub, c.from, c.to, got, c.want)
+		}
+	}
+}

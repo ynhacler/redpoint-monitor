@@ -305,6 +305,14 @@ export const en: Record<string, string> = {
   '查询': 'Look up',
   '补充资产信息': 'Add asset details',
   '（{n} 项未填：供应商、价格、到期等用于费用与到期提醒）': ' ({n} empty: provider, price, expiry etc. are used for cost and expiry reminders)',
+  // 订阅每月预算（修订第 312 条）
+  '请填写金额': 'Enter an amount',
+  '每月预算（人民币）': 'Monthly budget (CNY)',
+  '0 为不设': '0 for none',
+  '本月预计 {v} / 预算 {b}': 'This month {v} / budget {b}',
+  '修改': 'Edit',
+  '设置每月预算': 'Set a monthly budget',
+  '每月预算与本月预计扣费（本月全部扣费）比较，超出时经通知渠道提醒一次。': 'The monthly budget is compared with this month’s expected charges (all charges this month); you get one notification when it is exceeded.',
   // 订阅链接与付款人（修订第 311 条）
   '付款人：{p}': 'Payer: {p}',
   '付款人': 'Payer',
