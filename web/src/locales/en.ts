@@ -305,6 +305,13 @@ export const en: Record<string, string> = {
   '查询': 'Look up',
   '补充资产信息': 'Add asset details',
   '（{n} 项未填：供应商、价格、到期等用于费用与到期提醒）': ' ({n} empty: provider, price, expiry etc. are used for cost and expiry reminders)',
+  // 续订日历（修订第 313 条）
+  '上个月': 'Previous month',
+  '{n} 次扣费 · {v}': '{n} charges · {v}',
+  '下个月': 'Next month',
+  '回到本月': 'Back to this month',
+  '这一天没有扣费。': 'No charges on this day.',
+  '日历': 'Calendar',
   // 订阅每月预算（修订第 312 条）
   '请填写金额': 'Enter an amount',
   '每月预算（人民币）': 'Monthly budget (CNY)',

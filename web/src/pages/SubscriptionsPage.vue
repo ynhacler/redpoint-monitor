@@ -16,6 +16,7 @@ import {
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
+import SubCalendar from '../components/SubCalendar.vue'
 import SubCharges from '../components/SubCharges.vue'
 import { countryName, countryOptions, flagUrl } from '../countries'
 import { fmtMoney, fmtPct } from '../format'
@@ -29,7 +30,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const view = computed(() => (route.query.tab === 'stats' || route.query.tab === 'analysis' ? route.query.tab : 'list'))
+const view = computed(() => (['stats', 'analysis', 'calendar'].includes(String(route.query.tab)) ? String(route.query.tab) : 'list'))
 const setView = (v: string) => router.replace({ query: { tab: v === 'list' ? undefined : v } })
 
 const list = ref<Subscription[]>([])
@@ -735,6 +736,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <div class="view-bar">
           <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
             <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
+            <button type="button" role="tab" :class="{ active: view === 'calendar' }" @click="setView('calendar')">{{ t('日历') }}</button>
             <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
             <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
           </div>
@@ -801,6 +803,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <li v-if="!listRows.length" class="muted small empty-row">{{ t('没有符合筛选条件的订阅。') }}</li>
           </ul>
         </template>
+
+        <!-- 续订日历（修订第 313 条） -->
+        <SubCalendar v-else-if="view === 'calendar'" :list="list" :rates="rates" @open="openEdit" />
 
         <!-- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） -->
         <section v-else-if="view === 'analysis'" class="panel stats">

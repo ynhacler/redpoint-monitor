@@ -20,6 +20,7 @@ import '../widgets/stale_banner.dart';
 import '../widgets/sub_charges.dart';
 import 'subscription_add_page.dart';
 import 'subscription_analysis_page.dart';
+import 'subscription_calendar_page.dart';
 
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
@@ -476,6 +477,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ]),
             ),
           ),
+        ),
+        // 续订日历（修订第 313 条）
+        IconButton(
+          key: const ValueKey('sub-calendar'),
+          tooltip: '续订日历',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => SubscriptionCalendarPage(
+                  items: items, fx: _fx, privacy: widget.privacy, avatar: _avatar, onOpen: (s) => _detail(context, s)))),
+          icon: Icon(Icons.calendar_month_outlined, color: c.textMuted),
         ),
         if (large)
           IconButton(onPressed: analysis, tooltip: '分析', icon: const Icon(Icons.insights_outlined))
