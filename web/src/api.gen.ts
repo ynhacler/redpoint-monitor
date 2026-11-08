@@ -31,7 +31,7 @@ export interface Me {
   totp_enabled: boolean
   /** 未使用的恢复码数量；未开启时为 0 */
   recovery_codes_left: number
-  /** 告警总开关（修订第 175 条）：关闭时面板不评估告警、不发送通知，Web 隐藏告警分组；在面板主机上用 vpsmon-server admin alerts on|off 切换 */
+  /** 告警推送开关（修订第 175、316 条）：关闭时告警照常判定与显示，只是不发送通知；在 Web“推送”页或面板主机上用 vpsmon-server admin alerts on|off 切换 */
   alerts_enabled: boolean
 }
 
@@ -1017,6 +1017,28 @@ export interface SubCategoryInput {
   color: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
 }
 
+export interface AlertsPush {
+  /** 是否推送告警（服务器告警、到期、流量等），新面板默认关闭 */
+  enabled: boolean
+}
+
+export interface SubPush {
+  /** 订阅推送总开关，默认关闭；不受告警推送开关影响 */
+  enabled: boolean
+  /** 扣费前提醒 */
+  charge: boolean
+  /** 结束提醒 */
+  end: boolean
+  /** 超出每月预算提醒 */
+  budget: boolean
+  /** 发送到的通知渠道，空为全部启用的渠道 */
+  channel_ids: number[]
+  /** 同时发送 App 推送 */
+  app: boolean
+  /** 新增订阅时“提醒”的默认天数，0 为不提醒 */
+  default_remind_days: 0 | 1 | 2 | 3 | 7
+}
+
 export interface SubBudget {
   /** 每月预算（人民币分），0 为不设 */
   monthly_cents: number
@@ -1787,6 +1809,8 @@ export interface AppSubscriptions {
   budget_cents?: number
   /** 自定义类别（修订第 314 条；旧面板没有此字段） */
   categories?: SubCategory[]
+  /** 新增订阅时“提醒”的默认天数（修订第 316 条；旧面板没有此字段） */
+  default_remind_days?: number
   items: Subscription[]
 }
 
@@ -2725,6 +2749,28 @@ export interface Paths {
     put: {
       body: SubBudget
       response: SubBudget
+    }
+  }
+  '/settings/alerts-push': {
+    /** 告警推送开关（修订第 175、316 条） */
+    get: {
+      response: AlertsPush
+    }
+    /** 打开或关闭告警推送；打开时需重新验证（403 reauth_required） */
+    put: {
+      body: AlertsPush
+      response: AlertsPush
+    }
+  }
+  '/settings/subscription-push': {
+    /** 订阅推送设置（修订第 316 条） */
+    get: {
+      response: SubPush
+    }
+    /** 修改订阅推送设置；打开推送、打开 App 推送或改变渠道时需重新验证（403 reauth_required） */
+    put: {
+      body: SubPush
+      response: SubPush
     }
   }
   '/settings/status-page': {

@@ -54,7 +54,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
   String _payment = '';
   String _cycle = 'monthly';
   int _trial = 0;
-  int _remind = 1;
+  int _remind = _remindOptions.any((o) => o.$1 == defaultRemindDays) ? defaultRemindDays : 1; // 修订第 316 条
   DateTime _start = DateTime.now();
   DateTime? _end;
   final List<(TextEditingController, TextEditingController)> _phones = [];

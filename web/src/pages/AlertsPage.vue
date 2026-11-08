@@ -1,35 +1,54 @@
 <script setup lang="ts">
-// 告警页（设计 16）：“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
+// 推送页（设计 16；修订第 316 条前叫“告警”）：页面总是显示，告警照常判定与记录；顶部的开关决定是否推送服务器告警，
+// “订阅”标签单独设置订阅提醒的推送。“告警”列出全部节点的活动与历史告警；“规则”编辑默认规则与分组 / 节点覆盖（设计 16.2）；
 // “静音”列出生效中的静音与维护，并可静音分组、规则或全部（设计 16.6）；“通知”管理通知渠道（设计 16.5）。
 // “系统事件”列出 Agent 升级结果、到期提醒与面板自身异常（修订第 163 条）。服务、证书与测速的设置在“监测”分组（修订第 126、158 条）。
 // 标签页与筛选写在地址中（?tab=rules、?state=all），刷新与分享后保持。告警是“系统”下的一页，标签在页内切换（修订第 176 条）。
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  createSilence, deleteAlertRule, endSilence, errorText, listAlertRules, listAlerts, listSilences, updateAlertRule, type AlertEvent, type AlertRule, type Silence,
+  createSilence, deleteAlertRule, putAlertsPush, endSilence, errorText, listAlertRules, listAlerts, listSilences, updateAlertRule, type AlertEvent, type AlertRule, type Silence,
 } from '../api'
 import { ruleNames, ruleSummary, severityNames } from '../alertRules'
 import AlertRuleEditor from '../components/AlertRuleEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
 import NotificationChannels from '../components/NotificationChannels.vue'
 import NotifyWarning from '../components/NotifyWarning.vue'
+import SubPushSettings from '../components/SubPushSettings.vue'
 import SslMonitors from '../components/SslMonitors.vue'
 import SystemEvents from '../components/SystemEvents.vue'
 import { fmtDateTime, fmtDuration, fmtTime } from '../format'
-import { installed, isViewer } from '../store'
+import { alertsOn, installed, isViewer, state } from '../store'
 import { t } from '../i18n'
+import { ReauthCancelled, withReauth } from '../reauth'
 
 const route = useRoute()
 const router = useRouter()
-const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '规则', silences: '静音', notify: '通知' }
+const tabTitles: Record<string, string> = { alerts: '告警', system: '系统事件', rules: '规则', silences: '静音', notify: '通知', subs: '订阅' }
 // 查看者只有告警与系统事件（修订第 161 条）
 const tabKeys = computed(() => (isViewer.value ? ['alerts', 'system'] : Object.keys(tabTitles)))
 const setTab = (tab: string) => router.replace({ query: { tab: tab === 'alerts' ? undefined : tab } })
-const tab = computed(() => (['system', 'rules', 'silences', 'notify'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
+const tab = computed(() => (['system', 'rules', 'silences', 'notify', 'subs'].includes(route.query.tab as string) ? route.query.tab as string : 'alerts'))
 const stateFilter = computed(() => (route.query.state === 'all' ? 'all' : 'active'))
 const setQuery = (q: Record<string, string | undefined>) => router.replace({ query: { ...route.query, ...q } })
 function fail(e: unknown, set: (m: string) => void) {
   set(errorText(e, t('加载失败，请稍后重试')) || t('登录已过期，请刷新页面'))
+}
+
+// ---- 告警推送开关（修订第 316 条）：打开时面板要求重新输入密码 ----
+const pushBusy = ref(false)
+const pushError = ref('')
+async function setPush(on: boolean) {
+  pushBusy.value = true
+  pushError.value = ''
+  try {
+    const v = await withReauth(() => putAlertsPush(on))
+    if (state.me) state.me.alerts_enabled = v.enabled
+  } catch (e) {
+    if (!(e instanceof ReauthCancelled)) pushError.value = errorText(e, t('保存失败'))
+  } finally {
+    pushBusy.value = false
+  }
 }
 
 // ---- 告警 ----
@@ -146,20 +165,32 @@ const silenceScope = (x: Silence) =>
   x.scope_type === 'global' ? t('全部节点') : x.scope_type === 'group' ? t('分组 {name}', { name: x.scope_id })
     : x.scope_type === 'rule' ? t('规则 {name}', { name: t(ruleNames[x.scope_id] ?? x.scope_id) }) : t('节点 {name}', { name: serverName(x.scope_id) })
 
-watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : tab.value === 'notify' || tab.value === 'system' ? undefined : loadEvents()), { immediate: true })
+watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value === 'silences' ? loadSilences() : ['notify', 'system', 'subs'].includes(tab.value) ? undefined : loadEvents()), { immediate: true })
 </script>
 
 <template>
   <main class="page">
     <div class="page-head">
-      <h1>{{ t('告警') }}</h1>
+      <h1>{{ t('推送') }}</h1>
     </div>
-    <nav class="tabs" role="tablist" :aria-label="t('告警')">
+    <nav class="tabs" role="tablist" :aria-label="t('推送')">
       <button v-for="k in tabKeys" :key="k" type="button" role="tab" :aria-selected="tab === k" :class="{ active: tab === k }"
         @click="setTab(k)">{{ t(tabTitles[k]) }}</button>
     </nav>
-    <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条） -->
-    <NotifyWarning v-if="tab !== 'notify'" />
+    <!-- 告警推送开关（修订第 316 条）；订阅推送在“订阅”标签单独设置 -->
+    <div v-if="tab !== 'subs'" class="push-bar panel" :class="{ on: alertsOn }">
+      <div class="push-text">
+        <b>{{ alertsOn ? t('告警推送已打开') : t('告警推送已关闭') }}</b>
+        <span class="small muted">{{ alertsOn ? t('服务器离线、流量、到期等告警会发到通知渠道与 App。') : t('告警照常判定和记录，但不会发到 Telegram、App 等。订阅提醒在“订阅”标签单独设置。') }}</span>
+      </div>
+      <label v-if="!isViewer" class="switch" :title="alertsOn ? t('点击关闭') : t('点击打开')">
+        <input type="checkbox" role="switch" :checked="alertsOn" :disabled="pushBusy" :aria-label="t('告警推送')"
+          @change="setPush(($event.target as HTMLInputElement).checked); ($event.target as HTMLInputElement).checked = alertsOn" />
+      </label>
+      <p v-if="pushError" class="small bad push-err" role="alert">{{ pushError }}</p>
+    </div>
+    <!-- 没有启用的通知渠道时常驻提醒（修订第 173 条）；推送关闭时不提醒 -->
+    <NotifyWarning v-if="alertsOn && tab !== 'notify' && tab !== 'subs'" />
 
     <!-- 告警：全部节点 -->
     <template v-if="tab === 'alerts'">
@@ -197,6 +228,7 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 
     <!-- 通知渠道（设计 16.5） -->
     <NotificationChannels v-else-if="tab === 'notify'" />
+    <SubPushSettings v-else-if="tab === 'subs' && !isViewer" />
 
     <!-- 静音与维护 -->
     <template v-else-if="tab === 'silences'">
@@ -373,6 +405,12 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 .scope { color: var(--accent); }
 .off .rule-name, .off .rule-main .muted { opacity: .55; }
 .switch input { width: 18px; height: 18px; margin: 0; }
+.push-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3);
+  border-left: 3px solid var(--border); }
+.push-bar.on { border-left-color: var(--ok); }
+.push-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.push-err { flex-basis: 100%; margin: 0; }
+.bad { color: var(--bad); }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); gap: var(--space-3); }
 .add { padding: var(--space-4); margin-bottom: var(--space-3); }
 .add-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); }

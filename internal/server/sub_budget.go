@@ -110,7 +110,7 @@ func (s *Server) subscriptionBudgetReminder(list []Subscription, now time.Time) 
 		link = s.publicURL + "/subscriptions"
 	}
 	yuan := func(c int64) string { return fmt.Sprintf("¥%.2f", float64(c)/100) }
-	s.remind("subscription_budget:"+now.Format("2006-01"), notifyMessage{ServerName: l.t("订阅预算"), Type: "subscription",
+	s.remind("subscription_budget:"+now.Format("2006-01"), notifyMessage{ServerName: l.t("订阅预算"), Type: "subscription", Sub: subPushBudget,
 		Severity: SeverityWarning, Link: link,
 		Message: l.f("本月订阅预计扣费 %s，超出每月预算 %s（多 %s）", yuan(total), yuan(b.MonthlyCents), yuan(total-b.MonthlyCents))}, now)
 }

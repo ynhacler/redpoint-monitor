@@ -415,6 +415,7 @@ type notifyMessage struct {
 	Items      []notifyMessage // 免打扰汇总包含的通知
 	Lines      []string        // 定期报告的正文（修订第 277 条）；标题在 Message
 	Lang       healthLang      // 渲染语言，发送时设为网站语言（修订第 304 条）
+	Sub        string          // 订阅提醒的种类 charge / end / budget（修订第 316 条），按订阅推送设置发送
 }
 
 var severityIcons = map[string]string{"critical": "🔴", "warning": "🟠", "info": "🔵"}
@@ -617,7 +618,7 @@ func newNotifier(s *Server) *notifier {
 
 // dispatch 把通知交给所有接收它的渠道（异步）。
 func (n *notifier) dispatch(m notifyMessage) {
-	if !n.s.alertsEnabled() { // 告警关闭时不发送任何通知（修订第 175 条）
+	if !n.s.alertsEnabled() { // 告警推送关闭时不发送（修订第 175、316 条）；订阅提醒走 dispatchSub
 		return
 	}
 	m = m.withLang(n.s.lang())

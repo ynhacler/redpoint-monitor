@@ -382,6 +382,11 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/subscription-categories/{id}", accessAdmin, s.handleUpdateSubCategory)
 	handle("DELETE /api/v1/subscription-categories/{id}", accessAdmin, s.handleDeleteSubCategory)
 	handle("PUT /api/v1/settings/subscription-budget", accessAdmin, s.handlePutSubBudget)
+	// 推送设置（修订第 316 条）：告警推送开关与订阅推送
+	handle("GET /api/v1/settings/alerts-push", accessAdmin, s.handleGetAlertsPush)
+	handle("PUT /api/v1/settings/alerts-push", accessAdmin, s.handlePutAlertsPush)
+	handle("GET /api/v1/settings/subscription-push", accessAdmin, s.handleGetSubPush)
+	handle("PUT /api/v1/settings/subscription-push", accessAdmin, s.handlePutSubPush)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）
 	handle("PUT /api/v1/settings/digest", accessAdmin, s.handlePutDigest)
@@ -1053,11 +1058,10 @@ func (s *Server) viewOf(row ServerRow, now time.Time) (serverView, error) {
 	}
 	v.Traffic = t
 	v.Alerts = []alertBrief{}
-	if s.alertsEnabled() { // 告警关闭时不带告警、静音与维护（修订第 175 条）
-		v.Alerts = s.alerts.firingFor(row, s.lang())
-		v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
-		v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
-	}
+	// 告警、静音与维护总是带上（修订第 316 条：告警推送开关不再隐藏告警）
+	v.Alerts = s.alerts.firingFor(row, s.lang())
+	v.Maintenance = s.alerts.silenceFor(row, SilenceMaintenance, "", now)
+	v.Muted = s.alerts.silenceFor(row, SilenceMute, "", now)
 	return v, nil
 }
 

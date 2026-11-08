@@ -9,7 +9,7 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, getSubPush, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
@@ -172,6 +172,11 @@ async function loadBudget() {
     budget.value = (await getSubBudget()).monthly_cents
   } catch {
     budget.value = 0 // 旧面板没有此接口
+  }
+  try {
+    defaultRemind = (await getSubPush()).default_remind_days // 新增订阅时默认提醒（修订第 316 条）
+  } catch {
+    // 旧面板没有此接口：沿用 1 天
   }
 }
 async function saveBudget() {
@@ -336,10 +341,12 @@ type FormPhone = { cc: string; number: string }
 // VPS 配置在表单中为字符串（空表示没有填写），保存时转为数字
 type FormVPS = { ips: string[]; cpu: string; memory_gb: string; disk_gb: string; bandwidth_mbps: string; traffic_gb: string; location: string }
 const blankVPS = (): FormVPS => ({ ips: [''], cpu: '', memory_gb: '', disk_gb: '', bandwidth_mbps: '', traffic_gb: '', location: '' })
+// 新增订阅时“提醒”的默认天数，来自“推送 → 订阅”（修订第 316 条）
+let defaultRemind: SubscriptionInput['remind_days'] = 1
 // 支付方式没有默认值：表单中可为空，保存时由面板要求选择（修订第 223 条）
 const blank = (): Omit<SubscriptionInput, 'vps' | 'payment'> & { price: string; phones: FormPhone[]; vps: FormVPS; payment: SubscriptionInput['payment'] | '' } => ({
   name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: 'CNY', cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '', url: '', payer: '',
+  start_date: ymd(today), end_date: '', remind_days: defaultRemind, note: '', phones: [], vps: blankVPS(), country: '', payment: '', url: '', payer: '',
 })
 const vpsNum = (v: string) => (v.trim() === '' ? 0 : Number(v))
 const vpsStr = (n: number) => (n ? String(n) : '')

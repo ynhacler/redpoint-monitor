@@ -18,6 +18,8 @@ type appSubscriptionsView struct {
 	Budget  int64          `json:"budget_cents"` // 每月预算（人民币分），0 为不设（修订第 312 条）
 	// Categories 是自定义类别（修订第 314 条），App 据此显示名称与颜色、新增订阅时可选
 	Categories []SubCategoryItem `json:"categories"`
+	// DefaultRemindDays 是新增订阅时“提醒”的默认值（修订第 316 条）
+	DefaultRemindDays int `json:"default_remind_days"`
 }
 
 // legacyCategories 判断请求是否来自不认识自定义类别的旧版 App（修订第 315 条）：新版 App 在订阅接口上带 ?categories=1。
@@ -62,6 +64,7 @@ func (s *Server) handleAppSubscriptions(w http.ResponseWriter, r *http.Request) 
 		out.Items = append(out.Items, appSubView(r, x))
 	}
 	out.Budget = s.subBudget().MonthlyCents
+	out.DefaultRemindDays = s.subPush().DefaultRemindDays
 	if !legacyCategories(r) {
 		if out.Categories, err = s.store.ListSubCategories(); err != nil {
 			s.writeError(w, r, internalError(err))

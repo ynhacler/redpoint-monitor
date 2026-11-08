@@ -9,7 +9,7 @@ import { listCloudInstances, listSubscriptions, type Subscription } from '../api
 import { renewalsSoon, trafficFleet } from '../fleet'
 import { t } from '../i18n'
 import { activeAlertCount } from '../metrics'
-import { alertsOn, installed, isViewer, state } from '../store'
+import { installed, isViewer, state } from '../store'
 import Icon from './Icon.vue'
 
 type Level = 'bad' | 'warn' | 'info'
@@ -43,7 +43,7 @@ const items = computed<Todo[]>(() => {
     out.push({ key: 'offline', level: 'bad', to: offline.length === 1 ? `/servers/${offline[0].id}` : '/?f=offline',
       text: offline.length === 1 ? t('{name} 离线', { name: offline[0].name }) : t('{n} 台节点离线', { n: offline.length }) })
   }
-  const alerts = alertsOn.value ? activeAlertCount(state.servers) : 0
+  const alerts = activeAlertCount(state.servers)
   if (alerts) out.push({ key: 'alerts', level: 'warn', to: '/alerts', text: t('{n} 条告警进行中', { n: alerts }) })
   for (const r of trafficFleet(installed.value).risks) {
     out.push({ key: `traffic${r.server.id}`, level: r.daysLeft === 0 ? 'bad' : 'warn', to: `/servers/${r.server.id}?tab=traffic`,

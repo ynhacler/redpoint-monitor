@@ -3758,6 +3758,131 @@
         }
       }
     },
+    "/settings/alerts-push": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "告警推送开关（修订第 175、316 条）",
+        "responses": {
+          "200": {
+            "description": "当前状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsPush"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "summary": "打开或关闭告警推送；打开时需重新验证（403 reauth_required）",
+        "description": "关闭时告警照常判定、记录并显示，只是不发送通知（渠道、App 推送）、定期报告与心跳；订阅提醒另见 /settings/subscription-push。记入操作日志 alerts.push。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertsPush"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsPush"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/settings/subscription-push": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "订阅推送设置（修订第 316 条）",
+        "responses": {
+          "200": {
+            "description": "当前设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubPush"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "修改订阅推送设置；打开推送、打开 App 推送或改变渠道时需重新验证（403 reauth_required）",
+        "description": "省略的字段取默认值（不是沿用原值）。记入操作日志 subscription.push。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubPush"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubPush"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/settings/status-page": {
       "get": {
         "tags": [
@@ -8380,7 +8505,7 @@
           },
           "alerts_enabled": {
             "type": "boolean",
-            "description": "告警总开关（修订第 175 条）：关闭时面板不评估告警、不发送通知，Web 隐藏告警分组；在面板主机上用 vpsmon-server admin alerts on|off 切换"
+            "description": "告警推送开关（修订第 175、316 条）：关闭时告警照常判定与显示，只是不发送通知；在 Web“推送”页或面板主机上用 vpsmon-server admin alerts on|off 切换"
           }
         }
       },
@@ -11844,6 +11969,71 @@
           }
         }
       },
+      "AlertsPush": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "是否推送告警（服务器告警、到期、流量等），新面板默认关闭"
+          }
+        }
+      },
+      "SubPush": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "charge",
+          "end",
+          "budget",
+          "channel_ids",
+          "app",
+          "default_remind_days"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "订阅推送总开关，默认关闭；不受告警推送开关影响"
+          },
+          "charge": {
+            "type": "boolean",
+            "description": "扣费前提醒"
+          },
+          "end": {
+            "type": "boolean",
+            "description": "结束提醒"
+          },
+          "budget": {
+            "type": "boolean",
+            "description": "超出每月预算提醒"
+          },
+          "channel_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "description": "发送到的通知渠道，空为全部启用的渠道"
+          },
+          "app": {
+            "type": "boolean",
+            "description": "同时发送 App 推送"
+          },
+          "default_remind_days": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              7
+            ],
+            "description": "新增订阅时“提醒”的默认天数，0 为不提醒"
+          }
+        }
+      },
       "SubBudget": {
         "type": "object",
         "required": [
@@ -14320,6 +14510,10 @@
               "$ref": "#/components/schemas/SubCategory"
             },
             "description": "自定义类别（修订第 314 条；旧面板没有此字段）"
+          },
+          "default_remind_days": {
+            "type": "integer",
+            "description": "新增订阅时“提醒”的默认天数（修订第 316 条；旧面板没有此字段）"
           },
           "items": {
             "type": "array",
