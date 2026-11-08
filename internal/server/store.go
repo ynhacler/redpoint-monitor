@@ -1064,6 +1064,11 @@ var migrations = []string{
 		color      TEXT NOT NULL,      -- 内置类别键，取它的颜色
 		created_at INTEGER NOT NULL
 	);`,
+	// 迁移 68：告警默认开启（修订第 316 条）。已有面板（已有用户）且从没切换过开关的，写入“关闭”保持原状，升级后不会突然开始推送；
+	// 新面板执行迁移时还没有用户，不写入，按默认开启
+	`INSERT INTO settings (key, value, updated_at)
+		SELECT 'alerts', '{"enabled":false}', CAST(strftime('%s', 'now') AS INTEGER)
+		WHERE EXISTS (SELECT 1 FROM users) AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'alerts');`,
 }
 
 func (s *Store) migrate() error {

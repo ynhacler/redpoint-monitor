@@ -251,7 +251,7 @@ WebSocket（实时刷新）经 Caddy 自动转发，无需额外配置。Nginx �
 
 > 忘记密码：在面板主机上执行 `sudo -u vpsmon vpsmon-server admin reset-password --data /var/lib/vpsmon`。
 > 丢失两步验证设备且没有恢复码：执行 `sudo -u vpsmon vpsmon-server admin disable-totp --data /var/lib/vpsmon`，之后只用密码登录。
-> 告警默认关闭（不判定、不发任何通知，Web 不显示告警页面）。需要时执行 `sudo -u vpsmon vpsmon-server admin alerts on --data /var/lib/vpsmon`，刷新页面即可；`off` 再关闭。
+> 告警默认开启：在 **系统 → 告警 → 通知** 添加 Telegram 等渠道即可收到离线、流量、到期与订阅提醒。不需要告警时执行 `sudo -u vpsmon vpsmon-server admin alerts off --data /var/lib/vpsmon`（不判定、不发任何通知，Web 不显示告警页面），`on` 再打开。v0.9.22 之前安装的面板保持原来的状态。
 
 ---
 

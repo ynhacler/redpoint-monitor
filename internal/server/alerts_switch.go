@@ -1,7 +1,8 @@
 package server
 
 // 告警总开关（修订第 175 条）：关闭时不评估告警、不发送任何通知（渠道与 App 推送）、不发心跳，
-// 节点列表不带活动告警、静音与维护；Web 隐藏整个“告警”分组。默认关闭，
+// 节点列表不带活动告警、静音与维护；Web 隐藏整个“告警”分组。新面板默认开启（修订第 316 条；此前默认关闭，
+// 迁移 68 为已有面板写入“关闭”保持原状），
 // 在面板主机上用 `vpsmon-server admin alerts on|off --data DIR` 切换，面板运行中也会在 10 秒内生效。
 
 import (
@@ -22,9 +23,9 @@ type alertsSwitch struct{ on atomic.Bool }
 // alertsEnabled 报告告警是否开启。
 func (s *Server) alertsEnabled() bool { return s.alertsOn.on.Load() }
 
-// reloadAlertsSwitch 从设置表读取开关；读取失败时保持原状态。
+// reloadAlertsSwitch 从设置表读取开关，没有设置项时为开启（修订第 316 条）；读取失败时保持原状态。
 func (s *Server) reloadAlertsSwitch() {
-	var v AlertsSetting
+	v := AlertsSetting{Enabled: true}
 	if _, err := s.store.GetSetting(settingAlerts, &v); err != nil {
 		s.log.Error("read alerts setting failed", "component", "alert", "err", err)
 		return
