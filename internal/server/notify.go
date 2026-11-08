@@ -430,7 +430,7 @@ type notifyMessage struct {
 	Servers    []string        // 合并通知包含的节点（批量离线）
 	Count      int             // 合并的节点数 / 抖动窗口内的触发次数 / 面板自检时的节点数 / 汇总条数
 	Items      []notifyMessage // 免打扰汇总包含的通知
-	Lines      []string        // 定期报告的正文（修订第 277 条）；标题在 Message
+	Lines      []string        // 定期报告的正文（修订第 277 条）；标题在 Message。提醒的补充行（修订第 319 条）
 	Lang       healthLang      // 渲染语言，发送时设为网站语言（修订第 304 条）
 	Sub        string          // 订阅提醒的种类 charge / end / budget（修订第 316 条），按订阅推送设置发送
 }
@@ -510,8 +510,8 @@ func (m notifyMessage) text(now time.Time) string {
 		lines = append(lines, l.f("持续时长 %s", fmtSpan(m.ResolvedAt.Sub(m.StartedAt), l)))
 	case NotifyTest:
 		lines = append(lines, l.t("这是一条来自 VPS Monitor 的测试通知，收到说明渠道配置正确。"))
-	case NotifyDigest:
-		lines = append(lines, m.Lines...)
+	case NotifyDigest, NotifyReminder:
+		lines = append(lines, m.Lines...) // 提醒的补充说明，如订阅的付款人与管理链接（修订第 319 条）
 	}
 	if m.Link != "" {
 		lines = append(lines, m.Link)

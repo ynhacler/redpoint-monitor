@@ -678,7 +678,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <!-- 链接（修订第 311 条）：管理或退订页面，只允许 http / https -->
         <label class="wide">{{ t('链接') }}<input v-model="form.url" type="url" maxlength="300" inputmode="url" spellcheck="false" :placeholder="t('可选，管理或退订页面，如 https://www.netflix.com/account')" />
           <small v-if="fieldErrors.url" class="bad">{{ fieldErrors.url }}</small>
-          <a v-else-if="safeURL(form.url ?? '')" :href="safeURL(form.url ?? '')" target="_blank" rel="noopener noreferrer" class="small">{{ t('打开链接') }}</a></label>
+          <a v-else-if="safeURL(form.url ?? '')" :href="safeURL(form.url ?? '')" target="_blank" rel="noopener noreferrer" class="small">{{ t('打开链接') }}</a>
+          <small v-if="!fieldErrors.url" class="muted">{{ t('扣费与结束提醒推送时会附上这个链接') }}</small></label>
       </div>
       <!-- 历史扣费（修订第 293 条）：编辑时可展开；免费的订阅不显示 -->
       <SubCharges v-if="editing && editing.price_cents" :key="editing.id" :sub="editing" />

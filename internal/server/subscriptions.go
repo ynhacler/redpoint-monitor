@@ -303,11 +303,32 @@ func (s *Server) subscriptionReminders(now time.Time) {
 			when = l.t("今天")
 		}
 		s.remind(fmt.Sprintf("subscription:%d:%s", x.ID, t.Format("2006-01-02")), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
-			Type: "subscription", Sub: subPushCharge, Severity: SeverityWarning,
+			Type: "subscription", Sub: subPushCharge, Severity: SeverityWarning, Lines: s.subReminderLines(x, l, true),
 			Message: l.f("将于%s扣费 %s %.2f", when, x.Currency, float64(x.PriceCents)/100)}, now)
 	}
 	s.subscriptionEndReminders(list, today, now)
 	s.subscriptionBudgetReminder(list, now) // 每月预算（修订第 312 条）
+}
+
+// subReminderLines 是订阅提醒的补充行（修订第 319 条）：外币扣费约合人民币、付款人、管理链接（订阅的链接，可直接去续费或退订）。
+// 链接在保存时已校验只允许 http / https（validSubURL）。
+func (s *Server) subReminderLines(x Subscription, l healthLang, price bool) []string {
+	var out []string
+	if price && x.Currency != "CNY" && x.PriceCents > 0 {
+		s.fx.mu.Lock()
+		r := s.fx.rates[x.Currency]
+		s.fx.mu.Unlock()
+		if r > 0 {
+			out = append(out, l.f("约合 ¥%.2f", float64(x.PriceCents)*r/100))
+		}
+	}
+	if x.Payer != "" {
+		out = append(out, l.f("付款人：%s", x.Payer))
+	}
+	if x.URL != "" {
+		out = append(out, l.f("管理：%s", x.URL))
+	}
+	return out
 }
 
 // subEndMilestones 是订阅结束提醒的里程碑（剩余天数），从大到小（修订第 308 条）。
@@ -362,7 +383,7 @@ func (s *Server) subscriptionEndReminders(list []Subscription, today, now time.T
 			msg = l.f("将于 %s 结束（%d 天后），如需继续使用请续订", x.EndDate, days)
 		}
 		s.remind(fmt.Sprintf("subscription_end:%d:%s:%d", x.ID, x.EndDate, m), notifyMessage{ServerName: l.f("订阅“%s”", x.Name),
-			Type: "subscription", Sub: subPushEnd, Severity: expireSeverity(m), Message: msg, Link: link}, now)
+			Type: "subscription", Sub: subPushEnd, Severity: expireSeverity(m), Message: msg, Link: link, Lines: s.subReminderLines(x, l, false)}, now)
 	}
 }
 
