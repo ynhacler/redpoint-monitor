@@ -8,8 +8,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -205,4 +207,138 @@ func (n *notifier) dispatchSub(m notifyMessage, p SubPush) {
 	if p.App {
 		n.dispatchApp(m)
 	}
+}
+
+// ---- 预览与测试（修订第 317 条） ----
+
+// SubPushPreviewItem 是接下来会推送的一条订阅提醒。
+type SubPushPreviewItem struct {
+	Date           string `json:"date"` // 推送日期 YYYY-MM-DD（面板本地时区）
+	Kind           string `json:"kind"` // charge / end
+	SubscriptionID int64  `json:"subscription_id"`
+	Name           string `json:"name"`
+	Target         string `json:"target"` // 扣费日或结束日期
+	Push           bool   `json:"push"`   // 按当前设置是否会推送（订阅推送关闭或该种类关闭时为 false，只记录）
+}
+
+// subPushPreviewDays 是预览的天数。
+const subPushPreviewDays = 14
+
+// upcomingSubReminders 按与 subscriptionReminders 相同的规则，算出 today 起 days 天内会发出的扣费与结束提醒（按日期排序）。
+// 已发过的（reminders_sent 中有记录）不再列出。sent 为 nil 时不检查。
+func upcomingSubReminders(list []Subscription, today time.Time, days int, p SubPush, sent func(key string) bool) []SubPushPreviewItem {
+	last := today.AddDate(0, 0, days-1)
+	out := []SubPushPreviewItem{}
+	add := func(date time.Time, kind, key string, x Subscription, target string) {
+		if date.Before(today) {
+			date = today // 已进入提醒区间但还没发：今天（下一次检查）发
+		}
+		if date.After(last) || (sent != nil && sent(key)) {
+			return
+		}
+		out = append(out, SubPushPreviewItem{Date: date.Format("2006-01-02"), Kind: kind, SubscriptionID: x.ID, Name: x.Name,
+			Target: target, Push: p.wants(kind)})
+	}
+	for _, x := range list {
+		// 扣费前提醒：每个扣费日在提前 remind_days 天时提醒一次
+		if x.RemindDays > 0 {
+			for t, n := nextCharge(x, today), 0; !t.IsZero() && n < 20; t, n = nextCharge(x, t.AddDate(0, 0, 1)), n+1 {
+				fire := t.AddDate(0, 0, -x.RemindDays)
+				if fire.After(last) {
+					break
+				}
+				add(fire, subPushCharge, fmt.Sprintf("subscription:%d:%s", x.ID, t.Format("2006-01-02")), x, t.Format("2006-01-02"))
+			}
+		}
+		// 结束提醒：结束前 7 / 3 / 1 天与当天
+		if x.EndDate == "" {
+			continue
+		}
+		end, err := time.ParseInLocation("2006-01-02", x.EndDate, today.Location())
+		if err != nil {
+			continue
+		}
+		cur, inBracket := subEndBracket(calendarDays(today, end))
+		if inBracket && cur == -1 { // 刚结束 3 天内：补发“已结束”
+			add(today, subPushEnd, fmt.Sprintf("subscription_end:%d:%s:%d", x.ID, x.EndDate, -1), x, x.EndDate)
+		}
+		for _, m := range subEndMilestones {
+			fire := end.AddDate(0, 0, -m)
+			if fire.Before(today) && !(inBracket && m == cur) {
+				continue // 已经过去的里程碑：只有当前所在区间还会补发
+			}
+			add(fire, subPushEnd, fmt.Sprintf("subscription_end:%d:%s:%d", x.ID, x.EndDate, m), x, x.EndDate)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b SubPushPreviewItem) int { return strings.Compare(a.Date, b.Date) })
+	return out
+}
+
+// ReminderSent 报告去重键是否已经发过。
+func (s *Store) ReminderSent(key string) bool {
+	var n int
+	s.DB.QueryRow(`SELECT COUNT(*) FROM reminders_sent WHERE key = ?`, key).Scan(&n)
+	return n > 0
+}
+
+// handleSubPushPreview：GET /api/v1/settings/subscription-push/preview，admin。接下来 14 天会推送的订阅提醒。
+func (s *Server) handleSubPushPreview(w http.ResponseWriter, r *http.Request) {
+	list, err := s.store.ListSubscriptions()
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	writeJSON(w, map[string]any{"days": subPushPreviewDays, "next_cursor": "",
+		"items": upcomingSubReminders(list, today, subPushPreviewDays, s.subPush(), s.store.ReminderSent)})
+}
+
+// handleSubPushTest：POST /api/v1/settings/subscription-push/test，admin。
+// 按已保存的渠道设置同步发送一条订阅提醒样例（不看总开关与种类开关，方便打开前先试），返回每个渠道的结果；
+// 勾选了 App 推送时另外异步发给 App，返回会收到的设备数。结果记入投递记录。
+func (s *Server) handleSubPushTest(w http.ResponseWriter, r *http.Request) {
+	p := s.subPush()
+	channels, err := s.store.ListChannels()
+	if err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	l := s.lang()
+	m := notifyMessage{Kind: NotifyReminder, Type: "subscription", Sub: subPushCharge, Severity: SeverityWarning,
+		ServerName: l.f("订阅“%s”", l.t("示例订阅")), Message: l.t("这是一条测试：订阅提醒会这样推送"), Lang: l}
+	if s.publicURL != "" {
+		m.Link = s.publicURL + "/subscriptions"
+	}
+	type result struct {
+		ID    int64  `json:"id"`
+		Name  string `json:"name"`
+		OK    bool   `json:"ok"`
+		Error string `json:"error,omitempty"`
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	out := []result{}
+	for _, c := range channels {
+		if !c.Enabled || (len(p.ChannelIDs) > 0 && !slices.Contains(p.ChannelIDs, c.ID)) {
+			continue
+		}
+		err := s.notify.deliver(ctx, c, m, nil)
+		out = append(out, result{ID: c.ID, Name: c.Name, OK: err == nil, Error: errString(err)})
+	}
+	// App 推送：只在配置了推送中转时发送，返回会收到的设备数（pushWants 对全部节点授权的设备放行）
+	devices := 0
+	if p.App && s.push.relay != "" {
+		if targets, err := s.store.PushTargets(time.Now()); err == nil {
+			for _, t := range targets {
+				if s.pushWants(t, m) {
+					devices++
+				}
+			}
+		}
+		s.notify.dispatchApp(m)
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.push_test", Success: true,
+		Details: map[string]any{"channels": len(out), "app": p.App, "app_devices": devices}})
+	writeJSON(w, map[string]any{"channels": out, "app": p.App, "app_devices": devices})
 }

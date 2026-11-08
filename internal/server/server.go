@@ -387,6 +387,8 @@ func (s *Server) routes() http.Handler {
 	handle("PUT /api/v1/settings/alerts-push", accessAdmin, s.handlePutAlertsPush)
 	handle("GET /api/v1/settings/subscription-push", accessAdmin, s.handleGetSubPush)
 	handle("PUT /api/v1/settings/subscription-push", accessAdmin, s.handlePutSubPush)
+	handle("GET /api/v1/settings/subscription-push/preview", accessAdmin, s.handleSubPushPreview) // 修订第 317 条
+	handle("POST /api/v1/settings/subscription-push/test", accessAdmin, s.handleSubPushTest)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）
 	handle("PUT /api/v1/settings/digest", accessAdmin, s.handlePutDigest)

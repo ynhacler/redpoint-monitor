@@ -685,6 +685,16 @@ export function getSubPush() {
   return request('get', '/settings/subscription-push')
 }
 
+/** 接下来 14 天会推送的订阅提醒（修订第 317 条） */
+export function getSubPushPreview() {
+  return request('get', '/settings/subscription-push/preview')
+}
+
+/** 按已保存的渠道发一条订阅提醒样例，返回每个渠道的结果（修订第 317 条） */
+export function testSubPush() {
+  return request('post', '/settings/subscription-push/test')
+}
+
 /** 保存订阅推送设置；打开推送或改变渠道时面板要求重新验证（用 withReauth 调用） */
 export function putSubPush(v: SubPush) {
   return request('put', '/settings/subscription-push', { body: v })
