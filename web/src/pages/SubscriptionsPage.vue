@@ -9,13 +9,16 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, listServers, listSubscriptions, renewSubscription, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
+import BottomSheet from '../components/BottomSheet.vue'
+import SubCalendar from '../components/SubCalendar.vue'
+import SubCategoryManager from '../components/SubCategoryManager.vue'
 import SubCharges from '../components/SubCharges.vue'
 import { countryName, countryOptions, flagUrl } from '../countries'
 import { fmtMoney, fmtPct } from '../format'
@@ -23,13 +26,13 @@ import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
   analyze, billingProgress, byCategory, cashflow, catalog, categoryColors, categoryNames, cycleNames, cyclePay, currencies, daysUntil, defaultCountry,
-  monthlyCents, monthStart, paymentNames, remindOptions, renewText, sortSubs, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend,
-  type Rates, type SubCategory, type SubSort,
+  monthlyCents, monthStart, paymentNames, remindOptions, renewText, setCustomCategories, sortSubs, spendCny, toCny, trialOptions, ymd, type CatalogItem,
+  type CnySpend, type CustomCategory, type Rates, type SubCategory, type SubSort,
 } from '../subscriptions'
 
 const route = useRoute()
 const router = useRouter()
-const view = computed(() => (route.query.tab === 'stats' || route.query.tab === 'analysis' ? route.query.tab : 'list'))
+const view = computed(() => (['stats', 'analysis', 'calendar'].includes(String(route.query.tab)) ? String(route.query.tab) : 'list'))
 const setView = (v: string) => router.replace({ query: { tab: v === 'list' ? undefined : v } })
 
 const list = ref<Subscription[]>([])
@@ -60,6 +63,34 @@ async function loadFx() {
     fx.value = null
   }
 }
+// 自定义类别（修订第 314 条）：读取后加入类别名称与颜色表；旧面板没有此接口时只有内置类别
+const customCats = ref<CustomCategory[]>([])
+const catsOpen = ref(false)
+async function loadCategories() {
+  try {
+    customCats.value = await listSubCategories()
+    setCustomCategories(customCats.value)
+  } catch {
+    /* 旧面板 */
+  }
+}
+const catCounts = computed(() => {
+  const m: Record<string, number> = {}
+  for (const s of list.value) m[s.category] = (m[s.category] ?? 0) + 1
+  return m
+})
+async function categoriesChanged() {
+  await loadCategories()
+  await load()
+  if (form.category && !categoryNames[form.category]) form.category = 'other'
+}
+function pickCategory(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  if (v === '__manage') {
+    ;(e.target as HTMLSelectElement).value = form.category
+    catsOpen.value = true
+  } else form.category = v
+}
 async function load() {
   try {
     list.value = await listSubscriptions()
@@ -71,7 +102,7 @@ async function load() {
     loaded.value = true
   }
 }
-onMounted(() => { load(); loadNodes() })
+onMounted(() => { loadCategories().then(load); loadNodes(); loadBudget() })
 
 // ---- 概览 ----
 const now = new Date()
@@ -130,6 +161,33 @@ const halfPast = computed(() => progress.value.filter((x) => x.pct >= 50).length
 const yearly = ref(false)
 const dueRest = computed(() => spendCny(list.value, rates.value, today, monthStart(today, 1)))
 const infoOpen = ref(false)
+// 每月预算（修订第 312 条）：与本月预计扣费比较；超出时面板每月提醒一次
+const budget = ref(0)
+const budgetEdit = ref<string | null>(null)
+const budgetErr = ref('')
+const thisMonth = computed(() => spendCny(list.value, rates.value, monthStart(today), monthStart(today, 1)))
+const budgetPct = computed(() => (budget.value ? (thisMonth.value.cents / budget.value) * 100 : 0))
+async function loadBudget() {
+  try {
+    budget.value = (await getSubBudget()).monthly_cents
+  } catch {
+    budget.value = 0 // 旧面板没有此接口
+  }
+}
+async function saveBudget() {
+  const v = Number((budgetEdit.value ?? '').trim() || 0)
+  if (!Number.isFinite(v) || v < 0) {
+    budgetErr.value = t('请填写金额')
+    return
+  }
+  try {
+    budget.value = (await putSubBudget(Math.round(v * 100))).monthly_cents
+    budgetEdit.value = null
+    budgetErr.value = ''
+  } catch (e) {
+    budgetErr.value = errorText(e)
+  }
+}
 const logoSrc = (s: Subscription) => (s.logo_version ? subscriptionLogoURL(s) : '')
 
 // ---- 统计 ----
@@ -194,7 +252,7 @@ function writePref(key: string, v: string) {
     /* 隐私模式等不可用时只在本页生效 */
   }
 }
-type Filter = 'all' | 'active' | 'soon' | 'ended' | SubCategory
+type Filter = 'all' | 'active' | 'soon' | 'ended' | SubCategory | `payer:${string}`
 const filter = ref<Filter>(readPref('vpsmon.subFilter', 'all') as Filter)
 // 之前选了“按类别”的沿用为按类别排序
 const sortKey = ref<SubSort>(readPref('vpsmon.subSort', readPref('vpsmon.subGrouped', '0') === '1' ? 'category' : 'date') as SubSort)
@@ -202,9 +260,13 @@ const sortDesc = ref(readPref('vpsmon.subSortDesc', '0') === '1')
 const setFilter = (v: Filter) => { filter.value = v; writePref('vpsmon.subFilter', v) }
 const setSort = (v: SubSort) => { sortKey.value = v; writePref('vpsmon.subSort', v) }
 const flipSort = () => { sortDesc.value = !sortDesc.value; writePref('vpsmon.subSortDesc', sortDesc.value ? '1' : '0') }
+// 已有的付款人（修订第 311 条）：表单候选、筛选与分析分组
+const payers = computed(() => [...new Set(list.value.map((s) => s.payer).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
+/** 只把 http / https 链接做成可点击的地址（面板也只接受这两种，这里再检查一次） */
+const safeURL = (u: string) => (/^https?:\/\/[^\s]+$/i.test(u.trim()) ? u.trim() : '')
 const soonOf = (s: Subscription) => !s.ended && !!s.next_charge && daysUntil(s.next_charge, today) >= 0 && daysUntil(s.next_charge, today) <= 7
 const matches = (s: Subscription, f: Filter) =>
-  f === 'all' || (f === 'active' ? !s.ended : f === 'ended' ? s.ended : f === 'soon' ? soonOf(s) : s.category === f)
+  f === 'all' || (f === 'active' ? !s.ended : f === 'ended' ? s.ended : f === 'soon' ? soonOf(s) : f.startsWith('payer:') ? s.payer === f.slice(6) : s.category === f)
 const filterOptions = computed(() => {
   const opts: { v: Filter; label: string; n: number }[] = [
     { v: 'all', label: t('全部'), n: list.value.length },
@@ -215,6 +277,10 @@ const filterOptions = computed(() => {
   for (const c of Object.keys(categoryNames) as SubCategory[]) {
     const n = list.value.filter((s) => s.category === c).length
     if (n) opts.push({ v: c, label: t(categoryNames[c]), n })
+  }
+  // 付款人（修订第 311 条）：有两个以上不同的付款人时才列出
+  if (payers.value.length > 1) {
+    for (const p of payers.value) opts.push({ v: `payer:${p}`, label: t('付款人：{p}', { p }), n: list.value.filter((s) => s.payer === p).length })
   }
   return opts
 })
@@ -237,10 +303,11 @@ const listRows = computed<ListRow[]>(() => {
   }
   return out
 })
-const anaGroup = ref<'category' | 'country' | 'payment'>('category')
+const anaGroup = ref<'category' | 'country' | 'payment' | 'payer'>('category')
 const anaRows = computed(() => {
   const a = ana.value
   if (anaGroup.value === 'country') return a.byCountry.map((x) => ({ ...x, name: x.key ? countryName(x.key) : t('未设置'), flag: x.key }))
+  if (anaGroup.value === 'payer') return a.byPayer.map((x) => ({ ...x, name: x.key || t('未填写'), flag: '' }))
   if (anaGroup.value === 'payment') return a.byPayment.map((x) => ({ ...x, name: x.key ? t(paymentNames[x.key] ?? x.key) : t('未设置'), flag: '' }))
   return a.byCategory.map((x) => ({ ...x, name: t(categoryNames[x.key as SubCategory] ?? x.key), flag: '' }))
 })
@@ -272,7 +339,7 @@ const blankVPS = (): FormVPS => ({ ips: [''], cpu: '', memory_gb: '', disk_gb: '
 // 支付方式没有默认值：表单中可为空，保存时由面板要求选择（修订第 223 条）
 const blank = (): Omit<SubscriptionInput, 'vps' | 'payment'> & { price: string; phones: FormPhone[]; vps: FormVPS; payment: SubscriptionInput['payment'] | '' } => ({
   name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: 'CNY', cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '',
+  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '', url: '', payer: '',
 })
 const vpsNum = (v: string) => (v.trim() === '' ? 0 : Number(v))
 const vpsStr = (n: number) => (n ? String(n) : '')
@@ -377,7 +444,7 @@ async function save() {
   const body: SubscriptionInput = {
     name: form.name, brand: form.brand, category: form.category, price_cents: Math.round(price * 100), currency: form.currency,
     cycle: form.cycle, trial_days: form.trial_days, start_date: form.start_date, end_date: form.end_date ?? '', remind_days: form.remind_days, note: form.note,
-    country: form.country, payment: form.payment as SubscriptionInput['payment'],
+    country: form.country, payment: form.payment as SubscriptionInput['payment'], url: form.url ?? '', payer: form.payer ?? '',
     phones: form.category === 'sim' ? form.phones.filter((p) => p.number.trim()) : [],
     vps: form.category === 'vps'
       ? {
@@ -444,7 +511,7 @@ const monthlyLine = (s: Subscription) => {
 }
 // 电脑宽度在中间多一列：类别（按类别排序时省略）、国家 / 地区 · 支付方式、备注第一行
 const metaText = (s: Subscription) => [sortKey.value === 'category' ? '' : t(categoryNames[s.category] ?? s.category),
-  s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ')
+  s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : '', s.payer].filter(Boolean).join(' · ')
 const progOf = (s: Subscription) => billingProgress(s, today)?.pct ?? null
 // VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
 const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
@@ -517,7 +584,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <label>{{ t('名称') }}<input v-model="form.name" maxlength="64" :placeholder="t('如 Netflix')" />
           <small v-if="fieldErrors.name" class="bad">{{ fieldErrors.name }}</small></label>
         <label>{{ t('类别') }}
-          <select v-model="form.category"><option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
+          <select :value="form.category" @change="pickCategory">
+            <option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ t(n) }}</option>
+            <option value="__manage">{{ t('＋ 管理自定义类别…') }}</option>
+          </select></label>
         <label>{{ t('价格') }}
           <span class="price">
             <select v-model="form.currency" :aria-label="t('币种')"><option v-for="c in currencies" :key="c" :value="c">{{ c }}</option></select>
@@ -538,6 +608,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <option v-for="(n, k) in paymentNames" :key="k" :value="k">{{ t(n) }}</option>
           </select>
           <small v-if="fieldErrors.payment" class="bad">{{ fieldErrors.payment }}</small></label>
+        <!-- 付款人（修订第 311 条，参考 Wallos 的家庭成员）：自由填写，可从已有的付款人中选 -->
+        <label>{{ t('付款人') }}<input v-model="form.payer" maxlength="32" list="sub-payers" :placeholder="t('可选，如 自己、妈妈')" />
+          <datalist id="sub-payers"><option v-for="p in payers" :key="p" :value="p" /></datalist>
+          <small v-if="fieldErrors.payer" class="bad">{{ fieldErrors.payer }}</small></label>
         <label>{{ t('订阅周期') }}
           <select v-model="form.cycle"><option v-for="(n, k) in cycleNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
         <label>{{ t('免费试用') }}
@@ -594,6 +668,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <small v-if="fieldErrors['vps.location']" class="bad">{{ fieldErrors['vps.location'] }}</small></label>
         </template>
         <label class="wide">{{ t('描述') }}<input v-model="form.note" maxlength="200" :placeholder="t('可选，如 家庭版、和朋友合租')" /></label>
+        <!-- 链接（修订第 311 条）：管理或退订页面，只允许 http / https -->
+        <label class="wide">{{ t('链接') }}<input v-model="form.url" type="url" maxlength="300" inputmode="url" spellcheck="false" :placeholder="t('可选，管理或退订页面，如 https://www.netflix.com/account')" />
+          <small v-if="fieldErrors.url" class="bad">{{ fieldErrors.url }}</small>
+          <a v-else-if="safeURL(form.url ?? '')" :href="safeURL(form.url ?? '')" target="_blank" rel="noopener noreferrer" class="small">{{ t('打开链接') }}</a></label>
       </div>
       <!-- 历史扣费（修订第 293 条）：编辑时可展开；免费的订阅不显示 -->
       <SubCharges v-if="editing && editing.price_cents" :key="editing.id" :sub="editing" />
@@ -661,9 +739,28 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <b class="money-v num">{{ mainText(dueRest) }}</b>
               <small v-if="otherText(dueRest)" class="muted num">{{ otherText(dueRest) }}</small>
             </div>
+            <!-- 每月预算（修订第 312 条） -->
+            <div class="budget small">
+              <template v-if="budgetEdit != null">
+                <label class="budget-edit">{{ t('每月预算（人民币）') }}
+                  <input v-model="budgetEdit" inputmode="decimal" :placeholder="t('0 为不设')" @keyup.enter="saveBudget" /></label>
+                <button type="button" class="secondary" @click="saveBudget">{{ t('保存') }}</button>
+                <button type="button" class="text" @click="budgetEdit = null; budgetErr = ''">{{ t('取消') }}</button>
+                <span v-if="budgetErr" class="bad">{{ budgetErr }}</span>
+              </template>
+              <template v-else-if="budget">
+                <span class="budget-line">
+                  <span :class="{ bad: budgetPct > 100 }">{{ t('本月预计 {v} / 预算 {b}', { v: fmtMoney(thisMonth.cents, 'CNY'), b: fmtMoney(budget, 'CNY') }) }}</span>
+                  <button type="button" class="text" @click="budgetEdit = String(budget / 100)">{{ t('修改') }}</button>
+                </span>
+                <span class="prog"><span :style="{ width: `${Math.min(100, budgetPct)}%`, background: budgetPct > 100 ? 'var(--bad)' : budgetPct > 90 ? 'var(--warn)' : 'var(--ok)' }" /></span>
+              </template>
+              <button v-else type="button" class="text" @click="budgetEdit = ''">{{ t('设置每月预算') }}</button>
+            </div>
             <p v-if="infoOpen" class="small muted info-text">
               {{ t('月均花费：订阅中的订阅按周期折算为每月（年付 ÷ 12、季付 ÷ 3…），换算为人民币；一次性付费不计入。年均为月均 × 12。') }}
               {{ t('本月待扣：从今天到月底还要扣的金额。') }}
+              {{ t('每月预算与本月预计扣费（本月全部扣费）比较，超出时经通知渠道提醒一次。') }}
               {{ t('订阅中 {n} 个，共记录 {m} 个。', { n: active.length, m: list.length }) }}
             </p>
           </section>
@@ -672,6 +769,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <div class="view-bar">
           <div class="segmented view-tabs" role="tablist" :aria-label="t('视图')">
             <button type="button" role="tab" :class="{ active: view === 'list' }" @click="setView('list')">{{ t('列表') }}</button>
+            <button type="button" role="tab" :class="{ active: view === 'calendar' }" @click="setView('calendar')">{{ t('日历') }}</button>
             <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
             <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
           </div>
@@ -739,6 +837,9 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           </ul>
         </template>
 
+        <!-- 续订日历（修订第 313 条） -->
+        <SubCalendar v-else-if="view === 'calendar'" :list="list" :rates="rates" @open="openEdit" />
+
         <!-- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） -->
         <section v-else-if="view === 'analysis'" class="panel stats">
           <div class="ana-head">
@@ -752,6 +853,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <button type="button" :class="{ active: anaGroup === 'category' }" @click="anaGroup = 'category'">{{ t('类别') }}</button>
               <button type="button" :class="{ active: anaGroup === 'country' }" @click="anaGroup = 'country'">{{ t('国家 / 地区') }}</button>
               <button type="button" :class="{ active: anaGroup === 'payment' }" @click="anaGroup = 'payment'">{{ t('支付方式') }}</button>
+              <button v-if="payers.length" type="button" :class="{ active: anaGroup === 'payer' }" @click="anaGroup = 'payer'">{{ t('付款人') }}</button>
             </div>
           </div>
           <ul class="legend ana-groups">
@@ -860,6 +962,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         </details>
       </template>
     </template>
+    <!-- 自定义类别（修订第 314 条） -->
+    <BottomSheet :open="catsOpen" :title="t('自定义类别')" @close="catsOpen = false">
+      <SubCategoryManager :list="customCats" :counts="catCounts" @changed="categoriesChanged" />
+    </BottomSheet>
   </main>
 </template>
 
@@ -902,6 +1008,14 @@ button.money:hover { filter: none; }
 .money-label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); font-size: var(--font-sm); }
 .money-v { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .info-btn { background: none; border: 0; padding: 0 var(--space-1); color: var(--text-muted); min-height: 0; display: inline-flex; }
+.budget { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-3) var(--space-4) 0;
+  padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.budget:has(.budget-edit) { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); }
+.budget-edit { display: flex; flex-direction: column; gap: 2px; }
+.budget-edit input { width: 140px; }
+.budget-line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.budget .text { align-self: flex-start; padding: 0; min-height: 0; color: var(--accent); }
+.budget .bad { color: var(--bad); }
 .info-text { grid-column: 1 / -1; margin: var(--space-2) var(--space-4) 0; }
 .view-tabs { margin-bottom: var(--space-3); }
 

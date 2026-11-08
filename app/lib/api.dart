@@ -208,11 +208,14 @@ class ApiClient {
   Future<CloudSummary> cloud() async => CloudSummary.fromJson(await getJson('/app/cloud') as Map<String, dynamic>);
 
   /// 订阅只读列表（修订第 213 条）：返回（是否受限, 订阅）。授权范围不是“全部节点”时受限、列表为空；旧版面板抛出 ApiException（404）。
-  Future<(bool, List<Subscription>)> subscriptions() async {
+  Future<(bool, List<Subscription>, int)> subscriptions() async {
     final body = await getJson('/app/subscriptions') as Map<String, dynamic>;
+    setCustomCategories(body['categories'] as List<dynamic>?); // 自定义类别（修订第 314 条）；旧面板没有此字段
     return (
       body['limited'] as bool? ?? false,
       [for (final e in (body['items'] as List<dynamic>? ?? const [])) Subscription.fromJson(e as Map<String, dynamic>)],
+      // 每月预算（人民币分，修订第 312 条）；旧面板没有此字段时为 0
+      (body['budget_cents'] as num?)?.toInt() ?? 0,
     );
   }
 

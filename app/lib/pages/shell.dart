@@ -155,7 +155,7 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _loadSubs() async {
     try {
-      final (limited, items) = await widget.api.subscriptions();
+      final (limited, items, _) = await widget.api.subscriptions();
       if (mounted) setState(() => _subs = limited ? const [] : items);
     } on DeviceRevoked {
       _revoked();

@@ -20,6 +20,7 @@ import '../widgets/stale_banner.dart';
 import '../widgets/sub_charges.dart';
 import 'subscription_add_page.dart';
 import 'subscription_analysis_page.dart';
+import 'subscription_calendar_page.dart';
 
 /// 订阅页（只读）
 class SubscriptionsPage extends StatefulWidget {
@@ -62,6 +63,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   FxRates _fx = const FxRates();
   late SubListView _view = widget.view;
   bool _yearly = false;
+  int _budget = 0; // 每月预算（人民币分，修订第 312 条），0 为不设
 
   void _setView(SubListView v) {
     setState(() => _view = v);
@@ -76,11 +78,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
 
   Future<void> _load() async {
     try {
-      final (limited, items) = await widget.api.subscriptions();
+      final (limited, items, budget) = await widget.api.subscriptions();
       if (!mounted) return;
       setState(() {
         _limited = limited;
         _items = items;
+        _budget = budget;
         _error = null;
       });
       // 有外币订阅时读取汇率（修订第 223 条）；失败时只显示原币种，人民币合计不计入外币
@@ -185,13 +188,21 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   // 筛选项：（键、名称、数量）
   List<(String, String, int)> _filters(List<Subscription> items) {
     final ended = items.where((s) => s.ended).length;
+    final payers = {
+      for (final s in items)
+        if (s.payer.isNotEmpty) s.payer
+    }.toList()
+      ..sort();
     return [
       ('all', '全部', items.length),
       ('active', '订阅中', items.length - ended),
       ('soon', '7 天内续订', items.where(renewsSoon).length),
       if (ended > 0) ('ended', '已结束', ended),
-      for (final k in categoryNames.keys)
-        if (items.any((s) => s.category == k)) (k, categoryNames[k]!, items.where((s) => s.category == k).length),
+      for (final k in allCategoryKeys())
+        if (items.any((s) => s.category == k)) (k, catName(k), items.where((s) => s.category == k).length),
+      // 付款人（修订第 311 条）：有两个以上不同的付款人时才列出
+      if (payers.length > 1)
+        for (final p in payers) ('payer:$p', '付款人：$p', items.where((s) => s.payer == p).length),
     ];
   }
 
@@ -333,59 +344,63 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        child: IntrinsicHeight(
-          child: Row(children: [
-            Expanded(
-              child: InkWell(
-                key: const ValueKey('sub-yearly'),
-                onTap: () => setState(() => _yearly = !_yearly),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          IntrinsicHeight(
+            child: Row(children: [
+              Expanded(
+                child: InkWell(
+                  key: const ValueKey('sub-yearly'),
+                  onTap: () => setState(() => _yearly = !_yearly),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Icon(Icons.calendar_month_outlined, size: 16, color: c.textMuted),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(_yearly ? '年均花费' : '月均花费', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.swap_horiz, size: 16, color: c.textMuted),
+                      ]),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(a.count == 0 ? dash : money(_yearly ? a.monthly * 12 : a.monthly),
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                      ),
+                      if (a.missing.isNotEmpty) Text('不含 ${a.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
+                    ]),
+                  ),
+                ),
+              ),
+              VerticalDivider(width: 1, color: c.border),
+              Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
-                      Icon(Icons.calendar_month_outlined, size: 16, color: c.textMuted),
+                      Icon(Icons.schedule, size: 16, color: c.textMuted),
                       const SizedBox(width: 4),
-                      Flexible(child: Text(_yearly ? '年均花费' : '月均花费', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      Icon(Icons.swap_horiz, size: 16, color: c.textMuted),
+                      Expanded(child: Text('本月待扣', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      InkWell(
+                        onTap: () => _spendInfo(context, active.length, items.length),
+                        child: Icon(Icons.info_outline, size: 18, color: c.textMuted, semanticLabel: '说明'),
+                      ),
                     ]),
                     const SizedBox(height: 4),
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(a.count == 0 ? dash : money(_yearly ? a.monthly * 12 : a.monthly),
+                      child: Text(money(due.cents),
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
                     ),
-                    if (a.missing.isNotEmpty) Text('不含 ${a.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
+                    if (due.missing.isNotEmpty) Text('不含 ${due.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
                   ]),
                 ),
               ),
-            ),
-            VerticalDivider(width: 1, color: c.border),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Icon(Icons.schedule, size: 16, color: c.textMuted),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text('本月待扣', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    InkWell(
-                      onTap: () => _spendInfo(context, active.length, items.length),
-                      child: Icon(Icons.info_outline, size: 18, color: c.textMuted, semanticLabel: '说明'),
-                    ),
-                  ]),
-                  const SizedBox(height: 4),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child:
-                        Text(money(due.cents), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
-                  ),
-                  if (due.missing.isNotEmpty) Text('不含 ${due.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
-                ]),
-              ),
-            ),
-          ]),
-        ),
+            ]),
+          ),
+          // 每月预算（修订第 312 条）：只在面板设了预算时显示，修改请在 Web 中进行
+          if (_budget > 0) _budgetLine(context, items),
+        ]),
       ),
     );
 
@@ -402,12 +417,32 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     ]);
   }
 
+  Widget _budgetLine(BuildContext context, List<Subscription> items) {
+    final c = appColors(context);
+    final colors = StatusColors.of(context);
+    final n = DateTime.now();
+    final month = dueRestOfMonth(items, _fx, now: DateTime(n.year, n.month, 1)).cents;
+    final pct = month / _budget * 100;
+    final color = pct > 100 ? colors.bad : (pct > 90 ? colors.warn : colors.ok);
+    String money(int cents) => widget.privacy ? '***' : fmtMoney(cents, 'CNY');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Divider(height: 1, color: c.border),
+        const SizedBox(height: 10),
+        Text('本月预计 ${money(month)} / 预算 ${money(_budget)}', style: TextStyle(fontSize: 12, color: pct > 100 ? colors.bad : c.textMuted)),
+        const SizedBox(height: 6),
+        _bar(context, pct.clamp(0, 100).toDouble(), color),
+      ]),
+    );
+  }
+
   void _spendInfo(BuildContext context, int active, int total) => showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('说明'),
           content: Text('月均花费：订阅中的订阅按周期折算为每月（年付 ÷ 12、季付 ÷ 3…），换算为人民币；一次性付费不计入。年均为月均 × 12。\n\n'
-              '本月待扣：从今天到月底还要扣的金额。\n\n订阅中 $active 个，共记录 $total 个。'),
+              '本月待扣：从今天到月底还要扣的金额。\n\n每月预算在 Web 的“订阅”页设置，本月预计扣费超出时经通知渠道提醒一次。\n\n订阅中 $active 个，共记录 $total 个。'),
           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
         ),
       );
@@ -442,6 +477,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ]),
             ),
           ),
+        ),
+        // 续订日历（修订第 313 条）
+        IconButton(
+          key: const ValueKey('sub-calendar'),
+          tooltip: '续订日历',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => SubscriptionCalendarPage(
+                  items: items, fx: _fx, privacy: widget.privacy, avatar: _avatar, onOpen: (s) => _detail(context, s)))),
+          icon: Icon(Icons.calendar_month_outlined, color: c.textMuted),
         ),
         if (large)
           IconButton(onPressed: analysis, tooltip: '分析', icon: const Icon(Icons.insights_outlined))
@@ -493,7 +538,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               Container(width: 10, height: 10, decoration: BoxDecoration(color: categoryColor(c, k), shape: BoxShape.circle)),
               const SizedBox(width: 6),
             ],
-            Text(k.isEmpty ? '已结束' : categoryNames[k]!, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(k.isEmpty ? '已结束' : catName(k), style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 6),
             Text('${xs.length} 个', style: muted),
             const Spacer(),
@@ -655,7 +700,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(s.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  Text(categoryNames[s.category] ?? s.category, style: muted),
+                  Text(catName(s.category), style: muted),
                 ]),
               ),
             ]),
@@ -663,6 +708,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             line('价格', '${_price(s)}${cycleSuffix[s.cycle] ?? ''}${_cnyText(s) != null ? '（${_cnyText(s)}）' : ''}'),
             if (s.country.isNotEmpty) line('国家地区', '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim()),
             if (s.payment.isNotEmpty) line('支付方式', paymentNames[s.payment] ?? s.payment),
+            if (s.payer.isNotEmpty) line('付款人', s.payer),
+            // 链接（修订第 311 条）：可选中复制，App 不直接打开外部网页
+            if (s.url.isNotEmpty) line('链接', s.url),
             line('扣费', chargeText(s)),
             if (s.nextCharge.isNotEmpty && !s.ended) line('下次扣费', s.nextCharge),
             line(s.category == 'vps' ? '购买日期' : '开始订阅', s.startDate),

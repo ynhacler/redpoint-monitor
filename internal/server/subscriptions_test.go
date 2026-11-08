@@ -326,3 +326,150 @@ func TestSubscriptionEndReminders(t *testing.T) {
 		t.Fatalf("续订后应按新日期再提醒，实际共 %d 次", n)
 	}
 }
+
+// 链接与付款人（修订第 311 条）：只允许 http / https；修改时省略沿用原值（旧版 App 不会清空），传空字符串清空。
+func TestSubscriptionURLPayer(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	base := `"name":"Netflix","category":"video","price_cents":6800,"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01"`
+	for _, bad := range []string{"javascript:alert(1)", "ftp://x.example", "https://", "https://a b.example", "https://u:p@x.example", "//x.example"} {
+		rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"url":"`+bad+`"}`))
+		if rec.Code != 422 || !strings.Contains(rec.Body.String(), `"url"`) {
+			t.Errorf("链接 %q 应被拒绝：%d %s", bad, rec.Code, rec.Body)
+		}
+	}
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"url":" https://www.netflix.com/account ","payer":" 妈妈 "}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.URL != "https://www.netflix.com/account" || x.Payer != "妈妈" {
+		t.Fatalf("新增：%d %+v", rec.Code, x)
+	}
+	path := "/api/v1/subscriptions/" + itoa64(x.ID)
+	// 省略两项：沿用
+	json.Unmarshal(do(h, "PUT", path, admin, []byte(`{`+base+`,"price_cents":7800}`)).Body.Bytes(), &x)
+	if x.URL != "https://www.netflix.com/account" || x.Payer != "妈妈" || x.PriceCents != 7800 {
+		t.Fatalf("省略时应沿用：%+v", x)
+	}
+	// 空字符串：清空
+	json.Unmarshal(do(h, "PUT", path, admin, []byte(`{`+base+`,"url":"","payer":""}`)).Body.Bytes(), &x)
+	if x.URL != "" || x.Payer != "" {
+		t.Fatalf("空字符串应清空：%+v", x)
+	}
+	if rec := do(h, "PUT", path, admin, []byte(`{`+base+`,"payer":"`+strings.Repeat("长", 33)+`"}`)); rec.Code != 422 {
+		t.Fatalf("付款人超长应 422：%d", rec.Code)
+	}
+}
+
+// 每月预算（修订第 312 条）：校验；本月预计扣费超过预算时每月只提醒一次，没超或未设不提醒；App 列表带预算。
+func TestSubscriptionBudget(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	if rec := do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":-1}`)); rec.Code != 422 {
+		t.Fatalf("负数应 422：%d", rec.Code)
+	}
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).Format("2006-01-02")
+	// 每月 1 日扣 ¥100，本月一定有一次
+	do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"A","category":"cloud","price_cents":10000,"currency":"CNY","country":"CN","payment":"alipay","cycle":"monthly","start_date":"`+start+`"}`))
+	count := func() (n int) {
+		s.store.DB.QueryRow(`SELECT COUNT(*) FROM reminders_sent WHERE key LIKE 'subscription_budget:%'`).Scan(&n)
+		return
+	}
+	s.subscriptionReminders(now)
+	if count() != 0 {
+		t.Fatal("未设预算不应提醒")
+	}
+	if total, _ := s.monthSpendCny(mustSubs(t, s), now); total != 10000 {
+		t.Fatalf("本月预计扣费 %d，期望 10000", total)
+	}
+	do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":10000}`))
+	s.subscriptionReminders(now)
+	if count() != 0 {
+		t.Fatal("等于预算不应提醒")
+	}
+	do(h, "PUT", "/api/v1/settings/subscription-budget", admin, []byte(`{"monthly_cents":5000}`))
+	s.subscriptionReminders(now)
+	s.subscriptionReminders(now)
+	if count() != 1 {
+		t.Fatalf("超出预算应只提醒 1 次，实际 %d", count())
+	}
+	var b SubBudget
+	json.Unmarshal(do(h, "GET", "/api/v1/settings/subscription-budget", admin, nil).Body.Bytes(), &b)
+	if b.MonthlyCents != 5000 {
+		t.Fatalf("读取预算 %+v", b)
+	}
+}
+
+func mustSubs(t *testing.T, s *Server) []Subscription {
+	t.Helper()
+	list, err := s.store.ListSubscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
+}
+
+func TestChargesIn(t *testing.T) {
+	d := func(v string) time.Time { x, _ := time.ParseInLocation("2006-01-02", v, time.Local); return x }
+	cases := []struct {
+		sub      Subscription
+		from, to string
+		want     int
+	}{
+		{Subscription{Cycle: "monthly", StartDate: "2026-01-31"}, "2026-02-01", "2026-03-01", 1},
+		{Subscription{Cycle: "weekly", StartDate: "2026-11-02"}, "2026-11-01", "2026-12-01", 5},
+		{Subscription{Cycle: "once", StartDate: "2026-11-05"}, "2026-11-01", "2026-12-01", 1},
+		{Subscription{Cycle: "monthly", StartDate: "2026-01-10", EndDate: "2026-11-10"}, "2026-11-01", "2026-12-01", 0},
+		{Subscription{Cycle: "annually", StartDate: "2025-03-01"}, "2026-11-01", "2026-12-01", 0},
+	}
+	for _, c := range cases {
+		if got := chargesIn(c.sub, d(c.from), d(c.to)); got != c.want {
+			t.Errorf("%+v [%s, %s) = %d，期望 %d", c.sub, c.from, c.to, got, c.want)
+		}
+	}
+}
+
+// 自定义类别（修订第 314 条）：增改删；订阅可用存在的自定义类别，不存在的 422；删除后订阅改为“其他”；公开展示页显示为“其他”。
+func TestSubscriptionCustomCategories(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	if rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":"","color":"cloud"}`)); rec.Code != 422 {
+		t.Fatalf("空名称应 422：%d", rec.Code)
+	}
+	if rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":"保险","color":"#fff"}`)); rec.Code != 422 {
+		t.Fatalf("颜色只能是内置类别键：%d", rec.Code)
+	}
+	rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":" 保险 ","color":"health"}`))
+	var c SubCategoryItem
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	if rec.Code != 201 || c.Key != "c"+itoa64(c.ID) || c.Name != "保险" {
+		t.Fatalf("新增类别：%d %+v", rec.Code, c)
+	}
+	base := `"name":"车险","price_cents":300000,"currency":"CNY","country":"CN","payment":"bank","cycle":"annually","start_date":"2026-01-01"`
+	if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"category":"c999"}`)); rec.Code != 422 {
+		t.Fatalf("不存在的类别应 422：%d", rec.Code)
+	}
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"category":"`+c.Key+`"}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.Category != c.Key {
+		t.Fatalf("用自定义类别新增订阅：%d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PUT", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, []byte(`{"name":"保险费","color":"cloud"}`)); rec.Code != 200 {
+		t.Fatalf("修改类别：%d", rec.Code)
+	}
+	// 公开展示页：自定义类别显示为“其他”
+	if got := publicCategory(c.Key); got != "other" {
+		t.Fatalf("公开展示页类别 %q", got)
+	}
+	if rec := do(h, "DELETE", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, nil); rec.Code != 204 {
+		t.Fatalf("删除类别：%d", rec.Code)
+	}
+	got, _ := s.store.GetSubscription(x.ID)
+	if got.Category != "other" {
+		t.Fatalf("删除类别后订阅应为“其他”：%q", got.Category)
+	}
+	if rec := do(h, "DELETE", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, nil); rec.Code != 404 {
+		t.Fatalf("重复删除应 404：%d", rec.Code)
+	}
+}

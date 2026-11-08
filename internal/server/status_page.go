@@ -206,7 +206,7 @@ func (s *Server) publicSubscriptions(now time.Time) ([]publicSubscription, error
 		if v.Ended {
 			continue
 		}
-		out = append(out, publicSubscription{Name: maskPublicName(v.Name), Brand: v.Brand, Category: v.Category,
+		out = append(out, publicSubscription{Name: maskPublicName(v.Name), Brand: v.Brand, Category: publicCategory(v.Category),
 			PriceCents: v.PriceCents, Currency: v.Currency, Cycle: v.Cycle, NextCharge: v.NextCharge})
 	}
 	c.subsAt, c.subs = now, out
@@ -324,4 +324,12 @@ func (s *Server) handlePutStatusPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, v)
+}
+
+// publicCategory 把自定义类别显示为“其他”（修订第 314 条）：访客不需要看到自己起的类别名。
+func publicCategory(k string) string {
+	if isCustomCategory(k) {
+		return "other"
+	}
+	return k
 }

@@ -1054,6 +1054,16 @@ var migrations = []string{
 		WHERE as_of > 0 AND currency IN (SELECT currency FROM subscriptions WHERE currency <> 'CNY');`,
 	// 迁移 65：公开展示页（设计 45.3，修订第 303 条）：节点是否公开。存在节点行上，删除节点时一起消失（节点 ID 会复用）
 	`ALTER TABLE servers ADD COLUMN status_public INTEGER NOT NULL DEFAULT 0;`,
+	// 迁移 66：订阅的链接与付款人（修订第 311 条，参考 Wallos）
+	`ALTER TABLE subscriptions ADD COLUMN url TEXT NOT NULL DEFAULT '';
+	ALTER TABLE subscriptions ADD COLUMN payer TEXT NOT NULL DEFAULT '';`,
+	// 迁移 67：订阅的自定义类别（修订第 314 条）；订阅中的类别键为 c<id>
+	`CREATE TABLE sub_categories (
+		id         INTEGER PRIMARY KEY,
+		name       TEXT NOT NULL,
+		color      TEXT NOT NULL,      -- 内置类别键，取它的颜色
+		created_at INTEGER NOT NULL
+	);`,
 }
 
 func (s *Store) migrate() error {

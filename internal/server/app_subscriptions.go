@@ -15,6 +15,9 @@ import (
 type appSubscriptionsView struct {
 	Limited bool           `json:"limited"`
 	Items   []Subscription `json:"items"`
+	Budget  int64          `json:"budget_cents"` // 每月预算（人民币分），0 为不设（修订第 312 条）
+	// Categories 是自定义类别（修订第 314 条），App 据此显示名称与颜色、新增订阅时可选
+	Categories []SubCategoryItem `json:"categories"`
 }
 
 // fullScope 判断请求的 App 设备是否为“全部节点”授权。
@@ -25,7 +28,7 @@ func fullScope(r *http.Request) bool {
 
 // handleAppSubscriptions：GET /api/v1/app/subscriptions，App 设备。排序与 Web 相同（下次扣费日在前）。
 func (s *Server) handleAppSubscriptions(w http.ResponseWriter, r *http.Request) {
-	out := appSubscriptionsView{Items: []Subscription{}}
+	out := appSubscriptionsView{Items: []Subscription{}, Categories: []SubCategoryItem{}}
 	if !fullScope(r) {
 		out.Limited = true
 		writeJSON(w, out)
@@ -42,6 +45,11 @@ func (s *Server) handleAppSubscriptions(w http.ResponseWriter, r *http.Request) 
 	}
 	sortSubscriptions(list)
 	out.Items = append(out.Items, list...)
+	out.Budget = s.subBudget().MonthlyCents
+	if out.Categories, err = s.store.ListSubCategories(); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
 	writeJSON(w, out)
 }
 

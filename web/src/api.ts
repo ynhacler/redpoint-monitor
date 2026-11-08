@@ -637,6 +637,36 @@ export function renewSubscription(id: number) {
   return request('post', '/subscriptions/{id}/renew', { params: { id } })
 }
 
+/** 订阅的自定义类别（修订第 314 条） */
+export function listSubCategories() {
+  return request('get', '/subscription-categories').then((r) => r.items)
+}
+
+/** 添加自定义类别 */
+export function createSubCategory(name: string, color: string) {
+  return request('post', '/subscription-categories', { body: { name, color: color as G.SubCategoryInput['color'] } })
+}
+
+/** 修改自定义类别 */
+export function updateSubCategory(id: number, name: string, color: string) {
+  return request('put', '/subscription-categories/{id}', { params: { id }, body: { name, color: color as G.SubCategoryInput['color'] } })
+}
+
+/** 删除自定义类别（用到它的订阅改为“其他”） */
+export function deleteSubCategory(id: number) {
+  return request('delete', '/subscription-categories/{id}', { params: { id } })
+}
+
+/** 订阅每月预算（人民币分，0 为不设，修订第 312 条） */
+export function getSubBudget() {
+  return request('get', '/settings/subscription-budget')
+}
+
+/** 设置订阅每月预算 */
+export function putSubBudget(monthly_cents: number) {
+  return request('put', '/settings/subscription-budget', { body: { monthly_cents } })
+}
+
 /** 汇率：1 单位外币折合多少人民币（修订第 223 条） */
 export function getFxRates() {
   return request('get', '/fx-rates')

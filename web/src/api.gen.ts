@@ -1003,12 +1003,31 @@ export interface ServiceMonitor {
   created_at: number
 }
 
+export interface SubCategory {
+  id: number
+  /** 订阅中使用的类别键 c<编号> */
+  key: string
+  name: string
+  /** 取这个内置类别的颜色 */
+  color: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+}
+
+export interface SubCategoryInput {
+  name: string
+  color: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+}
+
+export interface SubBudget {
+  /** 每月预算（人民币分），0 为不设 */
+  monthly_cents: number
+}
+
 export interface SubscriptionInput {
   name: string
   /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
   brand?: string
-  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他 */
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  /** 内置类别 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他，或自定义类别 c<编号>（修订第 314 条） */
+  category: string
   /** 每期价格（分） */
   price_cents: number
   /** 如 CNY、USD */
@@ -1017,6 +1036,10 @@ export interface SubscriptionInput {
   country: string
   /** 支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他 */
   payment: 'alipay' | 'wechat' | 'bank' | 'credit' | 'paypal' | 'apple' | 'google' | 'carrier' | 'crypto' | 'other'
+  /** 管理或退订页面的网址，只允许 http / https（修订第 311 条）；修改时省略表示沿用原值 */
+  url?: string
+  /** 付款人（家庭成员等，自由填写，修订第 311 条）；修改时省略表示沿用原值 */
+  payer?: string
   /** 扣费周期；once 为一次性 */
   cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
   /** 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 */
@@ -1063,7 +1086,8 @@ export interface Subscription {
   name: string
   /** 常用服务目录中的键；自定义时为空 */
   brand: string
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  /** 内置类别键或自定义类别 c<编号>（修订第 314 条） */
+  category: string
   /** 每期价格（分） */
   price_cents: number
   currency: string
@@ -1079,6 +1103,10 @@ export interface Subscription {
   country: string
   /** 支付方式（见 SubscriptionInput.payment）；尚未设置时为空 */
   payment: string
+  /** 管理或退订页面的网址（修订第 311 条），空为未填写 */
+  url: string
+  /** 付款人（修订第 311 条），空为未填写 */
+  payer: string
   phones: SubscriptionPhone[]
   vps: SubscriptionVPS
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
@@ -1755,6 +1783,10 @@ export interface FxDay {
 export interface AppSubscriptions {
   /** 授权范围不是“全部节点”：不返回订阅 */
   limited: boolean
+  /** 订阅每月预算（人民币分），0 为不设（修订第 312 条；旧面板没有此字段） */
+  budget_cents?: number
+  /** 自定义类别（修订第 314 条；旧面板没有此字段） */
+  categories?: SubCategory[]
   items: Subscription[]
 }
 
@@ -2635,6 +2667,48 @@ export interface Paths {
     /** 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有 */
     get: {
       response: PublicSubscriptionList
+    }
+  }
+  '/subscription-categories': {
+    /** 订阅的自定义类别（修订第 314 条） */
+    get: {
+      response: {
+        next_cursor: string
+        items: SubCategory[]
+      }
+    }
+    /** 添加自定义类别（最多 30 个） */
+    post: {
+      body: SubCategoryInput
+      response: SubCategory
+    }
+  }
+  '/subscription-categories/{id}': {
+    /** 修改自定义类别的名称与颜色 */
+    put: {
+      params: {
+        id: number
+      }
+      body: SubCategoryInput
+      response: SubCategory
+    }
+    /** 删除自定义类别；用到它的订阅改为“其他” */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
+    }
+  }
+  '/settings/subscription-budget': {
+    /** 订阅每月预算（修订第 312 条） */
+    get: {
+      response: SubBudget
+    }
+    /** 设置订阅每月预算；0 为不设。本月预计扣费超过预算时每月提醒一次（经通知渠道） */
+    put: {
+      body: SubBudget
+      response: SubBudget
     }
   }
   '/settings/status-page': {

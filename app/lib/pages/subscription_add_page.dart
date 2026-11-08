@@ -44,6 +44,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
   final _name = TextEditingController();
   final _price = TextEditingController();
   final _note = TextEditingController();
+  final _url = TextEditingController();
+  final _payer = TextEditingController();
   final _location = TextEditingController();
   final _ips = TextEditingController();
   String _category = 'video';
@@ -71,9 +73,11 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
     _name.text = x.name;
     _price.text = (x.priceCents / 100).toStringAsFixed(2);
     _note.text = x.note;
+    _url.text = x.url;
+    _payer.text = x.payer;
     _location.text = x.vps.location;
     _ips.text = x.vps.ips.join('\n');
-    _category = categoryNames.containsKey(x.category) ? x.category : 'other';
+    _category = allCategoryKeys().contains(x.category) ? x.category : 'other';
     _currency = x.currency;
     _country = x.country;
     _payment = paymentNames.containsKey(x.payment) ? x.payment : '';
@@ -89,7 +93,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
 
   @override
   void dispose() {
-    for (final c in [_name, _price, _note, _location, _ips]) {
+    for (final c in [_name, _price, _note, _url, _payer, _location, _ips]) {
       c.dispose();
     }
     for (final (a, b) in _phones) {
@@ -129,6 +133,8 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
       'end_date': _end == null ? '' : _ymd(_end!),
       'remind_days': _remind,
       'note': _note.text.trim(),
+      'url': _url.text.trim(),
+      'payer': _payer.text.trim(),
       'country': _country,
       'payment': _payment,
       'phones': [
@@ -312,7 +318,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
         DropdownButtonFormField<String>(
           initialValue: _category,
           decoration: deco('类别', 'category'),
-          items: [for (final x in categoryNames.entries) DropdownMenuItem(value: x.key, child: Text(x.value))],
+          items: [for (final k in allCategoryKeys()) DropdownMenuItem(value: k, child: Text(catName(k)))],
           onChanged: (v) => setState(() {
             _category = v!;
             if (_category == 'sim' && _phones.isEmpty) _phones.add((TextEditingController(text: '+86'), TextEditingController()));
@@ -453,6 +459,15 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
         ],
         gap(),
         TextField(controller: _note, maxLength: 200, maxLines: 3, minLines: 1, decoration: deco('备注', 'note')),
+        // 付款人与链接（修订第 311 条）
+        TextField(controller: _payer, maxLength: 32, decoration: deco('付款人', 'payer', hint: '可选，如 自己、妈妈')),
+        TextField(
+          controller: _url,
+          maxLength: 300,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: deco('链接', 'url', hint: '可选，管理或退订页面，https://…'),
+        ),
         const SizedBox(height: 8),
         FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '保存中…' : '保存')),
         const SizedBox(height: 8),
