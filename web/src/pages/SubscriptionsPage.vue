@@ -22,8 +22,9 @@ import { fmtMoney, fmtPct } from '../format'
 import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
-  analyze, byCategory, cashflow, catalog, categoryColors, categoryNames, chargeText, cycleNames, currencies, defaultCountry, monthlyCents,
-  monthStart, paymentNames, remindOptions, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend, type Rates, type SubCategory,
+  analyze, billingProgress, byCategory, cashflow, catalog, categoryColors, categoryNames, cycleNames, cyclePay, currencies, daysUntil, defaultCountry,
+  monthlyCents, monthStart, paymentNames, remindOptions, renewText, sortSubs, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend,
+  type Rates, type SubCategory, type SubSort,
 } from '../subscriptions'
 
 const route = useRoute()
@@ -94,12 +95,42 @@ const rateDate = computed(() => (fx.value?.as_of ? ymd(new Date(fx.value.as_of *
 // 列表中用到的外币及其汇率：“1 USD = ¥7.12”
 const usedRates = computed(() => [...new Set(list.value.map((s) => s.currency))].filter((c) => c !== 'CNY')
   .map((c) => ({ c, v: rates.value[c] })))
-const thisMonth = computed(() => spendCny(list.value, rates.value, monthStart(today), monthStart(today, 1)))
-const spentSoFar = computed(() => {
-  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-  return spendCny(list.value, rates.value, new Date(2000, 0, 1), tomorrow)
+
+// ---- 概览卡片（修订第 309 条）：续订日历、账期进度、月均花费与本月待扣 ----
+const WINDOW = 14 // 续订日历显示今天起 14 天
+const upcoming = computed(() => active.value.filter((s) => s.next_charge)
+  .map((s) => ({ s, d: daysUntil(s.next_charge!, today) })).filter((x) => x.d >= 0 && x.d < WINDOW)
+  .sort((a, b) => a.d - b.d))
+// 相距不到 3 天的合成一簇，窄卡片上图标不互相盖住
+const clusters = computed(() => {
+  const out: { d: number; subs: Subscription[] }[] = []
+  for (const x of upcoming.value) {
+    const last = out.at(-1)
+    if (last && x.d - last.d < 3) last.subs.push(x.s)
+    else out.push({ d: x.d, subs: [x.s] })
+  }
+  return out
 })
-const next = computed(() => list.value.find((s) => s.next_charge))
+const tlPos = (d: number) => `${16 + (d / (WINDOW - 1)) * 70}%`
+const dayLabel = (d: number) => {
+  const x = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d)
+  return t('{m} 月 {d} 日', { m: x.getMonth() + 1, d: x.getDate() })
+}
+const nextUp = computed(() => {
+  const s = active.value.filter((x) => x.next_charge && daysUntil(x.next_charge, today) >= 0)
+    .sort((a, b) => a.next_charge!.localeCompare(b.next_charge!))[0]
+  return s ? { s, d: daysUntil(s.next_charge!, today) } : null
+})
+const inDays = (d: number) => (d === 0 ? t('今天') : t('{n} 天后', { n: d }))
+// 账期进度：当前账期已过去的比例，最接近续订的在前
+const progress = computed(() => active.value.map((s) => ({ s, p: billingProgress(s, today) }))
+  .filter((x) => x.p).map((x) => ({ s: x.s, pct: x.p!.pct })).sort((a, b) => b.pct - a.pct))
+const halfPast = computed(() => progress.value.filter((x) => x.pct >= 50).length)
+// 月均 / 年均花费（进行中的订阅按周期折算，人民币）；本月待扣：今天到月底还要扣的
+const yearly = ref(false)
+const dueRest = computed(() => spendCny(list.value, rates.value, today, monthStart(today, 1)))
+const infoOpen = ref(false)
+const logoSrc = (s: Subscription) => (s.logo_version ? subscriptionLogoURL(s) : '')
 
 // ---- 统计 ----
 type Range = 'month' | 'year' | 'all'
@@ -148,33 +179,61 @@ const cash = computed(() => cashflow(list.value, rates.value, today))
 const cashMax = computed(() => Math.max(1, ...cash.value.months.map((m) => m.cents)))
 const monthLabel = (d: Date) => (d.getMonth() === 0 ? String(d.getFullYear()) : d.toLocaleString(locale.value === 'en' ? 'en' : 'zh-CN', { month: 'short' }))
 
-// ---- 列表排列（修订第 237 条）：不分类（按下次扣费日）/ 按类别（类别按目录顺序，组内顺序不变，组头为数量与月均折算） ----
-const grouped = ref(readGrouped())
-function readGrouped() {
+// ---- 列表筛选与排序（修订第 309 条，取代第 237 条的“不分类 / 按类别”）：记在本机 ----
+function readPref(key: string, def: string): string {
   try {
-    return localStorage.getItem('vpsmon.subGrouped') === '1'
+    return localStorage.getItem(key) ?? def
   } catch {
-    return false
+    return def
   }
 }
-function setGrouped(v: boolean) {
-  grouped.value = v
+function writePref(key: string, v: string) {
   try {
-    localStorage.setItem('vpsmon.subGrouped', v ? '1' : '0')
+    localStorage.setItem(key, v)
   } catch {
     /* 隐私模式等不可用时只在本页生效 */
   }
 }
+type Filter = 'all' | 'active' | 'soon' | 'ended' | SubCategory
+const filter = ref<Filter>(readPref('vpsmon.subFilter', 'all') as Filter)
+// 之前选了“按类别”的沿用为按类别排序
+const sortKey = ref<SubSort>(readPref('vpsmon.subSort', readPref('vpsmon.subGrouped', '0') === '1' ? 'category' : 'date') as SubSort)
+const sortDesc = ref(readPref('vpsmon.subSortDesc', '0') === '1')
+const setFilter = (v: Filter) => { filter.value = v; writePref('vpsmon.subFilter', v) }
+const setSort = (v: SubSort) => { sortKey.value = v; writePref('vpsmon.subSort', v) }
+const flipSort = () => { sortDesc.value = !sortDesc.value; writePref('vpsmon.subSortDesc', sortDesc.value ? '1' : '0') }
+const soonOf = (s: Subscription) => !s.ended && !!s.next_charge && daysUntil(s.next_charge, today) >= 0 && daysUntil(s.next_charge, today) <= 7
+const matches = (s: Subscription, f: Filter) =>
+  f === 'all' || (f === 'active' ? !s.ended : f === 'ended' ? s.ended : f === 'soon' ? soonOf(s) : s.category === f)
+const filterOptions = computed(() => {
+  const opts: { v: Filter; label: string; n: number }[] = [
+    { v: 'all', label: t('全部'), n: list.value.length },
+    { v: 'active', label: t('订阅中'), n: active.value.length },
+    { v: 'soon', label: t('7 天内续订'), n: list.value.filter(soonOf).length },
+  ]
+  if (ended.value) opts.push({ v: 'ended', label: t('已结束'), n: ended.value })
+  for (const c of Object.keys(categoryNames) as SubCategory[]) {
+    const n = list.value.filter((s) => s.category === c).length
+    if (n) opts.push({ v: c, label: t(categoryNames[c]), n })
+  }
+  return opts
+})
+const sortNames: Record<SubSort, string> = { date: '日期', price: '价格', name: '名称', category: '类别' }
+const shown = computed(() => sortSubs(list.value.filter((s) => matches(s, filter.value)), sortKey.value, sortDesc.value, rates.value))
 type ListRow = { key: string; s?: Subscription; cat?: SubCategory; count?: number; monthly?: number }
+// 按类别排序时加组头（类别颜色、名称、数量与月均折算）；已结束的在最后单独一组
 const listRows = computed<ListRow[]>(() => {
-  if (!grouped.value) return list.value.map((s) => ({ key: `s${s.id}`, s }))
+  if (sortKey.value !== 'category') return shown.value.map((s) => ({ key: `s${s.id}`, s }))
   const monthly = new Map(ana.value.byCategory.map((x) => [x.key, x.cents]))
   const out: ListRow[] = []
-  for (const cat of Object.keys(categoryNames) as SubCategory[]) {
-    const xs = list.value.filter((s) => s.category === cat)
-    if (!xs.length) continue
-    out.push({ key: `c${cat}`, cat, count: xs.length, monthly: monthly.get(cat) ?? 0 })
-    for (const s of xs) out.push({ key: `s${s.id}`, s })
+  let cur: SubCategory | 'ended' | null = null
+  for (const s of shown.value) {
+    const g = s.ended ? 'ended' : s.category
+    if (g !== cur) {
+      cur = g
+      if (g !== 'ended') out.push({ key: `c${g}`, cat: g, count: shown.value.filter((x) => !x.ended && x.category === g).length, monthly: monthly.get(g) ?? 0 })
+    }
+    out.push({ key: `s${s.id}`, s })
   }
   return out
 })
@@ -374,13 +433,8 @@ async function remove() {
     saving.value = false
   }
 }
-// 列表主金额（修订第 253 条）：人民币（外币按汇率换算，前面加 ≈）；没有汇率时显示原币
-const mainPrice = (s: Subscription) => {
-  if (s.currency === 'CNY') return fmtMoney(s.price_cents, 'CNY')
-  const v = toCny(s.price_cents, s.currency, rates.value)
-  return v == null ? fmtMoney(s.price_cents, s.currency) : `≈ ${fmtMoney(v, 'CNY')}`
-}
-// 不是按月付费的订阅在金额下注明月均（手机 UI 规范 5.1）：“月均 ≈ ¥44.98”，与本月实际扣款分开；“/月”由“月均 {v}”表达，这里不再重复
+// 列表行（修订第 309 条，参考截图）：右侧为原币价格，外币下一行约合人民币，再下一行为付款周期
+// 不是按月付费的订阅，悬停价格可看月均折算（“月均 ≈ ¥44.98”），与本月实际扣款分开
 const monthlyLine = (s: Subscription) => {
   if (s.ended || s.cycle === 'monthly' || s.cycle === 'once') return ''
   const m = monthlyCents(s)
@@ -388,15 +442,10 @@ const monthlyLine = (s: Subscription) => {
   const v = toCny(m, s.currency, rates.value)
   return v == null ? fmtMoney(Math.round(m), s.currency) : `≈ ${fmtMoney(Math.round(v), 'CNY')}`
 }
-// 电脑宽度名称下的一行（修订第 269 条）：类别与备注；按类别排列时类别已在分组标题中，只写备注
-const descText = (s: Subscription) =>
-  [grouped.value ? '' : t(categoryNames[s.category] ?? s.category), s.note.split('\n')[0]].filter(Boolean).join(' · ')
-// 7 天内扣费的短标签（文字，不只靠颜色）
-const soonDays = (s: Subscription) => {
-  if (s.ended || !s.next_charge) return null
-  const d = Math.round((new Date(`${s.next_charge}T00:00:00`).getTime() - today.getTime()) / 86400000)
-  return d >= 0 && d <= 7 ? d : null
-}
+// 电脑宽度在中间多一列：类别（按类别排序时省略）、国家 / 地区 · 支付方式、备注第一行
+const metaText = (s: Subscription) => [sortKey.value === 'category' ? '' : t(categoryNames[s.category] ?? s.category),
+  s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ')
+const progOf = (s: Subscription) => billingProgress(s, today)?.pct ?? null
 // VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
 const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
 // 号码显示：区号 + 按当地习惯分组的号码（+1 650 555 0123、+86 138 0013 8000），其他按每 4 位分组
@@ -568,28 +617,56 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
       </EmptyState>
 
       <template v-else-if="list.length">
-        <!-- 概览 -->
-        <div class="panel strip">
-          <div class="item">
-            <span class="label">{{ t('本月预计扣款') }}</span>
-            <span class="big num">{{ mainText(thisMonth) }}</span>
-            <span class="sub muted num">{{ t('{n} 个订阅本月扣费', { n: thisMonth.items.length }) }} {{ otherText(thisMonth) }}</span>
-          </div>
-          <div class="item">
-            <span class="label">{{ t('订阅中') }}</span>
-            <span class="big num">{{ active.length }}<small> {{ t('个') }}</small></span>
-            <span class="sub muted">{{ ended ? t('共记录 {n} 个，已结束 {e} 个', { n: list.length, e: ended }) : t('共记录 {n} 个', { n: list.length }) }}</span>
-          </div>
-          <div class="item">
-            <span class="label">{{ t('截至目前已扣款') }}</span>
-            <span class="big num">{{ mainText(spentSoFar) }}</span>
-            <span v-if="otherText(spentSoFar)" class="sub muted num">{{ otherText(spentSoFar) }}</span>
-          </div>
-          <div v-if="next" class="item">
-            <span class="label">{{ t('下次扣费') }}</span>
-            <span class="big">{{ next.name }}</span>
-            <span class="sub muted num">{{ next.next_charge }} · {{ fmtMoney(next.price_cents, next.currency) }}</span>
-          </div>
+        <!-- 概览（修订第 309 条，参考项目所有者提供的截图）：续订日历、账期进度两张小卡片，下方为月均花费与本月待扣 -->
+        <div class="ov">
+          <section class="panel ov-card">
+            <header class="ov-head"><h2>{{ t('续订日历') }}</h2><span class="badge num">{{ t('{n} 项', { n: upcoming.length }) }}</span></header>
+            <div class="tl" role="img" :aria-label="t('14 天内有 {n} 项续订', { n: upcoming.length })">
+              <span class="tl-line" />
+              <span class="tl-today" />
+              <span v-for="c in clusters" :key="c.d" class="tl-cluster" :style="{ left: tlPos(c.d) }"
+                :title="`${dayLabel(c.d)} · ${c.subs.map((x) => x.name).join('、')}`">
+                <SubAvatar v-for="x in c.subs.slice(0, 2)" :key="x.id" :brand="x.brand" :name="x.name" :size="28" :src="logoSrc(x)" class="tl-av" />
+                <small v-if="c.subs.length > 2" class="tl-more num">+{{ c.subs.length - 2 }}</small>
+              </span>
+              <small v-if="clusters.length" class="tl-date muted num" :style="{ left: tlPos(clusters[0].d) }">{{ dayLabel(clusters[0].d) }}</small>
+            </div>
+            <div class="tl-axis small"><span class="accent-text">{{ t('今天') }}</span><span class="muted">{{ t('{n} 天后', { n: WINDOW - 1 }) }}</span></div>
+            <template v-if="nextUp">
+              <span class="small muted">{{ t('下一项续订') }}</span>
+              <b class="ellipsis">{{ nextUp.s.name }}</b>
+              <span class="small accent-text">{{ nextUp.d < WINDOW ? inDays(nextUp.d) : dayLabel(nextUp.d) }}</span>
+            </template>
+            <span v-else class="small muted">{{ t('没有待续订的订阅') }}</span>
+          </section>
+          <section class="panel ov-card">
+            <header class="ov-head"><h2>{{ t('账期进度') }}</h2><span class="badge num">{{ t('{n} 项', { n: progress.length }) }}</span></header>
+            <ul class="pg">
+              <li v-for="x in progress.slice(0, 4)" :key="x.s.id" :title="`${x.s.name} · ${t('本期已过 {p}', { p: fmtPct(x.pct) })}`">
+                <SubAvatar :brand="x.s.brand" :name="x.s.name" :size="24" :src="logoSrc(x.s)" />
+                <span class="prog"><span :style="{ width: `${x.pct}%`, background: categoryColors[x.s.category] }" /></span>
+              </li>
+            </ul>
+            <span class="small muted pg-foot">{{ progress.length ? t('{n} 项已过半', { n: halfPast }) : t('没有按周期扣费的订阅') }}</span>
+          </section>
+          <section class="panel ov-money">
+            <button type="button" class="money" :title="t('切换月均 / 年均')" @click="yearly = !yearly">
+              <span class="money-label"><Icon name="calendar" :size="16" />{{ yearly ? t('年均花费') : t('月均花费') }}<Icon name="swap" :size="14" class="muted" /></span>
+              <b class="money-v num">{{ fmtMoney(yearly ? ana.monthly * 12 : ana.monthly, 'CNY') }}</b>
+              <small v-if="ana.missing.length" class="muted">{{ t('不含 {c}（缺少汇率）', { c: ana.missing.join('、') }) }}</small>
+            </button>
+            <div class="money">
+              <span class="money-label"><Icon name="clock" :size="16" />{{ t('本月待扣') }}
+                <button type="button" class="info-btn" :aria-expanded="infoOpen" :aria-label="t('说明')" @click="infoOpen = !infoOpen"><Icon name="info" :size="16" /></button></span>
+              <b class="money-v num">{{ mainText(dueRest) }}</b>
+              <small v-if="otherText(dueRest)" class="muted num">{{ otherText(dueRest) }}</small>
+            </div>
+            <p v-if="infoOpen" class="small muted info-text">
+              {{ t('月均花费：订阅中的订阅按周期折算为每月（年付 ÷ 12、季付 ÷ 3…），换算为人民币；一次性付费不计入。年均为月均 × 12。') }}
+              {{ t('本月待扣：从今天到月底还要扣的金额。') }}
+              {{ t('订阅中 {n} 个，共记录 {m} 个。', { n: active.length, m: list.length }) }}
+            </p>
+          </section>
         </div>
 
         <div class="view-bar">
@@ -598,52 +675,69 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <button type="button" role="tab" :class="{ active: view === 'stats' }" @click="setView('stats')">{{ t('统计') }}</button>
             <button type="button" role="tab" :class="{ active: view === 'analysis' }" @click="setView('analysis')">{{ t('分析') }}</button>
           </div>
-          <!-- 列表排列（修订第 237 条）：不分类 / 按类别，记在本机 -->
-          <div v-if="view === 'list'" class="segmented" role="group" :aria-label="t('排列方式')">
-            <button type="button" :class="{ active: !grouped }" :aria-pressed="!grouped" @click="setGrouped(false)">{{ t('不分类') }}</button>
-            <button type="button" :class="{ active: grouped }" :aria-pressed="grouped" @click="setGrouped(true)">{{ t('按类别') }}</button>
-          </div>
         </div>
 
-        <!-- 列表 -->
-        <ul v-if="view === 'list'" class="subs">
-          <template v-for="r in listRows" :key="r.key">
-          <li v-if="r.cat" class="cat-head">
-            <i :style="{ background: categoryColors[r.cat] }" />
-            <b>{{ t(categoryNames[r.cat]) }}</b>
-            <span class="muted small">{{ t('{n} 个', { n: r.count }) }}</span>
-            <span v-if="r.monthly" class="muted small num cat-sum">{{ t('月均 {v}', { v: fmtMoney(r.monthly, 'CNY') }) }}</span>
-          </li>
-          <template v-else>
-          <li v-for="s in [r.s!]" :key="s.id">
-            <!-- 三层信息（修订第 253 条，UI-012）：名称 / 地区 · 支付方式 / 扣费说明；右侧人民币为主金额，原币在下一行。
-                 开始日期、VPS 规格与备注放在编辑页（悬停可看备注）。
-                 电脑宽度（修订第 269 条，PC 轻量优化 S-02）：同一组元素按列表实际宽度排成“服务信息 / 付款与日期 / 金额”三段，手机仍是上下三层 -->
-            <button type="button" class="panel sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
-              <SubAvatar :brand="s.brand" :name="s.name" :src="s.logo_version ? subscriptionLogoURL(s) : ''" />
-              <span class="sub-main">
-              <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
-                v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
-              <span v-if="descText(s)" class="sub-desc small muted">{{ descText(s) }}</span>
-              <span v-if="s.country || s.payment" class="small muted meta-line">
-                <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
-                <span class="ellipsis">{{ [s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ') }}</span>
-              </span>
-              <span class="sub-charge small muted">{{ chargeText(s, today) }}</span>
-              </span>
-              <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
-                @click.stop>{{ t('监控中') }}</RouterLink>
-              <span class="sub-price">
-                <b class="num">{{ mainPrice(s) }}<small class="muted cyc">/{{ t(cycleShort[s.cycle] ?? s.cycle) }}</small></b>
-                <span v-if="s.currency !== 'CNY'" class="small muted num">{{ fmtMoney(s.price_cents, s.currency) }}</span>
-                <span v-if="monthlyLine(s)" class="small muted num" :title="t('按周期折算的月均，不是本月扣款')">{{ t('月均 {v}', { v: monthlyLine(s) }) }}</span>
-                <span v-if="soonDays(s) != null" class="soon small">{{ soonDays(s) === 0 ? t('今天扣费') : t('{n} 天后扣费', { n: soonDays(s)! }) }}</span>
-              </span>
-            </button>
-          </li>
-          </template>
-          </template>
-        </ul>
+        <template v-if="view === 'list'">
+          <!-- 筛选与排序（修订第 309 条）：记在本机 -->
+          <div class="list-bar">
+            <label class="filter-pick">
+              <span class="sr-only">{{ t('筛选') }}</span>
+              <select :value="filter" @change="setFilter(($event.target as HTMLSelectElement).value as Filter)">
+                <option v-for="o in filterOptions" :key="o.v" :value="o.v">{{ o.label }}（{{ o.n }}）</option>
+              </select>
+              <span class="filter-text" aria-hidden="true">{{ filterOptions.find((o) => o.v === filter)?.label ?? t('全部') }}<Icon name="chevron-down" :size="20" /></span>
+            </label>
+            <span class="sort-pick">
+              <label class="sort-key">
+                <span class="sr-only">{{ t('排序') }}</span>
+                <select :value="sortKey" @change="setSort(($event.target as HTMLSelectElement).value as SubSort)">
+                  <option v-for="(n, k) in sortNames" :key="k" :value="k">{{ t(n) }}</option>
+                </select>
+                <span aria-hidden="true">{{ t(sortNames[sortKey]) }}</span>
+              </label>
+              <button type="button" class="icon-btn" :aria-label="sortDesc ? t('倒序') : t('正序')" :title="sortDesc ? t('倒序') : t('正序')" @click="flipSort">
+                <Icon :name="sortDesc ? 'arrow-down' : 'arrow-up'" :size="18" /></button>
+            </span>
+          </div>
+          <ul class="subs panel">
+            <template v-for="r in listRows" :key="r.key">
+            <li v-if="r.cat" class="cat-head">
+              <i :style="{ background: categoryColors[r.cat] }" />
+              <b>{{ t(categoryNames[r.cat]) }}</b>
+              <span class="muted small">{{ t('{n} 个', { n: r.count }) }}</span>
+              <span v-if="r.monthly" class="muted small num cat-sum">{{ t('月均 {v}', { v: fmtMoney(r.monthly, 'CNY') }) }}</span>
+            </li>
+            <template v-else>
+            <li v-for="s in [r.s!]" :key="s.id" class="sub-li">
+              <!-- 行（修订第 309 条）：图标 | 名称、续订说明、本期进度条 | 原币价格、约合人民币、付款周期 | 箭头；电脑宽度在中间多一列类别、地区与支付方式 -->
+              <button type="button" class="sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
+                <SubAvatar :brand="s.brand" :name="s.name" :size="44" :src="logoSrc(s)" />
+                <span class="sub-main">
+                  <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
+                    v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
+                  <span class="sub-renew" :class="{ soon: soonOf(s) }">{{ renewText(s, today) }}</span>
+                  <span v-if="progOf(s) != null" class="prog" :title="t('本期已过 {p}', { p: fmtPct(progOf(s)!) })">
+                    <span :style="{ width: `${progOf(s)}%`, background: categoryColors[s.category] }" /></span>
+                </span>
+                <span v-if="metaText(s)" class="sub-meta small muted">
+                  <img v-if="s.country && flagUrl(s.country)" :src="flagUrl(s.country)" alt="" class="flag" />
+                  <span class="ellipsis">{{ metaText(s) }}</span>
+                </span>
+                <RouterLink v-if="s.category === 'vps' && nodeOf(s)" :to="`/servers/${nodeOf(s)!.id}`" class="node-link small" :title="t('已接入监控：{name}', { name: nodeOf(s)!.name })"
+                  @click.stop>{{ t('监控中') }}</RouterLink>
+                <span class="sub-price" :title="monthlyLine(s) ? t('月均 {v}', { v: monthlyLine(s) }) : undefined">
+                  <b class="num">{{ fmtMoney(s.price_cents, s.currency) }}</b>
+                  <span v-if="cnyText(s.price_cents, s.currency)" class="small muted num">{{ cnyText(s.price_cents, s.currency) }}</span>
+                  <span class="small muted cyc-line">{{ t(cyclePay[s.cycle]) }}<Icon v-if="s.cycle !== 'once'" name="repeat" :size="13" /></span>
+                </span>
+                <Icon name="chevron-right" :size="18" class="muted chev" />
+              </button>
+            </li>
+            </template>
+            </template>
+            <li v-if="!listRows.length" class="muted small empty-row">{{ t('没有符合筛选条件的订阅。') }}</li>
+          </ul>
+        </template>
 
         <!-- 分析（修订第 223 条）：进行中的订阅折算为月费（人民币） -->
         <section v-else-if="view === 'analysis'" class="panel stats">
@@ -771,55 +865,90 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 
 <style scoped>
 
-/* 概览：与仪表板总览同一版式 */
-.strip { display: flex; flex-wrap: wrap; padding: var(--space-3) 0; margin-bottom: var(--space-3); }
-.item { flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-4); }
-.item + .item { border-left: 1px solid var(--border); }
-.label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
-.big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.big small { font-size: var(--font-xs); font-weight: var(--weight-regular); color: var(--text-muted); }
-.sub { font-size: var(--font-xs); line-height: var(--line-xs); }
+/* 概览卡片（修订第 309 条）：续订日历、账期进度并排，月均花费与本月待扣在下方；宽屏三张一行 */
+.ov { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.ov-money { grid-column: 1 / -1; }
+@media (min-width: 1000px) { .ov { grid-template-columns: repeat(3, minmax(0, 1fr)); } .ov-money { grid-column: auto; } }
+.ov-card { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-4); min-width: 0; border-radius: var(--radius-md); }
+.ov-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ov-head h2 { margin: 0; font-size: var(--font-md); line-height: var(--line-md); }
+.badge { padding: 0 var(--space-2); border-radius: var(--radius-full); font-size: var(--font-xs); line-height: var(--line-xs);
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); white-space: nowrap; }
+.accent-text { color: var(--accent); }
+/* 续订日历：今天起 14 天的时间轴，相近的续订合成一簇 */
+.tl { position: relative; height: 52px; }
+.tl-line { position: absolute; left: 4%; right: 4%; top: 18px; border-top: 2px dotted var(--border); }
+.tl-today { position: absolute; left: 4%; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
+.tl-cluster { position: absolute; top: 4px; display: flex; align-items: center; transform: translateX(-50%); }
+.tl-av { box-shadow: 0 0 0 2px var(--surface); }
+.tl-av + .tl-av { margin-left: -10px; }
+.tl-more { margin-left: 2px; font-size: var(--font-xs); color: var(--text-muted); }
+.tl-date { position: absolute; top: 36px; transform: translateX(-50%); font-size: var(--font-xs); white-space: nowrap; }
+.tl-axis { display: flex; justify-content: space-between; margin-bottom: var(--space-2); }
+/* 账期进度 */
+.pg { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); flex: 1; }
+.pg li { display: flex; align-items: center; gap: var(--space-2); }
+.pg .prog { flex: 1; }
+.pg-foot { margin-top: var(--space-2); }
+.prog { display: block; height: 6px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; }
+.prog span { display: block; height: 100%; border-radius: var(--radius-full); }
+/* 月均花费与本月待扣 */
+.ov-money { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--space-3) 0; border-radius: var(--radius-md); }
+.money { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: 0 var(--space-4); text-align: left;
+  background: none; border: 0; color: var(--text); font: inherit; }
+.money + .money { border-left: 1px solid var(--border); }
+button.money { cursor: pointer; }
+button.money:hover { filter: none; }
+.money-label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); font-size: var(--font-sm); }
+.money-v { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-btn { background: none; border: 0; padding: 0 var(--space-1); color: var(--text-muted); min-height: 0; display: inline-flex; }
+.info-text { grid-column: 1 / -1; margin: var(--space-2) var(--space-4) 0; }
 .view-tabs { margin-bottom: var(--space-3); }
 
 /* 列表 */
 .cash-sum { margin: 0 0 var(--space-2); }
-.view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
 .view-bar .view-tabs { margin-bottom: 0; }
-.cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) 0 0; } /* 分类标题与下方卡片左右边界对齐（修订第 269 条，S-04） */
-.cat-head:first-child { padding-top: 0; }
+.list-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-2) 0 var(--space-3); }
+/* 筛选与排序：原生下拉框盖在文字上（透明），读屏与键盘照常使用 */
+.filter-pick, .sort-key { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.filter-pick select, .sort-key select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.filter-text { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); }
+.sort-pick { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); }
+.icon-btn { background: none; border: 0; padding: var(--space-1); color: var(--text-muted); min-height: 0; display: inline-flex; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cat-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-1); }
 .cat-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .cat-head .cat-sum { margin-left: auto; }
-.subs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-/* 订阅行（修订第 269 条）。手机与较窄的列表：图标 | 名称、地区 · 支付方式、扣费说明上下三层 | 金额（与之前相同）；
-   列表宽度 ≥ 720px（按列表实际宽度判断，不按窗口，侧边栏展开时也不挤）：服务信息 / 付款与日期 / 金额三段，行更矮、中间不再空着。
-   两种排列用同一组元素：宽时 .sub-main 不再成块（display: contents），其中各行直接放进网格的对应位置 */
-.subs { container: subs / inline-size; }
-.sub-row { width: 100%; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); text-align: left;
-  color: var(--text); font: inherit; cursor: pointer; }
-.sub-desc { display: none; }
-@container subs (min-width: 720px) {
-  .sub-row { display: grid; grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 1fr) auto minmax(132px, auto); gap: 2px var(--space-5);
-    grid-template-areas: "av name meta link price" "av desc charge link price"; align-content: center; padding: var(--space-3) var(--space-5); min-height: 76px; }
-  .sub-row .sub-main { display: contents; }
-  .sub-row > .sub-avatar { grid-area: av; }
-  .sub-name { grid-area: name; font-size: var(--font-lg); line-height: var(--line-lg); min-width: 0; }
-  .sub-desc { grid-area: desc; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .meta-line { grid-area: meta; }
-  .sub-charge { grid-area: charge; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .node-link { grid-area: link; }
-  .sub-row .sub-price { grid-area: price; max-width: none; }
-}
-@media (hover: hover) { .sub-row:hover { border-color: var(--text-muted); filter: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
+/* 订阅行（修订第 309 条）：一张卡片内的行，行间细线（从名称处开始，与截图一致） */
+.subs { list-style: none; margin: 0; padding: var(--space-1) 0; display: flex; flex-direction: column; border-radius: var(--radius-md);
+  container: subs / inline-size; }
+/* 行间细线从名称处开始到右侧，与截图一致 */
+.sub-li + .sub-li .sub-row::before { content: ''; position: absolute; top: 0; left: calc(var(--space-4) + 44px + var(--space-3)); right: var(--space-3);
+  border-top: 1px solid var(--border); }
+.sub-row { position: relative; width: 100%; display: flex; align-items: stretch; gap: var(--space-3); padding: 0 var(--space-3) 0 var(--space-4); text-align: left;
+  background: none; border: 0; border-radius: 0; color: var(--text); font: inherit; cursor: pointer; min-height: 0; }
+.sub-row > .sub-avatar { align-self: center; flex: none; }
+.sub-row > .chev { align-self: center; flex: none; }
+.sub-row > .node-link { align-self: center; }
+@media (hover: hover) { .sub-row:hover { background: var(--surface-2); filter: none; } }
 .sub-row.ended { opacity: .5; }
-.sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: var(--space-3) 0; }
+.sub-name { font-size: var(--font-lg); line-height: var(--line-lg); }
+.sub-renew { font-size: var(--font-md); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-renew.soon { color: var(--warn); }
+.sub-main .prog { width: min(100%, 220px); height: 4px; margin-top: 3px; }
+.sub-meta { display: none; }
+.sub-price { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; text-align: right;
+  flex: none; max-width: 45%; padding: var(--space-3) 0; }
+.sub-price b { font-size: var(--font-lg); line-height: var(--line-lg); }
+.cyc-line { display: inline-flex; align-items: center; gap: 4px; }
+@container subs (min-width: 720px) {
+  .sub-meta { display: flex; align-items: center; gap: 4px; flex: 0 1 34%; min-width: 0; padding: var(--space-3) 0; }
+}
 .id-inline { margin-left: var(--space-2); font-weight: normal; color: var(--text-muted); font-size: var(--font-sm); }
-.cyc { font-weight: normal; font-size: var(--font-xs); }
-.soon { white-space: nowrap; padding: 0 6px; border-radius: var(--radius-full); color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
-.sub-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex: 0 1 auto; max-width: 48%; min-width: 0; }
-/* 窄屏不重叠（修订第 237 条）：左侧每行超出时省略，右侧扣费说明可换行 */
-.sub-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub-price > span { white-space: normal; overflow-wrap: anywhere; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.empty-row { padding: var(--space-4); }
 
 /* 统计 */
 .stats { padding: var(--space-4) var(--space-5); }
@@ -909,8 +1038,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
   background: color-mix(in srgb, var(--ok) 12%, transparent); text-decoration: none; }
 .del { margin-left: auto; }
 @media (max-width: 600px) {
-  .item { flex-basis: 40%; padding: var(--space-1) var(--space-3); }
-  .item + .item { border-left: 0; }
+  .money-v { font-size: var(--font-lg); line-height: var(--line-lg); }
+  .money { padding: 0 var(--space-3); }
   .donut-row { justify-content: center; }
   .bars { gap: var(--space-1); }
   .bar-label { font-size: 10px; }

@@ -5,7 +5,7 @@ import {
   Activity, AlignLeft, Cloud, CreditCard, Globe, LayoutDashboard, Settings, ArrowDown, ArrowDownUp, ArrowLeft, ArrowUp, CalendarClock, ChartLine, Clock, Cpu, Eye, EyeOff, GripVertical, HardDrive,
   Layers, LogOut, MemoryStick, Monitor, Moon, Pencil, Plug, Plus, Power, Radio, Search, SquareActivity,
   Sun, Terminal, Thermometer, User, KeyRound, LockKeyhole, ShieldCheck, Smartphone, Users, ChevronRight, Bell, Download, ScrollText,
-  PanelLeftClose, PanelLeftOpen, ListFilter, ArrowUpDown, Check, RefreshCw, SlidersHorizontal,
+  PanelLeftClose, PanelLeftOpen, ListFilter, ArrowUpDown, Check, RefreshCw, SlidersHorizontal, Info, Repeat, ArrowLeftRight, ChevronDown,
 } from '@lucide/vue'
 
 const icons = {
@@ -28,6 +28,8 @@ const icons = {
   filter: ListFilter, sort: ArrowUpDown, check: Check,
   // 卡片显示字段（修订第 288 条）
   sliders: SlidersHorizontal,
+  // 订阅概览与列表（修订第 309 条）
+  info: Info, repeat: Repeat, swap: ArrowLeftRight, 'chevron-down': ChevronDown,
 }
 
 export type IconName = keyof typeof icons

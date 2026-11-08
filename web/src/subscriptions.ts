@@ -387,3 +387,70 @@ export function analyze(list: Subscription[], rates: Rates): Analysis {
   out.top.sort((a, b) => b.cents - a.cents)
   return out
 }
+
+// ---- 概览与列表（修订第 309 条，参考 Wallos 与项目所有者提供的截图） ----
+
+/** 从 today 到日期字符串（YYYY-MM-DD）的日历天数 */
+export function daysUntil(d: string, today: Date): number {
+  return Math.round((parse(d).getTime() - today.getTime()) / 86400000)
+}
+
+/** 当前账期：上次扣费（或开始日期）到下次扣费，pct 为已过去的比例（0～100）；一次性、已结束、没有下次扣费时为 null */
+export function billingProgress(s: Subscription, today: Date): { from: Date; to: Date; pct: number } | null {
+  if (s.ended || s.cycle === 'once' || !s.next_charge) return null
+  const to = parse(s.next_charge)
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+  const past = chargesBetween(s, new Date(today.getFullYear() - 2, today.getMonth(), today.getDate()), tomorrow)
+  const from = past.at(-1) ?? parse(s.start_date)
+  const span = to.getTime() - from.getTime()
+  if (span <= 0) return null
+  const pct = Math.min(100, Math.max(0, ((today.getTime() - from.getTime()) / span) * 100))
+  return { from, to, pct }
+}
+
+/** 列表第二行的续订说明：今天续订 / N 天后续订（7 天内）/ M 月 D 日续订 / 试用中 / 已结束 */
+export function renewText(s: Subscription, today: Date): string {
+  if (s.ended) return t('已结束')
+  const first = parse(s.start_date)
+  first.setDate(first.getDate() + s.trial_days)
+  if (s.trial_days > 0 && first > today) return t('试用中，{m} 月 {d} 日开始扣费', { m: first.getMonth() + 1, d: first.getDate() })
+  if (!s.next_charge) return s.cycle === 'once' ? t('一次性，已扣费') : t('没有下次扣费')
+  const n = daysUntil(s.next_charge, today)
+  const d = parse(s.next_charge)
+  const v = { n, y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() }
+  const otherYear = d.getFullYear() !== today.getFullYear()
+  if (s.cycle === 'once') {
+    if (n === 0) return t('今天扣费')
+    if (n <= 7) return t('{n} 天后扣费', v)
+    return otherYear ? t('{y} 年 {m} 月 {d} 日扣费', v) : t('{m} 月 {d} 日扣费', v)
+  }
+  if (n === 0) return t('今天续订')
+  if (n <= 7) return t('{n} 天后续订', v)
+  return otherYear ? t('{y} 年 {m} 月 {d} 日续订', v) : t('{m} 月 {d} 日续订', v)
+}
+
+/** 付款周期的短名：月付、年付… */
+export const cyclePay: Record<SubCycle, string> = {
+  weekly: '周付', monthly: '月付', quarterly: '季付', semiannually: '半年付', annually: '年付', once: '一次性',
+}
+
+/** 列表排序键 */
+export type SubSort = 'date' | 'price' | 'name' | 'category'
+
+/** 列表排序：已结束的始终在最后；price 按月均折算的人民币（没有汇率的按原币）；date 没有下次扣费的排在后面 */
+export function sortSubs(list: Subscription[], key: SubSort, desc: boolean, rates: Rates): Subscription[] {
+  const monthlyCny = (s: Subscription) => {
+    const m = s.cycle === 'once' ? s.price_cents : monthlyCents(s)
+    return toCny(m, s.currency, rates) ?? m
+  }
+  const order = Object.keys(categoryNames)
+  const cmp = (a: Subscription, b: Subscription): number => {
+    switch (key) {
+      case 'price': return monthlyCny(a) - monthlyCny(b)
+      case 'name': return a.name.localeCompare(b.name)
+      case 'category': return order.indexOf(a.category) - order.indexOf(b.category) || (a.next_charge || '9').localeCompare(b.next_charge || '9')
+      default: return (a.next_charge || '9999').localeCompare(b.next_charge || '9999')
+    }
+  }
+  return [...list].sort((a, b) => Number(a.ended) - Number(b.ended) || (desc ? -cmp(a, b) : cmp(a, b)))
+}
