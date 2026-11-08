@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:vpsmon_app/api.dart';
 import 'package:vpsmon_app/pages/subscriptions_page.dart';
 import 'package:vpsmon_app/session.dart';
+import 'package:vpsmon_app/subscriptions.dart';
 
 Session _session({required bool subs}) => Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
     refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all', scopeValue: '',
@@ -68,11 +69,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(posted.last['price_cents'], 1549);
     expect(find.textContaining('已新增“Netflix”'), findsOneWidget);
-    expect(find.text('Netflix'), findsOneWidget); // 列表已刷新
+    expect(_row('Netflix'), findsOneWidget); // 列表已刷新
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('长按修改 / 删除（修订第 218 条）：修改沿用表单中没有的 VPS 配置；快到期的排最前并标红点', (tester) async {
+  testWidgets('长按修改 / 删除（修订第 218 条）：修改沿用表单中没有的 VPS 配置；按日期排序时近的在前', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 812 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -111,11 +112,11 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: true), MemorySessionStore(), client: client), onRevoked: () {})));
     await tester.pump();
     await tester.pump();
-    expect(tester.getTopLeft(find.text('马上续费')).dy, lessThan(tester.getTopLeft(find.text('远期订阅')).dy));
-    expect(find.textContaining('快到期 1 个'), findsOneWidget);
+    expect(tester.getTopLeft(_row('马上续费')).dy, lessThan(tester.getTopLeft(_row('远期订阅')).dy));
+    expect(find.text('3 天后续订'), findsOneWidget); // 7 天内：续订说明为“N 天后续订”（修订第 309 条）
 
     // 修改：只改价格，VPS 的 CPU、内存等沿用原值
-    await tester.longPress(find.text('我的 VPS'));
+    await tester.longPress(_row('我的 VPS'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('修改'));
     await tester.pumpAndSettle();
@@ -133,14 +134,14 @@ void main() {
     expect((putBody!['vps'] as Map)['location'], '东京');
 
     // 删除：确认后调用接口并刷新
-    await tester.longPress(find.text('远期订阅'));
+    await tester.longPress(_row('远期订阅'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, '删除'));
     await tester.pumpAndSettle();
     expect(calls, contains('DELETE /api/v1/app/subscriptions/1'));
-    expect(find.text('远期订阅'), findsNothing);
+    expect(_row('远期订阅'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -153,7 +154,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
     await tester.pump();
     await tester.pump();
-    await tester.longPress(find.text('测试订阅'));
+    await tester.longPress(_row('测试订阅'));
     await tester.pumpAndSettle();
     expect(find.text('修改'), findsNothing);
   });
@@ -186,39 +187,62 @@ void main() {
     expect(find.textContaining('已顺延到 2027-11-02'), findsOneWidget);
   });
 
-  testWidgets('订阅列表排列（修订第 237 条）：按类别时有类别组头，切换按钮回调新的值', (tester) async {
+  testWidgets('订阅列表筛选与排序（修订第 309 条）：按类别排序时有组头；筛选、正序 / 倒序回调新的值', (tester) async {
     tester.view.physicalSize = const Size(375 * 3, 1400 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
-    Map<String, dynamic> sub(int id, String name, String category) => {
-          'id': id, 'name': name, 'brand': '', 'category': category, 'price_cents': 1000, 'currency': 'CNY', 'cycle': 'monthly',
+    Map<String, dynamic> sub(int id, String name, String category, {int price = 1000}) => {
+          'id': id, 'name': name, 'brand': '', 'category': category, 'price_cents': price, 'currency': 'CNY', 'cycle': 'monthly',
           'trial_days': 0, 'start_date': '2026-01-01', 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [],
           'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
           'next_charge': '2099-01-0$id', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0,
         };
-    final client = MockClient((req) async => http.Response.bytes(utf8.encode(jsonEncode(
-        {'limited': false, 'items': [sub(1, '甲影音', 'video'), sub(2, '乙主机', 'vps'), sub(3, '丙影音', 'video')]})), 200));
+    final client = MockClient((req) async => http.Response.bytes(utf8.encode(jsonEncode({
+          'limited': false,
+          'items': [sub(1, '甲影音', 'video'), sub(2, '乙主机', 'vps', price: 5000), sub(3, '丙影音', 'video', price: 3000)]
+        })), 200));
     final api = ApiClient(_session(subs: false), MemorySessionStore(), client: client);
-    bool? toggled;
-    Future<void> show(bool grouped) async {
-      await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: api, onRevoked: () {}, grouped: grouped, onGrouped: (v) => toggled = v)));
+    SubListView? changed;
+    Future<void> show(SubListView v) async {
+      await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(key: UniqueKey(), api: api, onRevoked: () {}, view: v, onView: (x) => changed = x)));
       await tester.pump();
       await tester.pump();
     }
 
-    await show(false);
-    expect(find.text('2 个'), findsNothing);
-    expect(find.widgetWithText(TextButton, '不分类'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('sub-grouping')));
-    expect(toggled, true);
+    double y(String t) => tester.getTopLeft(_row(t)).dy;
 
-    await show(true);
-    // 组头：类别名称旁的数量与月均；影音 2 个在 VPS 1 个之前（目录顺序）
+    // 按日期：甲、乙、丙
+    await show(const SubListView());
+    expect(find.text('2 个'), findsNothing);
+    expect(y('甲影音'), lessThan(y('乙主机')));
+    expect(y('乙主机'), lessThan(y('丙影音')));
+    await tester.tap(find.byKey(const ValueKey('sub-desc')));
+    expect(changed?.desc, true);
+
+    // 按价格倒序：乙（50）、丙（30）、甲（10）
+    await show(const SubListView(sort: 'price', desc: true));
+    expect(y('乙主机'), lessThan(y('丙影音')));
+    expect(y('丙影音'), lessThan(y('甲影音')));
+
+    // 按类别：组头为数量与月均；影音（2 个）在 VPS（1 个）之前（目录顺序）
+    await show(const SubListView(sort: 'category'));
     expect(find.text('2 个'), findsOneWidget);
     expect(find.text('1 个'), findsOneWidget);
-    expect(find.text('月均 ¥20.00'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('丙影音')).dy, lessThan(tester.getTopLeft(find.text('乙主机')).dy));
-    await tester.tap(find.byKey(const ValueKey('sub-grouping')));
-    expect(toggled, false);
+    expect(find.text('月均 ¥40.00'), findsOneWidget);
+    expect(y('丙影音'), lessThan(y('乙主机')));
+
+    // 筛选：只看 VPS
+    await show(const SubListView(filter: 'vps'));
+    expect(_row('甲影音'), findsNothing);
+    expect(_row('乙主机'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sub-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部（3）'));
+    await tester.pumpAndSettle();
+    expect(changed?.filter, 'all');
+    expect(_row('甲影音'), findsOneWidget);
   });
 }
+
+/// 列表中的行（概览卡片的“下一项续订”也会显示名称，修订第 309 条）
+Finder _row(String name) => find.descendant(of: find.byKey(const ValueKey('sub-list')), matching: find.text(name));

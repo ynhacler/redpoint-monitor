@@ -1,5 +1,7 @@
-// 订阅（设计 47，修订第 213 条）：与 Web 相同的订阅列表，只读。顶部是每月 / 每年花费（按币种），
-// 可按类别筛选；7 天内扣费或结束的排在最前并在右上角标红点（修订第 218 条）；点开看号码、VPS 配置与备注。
+// 订阅（设计 47，修订第 213 条）：与 Web 相同的订阅列表，只读；点开看号码、VPS 配置与备注。
+// 修订第 309 条（与 Web 相同，参考 Wallos 与项目所有者提供的截图）：顶部为续订日历、账期进度与月均花费 / 本月待扣三张卡片；
+// 列表可筛选（全部 / 订阅中 / 7 天内续订 / 已结束 / 类别）与排序（日期 / 价格 / 名称 / 类别，可倒序），记在本机；
+// 每行为续订说明与本期进度条，右侧原币价格、约合人民币与付款周期。
 // AK 允许记录订阅的设备可新增，长按一条可修改或删除（修订第 217、218 条，约束 5 的唯一写入例外）。
 import 'dart:typed_data';
 
@@ -23,13 +25,13 @@ import 'subscription_analysis_page.dart';
 class SubscriptionsPage extends StatefulWidget {
   /// 创建订阅页
   const SubscriptionsPage(
-      {super.key, required this.api, required this.onRevoked, this.privacy = false, this.embedded = false, this.grouped = false, this.onGrouped});
+      {super.key, required this.api, required this.onRevoked, this.privacy = false, this.embedded = false, this.view = const SubListView(), this.onView});
 
-  /// 按类别分组显示（修订第 237 条）；为 false 时不分类
-  final bool grouped;
+  /// 筛选与排序（修订第 309 条，本机偏好）
+  final SubListView view;
 
-  /// 切换排列方式；为空时不显示切换按钮
-  final ValueChanged<bool>? onGrouped;
+  /// 改了筛选或排序；为空时只在本页生效
+  final ValueChanged<SubListView>? onView;
 
   /// 嵌在“工具”页的分页中，不显示自己的标题栏（修订第 216 条）
   final bool embedded;
@@ -57,8 +59,14 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   List<Subscription>? _items;
   bool _limited = false;
   String? _error;
-  String _category = '';
   FxRates _fx = const FxRates();
+  late SubListView _view = widget.view;
+  bool _yearly = false;
+
+  void _setView(SubListView v) {
+    setState(() => _view = v);
+    widget.onView?.call(v);
+  }
 
   @override
   void initState() {
@@ -132,21 +140,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     final colors = StatusColors.of(context);
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
     final items = _items;
-    final cats = items == null ? <String>[] : [for (final k in categoryNames.keys) if (items.any((s) => s.category == k)) k];
-    if (_category.isNotEmpty && !cats.contains(_category)) _category = '';
-    final shown = items?.where((s) => _category.isEmpty || s.category == _category).toList() ?? [];
-    // 快到期（7 天内扣费或结束）的排在最前，其余按面板的顺序（下次扣费日）；已结束的放最后
-    final active = shown.where((s) => !s.ended).toList();
-    final soonOf = {for (final s in active) s.id: dueSoonDays(s)};
-    final order = {for (final (i, s) in active.indexed) s.id: i};
-    active.sort((a, b) {
-      final x = soonOf[a.id], y = soonOf[b.id];
-      if (x != null && y != null && x != y) return x.compareTo(y);
-      if ((x == null) != (y == null)) return x == null ? 1 : -1;
-      return order[a.id]!.compareTo(order[b.id]!);
-    });
-    final ended = shown.where((s) => s.ended).toList();
-    final soon = active.where((s) => soonOf[s.id] != null).length;
+    final filters = items == null ? const <(String, String, int)>[] : _filters(items);
+    final filter = filters.any((f) => f.$1 == _view.filter) ? _view.filter : 'all';
+    final shown = items == null ? <Subscription>[] : sortSubs(items.where((s) => matchesFilter(s, filter)), _view.sort, _view.desc, _fx);
 
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('订阅')),
@@ -156,7 +152,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           : null,
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 88), children: [
+        child: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 88), children: [
           if (_error != null) StaleBanner(error: _error!, note: '下拉可重新加载'),
           if (items == null && _error == null) const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
           if (_limited)
@@ -171,213 +167,388 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                   style: muted, textAlign: TextAlign.center),
             ),
           if (items != null && items.isNotEmpty) ...[
-            _summary(context, shown, soon),
-            if (cats.length > 1)
-              Row(children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(children: [
-                      for (final k in ['', ...cats])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: ChoiceChip(
-                            label: Text(k.isEmpty ? '全部' : categoryNames[k]!),
-                            selected: _category == k,
-                            visualDensity: VisualDensity.compact,
-                            onSelected: (_) => setState(() => _category = k),
-                          ),
-                        ),
-                    ]),
-                  ),
-                ),
-                // 排列方式（修订第 237 条）：不分类 / 按类别，记在本机；选了某个类别时只有一组，不需要分组
-                if (widget.onGrouped != null && _category.isEmpty)
-                  TextButton.icon(
-                    key: const ValueKey('sub-grouping'),
-                    onPressed: () => widget.onGrouped!(!widget.grouped),
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: Icon(widget.grouped ? Icons.view_agenda_outlined : Icons.list, size: 18),
-                    label: Text(widget.grouped ? '按类别' : '不分类'),
-                  ),
-              ]),
-            if (widget.grouped && _category.isEmpty && cats.length > 1)
-              ..._groupedList(context, active, shown, colors)
+            _overview(context, items),
+            _listBar(context, filters, filter, items),
+            if (shown.isEmpty)
+              Padding(padding: const EdgeInsets.all(24), child: Text('没有符合筛选条件的订阅。', style: muted, textAlign: TextAlign.center))
             else
-              Card(
-                margin: const EdgeInsets.only(top: 4),
-                clipBehavior: Clip.antiAlias,
-                child: Column(children: [
-                  for (final (i, s) in active.indexed) ...[
-                    if (i > 0) Divider(height: 1, indent: 64, color: c.border),
-                    _row(context, s, colors),
-                  ],
-                ]),
+              Column(
+                key: const ValueKey('sub-list'),
+                children: _view.sort == 'category' ? _groupedList(context, shown, items, colors) : [_card(context, shown, colors)],
               ),
-            if (ended.isNotEmpty) ...[
-              Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text('已结束', style: muted)),
-              Opacity(
-                opacity: 0.6,
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(children: [
-                    for (final (i, s) in ended.indexed) ...[
-                      if (i > 0) Divider(height: 1, indent: 64, color: c.border),
-                      _row(context, s, colors),
-                    ],
-                  ]),
-                ),
-              ),
-            ],
           ],
         ]),
       ),
     );
   }
 
-  // 概览（修订第 223 条）：进行中的订阅折算为每月花费，统一换算为人民币；点“分析”看分组与排行
-  Widget _summary(BuildContext context, List<Subscription> list, int soon) {
+  // 筛选项：（键、名称、数量）
+  List<(String, String, int)> _filters(List<Subscription> items) {
+    final ended = items.where((s) => s.ended).length;
+    return [
+      ('all', '全部', items.length),
+      ('active', '订阅中', items.length - ended),
+      ('soon', '7 天内续订', items.where(renewsSoon).length),
+      if (ended > 0) ('ended', '已结束', ended),
+      for (final k in categoryNames.keys)
+        if (items.any((s) => s.category == k)) (k, categoryNames[k]!, items.where((s) => s.category == k).length),
+    ];
+  }
+
+  // 一张卡片内的行，行间细线从名称处开始；已结束的半透明
+  Widget _card(BuildContext context, List<Subscription> list, StatusColors colors) {
     final c = appColors(context);
-    final muted = TextStyle(fontSize: 12, color: c.textMuted);
-    final a = analyze(list, _fx);
-    String money(int cents) => widget.privacy ? '***' : fmtMoney(cents, 'CNY');
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text('月均折算', style: muted),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text('订阅中 ${list.where((s) => !s.ended).length} / 共 ${list.length} 个${soon > 0 ? ' · 快到期 $soon 个' : ''}',
-                  style: muted, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(width: 8),
-          ]),
-          const SizedBox(height: 2),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(a.count == 0 ? dash : money(a.monthly),
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
-                const SizedBox(height: 2),
-                Text('每年约 ${money(a.monthly * 12)}${a.missing.isEmpty ? '' : ' · ${a.missing.join('、')} 无汇率未计入'}', style: muted),
-              ]),
-            ),
-            TextButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SubscriptionAnalysisPage(items: list, fx: _fx, privacy: widget.privacy, avatar: _avatar, loadFx: widget.api.fxHistory))),
-              icon: const Icon(Icons.insights_outlined, size: 18),
-              label: const Text('分析'),
-            ),
-          ]),
-        ]),
-      ),
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        for (final (i, s) in list.indexed) ...[
+          if (i > 0) Divider(height: 1, indent: 68, color: c.border),
+          Opacity(opacity: s.ended ? 0.55 : 1, child: _row(context, s, colors)),
+        ],
+      ]),
     );
   }
 
-  // 按类别分组（修订第 237 条）：类别按目录顺序，组头为类别颜色、名称、数量与月均折算（人民币），组内顺序与不分类时相同
-  List<Widget> _groupedList(BuildContext context, List<Subscription> active, List<Subscription> shown, StatusColors colors) {
+  // 概览（修订第 309 条）：续订日历、账期进度两张小卡片并排，下方月均花费（点击切换年均）与本月待扣
+  Widget _overview(BuildContext context, List<Subscription> items) {
     final c = appColors(context);
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
-    final monthly = {for (final x in analyze(shown, _fx).byCategory) x.key: x.cents};
+    final accent = Theme.of(context).colorScheme.primary;
+    final active = items.where((s) => !s.ended).toList();
+    String money(int cents) => widget.privacy ? '***' : fmtMoney(cents, 'CNY');
+
+    // 续订日历：今天起 14 天
+    const window = 14;
+    final upcoming = [
+      for (final s in active)
+        if (daysUntilCharge(s) case final d? when d >= 0 && d < window) (s, d)
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+    final clusters = <(int, List<Subscription>)>[];
+    for (final (s, d) in upcoming) {
+      if (clusters.isNotEmpty && d - clusters.last.$1 < 3) {
+        clusters.last.$2.add(s);
+      } else {
+        clusters.add((d, [s]));
+      }
+    }
+    final next = ([
+      for (final s in active)
+        if (daysUntilCharge(s) case final d? when d >= 0) (s, d)
+    ]..sort((a, b) => a.$2.compareTo(b.$2)))
+        .firstOrNull;
+    String dayLabel(int d) {
+      final x = DateTime.now().add(Duration(days: d));
+      return '${x.month} 月 ${x.day} 日';
+    }
+
+    // 账期进度：最接近续订的在前
+    final progress = [
+      for (final s in active)
+        if (billingProgress(s) case final p?) (s, p)
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    final half = progress.where((x) => x.$2 >= 50).length;
+
+    final a = analyze(items, _fx);
+    final due = dueRestOfMonth(items, _fx);
+
+    Widget head(String title, int n) => Row(children: [
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+            decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(99)),
+            child: Text('$n 项', style: TextStyle(fontSize: 11, color: accent)),
+          ),
+        ]);
+
+    final calendar = Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          head('续订日历', upcoming.length),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 50,
+            child: LayoutBuilder(builder: (context, box) {
+              double x(int d) => box.maxWidth * (0.16 + d / (window - 1) * 0.70);
+              return Stack(clipBehavior: Clip.none, children: [
+                Positioned(left: box.maxWidth * 0.04, right: box.maxWidth * 0.04, top: 15, child: Container(height: 1.5, color: c.border)),
+                Positioned(
+                    left: box.maxWidth * 0.04,
+                    top: 8,
+                    child: Container(width: 3, height: 16, decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)))),
+                for (final (d, subs) in clusters)
+                  Positioned(
+                    left: x(d) - 14,
+                    top: 2,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      for (final (i, s) in subs.take(2).indexed) Transform.translate(offset: Offset(i * -8.0, 0), child: _avatar(s, size: 26)),
+                      if (subs.length > 2) Text('+${subs.length - 2}', style: muted),
+                    ]),
+                  ),
+                if (clusters.isNotEmpty)
+                  Positioned(left: x(clusters.first.$1) - 24, top: 32, child: Text(dayLabel(clusters.first.$1), style: muted.copyWith(fontSize: 10))),
+              ]);
+            }),
+          ),
+          Row(children: [
+            Flexible(child: Text('今天', style: TextStyle(fontSize: 11, color: accent), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            const Spacer(),
+            Flexible(child: Text('${window - 1} 天后', style: muted.copyWith(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+          const SizedBox(height: 6),
+          if (next != null) ...[
+            Text('下一项续订', style: muted),
+            Text(next.$1.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(next.$2 == 0 ? '今天' : (next.$2 < window ? '${next.$2} 天后' : dayLabel(next.$2)), style: TextStyle(fontSize: 12, color: accent)),
+          ] else
+            Text('没有待续订的订阅', style: muted),
+        ]),
+      ),
+    );
+
+    final billing = Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          head('账期进度', progress.length),
+          const SizedBox(height: 8),
+          for (final (s, p) in progress.take(4))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                _avatar(s, size: 22),
+                const SizedBox(width: 8),
+                Expanded(child: _bar(context, p, categoryColor(c, s.category))),
+              ]),
+            ),
+          Text(progress.isEmpty ? '没有按周期扣费的订阅' : '$half 项已过半', style: muted),
+        ]),
+      ),
+    );
+
+    final spend = Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: IntrinsicHeight(
+          child: Row(children: [
+            Expanded(
+              child: InkWell(
+                key: const ValueKey('sub-yearly'),
+                onTap: () => setState(() => _yearly = !_yearly),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Icon(Icons.calendar_month_outlined, size: 16, color: c.textMuted),
+                      const SizedBox(width: 4),
+                      Flexible(child: Text(_yearly ? '年均花费' : '月均花费', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.swap_horiz, size: 16, color: c.textMuted),
+                    ]),
+                    const SizedBox(height: 4),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(a.count == 0 ? dash : money(_yearly ? a.monthly * 12 : a.monthly),
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                    ),
+                    if (a.missing.isNotEmpty) Text('不含 ${a.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
+                  ]),
+                ),
+              ),
+            ),
+            VerticalDivider(width: 1, color: c.border),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Icon(Icons.schedule, size: 16, color: c.textMuted),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text('本月待扣', style: muted.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    InkWell(
+                      onTap: () => _spendInfo(context, active.length, items.length),
+                      child: Icon(Icons.info_outline, size: 18, color: c.textMuted, semanticLabel: '说明'),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child:
+                        Text(money(due.cents), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  if (due.missing.isNotEmpty) Text('不含 ${due.missing.join('、')}（缺少汇率）', style: muted.copyWith(fontSize: 11)),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+
+    return Column(children: [
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: calendar),
+          const SizedBox(width: 10),
+          Expanded(child: billing),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      spend,
+    ]);
+  }
+
+  void _spendInfo(BuildContext context, int active, int total) => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('说明'),
+          content: Text('月均花费：订阅中的订阅按周期折算为每月（年付 ÷ 12、季付 ÷ 3…），换算为人民币；一次性付费不计入。年均为月均 × 12。\n\n'
+              '本月待扣：从今天到月底还要扣的金额。\n\n订阅中 $active 个，共记录 $total 个。'),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
+        ),
+      );
+
+  Widget _bar(BuildContext context, double pct, Color color, {double height = 6}) => ClipRRect(
+        borderRadius: BorderRadius.circular(99),
+        child: LinearProgressIndicator(value: pct / 100, minHeight: height, color: color, backgroundColor: appColors(context).border),
+      );
+
+  // 列表标题行：筛选（大字，下拉）、分析、排序与正序 / 倒序
+  Widget _listBar(BuildContext context, List<(String, String, int)> filters, String filter, List<Subscription> items) {
+    final c = appColors(context);
+    final name = filters.firstWhere((f) => f.$1 == filter, orElse: () => filters.first).$2;
+    // 系统大字号时“分析”只显示图标，整行放得下
+    final large = MediaQuery.textScalerOf(context).scale(14) > 18;
+    void analysis() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SubscriptionAnalysisPage(items: items, fx: _fx, privacy: widget.privacy, avatar: _avatar, loadFx: widget.api.fxHistory)));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 14, 0, 8),
+      child: Row(children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: PopupMenuButton<String>(
+              key: const ValueKey('sub-filter'),
+              tooltip: '筛选',
+              onSelected: (v) => _setView(_view.copyWith(filter: v)),
+              itemBuilder: (_) => [for (final f in filters) CheckedPopupMenuItem(value: f.$1, checked: f.$1 == filter, child: Text('${f.$2}（${f.$3}）'))],
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Flexible(child: Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Icon(Icons.expand_more, color: c.textMuted),
+              ]),
+            ),
+          ),
+        ),
+        if (large)
+          IconButton(onPressed: analysis, tooltip: '分析', icon: const Icon(Icons.insights_outlined))
+        else
+          TextButton.icon(
+            onPressed: analysis,
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            icon: const Icon(Icons.insights_outlined, size: 18),
+            label: const Text('分析'),
+          ),
+        PopupMenuButton<String>(
+          key: const ValueKey('sub-sort'),
+          tooltip: '排序',
+          onSelected: (v) => _setView(_view.copyWith(sort: v)),
+          itemBuilder: (_) => [
+            for (final e in subSortNames.entries) CheckedPopupMenuItem(value: e.key, checked: e.key == _view.sort, child: Text(e.value)),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            child: Text(subSortNames[_view.sort] ?? '日期', style: TextStyle(fontSize: 15, color: c.textMuted)),
+          ),
+        ),
+        IconButton(
+          key: const ValueKey('sub-desc'),
+          tooltip: _view.desc ? '倒序' : '正序',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _setView(_view.copyWith(desc: !_view.desc)),
+          icon: Icon(_view.desc ? Icons.arrow_downward : Icons.arrow_upward, size: 20, color: c.textMuted),
+        ),
+      ]),
+    );
+  }
+
+  // 按类别排序时加组头（类别颜色、名称、数量与月均折算）；已结束的在最后单独一组
+  List<Widget> _groupedList(BuildContext context, List<Subscription> shown, List<Subscription> all, StatusColors colors) {
+    final c = appColors(context);
+    final muted = TextStyle(fontSize: 12, color: c.textMuted);
+    final monthly = {for (final x in analyze(all, _fx).byCategory) x.key: x.cents};
+    final groups = <String, List<Subscription>>{};
+    for (final s in shown) {
+      groups.putIfAbsent(s.ended ? '' : s.category, () => []).add(s);
+    }
     return [
-      for (final k in categoryNames.keys)
-        if (active.any((s) => s.category == k)) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-            child: Row(children: [
+      for (final MapEntry(key: k, value: xs) in groups.entries) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+          child: Row(children: [
+            if (k.isNotEmpty) ...[
               Container(width: 10, height: 10, decoration: BoxDecoration(color: categoryColor(c, k), shape: BoxShape.circle)),
               const SizedBox(width: 6),
-              Text(categoryNames[k]!, style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 6),
-              Text('${active.where((s) => s.category == k).length} 个', style: muted),
-              const Spacer(),
-              if ((monthly[k] ?? 0) > 0) Text('月均 ${widget.privacy ? '***' : fmtMoney(monthly[k]!, 'CNY')}', style: muted),
-            ]),
-          ),
-          Card(
-            margin: EdgeInsets.zero,
-            clipBehavior: Clip.antiAlias,
-            child: Column(children: [
-              for (final (i, s) in active.where((s) => s.category == k).indexed) ...[
-                if (i > 0) Divider(height: 1, indent: 64, color: c.border),
-                _row(context, s, colors),
-              ],
-            ]),
-          ),
-        ],
+            ],
+            Text(k.isEmpty ? '已结束' : categoryNames[k]!, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 6),
+            Text('${xs.length} 个', style: muted),
+            const Spacer(),
+            if ((monthly[k] ?? 0) > 0) Text('月均 ${widget.privacy ? '***' : fmtMoney(monthly[k]!, 'CNY')}', style: muted),
+          ]),
+        ),
+        _card(context, xs, colors),
+      ],
     ];
   }
 
   Widget _row(BuildContext context, Subscription s, StatusColors colors) {
     final c = appColors(context);
-    final days = daysUntilCharge(s);
-    final dueColor = days == null ? c.textMuted : (days <= 1 ? colors.bad : (days <= 7 ? colors.warn : c.textMuted));
-    final end = daysUntilEnd(s);
-    final due = end != null && end <= 7 && (days == null || end <= days)
-        ? (end == 0 ? '今天结束' : '$end 天后结束')
-        : (days == null ? '' : (days == 0 ? '今天扣费' : (days == 1 ? '明天扣费' : '$days 天后')));
-    final soon = dueSoonDays(s) != null;
+    final soon = renewsSoon(s);
+    final p = billingProgress(s);
+    final cny = _cnyText(s);
     return InkWell(
       onTap: () => _detail(context, s),
       onLongPress: widget.api.session.allowSubscriptions ? () => _actions(context, s) : null,
-      child: Stack(children: [
-        Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
         child: Row(children: [
-          _avatar(s),
+          _avatar(s, size: 44),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
-              // 三层信息（修订第 253 条，与 Web 一致）：名称 / 地区 · 支付方式 / 类别 · 扣费说明
-              Text(
-                [
-                  if (s.country.isNotEmpty) '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim(),
-                  if (s.payment.isNotEmpty) paymentNames[s.payment] ?? s.payment,
-                ].join(' · ')._orDash,
-                style: TextStyle(fontSize: 12, color: c.textMuted),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text('${categoryNames[s.category] ?? s.category} · ${chargeText(s)}',
-                  style: TextStyle(fontSize: 12, color: c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(renewText(s), style: TextStyle(fontSize: 13, color: soon ? colors.warn : c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (p != null) ...[
+                const SizedBox(height: 6),
+                FractionallySizedBox(widthFactor: 0.75, child: _bar(context, p, categoryColor(c, s.category), height: 4)),
+              ],
             ]),
           ),
           const SizedBox(width: 8),
           // 金额不能截断：系统大字号时整列缩小到放得下，平时布局不变
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.4),
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.38),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerRight,
               child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text.rich(
-              TextSpan(children: [
-                // 人民币为主金额，原币在下一行（修订第 253 条）
-                TextSpan(text: _cnyText(s) ?? _price(s), style: const TextStyle(fontWeight: FontWeight.w600)),
-                TextSpan(text: cycleSuffix[s.cycle] ?? '', style: TextStyle(fontSize: 11, color: c.textMuted)),
-              ]),
-              style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
-            ),
-            if (_cnyText(s) != null) Text(_price(s), style: TextStyle(fontSize: 11, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
-            if (due.isNotEmpty) Text(due, style: TextStyle(fontSize: 12, color: soon ? colors.bad : dueColor)),
+                Text(_price(s), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, fontFeatures: [FontFeature.tabularFigures()])),
+                if (cny != null) Text(cny, style: TextStyle(fontSize: 12, color: c.textMuted, fontFeatures: const [FontFeature.tabularFigures()])),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(cyclePay[s.cycle] ?? s.cycle, style: TextStyle(fontSize: 12, color: c.textMuted)),
+                  if (s.cycle != 'once') ...[const SizedBox(width: 3), Icon(Icons.autorenew, size: 14, color: c.textMuted)],
+                ]),
               ]),
             ),
           ),
+          Icon(Icons.chevron_right, color: c.textMuted),
         ]),
-        ),
-        // 快到期：右上角红点
-        if (soon)
-          Positioned(
-            top: 6,
-            right: 6,
-            child: Container(width: 8, height: 8, decoration: BoxDecoration(color: colors.bad, shape: BoxShape.circle)),
-          ),
-      ]),
+      ),
     );
   }
 
@@ -423,8 +594,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       return;
     }
     if (act == 'edit') {
-      final x = await Navigator.of(context).push<Subscription>(
-          MaterialPageRoute(builder: (_) => SubscriptionAddPage(api: widget.api, initial: s)));
+      final x = await Navigator.of(context).push<Subscription>(MaterialPageRoute(builder: (_) => SubscriptionAddPage(api: widget.api, initial: s)));
       if (x == null || !mounted) return;
       ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('已保存“${x.name}”')));
       await _load();
@@ -512,10 +682,4 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       ),
     );
   }
-}
-
-/// 订阅行的小工具（修订第 253 条）
-extension on String {
-  /// 空字符串显示为“—”
-  String get _orDash => isEmpty ? '—' : this;
 }

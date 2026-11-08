@@ -190,9 +190,9 @@ void main() {
     await tester.tap(find.text('工具'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Netflix'), findsOneWidget);
-    expect(find.text('月均折算'), findsOneWidget);
-    expect(find.textContaining('每月 5 日扣费'), findsOneWidget);
+    expect(find.text('Netflix'), findsWidgets); // 列表行与“下一项续订”
+    expect(find.text('月均花费'), findsOneWidget);
+    expect(find.text('2099 年 1 月 5 日续订'), findsOneWidget);
     await tester.tap(find.text('云平台'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.text('AWS 主账号'), findsOneWidget);
