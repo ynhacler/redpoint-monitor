@@ -500,6 +500,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
           <small v-if="fieldErrors.start_date" class="bad">{{ fieldErrors.start_date }}</small></label>
         <label>{{ t('结束订阅') }}<input v-model="form.end_date" type="date" />
           <small v-if="fieldErrors.end_date" class="bad">{{ fieldErrors.end_date }}</small>
+          <small v-else-if="form.end_date" class="muted">{{ t('结束前 7、3、1 天和当天各推送一次提醒') }}</small>
           <small v-else class="muted">{{ t('留空表示仍在订阅') }}</small></label>
         <!-- SIM 电话卡的号码（修订第 189 条）：可增减，最多 10 个；空行不保存 -->
         <div v-if="form.category === 'sim'" class="wide phones">

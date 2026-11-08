@@ -111,6 +111,8 @@ var notifyEN = map[string]string{
 	// 到期与费用提醒
 	"已于 %s 到期（%d 天前），请尽快续费或处理": "Expired on %s (%d days ago), please renew or act soon",
 	"今天（%s）到期": "Expires today (%s)", "将于 %s 到期（%d 天后）": "Expires on %s (in %d days)",
+	"已于 %s 结束": "Ended on %s", "今天（%s）结束，如需继续使用请续订": "Ends today (%s); renew to keep using it",
+	"将于 %s 结束（%d 天后），如需继续使用请续订": "Ends on %s (in %d days); renew to keep using it",
 	"云实例%s": "Cloud instance: %s", "SSL 证书%s": "SSL certificate: %s", "云账户“%s”": "Cloud account “%s”", "订阅“%s”": "Subscription “%s”", "证书 %s": "Certificate %s",
 	"连续 24 小时同步失败": "Sync failing for 24 hours", "凭证失效或权限不足，已停止自动同步": "Credentials invalid or insufficient permissions; auto sync stopped", "%s：%s": "%s: %s",
 	"%s 免费额度已用 %.0f%%（%s / %s），超出部分按量收费":    "%s free quota %.0f%% used (%s / %s); overage is billed by usage",
