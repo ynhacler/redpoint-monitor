@@ -305,6 +305,13 @@ export const en: Record<string, string> = {
   '查询': 'Look up',
   '补充资产信息': 'Add asset details',
   '（{n} 项未填：供应商、价格、到期等用于费用与到期提醒）': ' ({n} empty: provider, price, expiry etc. are used for cost and expiry reminders)',
+  // 订阅链接与付款人（修订第 311 条）
+  '付款人：{p}': 'Payer: {p}',
+  '付款人': 'Payer',
+  '可选，如 自己、妈妈': 'Optional, e.g. me, Mom',
+  '链接': 'Link',
+  '可选，管理或退订页面，如 https://www.netflix.com/account': 'Optional: manage or cancel page, e.g. https://www.netflix.com/account',
+  '打开链接': 'Open link',
   // 订阅概览与列表（修订第 309 条）
   '{m} 月 {d} 日': '{m}/{d}',
   '7 天内续订': 'Renewing within 7 days',

@@ -17,10 +17,12 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -65,6 +67,8 @@ type Subscription struct {
 	Note        string     `json:"note"`
 	Country     string     `json:"country"`      // 订阅的国家 / 地区（两位代码，修订第 223 条）
 	Payment     string     `json:"payment"`      // 支付方式（subPayments 中的键）
+	URL         string     `json:"url"`          // 管理或退订页面的网址，只允许 http / https（修订第 311 条）
+	Payer       string     `json:"payer"`        // 付款人（家庭成员等，自由填写，修订第 311 条）
 	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
 	VPS         SubVPS     `json:"vps"`          // VPS 的地址与配置（修订第 198 条）
 	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库
@@ -163,14 +167,14 @@ func withSchedule(sub Subscription, now time.Time) Subscription {
 // ---- 存储 ----
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
-	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment
+	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment, s.url, s.payer
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
 	var phones, vps string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment)
+		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment, &x.URL, &x.Payer)
 	if err == nil {
 		_ = json.Unmarshal([]byte(phones), &x.Phones)
 		_ = json.Unmarshal([]byte(vps), &x.VPS)
@@ -229,9 +233,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 	}
 	if x.ID == 0 {
 		res, err := s.DB.Exec(`INSERT INTO subscriptions (name, brand, category, price_cents, currency, cycle, trial_days, start_date,
-			end_date, remind_days, note, phones, vps, country, payment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			end_date, remind_days, note, phones, vps, country, payment, url, payer, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays, x.Note,
-			string(phones), string(vps), x.Country, x.Payment, now.Unix(), now.Unix())
+			string(phones), string(vps), x.Country, x.Payment, x.URL, x.Payer, now.Unix(), now.Unix())
 		if err != nil {
 			return err
 		}
@@ -240,9 +244,9 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 		return nil
 	}
 	res, err := s.DB.Exec(`UPDATE subscriptions SET name = ?, brand = ?, category = ?, price_cents = ?, currency = ?, cycle = ?,
-		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, country = ?, payment = ?, updated_at = ?
-		WHERE id = ?`, x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate, x.RemindDays,
-		x.Note, string(phones), string(vps), x.Country, x.Payment, now.Unix(), x.ID)
+		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, country = ?, payment = ?, url = ?, payer = ?,
+		updated_at = ? WHERE id = ?`, x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate,
+		x.RemindDays, x.Note, string(phones), string(vps), x.Country, x.Payment, x.URL, x.Payer, now.Unix(), x.ID)
 	if err != nil {
 		return err
 	}
@@ -363,6 +367,18 @@ func (s *Server) subscriptionEndReminders(list []Subscription, today, now time.T
 
 // ---- 接口（Web 管理员） ----
 
+// validSubURL 检查订阅链接（修订第 311 条）。
+//
+// 【安全】只允许 http / https 且有主机名，不允许空白与控制字符：链接会显示为可点击的地址，
+// 不能借此放入 javascript: 等会在页面中执行的地址。
+func validSubURL(v string) bool {
+	if len(v) > 300 || strings.ContainsFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return false
+	}
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
+}
+
 // validateSubscription 检查并规范化请求体。
 func validateSubscription(x *Subscription) []FieldError {
 	var fe []FieldError
@@ -413,6 +429,14 @@ func validateSubscription(x *Subscription) []FieldError {
 	}
 	if !slices.Contains(subPayments, x.Payment) {
 		fe = append(fe, FieldError{Field: "payment", Message: "请选择支付方式"})
+	}
+	// 链接与付款人（修订第 311 条）：都可不填
+	x.URL, x.Payer = strings.TrimSpace(x.URL), strings.TrimSpace(x.Payer)
+	if x.URL != "" && !validSubURL(x.URL) {
+		fe = append(fe, FieldError{Field: "url", Message: "链接须以 http:// 或 https:// 开头，最多 300 个字符"})
+	}
+	if utf8.RuneCountInString(x.Payer) > 32 || strings.ContainsFunc(x.Payer, unicode.IsControl) {
+		fe = append(fe, FieldError{Field: "payer", Message: "付款人最多 32 个字符"})
 	}
 	// 号码：去掉空行，号码只保留数字（可粘贴“650-555 1234”），区号形如 +1、+86
 	phones := []SubPhone{}
@@ -493,7 +517,8 @@ func validateSubVPS(x *Subscription) []FieldError {
 	return fe
 }
 
-func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request) (Subscription, bool) {
+// decodeSubscription 读取并校验请求体；keep 为修改前的订阅，请求省略链接或付款人时沿用它的值（新增时为零值）。
+func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request, keep Subscription) (Subscription, bool) {
 	var x Subscription
 	var b struct {
 		Name       string     `json:"name"`
@@ -511,13 +536,22 @@ func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request) (Sub
 		VPS        SubVPS     `json:"vps"`
 		Country    string     `json:"country"`
 		Payment    string     `json:"payment"`
+		// 链接与付款人可省略（修订第 311 条）：修改时省略表示沿用原值，旧版 App 修改订阅不会清空它们
+		URL   *string `json:"url"`
+		Payer *string `json:"payer"`
 	}
 	if err := decodeJSON(w, r, &b); err != nil {
 		s.writeError(w, r, err)
 		return x, false
 	}
+	if b.URL == nil {
+		b.URL = &keep.URL
+	}
+	if b.Payer == nil {
+		b.Payer = &keep.Payer
+	}
 	x = Subscription{Name: b.Name, Brand: b.Brand, Category: b.Category, PriceCents: b.PriceCents, Currency: b.Currency, Cycle: b.Cycle,
-		Country: b.Country, Payment: b.Payment,
+		Country: b.Country, Payment: b.Payment, URL: *b.URL, Payer: *b.Payer,
 		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones,
 		VPS: b.VPS}
 	if fe := validateSubscription(&x); fe != nil {
@@ -564,7 +598,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 
 // createSubscription 校验并保存一条新订阅（Web 管理员与允许记录订阅的 App 设备共用，修订第 217 条）。
 func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request, actor string) {
-	x, ok := s.decodeSubscription(w, r)
+	x, ok := s.decodeSubscription(w, r, Subscription{})
 	if !ok {
 		return
 	}
@@ -599,7 +633,7 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, acto
 		s.writeError(w, r, err)
 		return
 	}
-	x, ok := s.decodeSubscription(w, r)
+	x, ok := s.decodeSubscription(w, r, old)
 	if !ok {
 		return
 	}

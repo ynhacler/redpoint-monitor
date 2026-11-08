@@ -326,3 +326,36 @@ func TestSubscriptionEndReminders(t *testing.T) {
 		t.Fatalf("续订后应按新日期再提醒，实际共 %d 次", n)
 	}
 }
+
+// 链接与付款人（修订第 311 条）：只允许 http / https；修改时省略沿用原值（旧版 App 不会清空），传空字符串清空。
+func TestSubscriptionURLPayer(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	base := `"name":"Netflix","category":"video","price_cents":6800,"currency":"CNY","country":"US","payment":"credit","cycle":"monthly","start_date":"2026-01-01"`
+	for _, bad := range []string{"javascript:alert(1)", "ftp://x.example", "https://", "https://a b.example", "https://u:p@x.example", "//x.example"} {
+		rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"url":"`+bad+`"}`))
+		if rec.Code != 422 || !strings.Contains(rec.Body.String(), `"url"`) {
+			t.Errorf("链接 %q 应被拒绝：%d %s", bad, rec.Code, rec.Body)
+		}
+	}
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"url":" https://www.netflix.com/account ","payer":" 妈妈 "}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.URL != "https://www.netflix.com/account" || x.Payer != "妈妈" {
+		t.Fatalf("新增：%d %+v", rec.Code, x)
+	}
+	path := "/api/v1/subscriptions/" + itoa64(x.ID)
+	// 省略两项：沿用
+	json.Unmarshal(do(h, "PUT", path, admin, []byte(`{`+base+`,"price_cents":7800}`)).Body.Bytes(), &x)
+	if x.URL != "https://www.netflix.com/account" || x.Payer != "妈妈" || x.PriceCents != 7800 {
+		t.Fatalf("省略时应沿用：%+v", x)
+	}
+	// 空字符串：清空
+	json.Unmarshal(do(h, "PUT", path, admin, []byte(`{`+base+`,"url":"","payer":""}`)).Body.Bytes(), &x)
+	if x.URL != "" || x.Payer != "" {
+		t.Fatalf("空字符串应清空：%+v", x)
+	}
+	if rec := do(h, "PUT", path, admin, []byte(`{`+base+`,"payer":"`+strings.Repeat("长", 33)+`"}`)); rec.Code != 422 {
+		t.Fatalf("付款人超长应 422：%d", rec.Code)
+	}
+}

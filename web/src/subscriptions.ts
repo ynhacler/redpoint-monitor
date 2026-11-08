@@ -346,6 +346,8 @@ export interface Analysis {
   byCategory: Share[]
   byCountry: Share[]
   byPayment: Share[]
+  /** 按付款人（修订第 311 条），未填写的键为空 */
+  byPayer: Share[]
   /** 按月费从高到低 */
   top: { s: Subscription; cents: number }[]
 }
@@ -353,8 +355,8 @@ export interface Analysis {
 /** 分析（修订第 223 条）：进行中的订阅按扣费周期折算为月费（每周 × 52 / 12，每季 ÷ 3，每年 ÷ 12），换算为人民币后
  *  按类别、国家 / 地区、支付方式汇总，并按月费排行。一次性付费的不计入。 */
 export function analyze(list: Subscription[], rates: Rates): Analysis {
-  const out: Analysis = { monthly: 0, count: 0, once: 0, missing: [], byCategory: [], byCountry: [], byPayment: [], top: [] }
-  const groups = { cat: new Map<string, Share>(), country: new Map<string, Share>(), pay: new Map<string, Share>() }
+  const out: Analysis = { monthly: 0, count: 0, once: 0, missing: [], byCategory: [], byCountry: [], byPayment: [], byPayer: [], top: [] }
+  const groups = { cat: new Map<string, Share>(), country: new Map<string, Share>(), pay: new Map<string, Share>(), payer: new Map<string, Share>() }
   const add = (m: Map<string, Share>, key: string, cents: number) => {
     const x = m.get(key) ?? { key, cents: 0, count: 0, pct: 0 }
     x.cents += cents
@@ -378,12 +380,14 @@ export function analyze(list: Subscription[], rates: Rates): Analysis {
     add(groups.cat, s.category, cents)
     add(groups.country, s.country || '', cents)
     add(groups.pay, s.payment || '', cents)
+    add(groups.payer, s.payer || '', cents)
   }
   const sorted = (m: Map<string, Share>) =>
     [...m.values()].map((x) => ({ ...x, pct: out.monthly ? (x.cents / out.monthly) * 100 : 0 })).sort((a, b) => b.cents - a.cents)
   out.byCategory = sorted(groups.cat)
   out.byCountry = sorted(groups.country)
   out.byPayment = sorted(groups.pay)
+  out.byPayer = sorted(groups.payer)
   out.top.sort((a, b) => b.cents - a.cents)
   return out
 }

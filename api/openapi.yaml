@@ -3760,6 +3760,8 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$', description: 如 CNY、USD }
         country: { type: string, pattern: '^[A-Z]{2}$', description: 订阅的国家 / 地区（ISO 3166-1 两位代码，修订第 223 条） }
         payment: { type: string, enum: [alipay, wechat, bank, credit, paypal, apple, google, carrier, crypto, other], description: 支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他 }
+        url: { type: string, maxLength: 300, description: 管理或退订页面的网址，只允许 http / https（修订第 311 条）；修改时省略表示沿用原值 }
+        payer: { type: string, maxLength: 32, description: 付款人（家庭成员等，自由填写，修订第 311 条）；修改时省略表示沿用原值 }
         cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once], description: 扣费周期；once 为一次性 }
         trial_days: { type: integer, minimum: 0, maximum: 366, description: 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 }
         start_date: { type: string, format: date, description: 开始订阅的日期（YYYY-MM-DD） }
@@ -3796,7 +3798,7 @@ components:
     Subscription:
       type: object
       required: [id, name, brand, category, price_cents, currency, cycle, trial_days, start_date, end_date, remind_days, note,
-                 phones, vps, next_charge, ended, logo_version, created_at, updated_at, country, payment]
+                 phones, vps, next_charge, ended, logo_version, created_at, updated_at, country, payment, url, payer]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -3812,6 +3814,8 @@ components:
         note: { type: string }
         country: { type: string, description: 订阅的国家 / 地区（两位代码）；修订第 223 条之前添加、尚未编辑的为空 }
         payment: { type: string, description: 支付方式（见 SubscriptionInput.payment）；尚未设置时为空 }
+        url: { type: string, description: 管理或退订页面的网址（修订第 311 条），空为未填写 }
+        payer: { type: string, description: 付款人（修订第 311 条），空为未填写 }
         phones: { type: array, items: { $ref: '#/components/schemas/SubscriptionPhone' } }
         vps: { $ref: '#/components/schemas/SubscriptionVPS' }
         next_charge: { type: string, description: '下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空' }

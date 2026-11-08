@@ -194,7 +194,7 @@ function writePref(key: string, v: string) {
     /* 隐私模式等不可用时只在本页生效 */
   }
 }
-type Filter = 'all' | 'active' | 'soon' | 'ended' | SubCategory
+type Filter = 'all' | 'active' | 'soon' | 'ended' | SubCategory | `payer:${string}`
 const filter = ref<Filter>(readPref('vpsmon.subFilter', 'all') as Filter)
 // 之前选了“按类别”的沿用为按类别排序
 const sortKey = ref<SubSort>(readPref('vpsmon.subSort', readPref('vpsmon.subGrouped', '0') === '1' ? 'category' : 'date') as SubSort)
@@ -202,9 +202,13 @@ const sortDesc = ref(readPref('vpsmon.subSortDesc', '0') === '1')
 const setFilter = (v: Filter) => { filter.value = v; writePref('vpsmon.subFilter', v) }
 const setSort = (v: SubSort) => { sortKey.value = v; writePref('vpsmon.subSort', v) }
 const flipSort = () => { sortDesc.value = !sortDesc.value; writePref('vpsmon.subSortDesc', sortDesc.value ? '1' : '0') }
+// 已有的付款人（修订第 311 条）：表单候选、筛选与分析分组
+const payers = computed(() => [...new Set(list.value.map((s) => s.payer).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
+/** 只把 http / https 链接做成可点击的地址（面板也只接受这两种，这里再检查一次） */
+const safeURL = (u: string) => (/^https?:\/\/[^\s]+$/i.test(u.trim()) ? u.trim() : '')
 const soonOf = (s: Subscription) => !s.ended && !!s.next_charge && daysUntil(s.next_charge, today) >= 0 && daysUntil(s.next_charge, today) <= 7
 const matches = (s: Subscription, f: Filter) =>
-  f === 'all' || (f === 'active' ? !s.ended : f === 'ended' ? s.ended : f === 'soon' ? soonOf(s) : s.category === f)
+  f === 'all' || (f === 'active' ? !s.ended : f === 'ended' ? s.ended : f === 'soon' ? soonOf(s) : f.startsWith('payer:') ? s.payer === f.slice(6) : s.category === f)
 const filterOptions = computed(() => {
   const opts: { v: Filter; label: string; n: number }[] = [
     { v: 'all', label: t('全部'), n: list.value.length },
@@ -215,6 +219,10 @@ const filterOptions = computed(() => {
   for (const c of Object.keys(categoryNames) as SubCategory[]) {
     const n = list.value.filter((s) => s.category === c).length
     if (n) opts.push({ v: c, label: t(categoryNames[c]), n })
+  }
+  // 付款人（修订第 311 条）：有两个以上不同的付款人时才列出
+  if (payers.value.length > 1) {
+    for (const p of payers.value) opts.push({ v: `payer:${p}`, label: t('付款人：{p}', { p }), n: list.value.filter((s) => s.payer === p).length })
   }
   return opts
 })
@@ -237,10 +245,11 @@ const listRows = computed<ListRow[]>(() => {
   }
   return out
 })
-const anaGroup = ref<'category' | 'country' | 'payment'>('category')
+const anaGroup = ref<'category' | 'country' | 'payment' | 'payer'>('category')
 const anaRows = computed(() => {
   const a = ana.value
   if (anaGroup.value === 'country') return a.byCountry.map((x) => ({ ...x, name: x.key ? countryName(x.key) : t('未设置'), flag: x.key }))
+  if (anaGroup.value === 'payer') return a.byPayer.map((x) => ({ ...x, name: x.key || t('未填写'), flag: '' }))
   if (anaGroup.value === 'payment') return a.byPayment.map((x) => ({ ...x, name: x.key ? t(paymentNames[x.key] ?? x.key) : t('未设置'), flag: '' }))
   return a.byCategory.map((x) => ({ ...x, name: t(categoryNames[x.key as SubCategory] ?? x.key), flag: '' }))
 })
@@ -272,7 +281,7 @@ const blankVPS = (): FormVPS => ({ ips: [''], cpu: '', memory_gb: '', disk_gb: '
 // 支付方式没有默认值：表单中可为空，保存时由面板要求选择（修订第 223 条）
 const blank = (): Omit<SubscriptionInput, 'vps' | 'payment'> & { price: string; phones: FormPhone[]; vps: FormVPS; payment: SubscriptionInput['payment'] | '' } => ({
   name: '', brand: '', category: 'other', price_cents: 0, price: '', currency: 'CNY', cycle: 'monthly', trial_days: 0,
-  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '',
+  start_date: ymd(today), end_date: '', remind_days: 0, note: '', phones: [], vps: blankVPS(), country: '', payment: '', url: '', payer: '',
 })
 const vpsNum = (v: string) => (v.trim() === '' ? 0 : Number(v))
 const vpsStr = (n: number) => (n ? String(n) : '')
@@ -377,7 +386,7 @@ async function save() {
   const body: SubscriptionInput = {
     name: form.name, brand: form.brand, category: form.category, price_cents: Math.round(price * 100), currency: form.currency,
     cycle: form.cycle, trial_days: form.trial_days, start_date: form.start_date, end_date: form.end_date ?? '', remind_days: form.remind_days, note: form.note,
-    country: form.country, payment: form.payment as SubscriptionInput['payment'],
+    country: form.country, payment: form.payment as SubscriptionInput['payment'], url: form.url ?? '', payer: form.payer ?? '',
     phones: form.category === 'sim' ? form.phones.filter((p) => p.number.trim()) : [],
     vps: form.category === 'vps'
       ? {
@@ -444,7 +453,7 @@ const monthlyLine = (s: Subscription) => {
 }
 // 电脑宽度在中间多一列：类别（按类别排序时省略）、国家 / 地区 · 支付方式、备注第一行
 const metaText = (s: Subscription) => [sortKey.value === 'category' ? '' : t(categoryNames[s.category] ?? s.category),
-  s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : ''].filter(Boolean).join(' · ')
+  s.country ? countryName(s.country) : '', s.payment ? t(paymentNames[s.payment] ?? s.payment) : '', s.payer].filter(Boolean).join(' · ')
 const progOf = (s: Subscription) => billingProgress(s, today)?.pct ?? null
 // VPS 配置摘要：2 核 · 1 GB · 20 GB · 1 TB/月 · 500 Mbps（没有填写的省略）
 const ipError = (i: number) => fieldErrors.value[`vps.ips[${i}]`]
@@ -538,6 +547,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <option v-for="(n, k) in paymentNames" :key="k" :value="k">{{ t(n) }}</option>
           </select>
           <small v-if="fieldErrors.payment" class="bad">{{ fieldErrors.payment }}</small></label>
+        <!-- 付款人（修订第 311 条，参考 Wallos 的家庭成员）：自由填写，可从已有的付款人中选 -->
+        <label>{{ t('付款人') }}<input v-model="form.payer" maxlength="32" list="sub-payers" :placeholder="t('可选，如 自己、妈妈')" />
+          <datalist id="sub-payers"><option v-for="p in payers" :key="p" :value="p" /></datalist>
+          <small v-if="fieldErrors.payer" class="bad">{{ fieldErrors.payer }}</small></label>
         <label>{{ t('订阅周期') }}
           <select v-model="form.cycle"><option v-for="(n, k) in cycleNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
         <label>{{ t('免费试用') }}
@@ -594,6 +607,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             <small v-if="fieldErrors['vps.location']" class="bad">{{ fieldErrors['vps.location'] }}</small></label>
         </template>
         <label class="wide">{{ t('描述') }}<input v-model="form.note" maxlength="200" :placeholder="t('可选，如 家庭版、和朋友合租')" /></label>
+        <!-- 链接（修订第 311 条）：管理或退订页面，只允许 http / https -->
+        <label class="wide">{{ t('链接') }}<input v-model="form.url" type="url" maxlength="300" inputmode="url" spellcheck="false" :placeholder="t('可选，管理或退订页面，如 https://www.netflix.com/account')" />
+          <small v-if="fieldErrors.url" class="bad">{{ fieldErrors.url }}</small>
+          <a v-else-if="safeURL(form.url ?? '')" :href="safeURL(form.url ?? '')" target="_blank" rel="noopener noreferrer" class="small">{{ t('打开链接') }}</a></label>
       </div>
       <!-- 历史扣费（修订第 293 条）：编辑时可展开；免费的订阅不显示 -->
       <SubCharges v-if="editing && editing.price_cents" :key="editing.id" :sub="editing" />
@@ -752,6 +769,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               <button type="button" :class="{ active: anaGroup === 'category' }" @click="anaGroup = 'category'">{{ t('类别') }}</button>
               <button type="button" :class="{ active: anaGroup === 'country' }" @click="anaGroup = 'country'">{{ t('国家 / 地区') }}</button>
               <button type="button" :class="{ active: anaGroup === 'payment' }" @click="anaGroup = 'payment'">{{ t('支付方式') }}</button>
+              <button v-if="payers.length" type="button" :class="{ active: anaGroup === 'payer' }" @click="anaGroup = 'payer'">{{ t('付款人') }}</button>
             </div>
           </div>
           <ul class="legend ana-groups">

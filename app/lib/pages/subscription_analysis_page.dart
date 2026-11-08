@@ -33,7 +33,7 @@ class SubscriptionAnalysisPage extends StatefulWidget {
   State<SubscriptionAnalysisPage> createState() => _SubscriptionAnalysisPageState();
 }
 
-const _groups = {'category': '类别', 'country': '国家地区', 'payment': '支付方式'};
+const _groups = {'category': '类别', 'country': '国家地区', 'payment': '支付方式', 'payer': '付款人'};
 const _cycleShort = {'weekly': '周', 'monthly': '月', 'quarterly': '季', 'semiannually': '半年', 'annually': '年'};
 
 class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
@@ -91,10 +91,11 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
     final colors = StatusColors.of(context);
     final muted = TextStyle(fontSize: 12, color: c.textMuted);
     final a = analyze(widget.items, widget.fx);
-    final rows = switch (_group) { 'country' => a.byCountry, 'payment' => a.byPayment, _ => a.byCategory };
+    final rows = switch (_group) { 'country' => a.byCountry, 'payment' => a.byPayment, 'payer' => a.byPayer, _ => a.byCategory };
     String name(String key) => switch (_group) {
           'country' => key.isEmpty ? '未设置' : '${flagEmoji(key)} ${countryLabel(key)}'.trim(),
           'payment' => key.isEmpty ? '未设置' : paymentNames[key] ?? key,
+          'payer' => key.isEmpty ? '未填写' : key,
           _ => categoryNames[key] ?? key,
         };
     final palette = _palette(c, colors);
@@ -120,7 +121,10 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: SegmentedButton<String>(
-            segments: [for (final e in _groups.entries) ButtonSegment(value: e.key, label: Text(e.value))],
+            segments: [
+              for (final e in _groups.entries)
+                if (e.key != 'payer' || widget.items.any((s) => s.payer.isNotEmpty)) ButtonSegment(value: e.key, label: Text(e.value)),
+            ],
             selected: {_group},
             showSelectedIcon: false,
             onSelectionChanged: (v) => setState(() => _group = v.first),

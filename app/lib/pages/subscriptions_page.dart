@@ -185,6 +185,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   // 筛选项：（键、名称、数量）
   List<(String, String, int)> _filters(List<Subscription> items) {
     final ended = items.where((s) => s.ended).length;
+    final payers = {for (final s in items) if (s.payer.isNotEmpty) s.payer}.toList()..sort();
     return [
       ('all', '全部', items.length),
       ('active', '订阅中', items.length - ended),
@@ -192,6 +193,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       if (ended > 0) ('ended', '已结束', ended),
       for (final k in categoryNames.keys)
         if (items.any((s) => s.category == k)) (k, categoryNames[k]!, items.where((s) => s.category == k).length),
+      // 付款人（修订第 311 条）：有两个以上不同的付款人时才列出
+      if (payers.length > 1)
+        for (final p in payers) ('payer:$p', '付款人：$p', items.where((s) => s.payer == p).length),
     ];
   }
 
@@ -663,6 +667,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             line('价格', '${_price(s)}${cycleSuffix[s.cycle] ?? ''}${_cnyText(s) != null ? '（${_cnyText(s)}）' : ''}'),
             if (s.country.isNotEmpty) line('国家地区', '${flagEmoji(s.country)} ${countryLabel(s.country)}'.trim()),
             if (s.payment.isNotEmpty) line('支付方式', paymentNames[s.payment] ?? s.payment),
+            if (s.payer.isNotEmpty) line('付款人', s.payer),
+            // 链接（修订第 311 条）：可选中复制，App 不直接打开外部网页
+            if (s.url.isNotEmpty) line('链接', s.url),
             line('扣费', chargeText(s)),
             if (s.nextCharge.isNotEmpty && !s.ended) line('下次扣费', s.nextCharge),
             line(s.category == 'vps' ? '购买日期' : '开始订阅', s.startDate),

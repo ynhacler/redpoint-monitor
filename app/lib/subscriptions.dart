@@ -80,6 +80,8 @@ class Subscription {
     this.logoVersion = 0,
     this.country = '',
     this.payment = '',
+    this.url = '',
+    this.payer = '',
   });
 
   /// 编号
@@ -139,6 +141,12 @@ class Subscription {
   /// 支付方式（paymentNames 的键）；旧记录可能为空
   final String payment;
 
+  /// 管理或退订页面的网址（修订第 311 条）；空为未填写
+  final String url;
+
+  /// 付款人（修订第 311 条）；空为未填写
+  final String payer;
+
   /// 从接口 JSON 创建
   factory Subscription.fromJson(Map<String, dynamic> j) {
     final v = (j['vps'] as Map<String, dynamic>?) ?? const {};
@@ -173,6 +181,8 @@ class Subscription {
       logoVersion: (j['logo_version'] as num?)?.toInt() ?? 0,
       country: j['country'] as String? ?? '',
       payment: j['payment'] as String? ?? '',
+      url: j['url'] as String? ?? '',
+      payer: j['payer'] as String? ?? '',
     );
   }
 
@@ -467,6 +477,9 @@ class Analysis {
   /// 按支付方式
   List<Share> byPayment = [];
 
+  /// 按付款人（修订第 311 条），未填写的键为空
+  List<Share> byPayer = [];
+
   /// 按月费从高到低
   final top = <(Subscription, int)>[];
 }
@@ -475,7 +488,7 @@ class Analysis {
 /// 按类别、国家 / 地区、支付方式汇总并排行；一次性付费的不计入。与 Web 的 analyze 一致。
 Analysis analyze(Iterable<Subscription> list, FxRates fx) {
   final out = Analysis();
-  final cat = <String, Share>{}, country = <String, Share>{}, pay = <String, Share>{};
+  final cat = <String, Share>{}, country = <String, Share>{}, pay = <String, Share>{}, payer = <String, Share>{};
   void add(Map<String, Share> m, String key, int cents) {
     final x = m.putIfAbsent(key, () => Share(key));
     x.cents += cents;
@@ -499,6 +512,7 @@ Analysis analyze(Iterable<Subscription> list, FxRates fx) {
     add(cat, s.category, cents);
     add(country, s.country, cents);
     add(pay, s.payment, cents);
+    add(payer, s.payer, cents);
   }
   List<Share> sorted(Map<String, Share> m) {
     final xs = m.values.toList()..sort((a, b) => b.cents.compareTo(a.cents));
@@ -511,6 +525,7 @@ Analysis analyze(Iterable<Subscription> list, FxRates fx) {
   out.byCategory = sorted(cat);
   out.byCountry = sorted(country);
   out.byPayment = sorted(pay);
+  out.byPayer = sorted(payer);
   out.top.sort((a, b) => b.$2.compareTo(a.$2));
   return out;
 }
@@ -596,6 +611,7 @@ bool matchesFilter(Subscription s, String f, {DateTime? now}) => switch (f) {
       'active' => !s.ended,
       'ended' => s.ended,
       'soon' => renewsSoon(s, now: now),
+      _ when f.startsWith('payer:') => s.payer == f.substring(6),
       _ => s.category == f,
     };
 

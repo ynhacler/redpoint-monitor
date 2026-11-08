@@ -122,7 +122,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('修改订阅'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '价格'), '12.5');
-    await tester.ensureVisible(find.text('保存'));
+    // 表单变长（修订第 311 条加了付款人与链接），保存按钮要先滚动到可见
+    await tester.dragUntilVisible(find.text('保存'),
+        find.byWidgetPredicate((w) => w is ListView && '${w.key}'.contains('form-')), const Offset(0, -300));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -132,6 +134,8 @@ void main() {
     expect((putBody!['vps'] as Map)['memory_gb'], 8);
     expect((putBody!['vps'] as Map)['ips'], ['203.0.113.8']);
     expect((putBody!['vps'] as Map)['location'], '东京');
+    // 付款人与链接随表单一起提交（修订第 311 条），面板据此保存或清空
+    expect(putBody!.containsKey('payer') && putBody!.containsKey('url'), isTrue);
 
     // 删除：确认后调用接口并刷新
     await tester.longPress(_row('远期订阅'));

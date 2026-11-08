@@ -1017,6 +1017,10 @@ export interface SubscriptionInput {
   country: string
   /** 支付方式：支付宝 / 微信支付 / 银行卡 / 信用卡 / PayPal / Apple 账户 / Google Play / 运营商代扣 / 加密货币 / 其他 */
   payment: 'alipay' | 'wechat' | 'bank' | 'credit' | 'paypal' | 'apple' | 'google' | 'carrier' | 'crypto' | 'other'
+  /** 管理或退订页面的网址，只允许 http / https（修订第 311 条）；修改时省略表示沿用原值 */
+  url?: string
+  /** 付款人（家庭成员等，自由填写，修订第 311 条）；修改时省略表示沿用原值 */
+  payer?: string
   /** 扣费周期；once 为一次性 */
   cycle: 'weekly' | 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'once'
   /** 免费试用天数，0 为没有试用；首次扣费在开始日期加试用天数 */
@@ -1079,6 +1083,10 @@ export interface Subscription {
   country: string
   /** 支付方式（见 SubscriptionInput.payment）；尚未设置时为空 */
   payment: string
+  /** 管理或退订页面的网址（修订第 311 条），空为未填写 */
+  url: string
+  /** 付款人（修订第 311 条），空为未填写 */
+  payer: string
   phones: SubscriptionPhone[]
   vps: SubscriptionVPS
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
