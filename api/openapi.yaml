@@ -521,6 +521,7 @@ paths:
       description: |
         App 的“订阅”页：与 Web 相同的订阅列表（含计算得到的下次扣费日），按下次扣费日排序。订阅属于整个面板，
         只有授权范围为“全部节点”的设备能看到；其他范围的设备得到 limited 为 true、列表为空。App 只读：添加、修改都在 Web 中进行。
+      parameters: [{ $ref: '#/components/parameters/SubCategories' }]
       responses:
         '200': { description: 订阅列表, content: { application/json: { schema: { $ref: '#/components/schemas/AppSubscriptions' } } } }
         '401': { $ref: '#/components/responses/Error' }
@@ -532,6 +533,7 @@ paths:
       description: |
         约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增（以及修改、删除，
         修订第 218 条），其他返回 403。请求体与 Web 的 POST /subscriptions 相同；不能上传图标。写入审计日志，操作者为设备名。
+      parameters: [{ $ref: '#/components/parameters/SubCategories' }]
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/SubscriptionInput' } } }
@@ -549,6 +551,7 @@ paths:
       summary: 修改一条订阅（修订第 218 条）
       security: [{ deviceToken: [] }]
       description: 与 POST /app/subscriptions 相同的权限（AK 允许记录订阅且授权全部节点）；整体替换，请求体与 Web 的 PUT /subscriptions/{id} 相同。
+      parameters: [{ $ref: '#/components/parameters/SubCategories' }]
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/SubscriptionInput' } } }
@@ -575,7 +578,7 @@ paths:
       summary: 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条）
       security: [{ deviceToken: [] }]
       description: 只适用于填写了结束日期的订阅（手动续费的 VPS、域名等），从原结束日期按订阅周期顺延；没有结束日期或一次性付费时返回 409。App 设备：AK 允许记录订阅且授权全部节点（accessAppSubs，约束 5 的唯一写入例外）；记审计日志。
-      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }, { $ref: '#/components/parameters/SubCategories' }]
       responses:
         '200': { description: 续费后的订阅, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
         '401': { $ref: '#/components/responses/Error' }
@@ -2843,6 +2846,14 @@ components:
       description: Agent Token（agt_…），只能为 Token 绑定的节点上报（设计 23.2）
 
   parameters:
+    SubCategories:
+      name: categories
+      in: query
+      required: false
+      description: |
+        新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories；
+        修改时提交 other 而原类别为自定义类别的，沿用原类别。
+      schema: { type: string, enum: ['1'] }
     ServerID:
       name: id
       in: path

@@ -22,6 +22,20 @@ type appSubscriptionsView struct {
 	DefaultRemindDays int `json:"default_remind_days"`
 }
 
+// legacyCategories 判断请求是否来自不认识自定义类别的旧版 App（修订第 315 条）：新版 App 在订阅接口上带 ?categories=1。
+// 旧版 App（0.3.11 及更早）遇到不认识的类别键会在按类别分组与编辑表单中出错，所以对它们把自定义类别显示为“其他”。
+func legacyCategories(r *http.Request) bool {
+	return info(r).device != nil && r.URL.Query().Get("categories") != "1"
+}
+
+// appSubView 是返回给 App 的单条订阅：旧版 App 看到的自定义类别为“其他”（修订第 315 条）。
+func appSubView(r *http.Request, x Subscription) Subscription {
+	if legacyCategories(r) {
+		x.Category = publicCategory(x.Category)
+	}
+	return x
+}
+
 // fullScope 判断请求的 App 设备是否为“全部节点”授权。
 func fullScope(r *http.Request) bool {
 	d := info(r).device
@@ -46,12 +60,16 @@ func (s *Server) handleAppSubscriptions(w http.ResponseWriter, r *http.Request) 
 		list[i] = withSchedule(list[i], now)
 	}
 	sortSubscriptions(list)
-	out.Items = append(out.Items, list...)
+	for _, x := range list {
+		out.Items = append(out.Items, appSubView(r, x))
+	}
 	out.Budget = s.subBudget().MonthlyCents
 	out.DefaultRemindDays = s.subPush().DefaultRemindDays
-	if out.Categories, err = s.store.ListSubCategories(); err != nil {
-		s.writeError(w, r, internalError(err))
-		return
+	if !legacyCategories(r) {
+		if out.Categories, err = s.store.ListSubCategories(); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
 	}
 	writeJSON(w, out)
 }

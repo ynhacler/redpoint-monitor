@@ -1338,6 +1338,11 @@
           }
         ],
         "description": "App 的“订阅”页：与 Web 相同的订阅列表（含计算得到的下次扣费日），按下次扣费日排序。订阅属于整个面板，\n只有授权范围为“全部节点”的设备能看到；其他范围的设备得到 limited 为 true、列表为空。App 只读：添加、修改都在 Web 中进行。\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SubCategories"
+          }
+        ],
         "responses": {
           "200": {
             "description": "订阅列表",
@@ -1365,6 +1370,11 @@
           }
         ],
         "description": "约束 5（App 只读）的唯一写入例外：只有 AK 勾选了“允许记录订阅”且授权范围为“全部节点”的设备可以新增（以及修改、删除，\n修订第 218 条），其他返回 403。请求体与 Web 的 POST /subscriptions 相同；不能上传图标。写入审计日志，操作者为设备名。\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SubCategories"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1423,6 +1433,11 @@
           }
         ],
         "description": "与 POST /app/subscriptions 相同的权限（AK 允许记录订阅且授权全部节点）；整体替换，请求体与 Web 的 PUT /subscriptions/{id} 相同。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SubCategories"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1505,6 +1520,9 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "$ref": "#/components/parameters/SubCategories"
           }
         ],
         "responses": {
@@ -8320,6 +8338,18 @@
       }
     },
     "parameters": {
+      "SubCategories": {
+        "name": "categories",
+        "in": "query",
+        "required": false,
+        "description": "新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories；\n修改时提交 other 而原类别为自定义类别的，沿用原类别。\n",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "1"
+          ]
+        }
+      },
       "ServerID": {
         "name": "id",
         "in": "path",

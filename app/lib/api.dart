@@ -141,8 +141,8 @@ class ApiClient {
     return _json(res);
   }
 
-  Future<Map<String, dynamic>> _send2xx(String method, String path, {Object? body}) async {
-    final res = await _send(method, path, body: body);
+  Future<Map<String, dynamic>> _send2xx(String method, String path, {Map<String, String>? query, Object? body}) async {
+    final res = await _send(method, path, query: query, body: body);
     if (res.statusCode >= 300) throw _errorOf(res);
     return res.body.isEmpty ? const {} : _json(res) as Map<String, dynamic>;
   }
@@ -207,9 +207,12 @@ class ApiClient {
   /// 云账户只读摘要（设计 44.8）：授权范围不是“全部节点”时 limited 为 true。旧版面板没有该接口时抛出 ApiException（404）。
   Future<CloudSummary> cloud() async => CloudSummary.fromJson(await getJson('/app/cloud') as Map<String, dynamic>);
 
+  /// 订阅接口带上它，面板才返回自定义类别（修订第 315 条）；不带时（旧版 App）自定义类别显示为“其他”。
+  static const _subQuery = {'categories': '1'};
+
   /// 订阅只读列表（修订第 213 条）：返回（是否受限, 订阅）。授权范围不是“全部节点”时受限、列表为空；旧版面板抛出 ApiException（404）。
   Future<(bool, List<Subscription>, int)> subscriptions() async {
-    final body = await getJson('/app/subscriptions') as Map<String, dynamic>;
+    final body = await getJson('/app/subscriptions', query: _subQuery) as Map<String, dynamic>;
     setCustomCategories(body['categories'] as List<dynamic>?); // 自定义类别（修订第 314 条）；旧面板没有此字段
     defaultRemindDays = (body['default_remind_days'] as num?)?.toInt() ?? 1; // 修订第 316 条
     return (
@@ -223,11 +226,11 @@ class ApiClient {
   /// 新增一条订阅（修订第 217 条）：只有 [Session.allowSubscriptions] 为 true 的设备可以；字段与 Web 新增订阅相同。
   /// 校验失败时抛出 ApiException（422，message 为第一条原因）。
   Future<Subscription> createSubscription(Map<String, dynamic> body) async =>
-      Subscription.fromJson(await _send2xx('POST', '/app/subscriptions', body: body));
+      Subscription.fromJson(await _send2xx('POST', '/app/subscriptions', query: _subQuery, body: body));
 
   /// 修改一条订阅（整体替换，修订第 218 条）：权限与新增相同。
   Future<Subscription> updateSubscription(int id, Map<String, dynamic> body) async =>
-      Subscription.fromJson(await _send2xx('PUT', '/app/subscriptions/$id', body: body));
+      Subscription.fromJson(await _send2xx('PUT', '/app/subscriptions/$id', query: _subQuery, body: body));
 
   /// 删除一条订阅（修订第 218 条）：权限与新增相同。
   Future<void> deleteSubscription(int id) => _send2xx('DELETE', '/app/subscriptions/$id');
@@ -242,7 +245,7 @@ class ApiClient {
   }
 
   /// 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条），权限与记录订阅相同。
-  Future<Subscription> renewSubscription(int id) async => Subscription.fromJson(await _send2xx('POST', '/app/subscriptions/$id/renew'));
+  Future<Subscription> renewSubscription(int id) async => Subscription.fromJson(await _send2xx('POST', '/app/subscriptions/$id/renew', query: _subQuery));
 
   /// 已续费：节点到期日顺延一个计费周期（修订第 224 条），权限与记录订阅相同；返回新的到期日。
   Future<String> renewServer(int id) async => (await _send2xx('POST', '/app/servers/$id/renew'))['expire_date'] as String;

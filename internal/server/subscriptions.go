@@ -551,6 +551,10 @@ func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request, keep
 	if b.Payer == nil {
 		b.Payer = &keep.Payer
 	}
+	// 旧版 App 把自定义类别看成“其他”（修订第 315 条）：它原样提交“其他”时沿用原来的自定义类别
+	if legacyCategories(r) && b.Category == "other" && isCustomCategory(keep.Category) {
+		b.Category = keep.Category
+	}
 	x = Subscription{Name: b.Name, Brand: b.Brand, Category: b.Category, PriceCents: b.PriceCents, Currency: b.Currency, Cycle: b.Cycle,
 		Country: b.Country, Payment: b.Payment, URL: *b.URL, Payer: *b.Payer,
 		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones,
@@ -624,7 +628,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request, acto
 	}
 	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.create", Success: true,
 		Details: map[string]any{"id": x.ID, "name": x.Name}})
-	writeJSONStatus(w, http.StatusCreated, withSchedule(x, now))
+	writeJSONStatus(w, http.StatusCreated, appSubView(r, withSchedule(x, now)))
 }
 
 // handleUpdateSubscription：PUT /api/v1/subscriptions/{id}，admin。整体替换。
@@ -656,7 +660,7 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, acto
 	}
 	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.update", Success: true,
 		Details: map[string]any{"id": id, "name": x.Name}})
-	writeJSON(w, withSchedule(x, now))
+	writeJSON(w, appSubView(r, withSchedule(x, now)))
 }
 
 // handleDeleteSubscription：DELETE /api/v1/subscriptions/{id}，admin。

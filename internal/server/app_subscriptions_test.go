@@ -142,3 +142,50 @@ func TestAppCreateSubscription(t *testing.T) {
 		}
 	}
 }
+
+// 旧版 App 不认识自定义类别（修订第 315 条）：不带 ?categories=1 时看到“其他”，原样保存不覆盖原类别；新版 App 看到原键。
+func TestAppLegacyCustomCategory(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":"保险","color":"health"}`))
+	var c SubCategoryItem
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	base := `"name":"车险","price_cents":300000,"currency":"CNY","country":"CN","payment":"bank","cycle":"annually","start_date":"2026-01-01"`
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"category":"`+c.Key+`"}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	key, _, _ := createAppKey(t, h, admin, `{"name":"subs","allow_subscriptions":true}`)
+	_, d := pair(t, h, key)
+
+	var old, cur appSubscriptionsView
+	json.Unmarshal(do(h, "GET", "/api/v1/app/subscriptions", d.AccessToken, nil).Body.Bytes(), &old)
+	if len(old.Items) != 1 || old.Items[0].Category != "other" || len(old.Categories) != 0 {
+		t.Fatalf("旧版 App 应看到“其他”且没有自定义类别：%+v", old)
+	}
+	json.Unmarshal(do(h, "GET", "/api/v1/app/subscriptions?categories=1", d.AccessToken, nil).Body.Bytes(), &cur)
+	if len(cur.Items) != 1 || cur.Items[0].Category != c.Key || len(cur.Categories) != 1 {
+		t.Fatalf("新版 App 应看到自定义类别：%+v", cur)
+	}
+
+	// 旧版 App 改名并原样提交“其他”：类别保持不变，返回的仍是“其他”
+	rec = do(h, "PUT", "/api/v1/app/subscriptions/"+itoa64(x.ID), d.AccessToken, []byte(`{`+base+`,"name":"车险 2027","category":"other"}`))
+	var y Subscription
+	json.Unmarshal(rec.Body.Bytes(), &y)
+	if rec.Code != 200 || y.Category != "other" {
+		t.Fatalf("旧版 App 修改：%d %s", rec.Code, rec.Body)
+	}
+	if got, _ := s.store.GetSubscription(x.ID); got.Category != c.Key || got.Name != "车险 2027" {
+		t.Fatalf("旧版 App 保存不应覆盖自定义类别：%+v", got)
+	}
+	// 新版 App 明确改为“其他”时生效
+	rec = do(h, "PUT", "/api/v1/app/subscriptions/"+itoa64(x.ID)+"?categories=1", d.AccessToken, []byte(`{`+base+`,"category":"other"}`))
+	if got, _ := s.store.GetSubscription(x.ID); rec.Code != 200 || got.Category != "other" {
+		t.Fatalf("新版 App 改为其他：%d %+v", rec.Code, got)
+	}
+	// Web 管理员不受影响
+	do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), admin, []byte(`{`+base+`,"category":"`+c.Key+`"}`))
+	rec = do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), admin, []byte(`{`+base+`,"category":"other"}`))
+	if got, _ := s.store.GetSubscription(x.ID); rec.Code != 200 || got.Category != "other" {
+		t.Fatalf("Web 改为其他：%d %+v", rec.Code, got)
+	}
+}
