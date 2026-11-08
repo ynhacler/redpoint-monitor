@@ -98,7 +98,7 @@ func (s *Server) renewSubscription(w http.ResponseWriter, r *http.Request, actor
 	}
 	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.renew", Success: true,
 		Details: map[string]any{"id": id, "name": x.Name, "from": prev, "to": next}})
-	writeJSON(w, withSchedule(x, now))
+	writeJSON(w, appSubView(r, withSchedule(x, now)))
 }
 
 // handleRenewServer：POST /api/v1/servers/{id}/renew，admin。

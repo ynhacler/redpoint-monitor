@@ -2216,10 +2216,18 @@ export interface Paths {
   '/app/subscriptions': {
     /** 订阅的只读列表（设计 47，修订第 213 条） */
     get: {
+      query?: {
+        /** 新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories； 修改时提交 other 而原类别为自定义类别的，沿用原类别。 */
+        categories?: '1'
+      }
       response: AppSubscriptions
     }
     /** 新增一条订阅（修订第 217 条） */
     post: {
+      query?: {
+        /** 新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories； 修改时提交 other 而原类别为自定义类别的，沿用原类别。 */
+        categories?: '1'
+      }
       body: SubscriptionInput
       response: Subscription
     }
@@ -2229,6 +2237,10 @@ export interface Paths {
     put: {
       params: {
         id: number
+      }
+      query?: {
+        /** 新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories； 修改时提交 other 而原类别为自定义类别的，沿用原类别。 */
+        categories?: '1'
       }
       body: SubscriptionInput
       response: Subscription
@@ -2246,6 +2258,10 @@ export interface Paths {
     post: {
       params: {
         id: number
+      }
+      query?: {
+        /** 新版 App 传 1，表示认识自定义类别（修订第 315 条）。不传时（旧版 App）返回的自定义类别显示为 other、列表不带 categories； 修改时提交 other 而原类别为自定义类别的，沿用原类别。 */
+        categories?: '1'
       }
       response: Subscription
     }
