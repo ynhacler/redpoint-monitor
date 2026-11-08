@@ -3335,7 +3335,7 @@ components:
     NotifyChannel:
       type: object
       description: 通知渠道。凭证脱敏：bot_token 只保留 ID 与末 4 位，Webhook 地址只保留协议与主机，签名密钥与 ntfy 访问令牌只返回是否已设置，ntfy 主题只保留前 3 个字符
-      required: [id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at]
+      required: [id, type, name, enabled, min_severity, notify_resolved, alert_groups, config, created_at, updated_at]
       properties:
         id: { type: integer }
         type: { type: string, enum: [telegram, webhook, ntfy, email, discord, bark, wecom, dingtalk, feishu] }
@@ -3343,6 +3343,7 @@ components:
         enabled: { type: boolean }
         min_severity: { type: string, enum: [critical, warning, info], description: 达到该级别才发送 }
         notify_resolved: { type: boolean }
+        alert_groups: { type: array, items: { $ref: '#/components/schemas/AlertGroup' }, description: 只接收这些告警分组（修订第 318 条），空为全部 }
         config:
           type: object
           properties:
@@ -3362,6 +3363,13 @@ components:
         created_at: { type: integer }
         updated_at: { type: integer }
 
+    AlertGroup:
+      type: string
+      description: |
+        告警分组（修订第 318 条）：offline 离线；resource CPU / 内存 / 磁盘 / Swap / 负载；traffic 流量与预计超额；expire 节点与证书到期；
+        network 测速延迟 / 丢包、国内不可达；service 进程、容器、代理、服务监控；port 端口变化；cloud 云账户余额 / 费用 / 同步；other 其余（Agent 时钟、变更通知等）。
+        面板自检、测试通知与定期报告不分组；订阅提醒按订阅推送设置发送。
+      enum: [offline, resource, traffic, expire, network, service, port, cloud, other]
     NotifyChannelInput:
       type: object
       required: [name, config]
@@ -3371,6 +3379,7 @@ components:
         enabled: { type: boolean, default: true }
         min_severity: { type: string, enum: [critical, warning, info], default: warning }
         notify_resolved: { type: boolean, default: true }
+        alert_groups: { type: array, items: { $ref: '#/components/schemas/AlertGroup' }, description: 省略表示不修改，空数组为全部（修订第 318 条） }
         config:
           type: object
           description: 修改时凭证字段留空表示保持原值

@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -68,15 +69,17 @@ const deliveryRetention = 30 * 24 * time.Hour
 
 // NotifyChannel 是一个通知渠道。Config 中的凭证只在发送时使用，接口返回前经 maskedConfig 脱敏。
 type NotifyChannel struct {
-	ID             int64         `json:"id"`
-	Type           string        `json:"type"`
-	Name           string        `json:"name"`
-	Enabled        bool          `json:"enabled"`
-	MinSeverity    string        `json:"min_severity"`    // critical / warning / info：达到该级别才发送
-	NotifyResolved bool          `json:"notify_resolved"` // 恢复时是否通知
-	Config         channelConfig `json:"-"`
-	CreatedAt      int64         `json:"created_at"`
-	UpdatedAt      int64         `json:"updated_at"`
+	ID             int64  `json:"id"`
+	Type           string `json:"type"`
+	Name           string `json:"name"`
+	Enabled        bool   `json:"enabled"`
+	MinSeverity    string `json:"min_severity"`    // critical / warning / info：达到该级别才发送
+	NotifyResolved bool   `json:"notify_resolved"` // 恢复时是否通知
+	// AlertGroups 是这个渠道接收的告警分组（修订第 318 条），空为全部；见 alertGroupOf
+	AlertGroups []string      `json:"alert_groups"`
+	Config      channelConfig `json:"-"`
+	CreatedAt   int64         `json:"created_at"`
+	UpdatedAt   int64         `json:"updated_at"`
 }
 
 // channelConfig 是渠道的连接参数，以 JSON 保存在 notification_channels.config。
@@ -174,6 +177,15 @@ func (c *NotifyChannel) validate() []FieldError {
 	default:
 		errs = append(errs, FieldError{Field: "min_severity", Message: "级别无效"})
 	}
+	if c.AlertGroups == nil {
+		c.AlertGroups = []string{}
+	}
+	for _, g := range c.AlertGroups {
+		if !slices.Contains(alertGroupKeys, g) {
+			errs = append(errs, FieldError{Field: "alert_groups", Message: "告警分组无效"})
+			break
+		}
+	}
 	switch c.Type {
 	case ChannelTelegram:
 		c.Config.BotToken = strings.TrimSpace(c.Config.BotToken)
@@ -249,14 +261,18 @@ func checkWebhookURL(raw string) string {
 
 // ---- 存储 ----
 
-const channelColumns = `id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at`
+const channelColumns = `id, type, name, enabled, min_severity, notify_resolved, config, created_at, updated_at, alert_groups`
 
 func scanChannel(sc interface{ Scan(...any) error }) (NotifyChannel, error) {
 	var c NotifyChannel
-	var cfg string
-	err := sc.Scan(&c.ID, &c.Type, &c.Name, &c.Enabled, &c.MinSeverity, &c.NotifyResolved, &cfg, &c.CreatedAt, &c.UpdatedAt)
+	var cfg, groups string
+	err := sc.Scan(&c.ID, &c.Type, &c.Name, &c.Enabled, &c.MinSeverity, &c.NotifyResolved, &cfg, &c.CreatedAt, &c.UpdatedAt, &groups)
 	if err == nil {
 		err = json.Unmarshal([]byte(cfg), &c.Config)
+	}
+	c.AlertGroups = []string{}
+	if groups != "" {
+		c.AlertGroups = strings.Split(groups, ",")
 	}
 	return c, err
 }
@@ -297,8 +313,8 @@ func (s *Store) SaveChannel(c *NotifyChannel, now time.Time) error {
 	if c.ID == 0 {
 		c.CreatedAt = now.Unix()
 		res, err := s.DB.Exec(`INSERT INTO notification_channels (type, name, enabled, min_severity, notify_resolved, config,
-			created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`, c.Type, c.Name, c.Enabled, c.MinSeverity, c.NotifyResolved,
-			string(cfg), c.CreatedAt, c.UpdatedAt)
+			created_at, updated_at, alert_groups) VALUES (?,?,?,?,?,?,?,?,?)`, c.Type, c.Name, c.Enabled, c.MinSeverity, c.NotifyResolved,
+			string(cfg), c.CreatedAt, c.UpdatedAt, strings.Join(c.AlertGroups, ","))
 		if err != nil {
 			return err
 		}
@@ -306,7 +322,8 @@ func (s *Store) SaveChannel(c *NotifyChannel, now time.Time) error {
 		return nil
 	}
 	_, err := s.DB.Exec(`UPDATE notification_channels SET name = ?, enabled = ?, min_severity = ?, notify_resolved = ?,
-		config = ?, updated_at = ? WHERE id = ?`, c.Name, c.Enabled, c.MinSeverity, c.NotifyResolved, string(cfg), c.UpdatedAt, c.ID)
+		config = ?, updated_at = ?, alert_groups = ? WHERE id = ?`, c.Name, c.Enabled, c.MinSeverity, c.NotifyResolved, string(cfg),
+		c.UpdatedAt, strings.Join(c.AlertGroups, ","), c.ID)
 	return err
 }
 
@@ -590,6 +607,9 @@ func (c NotifyChannel) wants(m notifyMessage) bool {
 	}
 	if m.Kind == NotifyResolved && !c.NotifyResolved {
 		return false
+	}
+	if len(c.AlertGroups) > 0 && !slices.Contains(c.AlertGroups, alertGroupOf(m.Type)) {
+		return false // 只接收选中的告警分组（修订第 318 条）
 	}
 	return severityRank(m.Severity) >= severityRank(c.MinSeverity)
 }

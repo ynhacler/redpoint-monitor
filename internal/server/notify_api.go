@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ type channelBody struct {
 	MinSeverity    string            `json:"min_severity"`
 	NotifyResolved *bool             `json:"notify_resolved"`
 	Config         channelBodyConfig `json:"config"`
+	// AlertGroups 省略表示不修改，[] 表示全部（修订第 318 条）
+	AlertGroups *[]string `json:"alert_groups"`
 }
 
 // channelBodyConfig 是请求中的连接参数；整体为空（如 Web 上切换启用开关时的 {}）表示不修改。
@@ -62,6 +65,11 @@ func (b *channelBody) apply(c *NotifyChannel) {
 	}
 	if b.NotifyResolved != nil {
 		c.NotifyResolved = *b.NotifyResolved
+	}
+	if b.AlertGroups != nil {
+		g := slices.Clone(*b.AlertGroups)
+		slices.Sort(g)
+		c.AlertGroups = slices.Compact(g)
 	}
 	if b.Config.BotToken != "" {
 		c.Config.BotToken = b.Config.BotToken

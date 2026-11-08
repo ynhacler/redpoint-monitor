@@ -1069,6 +1069,8 @@ var migrations = []string{
 		SELECT 'subscription_push', '{"enabled":true}', CAST(strftime('%s', 'now') AS INTEGER)
 		WHERE EXISTS (SELECT 1 FROM settings WHERE key = 'alerts' AND value LIKE '%"enabled":true%')
 		AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'subscription_push');`,
+	// 迁移 69：通知渠道只接收选中的告警分组（修订第 318 条），逗号分隔，空为全部
+	`ALTER TABLE notification_channels ADD COLUMN alert_groups TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {
