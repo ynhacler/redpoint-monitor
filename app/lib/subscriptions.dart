@@ -164,8 +164,7 @@ class Subscription {
       remindDays: (j['remind_days'] as num?)?.toInt() ?? 0,
       note: j['note'] as String? ?? '',
       phones: [
-        for (final p in (j['phones'] as List<dynamic>? ?? const []))
-          SubPhone((p as Map<String, dynamic>)['cc'] as String? ?? '', p['number'] as String? ?? ''),
+        for (final p in (j['phones'] as List<dynamic>? ?? const [])) SubPhone((p as Map<String, dynamic>)['cc'] as String? ?? '', p['number'] as String? ?? ''),
       ],
       vps: SubVPS(
         ips: [for (final ip in (v['ips'] as List<dynamic>? ?? const [])) ip as String],
@@ -255,8 +254,7 @@ List<DateTime> pastCharges(Subscription s, {DateTime? today}) {
 }
 
 /// 未来 n 个月每月的预计扣款（修订第 240 条，与 Web 的 cashflow 相同）：按扣费日排期，换算人民币的舍入点为每个订阅的当月扣费
-({List<(DateTime, int, int)> months, int total, List<String> missing}) cashflow(Iterable<Subscription> list, FxRates fx,
-    {DateTime? today, int n = 12}) {
+({List<(DateTime, int, int)> months, int total, List<String> missing}) cashflow(Iterable<Subscription> list, FxRates fx, {DateTime? today, int n = 12}) {
   final now = today ?? DateTime.now();
   final months = <(DateTime, int, int)>[];
   final missing = <String>{};
@@ -281,8 +279,7 @@ List<DateTime> pastCharges(Subscription s, {DateTime? today}) {
 }
 
 // 两个日期相差的日历天数：按 UTC 的年月日计算，跨夏令时切换（某天只有 23 或 25 小时）也不差一天（修订第 272 条）
-int _dayDiff(DateTime d, DateTime n) =>
-    DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(n.year, n.month, n.day)).inDays;
+int _dayDiff(DateTime d, DateTime n) => DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(n.year, n.month, n.day)).inDays;
 
 /// 距下次扣费的天数（今天为 0）；没有下次扣费时为 null
 int? daysUntilCharge(Subscription s, {DateTime? now}) {
@@ -346,7 +343,27 @@ List<(String, double)> monthlyByCurrency(Iterable<Subscription> list) {
 // ---- 国家 / 地区、支付方式与人民币换算（修订第 223 条，与 Web 的 subscriptions.ts 一致） ----
 
 /// 订阅类别的固定颜色（修订第 233 条，与 Web 的 categoryColors 相同，来自 design/tokens.json 的 cat-*）
-Color categoryColor(AppColors c, String key) => switch (key) {
+/// 自定义类别（修订第 314 条）：键 c<编号> → （名称、取颜色的内置类别键）；由订阅列表的响应填入
+final customCategories = <String, (String, String)>{};
+
+/// 用面板返回的自定义类别替换 [customCategories]
+void setCustomCategories(List<dynamic>? list) {
+  customCategories
+    ..clear()
+    ..addAll({
+      for (final e in list ?? const [])
+        if (e is Map<String, dynamic> && e['key'] is String) e['key'] as String: ((e['name'] as String?) ?? '', (e['color'] as String?) ?? 'other'),
+    });
+}
+
+/// 类别名称：内置或自定义；不认识的（如类别已删除）显示为“其他”
+String catName(String key) => categoryNames[key] ?? customCategories[key]?.$1 ?? '其他';
+
+/// 全部类别键：内置（“其他”除外）、自定义、其他
+List<String> allCategoryKeys() => [...categoryNames.keys.where((k) => k != 'other'), ...customCategories.keys, 'other'];
+
+/// 类别颜色；自定义类别取所选内置类别的颜色
+Color categoryColor(AppColors c, String key) => switch (customCategories[key]?.$2 ?? key) {
       'video' => c.catVideo,
       'tools' => c.catTools,
       'reading' => c.catReading,
@@ -361,13 +378,34 @@ Color categoryColor(AppColors c, String key) => switch (key) {
 
 /// 支付方式（键与面板一致）
 const paymentNames = <String, String>{
-  'alipay': '支付宝', 'wechat': '微信支付', 'bank': '银行卡', 'credit': '信用卡', 'paypal': 'PayPal', 'apple': 'Apple 账户',
-  'google': 'Google Play', 'carrier': '运营商代扣', 'crypto': '加密货币', 'other': '其他',
+  'alipay': '支付宝',
+  'wechat': '微信支付',
+  'bank': '银行卡',
+  'credit': '信用卡',
+  'paypal': 'PayPal',
+  'apple': 'Apple 账户',
+  'google': 'Google Play',
+  'carrier': '运营商代扣',
+  'crypto': '加密货币',
+  'other': '其他',
 };
 
 const _currencyCountry = <String, String>{
-  'CNY': 'CN', 'USD': 'US', 'HKD': 'HK', 'JPY': 'JP', 'GBP': 'GB', 'TWD': 'TW', 'SGD': 'SG', 'MOP': 'MO', 'AUD': 'AU', 'MYR': 'MY',
-  'THB': 'TH', 'PHP': 'PH', 'ZAR': 'ZA', 'NGN': 'NG', 'GHS': 'GH',
+  'CNY': 'CN',
+  'USD': 'US',
+  'HKD': 'HK',
+  'JPY': 'JP',
+  'GBP': 'GB',
+  'TWD': 'TW',
+  'SGD': 'SG',
+  'MOP': 'MO',
+  'AUD': 'AU',
+  'MYR': 'MY',
+  'THB': 'TH',
+  'PHP': 'PH',
+  'ZAR': 'ZA',
+  'NGN': 'NG',
+  'GHS': 'GH',
 };
 
 /// 币种对应的默认国家 / 地区；EUR 等多国通用的币种为空
@@ -617,7 +655,7 @@ bool matchesFilter(Subscription s, String f, {DateTime? now}) => switch (f) {
 
 /// 排序（与 Web 的 sortSubs 相同）：已结束的总在最后；price 按月均折算人民币（没有汇率按原币）；date 没有下次扣费的在后
 List<Subscription> sortSubs(Iterable<Subscription> list, String key, bool desc, FxRates fx) {
-  final order = categoryNames.keys.toList();
+  final order = allCategoryKeys();
   num monthlyCny(Subscription s) {
     final m = s.cycle == 'once' ? s.priceCents : s.monthlyCents;
     return fx.toCny(m, s.currency) ?? m;

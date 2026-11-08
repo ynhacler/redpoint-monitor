@@ -1003,6 +1003,20 @@ export interface ServiceMonitor {
   created_at: number
 }
 
+export interface SubCategory {
+  id: number
+  /** 订阅中使用的类别键 c<编号> */
+  key: string
+  name: string
+  /** 取这个内置类别的颜色 */
+  color: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+}
+
+export interface SubCategoryInput {
+  name: string
+  color: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+}
+
 export interface SubBudget {
   /** 每月预算（人民币分），0 为不设 */
   monthly_cents: number
@@ -1012,8 +1026,8 @@ export interface SubscriptionInput {
   name: string
   /** 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 */
   brand?: string
-  /** 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他 */
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  /** 内置类别 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他，或自定义类别 c<编号>（修订第 314 条） */
+  category: string
   /** 每期价格（分） */
   price_cents: number
   /** 如 CNY、USD */
@@ -1072,7 +1086,8 @@ export interface Subscription {
   name: string
   /** 常用服务目录中的键；自定义时为空 */
   brand: string
-  category: 'video' | 'tools' | 'reading' | 'social' | 'health' | 'game' | 'cloud' | 'sim' | 'vps' | 'other'
+  /** 内置类别键或自定义类别 c<编号>（修订第 314 条） */
+  category: string
   /** 每期价格（分） */
   price_cents: number
   currency: string
@@ -1770,6 +1785,8 @@ export interface AppSubscriptions {
   limited: boolean
   /** 订阅每月预算（人民币分），0 为不设（修订第 312 条；旧面板没有此字段） */
   budget_cents?: number
+  /** 自定义类别（修订第 314 条；旧面板没有此字段） */
+  categories?: SubCategory[]
   items: Subscription[]
 }
 
@@ -2650,6 +2667,37 @@ export interface Paths {
     /** 公开展示页的订阅（设计 45.3）：无需凭证，只读，展示页与订阅都开启时才有 */
     get: {
       response: PublicSubscriptionList
+    }
+  }
+  '/subscription-categories': {
+    /** 订阅的自定义类别（修订第 314 条） */
+    get: {
+      response: {
+        next_cursor: string
+        items: SubCategory[]
+      }
+    }
+    /** 添加自定义类别（最多 30 个） */
+    post: {
+      body: SubCategoryInput
+      response: SubCategory
+    }
+  }
+  '/subscription-categories/{id}': {
+    /** 修改自定义类别的名称与颜色 */
+    put: {
+      params: {
+        id: number
+      }
+      body: SubCategoryInput
+      response: SubCategory
+    }
+    /** 删除自定义类别；用到它的订阅改为“其他” */
+    delete: {
+      params: {
+        id: number
+      }
+      response: void
     }
   }
   '/settings/subscription-budget': {

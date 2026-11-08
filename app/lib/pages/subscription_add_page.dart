@@ -77,7 +77,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
     _payer.text = x.payer;
     _location.text = x.vps.location;
     _ips.text = x.vps.ips.join('\n');
-    _category = categoryNames.containsKey(x.category) ? x.category : 'other';
+    _category = allCategoryKeys().contains(x.category) ? x.category : 'other';
     _currency = x.currency;
     _country = x.country;
     _payment = paymentNames.containsKey(x.payment) ? x.payment : '';
@@ -318,7 +318,7 @@ class _SubscriptionAddPageState extends State<SubscriptionAddPage> {
         DropdownButtonFormField<String>(
           initialValue: _category,
           decoration: deco('类别', 'category'),
-          items: [for (final x in categoryNames.entries) DropdownMenuItem(value: x.key, child: Text(x.value))],
+          items: [for (final k in allCategoryKeys()) DropdownMenuItem(value: k, child: Text(catName(k)))],
           onChanged: (v) => setState(() {
             _category = v!;
             if (_category == 'sim' && _phones.isEmpty) _phones.add((TextEditingController(text: '+86'), TextEditingController()));

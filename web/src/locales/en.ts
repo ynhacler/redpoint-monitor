@@ -305,6 +305,16 @@ export const en: Record<string, string> = {
   '查询': 'Look up',
   '补充资产信息': 'Add asset details',
   '（{n} 项未填：供应商、价格、到期等用于费用与到期提醒）': ' ({n} empty: provider, price, expiry etc. are used for cost and expiry reminders)',
+  // 自定义类别（修订第 314 条）
+  '内置类别之外，可以添加自己的类别（最多 30 个）。删除类别时，用到它的订阅改为“其他”。': 'Besides the built-in categories you can add your own (up to 30). Deleting a category moves its subscriptions to “Other”.',
+  '类别名称': 'Category name',
+  '颜色': 'Color',
+  '颜色同“{c}”': 'Color of “{c}”',
+  '还没有自定义类别。': 'No custom categories yet.',
+  '新类别名称，如 保险、域名': 'New category, e.g. Insurance, Domains',
+  '新类别名称': 'New category name',
+  '＋ 管理自定义类别…': '+ Manage custom categories…',
+  '自定义类别': 'Custom categories',
   // 续订日历（修订第 313 条）
   '上个月': 'Previous month',
   '{n} 次扣费 · {v}': '{n} charges · {v}',

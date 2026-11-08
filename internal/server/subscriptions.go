@@ -391,7 +391,7 @@ func validateSubscription(x *Subscription) []FieldError {
 	if utf8.RuneCountInString(x.Brand) > 32 {
 		fe = append(fe, FieldError{Field: "brand", Message: "图标键最多 32 个字符"})
 	}
-	if !slices.Contains(subCategories, x.Category) {
+	if !slices.Contains(subCategories, x.Category) && !isCustomCategory(x.Category) {
 		fe = append(fe, FieldError{Field: "category", Message: "请选择类别"})
 	}
 	if x.PriceCents < 0 || x.PriceCents > 100000000 {
@@ -555,7 +555,17 @@ func (s *Server) decodeSubscription(w http.ResponseWriter, r *http.Request, keep
 		Country: b.Country, Payment: b.Payment, URL: *b.URL, Payer: *b.Payer,
 		TrialDays: b.TrialDays, StartDate: b.StartDate, EndDate: b.EndDate, RemindDays: b.RemindDays, Note: b.Note, Phones: b.Phones,
 		VPS: b.VPS}
-	if fe := validateSubscription(&x); fe != nil {
+	fe := validateSubscription(&x)
+	// 自定义类别须存在（修订第 314 条）；沿用修改前的类别时不再检查，类别被删后订阅已改为“其他”
+	if isCustomCategory(x.Category) && x.Category != keep.Category {
+		if ok, err := s.store.subCategoryExists(x.Category); err != nil {
+			s.writeError(w, r, internalError(err))
+			return x, false
+		} else if !ok {
+			fe = append(fe, FieldError{Field: "category", Message: "类别不存在或已删除"})
+		}
+	}
+	if fe != nil {
 		s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: fe})
 		return x, false
 	}

@@ -9,14 +9,22 @@ import 'package:vpsmon_app/pages/subscriptions_page.dart';
 import 'package:vpsmon_app/session.dart';
 import 'package:vpsmon_app/subscriptions.dart';
 
-Session _session({required bool subs}) => Session(server: Uri.parse('https://monitor.example.com'), deviceId: 1, accessToken: 'dev_a',
-    refreshToken: 'rt_a', accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)), scopeType: 'all', scopeValue: '',
-    allowLowRiskOps: true, allowSubscriptions: subs);
+Session _session({required bool subs}) => Session(
+    server: Uri.parse('https://monitor.example.com'),
+    deviceId: 1,
+    accessToken: 'dev_a',
+    refreshToken: 'rt_a',
+    accessExpiresAt: DateTime.now().add(const Duration(minutes: 30)),
+    scopeType: 'all',
+    scopeValue: '',
+    allowLowRiskOps: true,
+    allowSubscriptions: subs);
 
 void main() {
   testWidgets('没有“允许记录订阅”时不显示新增入口', (tester) async {
     final client = MockClient((_) async => http.Response('{"limited":false,"items":[]}', 200));
-    await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
+    await tester
+        .pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
     await tester.pump();
     await tester.pump();
     expect(find.text('新增订阅'), findsNothing);
@@ -33,8 +41,18 @@ void main() {
         final b = jsonDecode(req.body) as Map<String, dynamic>;
         posted.add(b);
         if (b['price_cents'] as int < 0) {
-          return http.Response.bytes(utf8.encode(jsonEncode({'error': {'code': 'validation_failed', 'message': '请检查', 'request_id': 'r',
-            'details': [{'field': 'price_cents', 'message': '价格应在 0 ～ 1,000,000 之间'}]}})), 422);
+          return http.Response.bytes(
+              utf8.encode(jsonEncode({
+                'error': {
+                  'code': 'validation_failed',
+                  'message': '请检查',
+                  'request_id': 'r',
+                  'details': [
+                    {'field': 'price_cents', 'message': '价格应在 0 ～ 1,000,000 之间'}
+                  ]
+                }
+              })),
+              422);
         }
         final x = {...b, 'id': 1, 'next_charge': '2099-01-05', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0};
         items = [x];
@@ -83,16 +101,38 @@ void main() {
     }
 
     Map<String, dynamic> sub(int id, String name, String next, {String category = 'video', Map<String, dynamic>? vps}) => {
-          'id': id, 'name': name, 'brand': '', 'category': category, 'price_cents': 1000, 'currency': 'USD', 'cycle': 'monthly',
-          'trial_days': 0, 'start_date': '2026-01-01', 'end_date': '', 'remind_days': 1, 'note': '', 'phones': [],
+          'id': id,
+          'name': name,
+          'brand': '',
+          'category': category,
+          'price_cents': 1000,
+          'currency': 'USD',
+          'cycle': 'monthly',
+          'trial_days': 0,
+          'start_date': '2026-01-01',
+          'end_date': '',
+          'remind_days': 1,
+          'note': '',
+          'phones': [],
           'vps': vps ?? {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
-          'next_charge': next, 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0,
+          'next_charge': next,
+          'ended': false,
+          'logo_version': 0,
+          'created_at': 0,
+          'updated_at': 0,
         };
     // 面板按下次扣费日排序；“马上续费”3 天后扣费，排在 20 天后的前面并标红点
     var items = [
       sub(1, '远期订阅', day(20)),
-      sub(2, '我的 VPS', day(30), category: 'vps',
-          vps: {'ips': ['203.0.113.8'], 'cpu': 4, 'memory_gb': 8, 'disk_gb': 80, 'bandwidth_mbps': 1000, 'traffic_gb': 2000, 'location': '东京'}),
+      sub(2, '我的 VPS', day(30), category: 'vps', vps: {
+        'ips': ['203.0.113.8'],
+        'cpu': 4,
+        'memory_gb': 8,
+        'disk_gb': 80,
+        'bandwidth_mbps': 1000,
+        'traffic_gb': 2000,
+        'location': '东京'
+      }),
       sub(3, '马上续费', day(3)),
     ];
     final calls = <String>[];
@@ -123,8 +163,7 @@ void main() {
     expect(find.text('修改订阅'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '价格'), '12.5');
     // 表单变长（修订第 311 条加了付款人与链接），保存按钮要先滚动到可见
-    await tester.dragUntilVisible(find.text('保存'),
-        find.byWidgetPredicate((w) => w is ListView && '${w.key}'.contains('form-')), const Offset(0, -300));
+    await tester.dragUntilVisible(find.text('保存'), find.byWidgetPredicate((w) => w is ListView && '${w.key}'.contains('form-')), const Offset(0, -300));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -150,12 +189,36 @@ void main() {
   });
 
   testWidgets('没有权限时长按不弹出操作', (tester) async {
-    final client = MockClient((_) async => http.Response.bytes(utf8.encode(jsonEncode({'limited': false, 'items': [
-          {'id': 1, 'name': '测试订阅', 'brand': '', 'category': 'video', 'price_cents': 100, 'currency': 'USD', 'cycle': 'monthly', 'trial_days': 0,
-            'start_date': '2026-01-01', 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [], 'vps': {}, 'next_charge': '2099-01-01',
-            'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0},
-        ]})), 200));
-    await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
+    final client = MockClient((_) async => http.Response.bytes(
+        utf8.encode(jsonEncode({
+          'limited': false,
+          'items': [
+            {
+              'id': 1,
+              'name': '测试订阅',
+              'brand': '',
+              'category': 'video',
+              'price_cents': 100,
+              'currency': 'USD',
+              'cycle': 'monthly',
+              'trial_days': 0,
+              'start_date': '2026-01-01',
+              'end_date': '',
+              'remind_days': 0,
+              'note': '',
+              'phones': [],
+              'vps': {},
+              'next_charge': '2099-01-01',
+              'ended': false,
+              'logo_version': 0,
+              'created_at': 0,
+              'updated_at': 0
+            },
+          ]
+        })),
+        200));
+    await tester
+        .pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: false), MemorySessionStore(), client: client), onRevoked: () {})));
     await tester.pump();
     await tester.pump();
     await tester.longPress(_row('测试订阅'));
@@ -167,9 +230,27 @@ void main() {
     var end = '2026-11-02';
     final calls = <String>[];
     Map<String, dynamic> sub() => {
-          'id': 7, 'name': '域名 example.dev', 'brand': '', 'category': 'cloud', 'price_cents': 8900, 'currency': 'CNY', 'cycle': 'annually',
-          'trial_days': 0, 'start_date': '2025-11-02', 'end_date': end, 'remind_days': 1, 'note': '', 'phones': [], 'vps': {},
-          'next_charge': '', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0, 'country': 'CN', 'payment': 'alipay',
+          'id': 7,
+          'name': '域名 example.dev',
+          'brand': '',
+          'category': 'cloud',
+          'price_cents': 8900,
+          'currency': 'CNY',
+          'cycle': 'annually',
+          'trial_days': 0,
+          'start_date': '2025-11-02',
+          'end_date': end,
+          'remind_days': 1,
+          'note': '',
+          'phones': [],
+          'vps': {},
+          'next_charge': '',
+          'ended': false,
+          'logo_version': 0,
+          'created_at': 0,
+          'updated_at': 0,
+          'country': 'CN',
+          'payment': 'alipay',
         };
     final client = MockClient((req) async {
       calls.add('${req.method} ${req.url.path}');
@@ -177,7 +258,12 @@ void main() {
         end = '2027-11-02';
         return http.Response.bytes(utf8.encode(jsonEncode(sub())), 200);
       }
-      return http.Response.bytes(utf8.encode(jsonEncode({'limited': false, 'items': [sub()]})), 200);
+      return http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'limited': false,
+            'items': [sub()]
+          })),
+          200);
     });
     await tester.pumpWidget(MaterialApp(home: SubscriptionsPage(api: ApiClient(_session(subs: true), MemorySessionStore(), client: client), onRevoked: () {})));
     await tester.pump();
@@ -196,15 +282,32 @@ void main() {
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
     Map<String, dynamic> sub(int id, String name, String category, {int price = 1000}) => {
-          'id': id, 'name': name, 'brand': '', 'category': category, 'price_cents': price, 'currency': 'CNY', 'cycle': 'monthly',
-          'trial_days': 0, 'start_date': '2026-01-01', 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [],
+          'id': id,
+          'name': name,
+          'brand': '',
+          'category': category,
+          'price_cents': price,
+          'currency': 'CNY',
+          'cycle': 'monthly',
+          'trial_days': 0,
+          'start_date': '2026-01-01',
+          'end_date': '',
+          'remind_days': 0,
+          'note': '',
+          'phones': [],
           'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
-          'next_charge': '2099-01-0$id', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0,
+          'next_charge': '2099-01-0$id',
+          'ended': false,
+          'logo_version': 0,
+          'created_at': 0,
+          'updated_at': 0,
         };
-    final client = MockClient((req) async => http.Response.bytes(utf8.encode(jsonEncode({
+    final client = MockClient((req) async => http.Response.bytes(
+        utf8.encode(jsonEncode({
           'limited': false,
           'items': [sub(1, '甲影音', 'video'), sub(2, '乙主机', 'vps', price: 5000), sub(3, '丙影音', 'video', price: 3000)]
-        })), 200));
+        })),
+        200));
     final api = ApiClient(_session(subs: false), MemorySessionStore(), client: client);
     SubListView? changed;
     Future<void> show(SubListView v) async {
@@ -257,10 +360,27 @@ void main() {
           'limited': false,
           'budget_cents': budget,
           'items': [
-            {'id': 1, 'name': '云主机', 'brand': '', 'category': 'cloud', 'price_cents': 10000, 'currency': 'CNY', 'cycle': 'monthly',
-              'trial_days': 0, 'start_date': start, 'end_date': '', 'remind_days': 0, 'note': '', 'phones': [],
+            {
+              'id': 1,
+              'name': '云主机',
+              'brand': '',
+              'category': 'cloud',
+              'price_cents': 10000,
+              'currency': 'CNY',
+              'cycle': 'monthly',
+              'trial_days': 0,
+              'start_date': start,
+              'end_date': '',
+              'remind_days': 0,
+              'note': '',
+              'phones': [],
               'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
-              'next_charge': '2099-01-01', 'ended': false, 'logo_version': 0, 'created_at': 0, 'updated_at': 0},
+              'next_charge': '2099-01-01',
+              'ended': false,
+              'logo_version': 0,
+              'created_at': 0,
+              'updated_at': 0
+            },
           ],
         };
     for (final (budget, shown) in [(5000, true), (0, false)]) {
@@ -272,7 +392,65 @@ void main() {
       expect(find.text('本月预计 ¥100.00 / 预算 ¥50.00'), shown ? findsOneWidget : findsNothing);
     }
   });
+
+  testWidgets('自定义类别（修订第 314 条）：名称来自面板，按类别分组与筛选可用，修改表单可选', (tester) async {
+    tester.view.physicalSize = const Size(375 * 3, 1400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    Map<String, dynamic> sub(int id, String name, String category) => {
+          'id': id,
+          'name': name,
+          'brand': '',
+          'category': category,
+          'price_cents': 1000,
+          'currency': 'CNY',
+          'cycle': 'monthly',
+          'trial_days': 0,
+          'start_date': '2026-01-01',
+          'end_date': '',
+          'remind_days': 0,
+          'note': '',
+          'phones': [],
+          'vps': {'ips': [], 'cpu': 0, 'memory_gb': 0, 'disk_gb': 0, 'bandwidth_mbps': 0, 'traffic_gb': 0, 'location': ''},
+          'country': 'CN',
+          'payment': 'bank',
+          'next_charge': '2099-01-0$id',
+          'ended': false,
+          'logo_version': 0,
+          'created_at': 0,
+          'updated_at': 0,
+        };
+    final client = MockClient((req) async => http.Response.bytes(
+        utf8.encode(jsonEncode({
+          'limited': false,
+          'categories': [
+            {'id': 3, 'key': 'c3', 'name': '保险', 'color': 'health'}
+          ],
+          'items': [sub(1, '车险', 'c3'), sub(2, '视频', 'video')]
+        })),
+        200));
+    await tester.pumpWidget(MaterialApp(
+        home: SubscriptionsPage(
+            api: ApiClient(_session(subs: true), MemorySessionStore(), client: client), onRevoked: () {}, view: const SubListView(sort: 'category'))));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('保险'), findsOneWidget); // 组头
+    expect(y(tester, '视频'), lessThan(y(tester, '车险'))); // 内置类别在自定义类别之前
+    await tester.tap(find.byKey(const ValueKey('sub-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('保险（1）'), findsOneWidget);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    // 修改表单：类别下拉中有自定义类别，当前值保持
+    await tester.longPress(_row('车险'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('修改'));
+    await tester.pumpAndSettle();
+    expect(find.text('保险'), findsWidgets);
+  });
 }
 
 /// 列表中的行（概览卡片的“下一项续订”也会显示名称，修订第 309 条）
 Finder _row(String name) => find.descendant(of: find.byKey(const ValueKey('sub-list')), matching: find.text(name));
+
+double y(WidgetTester tester, String name) => tester.getTopLeft(_row(name)).dy;

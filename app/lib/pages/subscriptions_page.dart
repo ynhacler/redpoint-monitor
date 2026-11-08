@@ -198,8 +198,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       ('active', '订阅中', items.length - ended),
       ('soon', '7 天内续订', items.where(renewsSoon).length),
       if (ended > 0) ('ended', '已结束', ended),
-      for (final k in categoryNames.keys)
-        if (items.any((s) => s.category == k)) (k, categoryNames[k]!, items.where((s) => s.category == k).length),
+      for (final k in allCategoryKeys())
+        if (items.any((s) => s.category == k)) (k, catName(k), items.where((s) => s.category == k).length),
       // 付款人（修订第 311 条）：有两个以上不同的付款人时才列出
       if (payers.length > 1)
         for (final p in payers) ('payer:$p', '付款人：$p', items.where((s) => s.payer == p).length),
@@ -538,7 +538,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               Container(width: 10, height: 10, decoration: BoxDecoration(color: categoryColor(c, k), shape: BoxShape.circle)),
               const SizedBox(width: 6),
             ],
-            Text(k.isEmpty ? '已结束' : categoryNames[k]!, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(k.isEmpty ? '已结束' : catName(k), style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 6),
             Text('${xs.length} 个', style: muted),
             const Spacer(),
@@ -700,7 +700,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(s.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  Text(categoryNames[s.category] ?? s.category, style: muted),
+                  Text(catName(s.category), style: muted),
                 ]),
               ),
             ]),

@@ -428,3 +428,48 @@ func TestChargesIn(t *testing.T) {
 		}
 	}
 }
+
+// 自定义类别（修订第 314 条）：增改删；订阅可用存在的自定义类别，不存在的 422；删除后订阅改为“其他”；公开展示页显示为“其他”。
+func TestSubscriptionCustomCategories(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	if rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":"","color":"cloud"}`)); rec.Code != 422 {
+		t.Fatalf("空名称应 422：%d", rec.Code)
+	}
+	if rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":"保险","color":"#fff"}`)); rec.Code != 422 {
+		t.Fatalf("颜色只能是内置类别键：%d", rec.Code)
+	}
+	rec := do(h, "POST", "/api/v1/subscription-categories", admin, []byte(`{"name":" 保险 ","color":"health"}`))
+	var c SubCategoryItem
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	if rec.Code != 201 || c.Key != "c"+itoa64(c.ID) || c.Name != "保险" {
+		t.Fatalf("新增类别：%d %+v", rec.Code, c)
+	}
+	base := `"name":"车险","price_cents":300000,"currency":"CNY","country":"CN","payment":"bank","cycle":"annually","start_date":"2026-01-01"`
+	if rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"category":"c999"}`)); rec.Code != 422 {
+		t.Fatalf("不存在的类别应 422：%d", rec.Code)
+	}
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{`+base+`,"category":"`+c.Key+`"}`))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 201 || x.Category != c.Key {
+		t.Fatalf("用自定义类别新增订阅：%d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PUT", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, []byte(`{"name":"保险费","color":"cloud"}`)); rec.Code != 200 {
+		t.Fatalf("修改类别：%d", rec.Code)
+	}
+	// 公开展示页：自定义类别显示为“其他”
+	if got := publicCategory(c.Key); got != "other" {
+		t.Fatalf("公开展示页类别 %q", got)
+	}
+	if rec := do(h, "DELETE", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, nil); rec.Code != 204 {
+		t.Fatalf("删除类别：%d", rec.Code)
+	}
+	got, _ := s.store.GetSubscription(x.ID)
+	if got.Category != "other" {
+		t.Fatalf("删除类别后订阅应为“其他”：%q", got.Category)
+	}
+	if rec := do(h, "DELETE", "/api/v1/subscription-categories/"+itoa64(c.ID), admin, nil); rec.Code != 404 {
+		t.Fatalf("重复删除应 404：%d", rec.Code)
+	}
+}

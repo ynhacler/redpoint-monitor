@@ -1274,6 +1274,50 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
+  /subscription-categories:
+    get:
+      tags: [subscriptions]
+      summary: 订阅的自定义类别（修订第 314 条）
+      responses:
+        '200':
+          description: 类别列表
+          content: { application/json: { schema: { type: object, required: [next_cursor, items], properties: { next_cursor: { type: string }, items: { type: array, items: { $ref: '#/components/schemas/SubCategory' } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [subscriptions]
+      summary: 添加自定义类别（最多 30 个）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SubCategoryInput' } } }
+      responses:
+        '201': { description: 已添加, content: { application/json: { schema: { $ref: '#/components/schemas/SubCategory' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /subscription-categories/{id}:
+    put:
+      tags: [subscriptions]
+      summary: 修改自定义类别的名称与颜色
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SubCategoryInput' } } }
+      responses:
+        '200': { description: 已修改, content: { application/json: { schema: { $ref: '#/components/schemas/SubCategory' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [subscriptions]
+      summary: 删除自定义类别；用到它的订阅改为“其他”
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '204': { description: 已删除 }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /settings/subscription-budget:
     get:
       tags: [subscriptions]
@@ -3768,6 +3812,20 @@ components:
         uptime_7d: { type: ['number', 'null'] }
         created_at: { type: integer }
 
+    SubCategory:
+      type: object
+      required: [id, key, name, color]
+      properties:
+        id: { type: integer }
+        key: { type: string, description: 订阅中使用的类别键 c<编号> }
+        name: { type: string, maxLength: 16 }
+        color: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other], description: 取这个内置类别的颜色 }
+    SubCategoryInput:
+      type: object
+      required: [name, color]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 16 }
+        color: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other] }
     SubBudget:
       type: object
       required: [monthly_cents]
@@ -3779,7 +3837,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 64 }
         brand: { type: string, maxLength: 32, description: 常用服务目录中的键（决定图标颜色与首字母），自定义时为空 }
-        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other], description: 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他 }
+        category: { type: string, pattern: '^(video|tools|reading|social|health|game|cloud|sim|vps|other|c[1-9][0-9]{0,8})$', description: 内置类别 影音娱乐 / 效率&工具 / 阅读&学习 / 社交 / 健康&运动 / 游戏 / 云与开发 / SIM 电话卡 / VPS / 其他，或自定义类别 c<编号>（修订第 314 条） }
         price_cents: { type: integer, minimum: 0, maximum: 100000000, description: 每期价格（分） }
         currency: { type: string, pattern: '^[A-Z]{3}$', description: 如 CNY、USD }
         country: { type: string, pattern: '^[A-Z]{2}$', description: 订阅的国家 / 地区（ISO 3166-1 两位代码，修订第 223 条） }
@@ -3827,7 +3885,7 @@ components:
         id: { type: integer }
         name: { type: string }
         brand: { type: string, description: 常用服务目录中的键；自定义时为空 }
-        category: { type: string, enum: [video, tools, reading, social, health, game, cloud, sim, vps, other] }
+        category: { type: string, description: 内置类别键或自定义类别 c<编号>（修订第 314 条） }
         price_cents: { type: integer, description: 每期价格（分） }
         currency: { type: string }
         cycle: { type: string, enum: [weekly, monthly, quarterly, semiannually, annually, once] }
@@ -4507,6 +4565,7 @@ components:
       properties:
         limited: { type: boolean, description: 授权范围不是“全部节点”：不返回订阅 }
         budget_cents: { type: integer, description: 订阅每月预算（人民币分），0 为不设（修订第 312 条；旧面板没有此字段） }
+        categories: { type: array, items: { $ref: '#/components/schemas/SubCategory' }, description: 自定义类别（修订第 314 条；旧面板没有此字段） }
         items: { type: array, items: { $ref: '#/components/schemas/Subscription' } }
     AppCloud:
       type: object

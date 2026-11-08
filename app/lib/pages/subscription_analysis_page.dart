@@ -2,7 +2,6 @@
 // 与 Web 订阅页的“分析”同一口径（subscriptions.dart 的 analyze）。
 import 'package:flutter/material.dart';
 
-import '../catalog.gen.dart';
 import '../format.dart';
 import '../subscriptions.dart';
 import '../theme.dart';
@@ -96,7 +95,7 @@ class _SubscriptionAnalysisPageState extends State<SubscriptionAnalysisPage> {
           'country' => key.isEmpty ? '未设置' : '${flagEmoji(key)} ${countryLabel(key)}'.trim(),
           'payment' => key.isEmpty ? '未设置' : paymentNames[key] ?? key,
           'payer' => key.isEmpty ? '未填写' : key,
-          _ => categoryNames[key] ?? key,
+          _ => catName(key),
         };
     final palette = _palette(c, colors);
     final rate = widget.fx.asOf > 0 ? DateTime.fromMillisecondsSinceEpoch(widget.fx.asOf * 1000) : null;

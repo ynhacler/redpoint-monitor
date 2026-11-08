@@ -377,6 +377,10 @@ func (s *Server) routes() http.Handler {
 	handle("GET /api/v1/settings/status-page", accessAdmin, s.handleGetStatusPage)
 	handle("PUT /api/v1/settings/status-page", accessAdmin, s.handlePutStatusPage)
 	handle("GET /api/v1/settings/subscription-budget", accessAdmin, s.handleGetSubBudget) // 订阅每月预算（修订第 312 条）
+	handle("GET /api/v1/subscription-categories", accessAdmin, s.handleSubCategories)     // 订阅自定义类别（修订第 314 条）
+	handle("POST /api/v1/subscription-categories", accessAdmin, s.handleCreateSubCategory)
+	handle("PUT /api/v1/subscription-categories/{id}", accessAdmin, s.handleUpdateSubCategory)
+	handle("DELETE /api/v1/subscription-categories/{id}", accessAdmin, s.handleDeleteSubCategory)
 	handle("PUT /api/v1/settings/subscription-budget", accessAdmin, s.handlePutSubBudget)
 	handle("POST /api/v1/servers/{id}/ipinfo", accessAdmin, s.handleRefreshIPInfo)
 	handle("GET /api/v1/settings/digest", accessAdmin, s.handleGetDigest) // 定期报告（修订第 277 条）

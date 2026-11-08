@@ -4,6 +4,7 @@
 // 按月类周期以首次扣费日为锚点、小月取月末；结束日期当天及之后不再扣费；一次性只扣首次。
 // 图标见 components/SubAvatar.vue：内置的标志（brandIcons.ts、brandLogos.ts），没有标志的用品牌色方块加首字母；不从外部加载。
 import type { Subscription } from './api'
+import { reactive } from 'vue'
 import { t } from './i18n'
 import { simCatalog } from './simCatalog'
 
@@ -12,17 +13,39 @@ export type SubCategory = Subscription['category']
 /** 订阅周期 */
 export type SubCycle = Subscription['cycle']
 
-/** 类别名称 */
-export const categoryNames: Record<SubCategory, string> = {
+/** 内置类别键（自定义类别的颜色从这些类别的颜色中选） */
+export const builtinCategories = ['video', 'tools', 'reading', 'social', 'health', 'game', 'cloud', 'sim', 'vps', 'other'] as const
+/** 类别名称；自定义类别（修订第 314 条）由 setCustomCategories 加入，排在“其他”之前 */
+export const categoryNames: Record<SubCategory, string> = reactive({
   video: '影音娱乐', tools: '效率&工具', reading: '阅读&学习', social: '社交', health: '健康&运动', game: '游戏', cloud: '云与开发',
   sim: 'SIM 电话卡', vps: 'VPS', other: '其他',
-}
+})
 /** 类别在图表中的颜色（设计令牌中的系列色与状态色） */
-export const categoryColors: Record<SubCategory, string> = {
+export const categoryColors: Record<SubCategory, string> = reactive({
   // 修订第 233 条：每个类别一个固定且容易区分的颜色（design/tokens.json 的 cat-*），Web 与 App 相同；图表中始终同时有文字
   video: 'var(--cat-video)', tools: 'var(--cat-tools)', reading: 'var(--cat-reading)', social: 'var(--cat-social)',
   health: 'var(--cat-health)', game: 'var(--cat-game)', cloud: 'var(--cat-cloud)', sim: 'var(--cat-sim)',
   vps: 'var(--cat-vps)', other: 'var(--cat-other)',
+})
+
+/** 自定义类别（修订第 314 条） */
+export interface CustomCategory { id: number; key: string; name: string; color: string }
+
+/** 用面板返回的自定义类别替换名称与颜色表中的自定义部分；自定义类别排在“其他”之前（对象键的顺序即显示顺序） */
+export function setCustomCategories(list: CustomCategory[]) {
+  for (const k of Object.keys(categoryNames)) {
+    if (!(builtinCategories as readonly string[]).includes(k)) {
+      delete categoryNames[k]
+      delete categoryColors[k]
+    }
+  }
+  const other = categoryNames.other
+  delete categoryNames.other
+  for (const c of list) {
+    categoryNames[c.key] = c.name
+    categoryColors[c.key] = categoryColors[c.color] ?? 'var(--cat-other)'
+  }
+  categoryNames.other = other
 }
 /** 周期名称 */
 export const cycleNames: Record<SubCycle, string> = {

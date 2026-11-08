@@ -9,14 +9,16 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, listServers, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import SubAvatar from '../components/SubAvatar.vue'
+import BottomSheet from '../components/BottomSheet.vue'
 import SubCalendar from '../components/SubCalendar.vue'
+import SubCategoryManager from '../components/SubCategoryManager.vue'
 import SubCharges from '../components/SubCharges.vue'
 import { countryName, countryOptions, flagUrl } from '../countries'
 import { fmtMoney, fmtPct } from '../format'
@@ -24,8 +26,8 @@ import { locale, t } from '../i18n'
 import { simCountries } from '../simCatalog'
 import {
   analyze, billingProgress, byCategory, cashflow, catalog, categoryColors, categoryNames, cycleNames, cyclePay, currencies, daysUntil, defaultCountry,
-  monthlyCents, monthStart, paymentNames, remindOptions, renewText, sortSubs, spendCny, toCny, trialOptions, ymd, type CatalogItem, type CnySpend,
-  type Rates, type SubCategory, type SubSort,
+  monthlyCents, monthStart, paymentNames, remindOptions, renewText, setCustomCategories, sortSubs, spendCny, toCny, trialOptions, ymd, type CatalogItem,
+  type CnySpend, type CustomCategory, type Rates, type SubCategory, type SubSort,
 } from '../subscriptions'
 
 const route = useRoute()
@@ -61,6 +63,34 @@ async function loadFx() {
     fx.value = null
   }
 }
+// 自定义类别（修订第 314 条）：读取后加入类别名称与颜色表；旧面板没有此接口时只有内置类别
+const customCats = ref<CustomCategory[]>([])
+const catsOpen = ref(false)
+async function loadCategories() {
+  try {
+    customCats.value = await listSubCategories()
+    setCustomCategories(customCats.value)
+  } catch {
+    /* 旧面板 */
+  }
+}
+const catCounts = computed(() => {
+  const m: Record<string, number> = {}
+  for (const s of list.value) m[s.category] = (m[s.category] ?? 0) + 1
+  return m
+})
+async function categoriesChanged() {
+  await loadCategories()
+  await load()
+  if (form.category && !categoryNames[form.category]) form.category = 'other'
+}
+function pickCategory(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  if (v === '__manage') {
+    ;(e.target as HTMLSelectElement).value = form.category
+    catsOpen.value = true
+  } else form.category = v
+}
 async function load() {
   try {
     list.value = await listSubscriptions()
@@ -72,7 +102,7 @@ async function load() {
     loaded.value = true
   }
 }
-onMounted(() => { load(); loadNodes(); loadBudget() })
+onMounted(() => { loadCategories().then(load); loadNodes(); loadBudget() })
 
 // ---- 概览 ----
 const now = new Date()
@@ -554,7 +584,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <label>{{ t('名称') }}<input v-model="form.name" maxlength="64" :placeholder="t('如 Netflix')" />
           <small v-if="fieldErrors.name" class="bad">{{ fieldErrors.name }}</small></label>
         <label>{{ t('类别') }}
-          <select v-model="form.category"><option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ t(n) }}</option></select></label>
+          <select :value="form.category" @change="pickCategory">
+            <option v-for="(n, k) in categoryNames" :key="k" :value="k">{{ t(n) }}</option>
+            <option value="__manage">{{ t('＋ 管理自定义类别…') }}</option>
+          </select></label>
         <label>{{ t('价格') }}
           <span class="price">
             <select v-model="form.currency" :aria-label="t('币种')"><option v-for="c in currencies" :key="c" :value="c">{{ c }}</option></select>
@@ -929,6 +962,10 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         </details>
       </template>
     </template>
+    <!-- 自定义类别（修订第 314 条） -->
+    <BottomSheet :open="catsOpen" :title="t('自定义类别')" @close="catsOpen = false">
+      <SubCategoryManager :list="customCats" :counts="catCounts" @changed="categoriesChanged" />
+    </BottomSheet>
   </main>
 </template>
 
