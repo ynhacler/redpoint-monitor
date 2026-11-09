@@ -1066,7 +1066,14 @@ button.money:hover { filter: none; }
 .sub-price b { font-size: var(--font-lg); line-height: var(--line-lg); }
 .cyc-line { display: inline-flex; align-items: center; gap: 4px; }
 @container subs (min-width: 720px) {
-  .sub-meta { display: flex; align-items: center; gap: 4px; flex: 0 1 34%; min-width: 0; padding: var(--space-3) 0; }
+  /* 电脑宽度按固定列排（修订第 323 条）：中间一列的起点不随“监控中”标签与价格宽度移动，各行上下对齐 */
+  .sub-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 34%) 6em 9em 18px; }
+  .sub-row > .sub-avatar { grid-column: 1; }
+  .sub-main { grid-column: 2; }
+  .sub-meta { display: flex; grid-column: 3; align-items: center; gap: 4px; min-width: 0; padding: var(--space-3) 0; }
+  .sub-row > .node-link { grid-column: 4; justify-self: end; }
+  .sub-price { grid-column: 5; max-width: none; }
+  .sub-row > .chev { grid-column: 6; }
 }
 .id-inline { margin-left: var(--space-2); font-weight: normal; color: var(--text-muted); font-size: var(--font-sm); }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1108,7 +1115,7 @@ button.money:hover { filter: none; }
 .fx-trend { margin-top: var(--space-2); }
 .fx-trend summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 .rate { margin-right: var(--space-3); }
-.flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; }
+.flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; flex: none; box-shadow: 0 0 0 1px var(--border); }
 .meta-line { display: flex; align-items: center; gap: 4px; min-width: 0; } /* 国旗、地区与支付方式同一基线居中（修订第 267 条，UI2-013） */
 .meta-line .flag { flex: none; vertical-align: middle; }
 
