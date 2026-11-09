@@ -217,7 +217,7 @@ func (m notifyMessage) forChannel(c NotifyChannel) (notifyMessage, bool) {
 
 func (m notifyMessage) quietText() []string {
 	l := m.Lang
-	lines := []string{l.f("免打扰时段（%s～%s）内的告警：", m.StartedAt.Format("01-02 15:04"), m.ResolvedAt.Format("15:04"))}
+	lines := []string{l.f("免打扰时段（%s～%s）内的告警：", m.StartedAt.In(beijing).Format("01-02 15:04"), m.ResolvedAt.In(beijing).Format("15:04"))}
 	for i, x := range m.Items {
 		if i == quietSummaryLines {
 			lines = append(lines, l.f("……另有 %d 条，详见告警页", m.Count-quietSummaryLines))

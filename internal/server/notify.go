@@ -471,16 +471,31 @@ func (m notifyMessage) title() string {
 	return severityIcons[m.Severity] + " " + m.ServerName + " " + m.Message
 }
 
-// text 是完整的纯文本（设计 16.5 的模板）。
-func (m notifyMessage) text(now time.Time) string {
+// beijing 是推送消息里日期时间所用的时区（修订第 321 条）。用固定偏移，不依赖系统时区数据（Alpine、精简镜像也一样）。
+var beijing = time.FixedZone("CST", 8*3600)
+
+// beijingTime 把时间写成北京时间“2026-11-08 14:05”。
+func beijingTime(t time.Time) string { return t.In(beijing).Format("2006-01-02 15:04") }
+
+// text 是完整的纯文本（设计 16.5 的模板），链接前一行是发送时间（北京时间，修订第 321 条）。
+func (m notifyMessage) text(now time.Time) string { return m.render(now, true) }
+
+// render 生成正文；stamp 为 false 时不写发送时间（另存为系统事件时，事件本身带时间）。
+func (m notifyMessage) render(now time.Time, stamp bool) string {
 	l := m.Lang
 	lines := []string{m.title()}
-	if m.Kind == NotifyQuietSummary {
-		lines = append(lines, m.quietText()...)
+	finish := func() string {
+		if stamp {
+			lines = append(lines, l.f("🕒 %s（北京时间）", now.In(beijing).Format("2006-01-02 15:04:05")))
+		}
 		if m.Link != "" {
 			lines = append(lines, m.Link)
 		}
 		return strings.Join(lines, "\n")
+	}
+	if m.Kind == NotifyQuietSummary {
+		lines = append(lines, m.quietText()...)
+		return finish()
 	}
 	if len(m.Servers) > 0 {
 		if m.Kind == NotifyFiring {
@@ -489,7 +504,8 @@ func (m notifyMessage) text(now time.Time) string {
 		if len(m.Servers) > 3 {
 			lines = append(lines, l.f("全部：%s", strings.Join(m.Servers, l.t("、"))))
 		}
-		return strings.Join(lines, "\n")
+		m.Link = "" // 批量离线没有单个节点的链接
+		return finish()
 	}
 	switch m.Kind {
 	case NotifyFlapping:
@@ -505,7 +521,7 @@ func (m notifyMessage) text(now time.Time) string {
 		if d := now.Sub(m.StartedAt); d >= time.Minute {
 			lines = append(lines, l.f("已持续 %s", fmtSpan(d, l)))
 		}
-		lines = append(lines, l.f("开始时间 %s", m.StartedAt.Format("2006-01-02 15:04")))
+		lines = append(lines, l.f("开始时间 %s", beijingTime(m.StartedAt)))
 	case NotifyResolved:
 		lines = append(lines, l.f("持续时长 %s", fmtSpan(m.ResolvedAt.Sub(m.StartedAt), l)))
 	case NotifyTest:
@@ -513,10 +529,7 @@ func (m notifyMessage) text(now time.Time) string {
 	case NotifyDigest, NotifyReminder:
 		lines = append(lines, m.Lines...) // 提醒的补充说明，如订阅的付款人与管理链接（修订第 319 条）
 	}
-	if m.Link != "" {
-		lines = append(lines, m.Link)
-	}
-	return strings.Join(lines, "\n")
+	return finish()
 }
 
 // fmtSpan：1 小时 24 分钟 / 12 分钟 / 30 秒
