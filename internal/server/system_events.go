@@ -124,7 +124,7 @@ func (s *Server) recordNotice(kind string, m notifyMessage, now time.Time) {
 	m = m.withLang(s.lang())
 	title := m.title()
 	var lines []string
-	for _, l := range strings.Split(strings.TrimPrefix(m.text(now), title), "\n") {
+	for _, l := range strings.Split(strings.TrimPrefix(m.render(now, false), title), "\n") {
 		if l = strings.TrimSpace(l); l != "" && l != m.Link {
 			lines = append(lines, l)
 		}

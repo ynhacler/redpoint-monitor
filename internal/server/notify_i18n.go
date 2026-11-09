@@ -84,7 +84,7 @@ var notifyEN = map[string]string{
 	"%s 状态已稳定，仍在告警 · %s %s": "%s Stable but still alerting · %s %s", "🔔 测试通知": "🔔 Test notification",
 	"可能是面板网络或同一服务商故障": "Possibly a panel network problem or an outage at one provider", "全部：%s": "All: %s",
 	"30 分钟内触发 %d 次，暂停这条告警的通知；稳定 30 分钟后恢复。": "Fired %d times in 30 minutes. Notifications for this alert are paused until it is stable for 30 minutes.",
-	"已持续 %s": "Ongoing for %s", "开始时间 %s": "Started at %s", "持续时长 %s": "Lasted %s",
+	"已持续 %s": "Ongoing for %s", "开始时间 %s": "Started at %s", "🕒 %s（北京时间）": "🕒 %s (Beijing time, UTC+8)", "持续时长 %s": "Lasted %s",
 	"这是一条来自 VPS Monitor 的测试通知，收到说明渠道配置正确。": "This is a test notification from VPS Monitor. If you received it, the channel is set up correctly.",
 	"%d 天 %d 小时": "%d d %d h", "%d 小时 %d 分钟": "%d h %d min", " 等": " etc.", "，": ", ",
 	"免打扰时段（%s～%s）内的告警：": "Alerts during quiet hours (%s–%s):", "……另有 %d 条，详见告警页": "… and %d more, see the Alerts page",
