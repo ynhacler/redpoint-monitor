@@ -815,12 +815,14 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </li>
             <template v-else>
             <li v-for="s in [r.s!]" :key="s.id" class="sub-li">
+              <!-- VPS 名称旁依次是描述（产品备注）与第一个 IP（修订第 324 条） -->
               <!-- 行（修订第 309 条）：图标 | 名称、续订说明、本期进度条 | 原币价格、约合人民币、付款周期 | 箭头；电脑宽度在中间多一列类别、地区与支付方式 -->
               <button type="button" class="sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
                 <SubAvatar :brand="s.brand" :name="s.name" :size="44" :src="logoSrc(s)" />
                 <span class="sub-main">
-                  <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
-                    v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
+                  <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><template
+                    v-else-if="s.category === 'vps'"><small v-if="s.note" class="id-inline">{{ s.note }}</small><small v-if="s.vps.ips.length"
+                    class="mono id-inline">{{ s.vps.ips[0] }}</small></template></b>
                   <span class="sub-renew" :class="{ soon: soonOf(s) }">{{ renewText(s, today) }}</span>
                   <span v-if="progOf(s) != null" class="prog" :title="t('本期已过 {p}', { p: fmtPct(progOf(s)!) })">
                     <span :style="{ width: `${progOf(s)}%`, background: categoryColors[s.category] }" /></span>
@@ -1066,7 +1068,14 @@ button.money:hover { filter: none; }
 .sub-price b { font-size: var(--font-lg); line-height: var(--line-lg); }
 .cyc-line { display: inline-flex; align-items: center; gap: 4px; }
 @container subs (min-width: 720px) {
-  .sub-meta { display: flex; align-items: center; gap: 4px; flex: 0 1 34%; min-width: 0; padding: var(--space-3) 0; }
+  /* 电脑宽度按固定列排（修订第 323 条）：中间一列的起点不随“监控中”标签与价格宽度移动，各行上下对齐 */
+  .sub-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 34%) 6em 9em 18px; }
+  .sub-row > .sub-avatar { grid-column: 1; }
+  .sub-main { grid-column: 2; }
+  .sub-meta { display: flex; grid-column: 3; align-items: center; gap: 4px; min-width: 0; padding: var(--space-3) 0; }
+  .sub-row > .node-link { grid-column: 4; justify-self: end; }
+  .sub-price { grid-column: 5; max-width: none; }
+  .sub-row > .chev { grid-column: 6; }
 }
 .id-inline { margin-left: var(--space-2); font-weight: normal; color: var(--text-muted); font-size: var(--font-sm); }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1108,7 +1117,7 @@ button.money:hover { filter: none; }
 .fx-trend { margin-top: var(--space-2); }
 .fx-trend summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 .rate { margin-right: var(--space-3); }
-.flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; }
+.flag { width: 16px; height: 12px; border-radius: 2px; vertical-align: -1px; object-fit: cover; flex: none; box-shadow: 0 0 0 1px var(--border); }
 .meta-line { display: flex; align-items: center; gap: 4px; min-width: 0; } /* 国旗、地区与支付方式同一基线居中（修订第 267 条，UI2-013） */
 .meta-line .flag { flex: none; vertical-align: middle; }
 
