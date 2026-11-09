@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -549,6 +550,23 @@ func fmtSpan(d time.Duration, l healthLang) string {
 	return l.f("%d 分钟", m)
 }
 
+// telegramHTML 是 Telegram 的正文（修订第 322 条）：标题加粗，节点链接写成“查看详情”，其余与 text 相同。
+// 【安全】每行先做 HTML 转义（节点名、告警内容等来自用户与 Agent），再加 <b>、<a>；链接是面板按 --public-url 生成的地址。
+func (m notifyMessage) telegramHTML(now time.Time) string {
+	lines := strings.Split(truncateRunes(m.text(now), 4000), "\n") // Telegram 单条上限 4096 字符
+	for i, x := range lines {
+		switch {
+		case i == 0:
+			lines[i] = "<b>" + html.EscapeString(x) + "</b>"
+		case i == len(lines)-1 && m.Link != "" && x == m.Link:
+			lines[i] = `<a href="` + html.EscapeString(x) + `">` + html.EscapeString(m.Lang.t("查看详情")) + "</a>"
+		default:
+			lines[i] = html.EscapeString(x)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // webhookPayload 是 Webhook 的请求体（version 1，只增加字段）。
 func (m notifyMessage) webhookPayload(now time.Time) []byte {
 	p := map[string]any{"version": 1, "kind": m.Kind, "text": m.text(now), "title": m.title(), "sent_at": now.Unix()}
@@ -740,7 +758,8 @@ func (n *notifier) send(ctx context.Context, c NotifyChannel, m notifyMessage) e
 	var err error
 	switch c.Type {
 	case ChannelTelegram:
-		body, _ := json.Marshal(map[string]any{"chat_id": c.Config.ChatID, "text": m.text(now), "disable_web_page_preview": true})
+		body, _ := json.Marshal(map[string]any{"chat_id": c.Config.ChatID, "text": m.telegramHTML(now), "parse_mode": "HTML",
+			"disable_web_page_preview": true})
 		req, err = http.NewRequestWithContext(ctx, http.MethodPost, n.tgAPI+"/bot"+c.Config.BotToken+"/sendMessage", bytes.NewReader(body))
 	case ChannelWebhook:
 		body := m.webhookPayload(now)

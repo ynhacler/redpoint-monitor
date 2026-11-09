@@ -176,7 +176,7 @@ func TestNotificationTestSend(t *testing.T) {
 	path, body, _ := tgAPI.last()
 	var msg map[string]any
 	json.Unmarshal([]byte(body), &msg)
-	if path != "/bot"+testBotToken+"/sendMessage" || msg["chat_id"] != "42" || !strings.Contains(msg["text"].(string), "测试通知") {
+	if path != "/bot"+testBotToken+"/sendMessage" || msg["chat_id"] != "42" || msg["parse_mode"] != "HTML" || !strings.Contains(msg["text"].(string), "测试通知") {
 		t.Errorf("Telegram 请求：%s %s", path, body)
 	}
 
