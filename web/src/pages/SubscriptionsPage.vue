@@ -815,12 +815,14 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </li>
             <template v-else>
             <li v-for="s in [r.s!]" :key="s.id" class="sub-li">
+              <!-- VPS 名称旁依次是描述（产品备注）与第一个 IP（修订第 324 条） -->
               <!-- 行（修订第 309 条）：图标 | 名称、续订说明、本期进度条 | 原币价格、约合人民币、付款周期 | 箭头；电脑宽度在中间多一列类别、地区与支付方式 -->
               <button type="button" class="sub-row" :class="{ ended: s.ended }" :title="s.note || undefined" @click="openEdit(s)">
                 <SubAvatar :brand="s.brand" :name="s.name" :size="44" :src="logoSrc(s)" />
                 <span class="sub-main">
-                  <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><small
-                    v-else-if="s.category === 'vps' && s.vps.ips.length" class="mono id-inline">{{ s.vps.ips[0] }}</small></b>
+                  <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><template
+                    v-else-if="s.category === 'vps'"><small v-if="s.note" class="id-inline">{{ s.note }}</small><small v-if="s.vps.ips.length"
+                    class="mono id-inline">{{ s.vps.ips[0] }}</small></template></b>
                   <span class="sub-renew" :class="{ soon: soonOf(s) }">{{ renewText(s, today) }}</span>
                   <span v-if="progOf(s) != null" class="prog" :title="t('本期已过 {p}', { p: fmtPct(progOf(s)!) })">
                     <span :style="{ width: `${progOf(s)}%`, background: categoryColors[s.category] }" /></span>
