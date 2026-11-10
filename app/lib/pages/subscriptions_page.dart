@@ -550,6 +550,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     ];
   }
 
+  // 列表中 VPS 名称旁的“描述  IP”（修订第 325 条）
+  String _vpsTag(Subscription s) {
+    if (s.category != 'vps') return '';
+    final ip = s.vps.ips.isEmpty ? '' : (widget.privacy ? maskIP(s.vps.ips.first) : s.vps.ips.first);
+    return [s.note.trim(), ip].where((x) => x.isNotEmpty).join('  ');
+  }
+
   Widget _row(BuildContext context, Subscription s, StatusColors colors) {
     final c = appColors(context);
     final soon = renewsSoon(s);
@@ -565,7 +572,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text.rich(
+                TextSpan(text: s.name, children: [
+                  // VPS 名称旁依次是描述（产品备注）与第一个 IP，与 Web 一致（修订第 325 条）；隐私模式下 IP 打码
+                  if (_vpsTag(s).isNotEmpty)
+                    TextSpan(text: '  ${_vpsTag(s)}', style: TextStyle(fontWeight: FontWeight.w400, fontSize: 12, color: c.textMuted)),
+                ]),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: 2),
               Text(renewText(s), style: TextStyle(fontSize: 13, color: soon ? colors.warn : c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
               if (p != null) ...[

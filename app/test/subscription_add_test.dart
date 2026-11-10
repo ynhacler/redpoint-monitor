@@ -155,6 +155,9 @@ void main() {
     expect(tester.getTopLeft(_row('马上续费')).dy, lessThan(tester.getTopLeft(_row('远期订阅')).dy));
     expect(find.text('3 天后续订'), findsOneWidget); // 7 天内：续订说明为“N 天后续订”（修订第 309 条）
 
+    // VPS 名称旁显示 IP（没有描述时只有 IP，修订第 325 条）
+    expect(find.text('我的 VPS  203.0.113.8'), findsOneWidget);
+
     // 修改：只改价格，VPS 的 CPU、内存等沿用原值
     await tester.longPress(_row('我的 VPS'));
     await tester.pumpAndSettle();
@@ -451,6 +454,9 @@ void main() {
 }
 
 /// 列表中的行（概览卡片的“下一项续订”也会显示名称，修订第 309 条）
-Finder _row(String name) => find.descendant(of: find.byKey(const ValueKey('sub-list')), matching: find.text(name));
+// 名称行可能带 VPS 的描述与 IP（修订第 325 条）：按名称开头匹配
+Finder _row(String name) => find.descendant(
+    of: find.byKey(const ValueKey('sub-list')),
+    matching: find.byWidgetPredicate((w) => w is Text && (w.data ?? w.textSpan?.toPlainText() ?? '').split('  ').first == name));
 
 double y(WidgetTester tester, String name) => tester.getTopLeft(_row(name)).dy;
