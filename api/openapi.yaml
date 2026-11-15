@@ -2999,6 +2999,40 @@ components:
         enabled: { type: boolean, description: 是否开启公开展示页 }
         subscriptions: { type: boolean, description: 是否在展示页公开订阅（只读），默认关闭 }
         server_ids: { type: array, items: { type: integer, format: int64 }, description: 公开的节点 }
+        latency:
+          type: array
+          description: 各节点在展示页上的三网延迟地区（修订第 328 条）。GET 返回全部已安装节点；PUT 时省略则不变，提供时未列出的节点恢复为第一个地区
+          items: { $ref: '#/components/schemas/StatusLatencyOption' }
+
+    StatusLatencyOption:
+      type: object
+      required: [server_id, region]
+      properties:
+        server_id: { type: integer, format: int64 }
+        region: { type: string, maxLength: 40, description: 空为第一个有结果的地区（默认），off 为不显示，其他为地区名；没有该地区的结果时显示第一个地区 }
+        regions: { type: array, items: { type: string }, description: 只读，最近 24 小时有结果的国内地区，按测试目标的顺序 }
+
+    PublicLatencyBlock:
+      type: object
+      properties:
+        latency_ms: { type: number, description: 这一小时成功轮次的延迟中位数；有结果但全部失败时省略（不可达） }
+        loss: { type: number, description: 这一小时的平均丢包率，百分比；没有结果时与 latency_ms 一同省略 }
+
+    PublicLatencyRow:
+      type: object
+      required: [isp, blocks]
+      properties:
+        isp: { type: string, enum: [ct, cu, cm], description: 电信 / 联通 / 移动 }
+        latency_ms: { type: number, description: 最近 1 小时中位数 }
+        loss: { type: number, description: 最近 1 小时平均丢包率，百分比 }
+        blocks: { type: array, minItems: 24, maxItems: 24, items: { $ref: '#/components/schemas/PublicLatencyBlock' }, description: 最近 24 小时每小时一格，从早到晚 }
+
+    PublicLatency:
+      type: object
+      required: [region, rows]
+      properties:
+        region: { type: string, description: 地区名（来自测试目标的省份 / 城市）；不含目标地址 }
+        rows: { type: array, items: { $ref: '#/components/schemas/PublicLatencyRow' } }
 
     PublicServer:
       type: object
@@ -3014,6 +3048,7 @@ components:
         tx_speed: { type: integer, format: int64, description: 上行速率，字节 / 秒 }
         uptime: { type: integer, format: int64, description: 运行时间，秒 }
         traffic_pct: { type: number, description: 本周期流量用量比例，百分比；不限流量时省略 }
+        latency: { $ref: '#/components/schemas/PublicLatency' }
 
     PublicServerList:
       type: object
