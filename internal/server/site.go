@@ -33,6 +33,7 @@ func defaultSite() SiteSetting {
 type siteView struct {
 	SiteSetting
 	CaptchaForcedOff bool `json:"captcha_forced_off"` // 启动参数关闭了验证码，网页中不能打开
+	StatusPage       bool `json:"status_page"`        // 公开展示页是否开启，顶栏据此显示入口（修订第 327 条）
 }
 
 // siteCache 缓存网站配置，登录与每次页面加载都会读取，不必每次查库。
@@ -58,7 +59,11 @@ func (s *Server) captchaOn() bool { return s.captcha != nil && s.siteSetting().C
 func (s *Server) siteView() siteView {
 	v := s.siteSetting()
 	v.Captcha = s.captchaOn()
-	return siteView{SiteSetting: v, CaptchaForcedOff: s.captcha == nil}
+	var st StatusPageSetting
+	if _, err := s.store.GetSetting(settingStatusPage, &st); err != nil {
+		st.Enabled = false // 读不到时不显示入口，不影响页面加载
+	}
+	return siteView{SiteSetting: v, CaptchaForcedOff: s.captcha == nil, StatusPage: st.Enabled}
 }
 
 // handleGetSite：GET /api/v1/site，无需登录。应用名称、语言与是否需要验证码。

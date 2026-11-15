@@ -63,6 +63,8 @@ export interface SiteSetting {
 export type SiteView = SiteSetting & {
   /** 启动参数 --no-login-captcha 关闭了验证码，网页中不能打开 */
   captcha_forced_off: boolean
+  /** 公开展示页是否开启（修订第 327 条）；开启时顶栏显示进入展示页的按钮 */
+  status_page: boolean
 }
 
 export interface StatusPageSetting {

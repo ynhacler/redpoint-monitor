@@ -67,6 +67,7 @@ async function savePub() {
   pubError.value = ''
   try {
     applyPub(await putStatusPage({ enabled: pub.enabled, subscriptions: pub.subs, server_ids: pub.ids }))
+    site.status_page = pub.enabled // 顶栏的展示页入口随之出现或消失（修订第 327 条）
     pubDone.value = true
     pubAt.value = Date.now()
   } catch (e) {
