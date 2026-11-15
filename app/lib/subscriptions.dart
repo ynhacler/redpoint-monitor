@@ -656,6 +656,19 @@ bool matchesFilter(Subscription s, String f, {DateTime? now}) => switch (f) {
       _ => s.category == f,
     };
 
+/// 列表搜索（修订第 326 条，与 Web 相同）：名称、描述、IP、号码、机房、付款人、支付方式、国家 / 地区、类别；
+/// 按空格分词，每个词都要出现，不分大小写。
+bool subMatchesQuery(Subscription s, String query) {
+  final words = query.trim().toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  if (words.isEmpty) return true;
+  final text = [
+    s.name, s.note, s.payer, s.vps.location, ...s.vps.ips,
+    for (final p in s.phones) '${p.cc}${p.number} ${p.number}',
+    paymentNames[s.payment] ?? s.payment, countryLabel(s.country), catName(s.category),
+  ].join('\n').toLowerCase();
+  return words.every(text.contains);
+}
+
 /// 排序（与 Web 的 sortSubs 相同）：已结束的总在最后；price 按月均折算人民币（没有汇率按原币）；date 没有下次扣费的在后
 List<Subscription> sortSubs(Iterable<Subscription> list, String key, bool desc, FxRates fx) {
   final order = allCategoryKeys();

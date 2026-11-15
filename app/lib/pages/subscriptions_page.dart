@@ -59,6 +59,7 @@ final _logoCache = <String, Uint8List?>{};
 class _SubscriptionsPageState extends State<SubscriptionsPage> {
   List<Subscription>? _items;
   bool _limited = false;
+  final _search = TextEditingController(); // 列表搜索（修订第 326 条），不保存
   String? _error;
   FxRates _fx = const FxRates();
   late SubListView _view = widget.view;
@@ -138,6 +139,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   }
 
   @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = appColors(context);
     final colors = StatusColors.of(context);
@@ -145,7 +152,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     final items = _items;
     final filters = items == null ? const <(String, String, int)>[] : _filters(items);
     final filter = filters.any((f) => f.$1 == _view.filter) ? _view.filter : 'all';
-    final shown = items == null ? <Subscription>[] : sortSubs(items.where((s) => matchesFilter(s, filter)), _view.sort, _view.desc, _fx);
+    final shown = items == null ? <Subscription>[] : sortSubs(items.where((s) => matchesFilter(s, filter) && subMatchesQuery(s, _search.text)), _view.sort, _view.desc, _fx);
 
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('订阅')),
@@ -172,8 +179,29 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
           if (items != null && items.isNotEmpty) ...[
             _overview(context, items),
             _listBar(context, filters, filter, items),
+            if (items.length >= 5)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  key: const ValueKey('sub-search'),
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    hintText: '搜索名称、描述、IP',
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(tooltip: '清除', icon: const Icon(Icons.close, size: 18), onPressed: () => setState(_search.clear)),
+                  ),
+                ),
+              ),
             if (shown.isEmpty)
-              Padding(padding: const EdgeInsets.all(24), child: Text('没有符合筛选条件的订阅。', style: muted, textAlign: TextAlign.center))
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(_search.text.trim().isNotEmpty ? '没有找到“${_search.text.trim()}”。' : '没有符合筛选条件的订阅。', style: muted, textAlign: TextAlign.center),
+              )
             else
               Column(
                 key: const ValueKey('sub-list'),
