@@ -290,7 +290,20 @@ const filterOptions = computed(() => {
   return opts
 })
 const sortNames: Record<SubSort, string> = { date: '日期', price: '价格', name: '名称', category: '类别' }
-const shown = computed(() => sortSubs(list.value.filter((s) => matches(s, filter.value)), sortKey.value, sortDesc.value, rates.value))
+// 列表搜索（修订第 326 条）：名称、描述、IP、号码、机房、付款人、支付方式、国家 / 地区，不分大小写，只在本页筛选
+const listQuery = ref('')
+function searchText(s: Subscription) {
+  return [s.name, s.note, s.payer, s.vps.location, ...s.vps.ips, ...s.phones.map((p) => `${p.cc}${p.number} ${p.number}`),
+    s.payment ? t(paymentNames[s.payment] ?? s.payment) : '', s.country ? countryName(s.country) : '', t(categoryNames[s.category] ?? '')]
+    .join('\n').toLowerCase()
+}
+const hit = (s: Subscription) => {
+  const words = listQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return true
+  const text = searchText(s)
+  return words.every((w) => text.includes(w))
+}
+const shown = computed(() => sortSubs(list.value.filter((s) => matches(s, filter.value) && hit(s)), sortKey.value, sortDesc.value, rates.value))
 type ListRow = { key: string; s?: Subscription; cat?: SubCategory; count?: number; monthly?: number }
 // 按类别排序时加组头（类别颜色、名称、数量与月均折算）；已结束的在最后单独一组
 const listRows = computed<ListRow[]>(() => {
@@ -793,6 +806,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
               </select>
               <span class="filter-text" aria-hidden="true">{{ filterOptions.find((o) => o.v === filter)?.label ?? t('全部') }}<Icon name="chevron-down" :size="20" /></span>
             </label>
+            <label v-if="list.length >= 5" class="list-search"><Icon name="search" :size="16" class="muted" /><input v-model="listQuery" type="search"
+              :placeholder="t('搜索名称、描述、IP')" :aria-label="t('搜索订阅')" /></label>
             <span class="sort-pick">
               <label class="sort-key">
                 <span class="sr-only">{{ t('排序') }}</span>
@@ -843,7 +858,7 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
             </li>
             </template>
             </template>
-            <li v-if="!listRows.length" class="muted small empty-row">{{ t('没有符合筛选条件的订阅。') }}</li>
+            <li v-if="!listRows.length" class="muted small empty-row">{{ listQuery.trim() ? t('没有找到“{q}”。', { q: listQuery.trim() }) : t('没有符合筛选条件的订阅。') }}</li>
           </ul>
         </template>
 
@@ -1034,6 +1049,14 @@ button.money:hover { filter: none; }
 .view-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
 .view-bar .view-tabs { margin-bottom: 0; }
 .list-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-2) 0 var(--space-3); }
+.list-search { flex: 1; max-width: 320px; margin-left: auto; display: flex; align-items: center; gap: var(--space-2); min-height: 36px;
+  padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface); }
+.list-search input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; outline: none; }
+.list-search:focus-within { border-color: var(--accent); }
+@media (max-width: 600px) {
+  .list-bar { flex-wrap: wrap; }
+  .list-search { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
+}
 /* 筛选与排序：原生下拉框盖在文字上（透明），读屏与键盘照常使用 */
 .filter-pick, .sort-key { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
 .filter-pick select, .sort-key select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
