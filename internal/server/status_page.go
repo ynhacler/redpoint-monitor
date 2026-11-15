@@ -36,9 +36,10 @@ type StatusPageSetting struct {
 }
 
 type statusPageView struct {
-	Enabled       bool    `json:"enabled"`
-	Subscriptions bool    `json:"subscriptions"`
-	ServerIDs     []int64 `json:"server_ids"`
+	Enabled       bool                  `json:"enabled"`
+	Subscriptions bool                  `json:"subscriptions"`
+	ServerIDs     []int64               `json:"server_ids"`
+	Latency       []statusLatencyOption `json:"latency,omitempty"` // 各节点的三网延迟地区（修订第 328 条）；PUT 时省略则不变
 }
 
 // publicSubscription 是访客能看到的全部订阅字段（设计 45.3）。
@@ -54,16 +55,17 @@ type publicSubscription struct {
 
 // publicServer 是访客能看到的全部节点字段（设计 45.3）。离线节点只有名称、国家、状态与流量比例。
 type publicServer struct {
-	Name       string   `json:"name"`
-	Country    string   `json:"country"`
-	Status     string   `json:"status"` // online / unknown / offline
-	CPU        *float64 `json:"cpu,omitempty"`
-	Memory     *float64 `json:"memory,omitempty"`
-	Disk       *float64 `json:"disk,omitempty"`
-	RxSpeed    *uint64  `json:"rx_speed,omitempty"`
-	TxSpeed    *uint64  `json:"tx_speed,omitempty"`
-	Uptime     *uint64  `json:"uptime,omitempty"`
-	TrafficPct *float64 `json:"traffic_pct,omitempty"` // 只有比例，不含流量上限；不限流量时省略
+	Name       string         `json:"name"`
+	Country    string         `json:"country"`
+	Status     string         `json:"status"` // online / unknown / offline
+	CPU        *float64       `json:"cpu,omitempty"`
+	Memory     *float64       `json:"memory,omitempty"`
+	Disk       *float64       `json:"disk,omitempty"`
+	RxSpeed    *uint64        `json:"rx_speed,omitempty"`
+	TxSpeed    *uint64        `json:"tx_speed,omitempty"`
+	Uptime     *uint64        `json:"uptime,omitempty"`
+	TrafficPct *float64       `json:"traffic_pct,omitempty"` // 只有比例，不含流量上限；不限流量时省略
+	Latency    *publicLatency `json:"latency,omitempty"`     // 三网延迟（修订第 328 条）；没有结果或设为不显示时省略
 }
 
 // statusPageCache 缓存公开接口的结果，访问量再大也只是每 5 秒组装一次。
@@ -73,12 +75,14 @@ type statusPageCache struct {
 	items  []publicServer
 	subsAt time.Time
 	subs   []publicSubscription
+	latAt  time.Time                // 三网延迟另有 60 秒缓存（修订第 328 条）
+	lat    map[int64]*publicLatency // 键为节点 ID
 }
 
 func (c *statusPageCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.at, c.items, c.subsAt, c.subs = time.Time{}, nil, time.Time{}, nil
+	c.at, c.items, c.subsAt, c.subs, c.latAt, c.lat = time.Time{}, nil, time.Time{}, nil, time.Time{}, nil
 }
 
 // 名称中要遮盖的内容，先匹配长的，避免 IP 被拆开。
@@ -173,13 +177,19 @@ func (s *Server) publicServers(now time.Time) ([]publicServer, time.Time, error)
 		return r.SortOrder
 	}
 	slices.SortStableFunc(rows, func(a, b ServerRow) int { return cmp.Compare(order(a), order(b)) })
+	lat, err := s.publicLatencies(rows, now)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
 	items := make([]publicServer, 0, len(rows))
 	for _, row := range rows {
 		v, err := s.viewOf(row, now)
 		if err != nil {
 			return nil, time.Time{}, err
 		}
-		items = append(items, publicView(v))
+		p := publicView(v)
+		p.Latency = lat[row.ID]
+		items = append(items, p)
 	}
 	c.at, c.items = now, items
 	return items, now, nil
@@ -275,7 +285,11 @@ func (s *Server) statusPageView() (statusPageView, error) {
 	if err != nil {
 		return v, err
 	}
-	return statusPageView{Enabled: st.Enabled, Subscriptions: st.Subscriptions, ServerIDs: ids}, nil
+	lat, err := s.statusLatencyOptions(time.Now())
+	if err != nil {
+		return v, err
+	}
+	return statusPageView{Enabled: st.Enabled, Subscriptions: st.Subscriptions, ServerIDs: ids, Latency: lat}, nil
 }
 
 // handleGetStatusPage：GET /api/v1/settings/status-page，admin。
@@ -306,10 +320,33 @@ func (s *Server) handlePutStatusPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var choices map[int64]string
+	if in.Latency != nil {
+		choices = map[int64]string{}
+		for _, x := range in.Latency {
+			if !slices.ContainsFunc(rows, func(row ServerRow) bool { return row.ID == x.ServerID }) {
+				s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "latency", Message: "节点不存在"}}})
+				return
+			}
+			if !validLatencyChoice(x.Region) {
+				s.writeError(w, r, &APIError{Code: CodeValidationFailed, Details: []FieldError{{Field: "latency", Message: "地区名称无效"}}})
+				return
+			}
+			if x.Region != "" {
+				choices[x.ServerID] = x.Region
+			}
+		}
+	}
 	now := time.Now()
 	if err := s.store.SetPublicServers(in.ServerIDs); err != nil {
 		s.writeError(w, r, internalError(err))
 		return
+	}
+	if choices != nil {
+		if err := s.store.SetPublicLatencyChoices(choices); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
 	}
 	if err := s.store.PutSetting(settingStatusPage, StatusPageSetting{Enabled: in.Enabled, Subscriptions: in.Subscriptions}, now); err != nil {
 		s.writeError(w, r, internalError(err))

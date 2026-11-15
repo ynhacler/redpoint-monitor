@@ -3,6 +3,7 @@
 // 保存后立即生效：语言与名称在本页面马上切换，其他已打开的浏览器在刷新后生效。
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError, errorText, getStatusPage, putSite, putStatusPage } from '../api'
+import type { StatusPageSetting } from '../api.gen'
 import Flag from '../components/Flag.vue'
 import ListenSettings from '../components/ListenSettings.vue'
 import SaveState, { saveStatus } from '../components/SaveState.vue'
@@ -42,17 +43,33 @@ async function save() {
 // 公开展示页（设计 45.3）：默认关闭，节点逐个选择
 const statusUrl = `${location.origin}/status`
 const pub = reactive({ enabled: false, subs: false, ids: [] as number[] })
-const pubSaved = ref({ enabled: false, subs: false, ids: '' })
+// 三网延迟地区（修订第 328 条）：键为节点 ID，空为第一个地区，off 不显示
+const lat = reactive<Record<number, string>>({})
+const latRegions = ref<Record<number, string[]>>({})
+const pubSaved = ref({ enabled: false, subs: false, ids: '', lat: '' })
 const pubKey = () => [...pub.ids].sort((a, b) => a - b).join()
-const pubDirty = computed(() => pub.enabled !== pubSaved.value.enabled || pub.subs !== pubSaved.value.subs || pubKey() !== pubSaved.value.ids)
+const latKey = () => JSON.stringify(Object.entries(lat).filter(([, v]) => v).sort())
+const pubDirty = computed(() => pub.enabled !== pubSaved.value.enabled || pub.subs !== pubSaved.value.subs || pubKey() !== pubSaved.value.ids
+  || latKey() !== pubSaved.value.lat)
+const pubNodes = computed(() => state.servers.filter((s) => pub.ids.includes(s.id)))
+// 新勾选的节点默认第一个地区（空值不算修改）
+watch(() => pub.ids, (ids) => ids.forEach((id) => { lat[id] ??= '' }), { deep: true, immediate: true })
+const autoLabel = (id: number) => (latRegions.value[id]?.length ? t('第一个地区（{r}）', { r: latRegions.value[id][0] }) : t('第一个地区'))
 const pubError = ref('')
 const pubSaving = ref(false)
 const pubDone = ref(false)
 const pubAt = ref(0)
 const pubStatus = computed(() => saveStatus({ saving: pubSaving.value, error: pubError.value, dirty: pubDirty.value, saved: pubDone.value }))
-function applyPub(v: { enabled: boolean; subscriptions: boolean; server_ids: number[] }) {
+function applyPub(v: StatusPageSetting) {
   Object.assign(pub, { enabled: v.enabled, subs: v.subscriptions, ids: [...v.server_ids] })
-  pubSaved.value = { enabled: v.enabled, subs: v.subscriptions, ids: pubKey() }
+  for (const k of Object.keys(lat)) delete lat[Number(k)]
+  const regions: Record<number, string[]> = {}
+  for (const x of v.latency ?? []) {
+    lat[x.server_id] = x.region
+    regions[x.server_id] = x.regions ?? []
+  }
+  latRegions.value = regions
+  pubSaved.value = { enabled: v.enabled, subs: v.subscriptions, ids: pubKey(), lat: latKey() }
 }
 onMounted(async () => {
   try {
@@ -66,7 +83,8 @@ async function savePub() {
   pubDone.value = false
   pubError.value = ''
   try {
-    applyPub(await putStatusPage({ enabled: pub.enabled, subscriptions: pub.subs, server_ids: pub.ids }))
+    const latency = Object.entries(lat).filter(([, v]) => v).map(([k, v]) => ({ server_id: Number(k), region: v }))
+    applyPub(await putStatusPage({ enabled: pub.enabled, subscriptions: pub.subs, server_ids: pub.ids, latency }))
     site.status_page = pub.enabled // 顶栏的展示页入口随之出现或消失（修订第 327 条）
     pubDone.value = true
     pubAt.value = Date.now()
@@ -137,7 +155,7 @@ async function savePub() {
 
       <div class="field">
         <span class="label">{{ t('开启展示页') }}</span>
-        <p class="small muted">{{ t('任何知道地址的人都能打开。节点只显示名称、国家、在线状态、资源使用率、网速、运行时间和流量比例，不显示 IP、主机名、服务商、价格和到期时间。云平台不会显示') }}</p>
+        <p class="small muted">{{ t('任何知道地址的人都能打开。节点只显示名称、国家、在线状态、资源使用率、网速、运行时间、流量比例和三网延迟，不显示 IP、主机名、服务商、价格和到期时间。云平台不会显示') }}</p>
         <label class="switch">
           <input v-model="pub.enabled" type="checkbox" role="switch" />
           <span class="track" aria-hidden="true" />
@@ -165,6 +183,22 @@ async function savePub() {
         </div>
         <div class="picks">
           <label v-for="s in state.servers" :key="s.id"><input v-model="pub.ids" type="checkbox" :value="s.id" /> <Flag :code="s.country" /> <span>{{ s.name }}</span></label>
+        </div>
+      </div>
+
+      <div v-if="pubNodes.length" class="field">
+        <span class="label">{{ t('三网延迟') }}</span>
+        <p class="small muted">{{ t('每个节点显示一个地区的电信、联通、移动最近 24 小时，每小时一格：绿色正常，红色为延迟超过 200 ms、丢包 5% 以上或不可达。默认是节点测速结果中的第一个地区；只显示地区名和数值，不显示测试地址') }}</p>
+        <div class="lat-picks">
+          <label v-for="s in pubNodes" :key="s.id">
+            <Flag :code="s.country" /> <span class="name">{{ s.name }}</span>
+            <select v-model="lat[s.id]" :aria-label="t('{name} 的三网延迟地区', { name: s.name })">
+              <option value="">{{ autoLabel(s.id) }}</option>
+              <option v-for="r in latRegions[s.id] ?? []" :key="r" :value="r">{{ r }}</option>
+              <option v-if="lat[s.id] && lat[s.id] !== 'off' && !(latRegions[s.id] ?? []).includes(lat[s.id])" :value="lat[s.id]">{{ t('{r}（暂无数据）', { r: lat[s.id] }) }}</option>
+              <option value="off">{{ t('不显示') }}</option>
+            </select>
+          </label>
         </div>
       </div>
     </form>
@@ -206,6 +240,10 @@ async function savePub() {
 .picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-1) var(--space-3); margin-top: var(--space-1); }
 .picks label { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 28px; cursor: pointer; }
 .picks span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lat-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-2) var(--space-4); margin-top: var(--space-1); }
+.lat-picks label { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.lat-picks .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lat-picks select { width: auto; max-width: 55%; }
 @media (max-width: 600px) {
   .card-head, .field { padding: var(--space-3) var(--space-4); }
 }

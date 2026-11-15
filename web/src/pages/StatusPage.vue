@@ -10,9 +10,9 @@ import { ApiError, getPublicServers, type PublicServer } from '../api'
 import Flag from '../components/Flag.vue'
 import WallSubscriptions from '../components/WallSubscriptions.vue'
 import { countryName } from '../countries'
-import { fmtAgo, fmtBytes, fmtPct, fmtTime, fmtUptimeShort } from '../format'
+import { fmtAgo, fmtBytes, fmtLatency, fmtLoss, fmtPct, fmtTime, fmtUptimeShort } from '../format'
 import { t } from '../i18n'
-import { gaugeLevel } from '../metrics'
+import { gaugeLevel, latencyLevel } from '../metrics'
 import { site } from '../site'
 import { useWallPaging } from '../wallPaging'
 
@@ -85,6 +85,19 @@ const bars = (s: PublicServer) => [
   { k: t('磁盘'), v: s.disk, level: gaugeLevel(s.disk, 'disk') },
 ]
 
+// 三网延迟（修订第 328 条）：每个运营商一行 24 格，每格一小时，最后一格为最近 1 小时
+type LatRow = NonNullable<PublicServer['latency']>['rows'][number]
+type LatBlock = LatRow['blocks'][number]
+const ispNames: Record<string, string> = { ct: '电信', cu: '联通', cm: '移动' }
+const blockTitle = (b: LatBlock, i: number) => {
+  const end = updatedAt.value - (23 - i) * 3600
+  const when = `${fmtTime(end - 3600)}–${fmtTime(end)}`
+  if (b.latency_ms == null && b.loss == null) return t('{w} 没有数据', { w: when })
+  if (b.latency_ms == null) return t('{w} 不可达', { w: when })
+  return t('{w} 延迟 {ms} · 丢包 {loss}', { w: when, ms: fmtLatency(b.latency_ms), loss: fmtLoss(b.loss) })
+}
+const rowText = (r: LatRow) => (r.latency_ms == null && r.loss == null ? '—' : r.latency_ms == null ? t('不可达') : `${fmtLatency(r.latency_ms)} · ${fmtLoss(r.loss)}`)
+
 const { grid, page, pages, shown } = useWallPaging(sorted)
 
 let poll: ReturnType<typeof setInterval>
@@ -154,6 +167,18 @@ onUnmounted(() => {
             <span class="track" aria-hidden="true"><span class="fill" :class="b.level" :style="{ width: `${Math.min(100, b.v ?? 0)}%` }" /></span>
             <span class="v num" :class="b.level === 'ok' ? '' : b.level">{{ fmtPct(b.v) }}</span>
           </div>
+          <div v-if="s.latency" class="lat" :aria-label="t('三网延迟')">
+            <p class="lat-head">{{ t('三网延迟') }} · {{ s.latency.region }}<span>{{ t('24 小时') }}</span></p>
+            <div class="lat-rows">
+            <div v-for="r in s.latency.rows" :key="r.isp" class="lat-row">
+              <span class="k">{{ t(ispNames[r.isp] ?? r.isp) }}</span>
+              <span class="blocks" aria-hidden="true">
+                <i v-for="(b, i) in r.blocks" :key="i" :class="latencyLevel(b.latency_ms, b.loss)" :title="blockTitle(b, i)" />
+              </span>
+              <span class="v num" :class="{ bad: latencyLevel(r.latency_ms, r.loss) === 'bad' }">{{ rowText(r) }}</span>
+            </div>
+            </div>
+          </div>
           <p class="foot num">
             <span>↓ {{ fmtBytes(s.rx_speed, true) }}</span>
             <span>↑ {{ fmtBytes(s.tx_speed, true) }}</span>
@@ -211,6 +236,18 @@ onUnmounted(() => {
 .fill { display: block; height: 100%; border-radius: var(--radius-full); background: var(--ok); transition: width .4s; }
 .fill.warn { background: var(--warn); }
 .fill.bad { background: var(--bad); }
+/* 三网延迟：粗方块，绿色正常、红色延迟高 / 丢包 / 不可达、灰色没有数据（修订第 328 条） */
+.lat { display: flex; flex-direction: column; gap: 4px; }
+.lat-head { margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); color: var(--text-muted); font-size: var(--font-sm); line-height: var(--line-sm); }
+/* 三行共用列宽：运营商名称与右侧数值按最长的一行对齐 */
+.lat-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: 4px var(--space-2); }
+.lat-row { display: contents; }
+.lat-row .k { color: var(--text-muted); font-size: var(--font-sm); }
+.lat-row .v { text-align: right; white-space: nowrap; font-size: var(--font-sm); }
+.blocks { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; }
+.blocks i { height: 14px; border-radius: 2px; background: var(--track); }
+.blocks i.ok { background: var(--ok); }
+.blocks i.bad { background: var(--bad); }
 .foot { margin: 0; display: flex; gap: var(--space-3); color: var(--text-muted); font-size: var(--font-sm); line-height: var(--line-sm); white-space: nowrap; overflow: hidden; }
 .foot .up { margin-left: auto; }
 .pager { margin: 0; text-align: center; }

@@ -16,6 +16,16 @@ export const gaugeThresholds = {
   disk: { warn: thresholds.disk, bad: thresholds.diskBad },
 } as const
 
+/** 展示页三网延迟方块的阈值（修订第 328 条）：延迟超过 200 ms 或丢包 ≥ 5% 为高 */
+export const latencyThresholds = { ms: 200, loss: 5 }
+
+/** 展示页三网延迟一格的级别：没有结果 none，全部失败或延迟 / 丢包超过阈值 bad，其余 ok */
+export function latencyLevel(ms: number | undefined, loss: number | undefined): 'ok' | 'bad' | 'none' {
+  if (ms == null && loss == null) return 'none'
+  if (ms == null || ms > latencyThresholds.ms || (loss ?? 0) >= latencyThresholds.loss) return 'bad'
+  return 'ok'
+}
+
 /** 按告警默认阈值给出配色级别（设计 16.1） */
 export function gaugeLevel(v: number | undefined, kind: keyof typeof gaugeThresholds): 'ok' | 'warn' | 'bad' {
   const t = gaugeThresholds[kind]

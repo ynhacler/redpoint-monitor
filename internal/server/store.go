@@ -1071,6 +1071,8 @@ var migrations = []string{
 		AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'subscription_push');`,
 	// 迁移 69：通知渠道只接收选中的告警分组（修订第 318 条），逗号分隔，空为全部
 	`ALTER TABLE notification_channels ADD COLUMN alert_groups TEXT NOT NULL DEFAULT '';`,
+	// 迁移 70：公开展示页上节点的三网延迟地区（修订第 328 条）：空为第一个地区，off 为不显示，其他为地区名
+	`ALTER TABLE servers ADD COLUMN status_latency TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

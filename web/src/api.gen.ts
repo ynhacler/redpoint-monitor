@@ -74,6 +74,40 @@ export interface StatusPageSetting {
   subscriptions: boolean
   /** 公开的节点 */
   server_ids: number[]
+  /** 各节点在展示页上的三网延迟地区（修订第 328 条）。GET 返回全部已安装节点；PUT 时省略则不变，提供时未列出的节点恢复为第一个地区 */
+  latency?: StatusLatencyOption[]
+}
+
+export interface StatusLatencyOption {
+  server_id: number
+  /** 空为第一个有结果的地区（默认），off 为不显示，其他为地区名；没有该地区的结果时显示第一个地区 */
+  region: string
+  /** 只读，最近 24 小时有结果的国内地区，按测试目标的顺序 */
+  regions?: string[]
+}
+
+export interface PublicLatencyBlock {
+  /** 这一小时成功轮次的延迟中位数；有结果但全部失败时省略（不可达） */
+  latency_ms?: number
+  /** 这一小时的平均丢包率，百分比；没有结果时与 latency_ms 一同省略 */
+  loss?: number
+}
+
+export interface PublicLatencyRow {
+  /** 电信 / 联通 / 移动 */
+  isp: 'ct' | 'cu' | 'cm'
+  /** 最近 1 小时中位数 */
+  latency_ms?: number
+  /** 最近 1 小时平均丢包率，百分比 */
+  loss?: number
+  /** 最近 24 小时每小时一格，从早到晚 */
+  blocks: PublicLatencyBlock[]
+}
+
+export interface PublicLatency {
+  /** 地区名（来自测试目标的省份 / 城市）；不含目标地址 */
+  region: string
+  rows: PublicLatencyRow[]
 }
 
 export interface PublicServer {
@@ -96,6 +130,7 @@ export interface PublicServer {
   uptime?: number
   /** 本周期流量用量比例，百分比；不限流量时省略 */
   traffic_pct?: number
+  latency?: PublicLatency
 }
 
 export interface PublicServerList {
