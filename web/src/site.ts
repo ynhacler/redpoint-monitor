@@ -5,7 +5,7 @@ import { getSite, type SiteView } from './api'
 import { setLocale } from './i18n'
 
 /** 当前网站配置；读取失败时为默认值 */
-export const site = reactive<SiteView>({ app_name: 'VPS Monitor', language: 'zh', captcha: true, captcha_forced_off: false })
+export const site = reactive<SiteView>({ app_name: 'VPS Monitor', language: 'zh', captcha: true, captcha_forced_off: false, status_page: false })
 
 /** 应用新的网站配置（读取或保存之后） */
 export function applySite(v: SiteView) {

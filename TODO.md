@@ -190,6 +190,7 @@
 - [x] E2E 推送（App 端第二步）：Android 接入 firebase_messaging 取得 FCM Token、后台处理器解密
 - [ ] iOS 取得 APNs Token 并登记（需要开发者团队与 aps-environment 授权）
 - [ ] 部署官方 Push Relay，并把地址设为 --push-relay 的默认值
+- [ ] App 迁移到 package:material_ui（3.47 之后的 Flutter 弃用 material.dart；本地升级后删掉 app/analysis_options.yaml 中的 deprecated_member_use: ignore）
 
 ## MVP 之后
 

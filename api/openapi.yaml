@@ -2988,9 +2988,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/SiteSetting'
         - type: object
-          required: [captcha_forced_off]
+          required: [captcha_forced_off, status_page]
           properties:
             captcha_forced_off: { type: boolean, description: 启动参数 --no-login-captcha 关闭了验证码，网页中不能打开 }
+            status_page: { type: boolean, description: 公开展示页是否开启（修订第 327 条）；开启时顶栏显示进入展示页的按钮 }
 
     StatusPageSetting:
       type: object

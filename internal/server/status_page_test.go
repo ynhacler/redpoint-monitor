@@ -238,3 +238,28 @@ func TestStatusPageRateLimit(t *testing.T) {
 		t.Fatalf("超过限额：%d", rec.Code)
 	}
 }
+
+// 网站配置带出展示页是否开启，Web 顶栏据此显示入口（修订第 327 条）。
+func TestSiteStatusPageFlag(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	flag := func() bool {
+		var v struct {
+			StatusPage *bool `json:"status_page"`
+		}
+		json.Unmarshal(do(h, "GET", "/api/v1/site", "", nil).Body.Bytes(), &v)
+		if v.StatusPage == nil {
+			t.Fatal("site 缺少 status_page")
+		}
+		return *v.StatusPage
+	}
+	if flag() {
+		t.Fatal("默认关闭")
+	}
+	if rec := do(h, "PUT", "/api/v1/settings/status-page", admin, []byte(`{"enabled":true,"subscriptions":false,"server_ids":[]}`)); rec.Code != 200 {
+		t.Fatalf("保存：%d %s", rec.Code, rec.Body)
+	}
+	if !flag() {
+		t.Fatal("开启后应为 true")
+	}
+}

@@ -893,6 +893,7 @@ export const en: Record<string, string> = {
   '{name} 的三网延迟地区': 'China latency region for {name}',
   '{r}（暂无数据）': '{r} (no data yet)',
   '每个节点显示一个地区的电信、联通、移动最近 24 小时，每小时一格：绿色正常，红色为延迟超过 200 ms、丢包 5% 以上或不可达。默认是节点测速结果中的第一个地区；只显示地区名和数值，不显示测试地址': 'Each node shows China Telecom, Unicom and Mobile for one region over the last 24 hours, one block per hour: green is normal, red means latency over 200 ms, 5% loss or more, or unreachable. By default the first region in the node’s results is used; only the region name and numbers are shown, never the test addresses',
+  '打开公开展示页': 'Open the public status page',
   '搜索名称、描述、IP': 'Search name, description, IP',
   '搜索订阅': 'Search subscriptions',
   '没有找到“{q}”。': 'Nothing found for “{q}”.',
