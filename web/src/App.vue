@@ -142,6 +142,9 @@ onUnmounted(stopPolling)
         </RouterLink>
       </nav>
       <div class="tools">
+        <!-- 公开展示页入口（修订第 327 条）：展示页开启时显示，新标签页打开 -->
+        <a v-if="signedIn && site.status_page" class="tool-link" href="/status" target="_blank" rel="noopener"
+          :title="t('打开公开展示页')" :aria-label="t('打开公开展示页')"><Icon name="presentation" /></a>
         <button class="text" type="button" :title="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })"
           :aria-label="t('主题：{m}（点击切换）', { m: t(themeLabels[themeMode]) })" @click="cycleTheme">
           <Icon :name="themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor'" />
@@ -222,6 +225,8 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
   font-size: 0.625rem; line-height: 1rem; text-align: center; font-weight: var(--weight-strong); }
 .tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
 .tools button { padding: var(--space-1); }
+.tool-link { color: var(--text-muted); display: flex; align-items: center; padding: var(--space-1); }
+.tool-link:hover { color: var(--text); text-decoration: none; }
 .user { color: var(--text-muted); display: flex; align-items: center; gap: var(--space-1); }
 .user:hover { color: var(--text); text-decoration: none; }
 .banner-wrap { padding-bottom: 0; }

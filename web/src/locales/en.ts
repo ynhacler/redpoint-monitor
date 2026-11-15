@@ -883,6 +883,7 @@ export const en: Record<string, string> = {
   '选择服务': 'Choose a service',
   '类别': 'Category',
   '输入名称搜索': 'Search by name',
+  '打开公开展示页': 'Open the public status page',
   '搜索名称、描述、IP': 'Search name, description, IP',
   '搜索订阅': 'Search subscriptions',
   '没有找到“{q}”。': 'Nothing found for “{q}”.',
