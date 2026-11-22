@@ -12,7 +12,7 @@ import WallSubscriptions from '../components/WallSubscriptions.vue'
 import { countryName } from '../countries'
 import { fmtAgo, fmtBytes, fmtLatency, fmtLoss, fmtPct, fmtTime, fmtUptimeShort } from '../format'
 import { t } from '../i18n'
-import { gaugeLevel, latencyLevel } from '../metrics'
+import { gaugeLevel, latencyLevel, latencyThresholds } from '../metrics'
 import { site } from '../site'
 import { useWallPaging } from '../wallPaging'
 
@@ -61,7 +61,11 @@ async function load() {
 const down = (s: PublicServer) => s.status === 'offline'
 const levels = (s: PublicServer) => [gaugeLevel(s.cpu, 'cpu'), gaugeLevel(s.memory, 'mem'), gaugeLevel(s.disk, 'disk')]
 // 异常优先：离线，然后是达到告警阈值的，再是接近阈值的；同级保持面板的顺序
-const tier = (s: PublicServer) => (down(s) ? 0 : levels(s).includes('bad') ? 1 : s.status === 'unknown' || levels(s).includes('warn') ? 2 : 3)
+// 最近 1 小时三网延迟偏高（红格）的节点与接近阈值的同级，排在正常节点前面（修订第 329 条）
+const latBad = (s: PublicServer) => !!s.latency?.rows.some((r) => latencyLevel(r.latency_ms, r.loss) === 'bad')
+const tier = (s: PublicServer) =>
+  (down(s) ? 0 : levels(s).includes('bad') ? 1 : s.status === 'unknown' || levels(s).includes('warn') || latBad(s) ? 2 : 3)
+const hasLatency = computed(() => items.value.some((s) => s.latency))
 const sorted = computed(() => items.value.map((s, i) => ({ s, key: i })).sort((a, b) => tier(a.s) - tier(b.s) || a.key - b.key))
 
 const avg = (f: (s: PublicServer) => number | undefined) => {
@@ -149,9 +153,17 @@ onUnmounted(() => {
         <div class="kpi"><span>{{ t('总上行') }}</span><b class="num">{{ fmtBytes(sum((s) => s.tx_speed), true) }}</b></div>
       </section>
 
-      <ul v-if="regions.length" class="regions num" :aria-label="t('地区分布')">
-        <li v-for="[c, n] in regions" :key="c" :title="countryName(c)"><Flag :code="c" /> {{ n }}</li>
-      </ul>
+      <div v-if="regions.length || hasLatency" class="row2">
+        <ul class="regions num" :aria-label="t('地区分布')">
+          <li v-for="[c, n] in regions" :key="c" :title="countryName(c)"><Flag :code="c" /> {{ n }}</li>
+        </ul>
+        <!-- 三网延迟方块的图例（修订第 329 条） -->
+        <p v-if="hasLatency" class="legend">
+          <span><i class="ok" />{{ t('延迟正常') }}</span>
+          <span><i class="bad" />{{ t('延迟 > {ms} ms、丢包 ≥ {loss}% 或不通', { ms: latencyThresholds.ms, loss: latencyThresholds.loss }) }}</span>
+          <span><i />{{ t('没有数据') }}</span>
+        </p>
+      </div>
 
       <section ref="grid" class="grid" :class="{ center: pages === 1 }" :aria-label="t('节点')">
         <article v-for="{ s, key } in shown" :key="key" class="node" :class="{ down: down(s) }">
@@ -215,7 +227,13 @@ onUnmounted(() => {
 .kpi span { color: var(--text-muted); }
 .kpi b { font-size: var(--font-num); line-height: var(--line-num); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi small { font-size: var(--font-lg); color: var(--text-muted); font-weight: var(--weight-regular); }
-.regions { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-4); overflow: hidden; color: var(--text-muted); }
+.row2 { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.regions { flex: 1; min-width: 0; list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-4); overflow: hidden; color: var(--text-muted); }
+.legend { margin: 0; display: flex; gap: var(--space-3); flex: none; color: var(--text-muted); font-size: var(--font-sm); white-space: nowrap; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; background: var(--track); }
+.legend i.ok { background: var(--ok); }
+.legend i.bad { background: var(--bad); }
 .regions li { display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .grid { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr)); grid-auto-rows: min-content; align-content: start; gap: var(--space-3); }
 /* 节点少时放在中间，不全挤在上面 */
@@ -264,6 +282,8 @@ onUnmounted(() => {
   .clock .muted, .clock .bad { font-size: var(--font-sm); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .regions { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+  .row2 { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+  .legend { flex-wrap: wrap; white-space: normal; }
   .grid, .grid.center { flex: none; overflow: visible; grid-template-columns: minmax(0, 1fr); align-content: start; }
 }
 </style>
