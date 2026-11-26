@@ -95,10 +95,13 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 .banner.warn { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, var(--border)); }
 
 /* 分段选择（时间范围、排序） */
-.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.segmented button { background: transparent; color: var(--text-muted); border: 0; border-radius: 0; padding: var(--space-1) var(--space-3); font-size: var(--font-sm); }
-.segmented button + button { border-left: 1px solid var(--border); }
-.segmented button.active { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
+/* 分段选择（修订第 334 条）：浅底轨道，选中的一段为浮起的白色药丸 */
+.segmented { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.segmented button { background: transparent; color: var(--text-muted); border: 0; border-radius: calc(var(--radius-sm) - 2px); padding: var(--space-1) var(--space-3);
+  font-size: var(--font-sm); transition: background .15s, color .15s; }
+.segmented button:hover { color: var(--text); filter: none; }
+.segmented button.active { background: var(--surface); color: var(--text); font-weight: var(--weight-strong);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--scrim) 10%, transparent), 0 0 0 1px var(--border); }
 
 /* 电脑侧边栏（修订第 238 条，App.vue）：≥ 1100px 时页面右移侧边栏的宽度 */
 :root { --sidebar-w: 208px; }
