@@ -123,7 +123,7 @@ onUnmounted(() => {
 <template>
   <div class="wall" :class="{ scroll: tab === 'connectivity' }">
     <header class="head">
-      <h1>{{ site.app_name }}</h1>
+      <h1><img class="logo" src="/favicon.svg" alt="" width="28" height="28" />{{ site.app_name }}</h1>
       <nav v-if="loaded && !closed" class="tabs" :aria-label="t('分组')">
         <button v-for="x in tabs" :key="x.k" type="button" :class="{ active: tab === x.k }" :aria-current="tab === x.k ? 'page' : undefined" @click="pick(x.k)">{{ x.t }}</button>
       </nav>
@@ -146,7 +146,7 @@ onUnmounted(() => {
     <template v-else>
       <section class="kpis" :aria-label="t('汇总')">
         <div class="kpi"><span>{{ t('在线节点') }}</span><b class="num" :class="{ bad: online < items.length }">{{ online }}<small> / {{ items.length }}</small></b></div>
-        <div class="kpi"><span>{{ t('需要关注') }}</span><b class="num" :class="attention ? 'bad' : 'ok'">{{ attention }}</b></div>
+        <div class="kpi" :class="attention ? 'kpi-bad' : 'kpi-ok'"><span>{{ t('需要关注') }}</span><b class="num" :class="attention ? 'bad' : 'ok'">{{ attention }}</b></div>
         <div class="kpi"><span>{{ t('平均 CPU') }}</span><b class="num">{{ fmtPct(avgCpu) }}</b></div>
         <div class="kpi"><span>{{ t('平均内存') }}</span><b class="num">{{ fmtPct(avgMem) }}</b></div>
         <div class="kpi"><span>{{ t('总下行') }}</span><b class="num">{{ fmtBytes(sum((s) => s.rx_speed), true) }}</b></div>
@@ -208,7 +208,9 @@ onUnmounted(() => {
 <style scoped>
 /* 大屏上整体放大，3 米外也看得清；--z 同时用来修正高度（zoom 会放大 100dvh） */
 .wall { --z: 1; zoom: var(--z); height: calc(100dvh / var(--z)); display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5) var(--space-6);
-  background: var(--bg); overflow: hidden; }
+  overflow: hidden;
+  /* 顶部很淡的强调色渐变（修订第 339 条） */
+  background: radial-gradient(120% 50% at 50% 0%, color-mix(in srgb, var(--accent) 7%, var(--bg)), var(--bg) 70%); }
 @media (min-width: 1800px) { .wall { --z: 1.25; } }
 @media (min-width: 2500px) { .wall { --z: 1.75; } }
 @media (min-width: 3400px) { .wall { --z: 2.5; } }
@@ -217,13 +219,18 @@ onUnmounted(() => {
 .tabs { display: flex; gap: var(--space-1); margin-right: auto; }
 .tabs button { background: none; border: 0; color: var(--text-muted); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .tabs button.active { background: var(--surface-2); color: var(--text); font-weight: var(--weight-strong); }
-.head h1 { margin: 0; font-size: var(--font-xl); line-height: var(--line-xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head h1 { margin: 0; display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-xl); line-height: var(--line-xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .logo { flex: none; border-radius: 7px; }
 .clock { margin: 0; display: flex; align-items: baseline; gap: var(--space-3); white-space: nowrap; }
 .clock strong { font-size: var(--font-xl); }
 .notice { margin: auto; text-align: center; }
 .notice h2, .notice p { margin: 0 0 var(--space-1); }
 .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-3); }
-.kpi { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); min-width: 0; }
+.kpi { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-md); min-width: 0; box-shadow: var(--shadow-sm); }
+/* “需要关注”顶部色条：0 为绿色，有节点需要关注为红色 */
+.kpi-ok::before, .kpi-bad::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ok); }
+.kpi-bad::before { background: var(--bad); }
 .kpi span { color: var(--text-muted); }
 .kpi b { font-size: var(--font-num); line-height: var(--line-num); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi small { font-size: var(--font-lg); color: var(--text-muted); font-weight: var(--weight-regular); }
@@ -238,8 +245,9 @@ onUnmounted(() => {
 .grid { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr)); grid-auto-rows: min-content; align-content: start; gap: var(--space-3); }
 /* 节点少时放在中间，不全挤在上面 */
 .grid.center { align-content: safe center; }
-.node { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); min-width: 0; }
-.node.down { border-color: var(--bad); }
+.node { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); min-width: 0; box-shadow: var(--shadow-sm); }
+.node.down { border-color: color-mix(in srgb, var(--bad) 55%, var(--border)); box-shadow: inset 3px 0 0 var(--bad), var(--shadow-sm); }
 .title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .title h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--font-lg); line-height: var(--line-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: var(--radius-full); flex: none; }
@@ -250,7 +258,7 @@ onUnmounted(() => {
 .meter { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) 3.5em; align-items: center; gap: var(--space-2); }
 .meter .k { color: var(--text-muted); white-space: nowrap; }
 .meter .v { text-align: right; white-space: nowrap; }
-.track { height: 6px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; }
+.track { height: 8px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; }
 .fill { display: block; height: 100%; border-radius: var(--radius-full); background: var(--ok); transition: width .4s; }
 .fill.warn { background: var(--warn); }
 .fill.bad { background: var(--bad); }
