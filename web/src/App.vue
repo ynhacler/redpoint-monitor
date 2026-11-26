@@ -105,7 +105,9 @@ onUnmounted(stopPolling)
 <template>
   <!-- 电脑侧边栏（修订第 238 条）：≥ 1100px 显示 -->
   <aside v-if="signedIn" class="sidebar" :class="{ collapsed }" :aria-label="t('分组')">
-    <RouterLink to="/" class="sb-brand" :title="site.app_name">{{ collapsed ? site.app_name.slice(0, 1) : site.app_name }}</RouterLink>
+    <!-- 名称前加面板图标（修订第 336 条）；收起时只显示图标 -->
+    <RouterLink to="/" class="sb-brand" :title="site.app_name"><img class="sb-logo" src="/favicon.svg" alt="" width="24" height="24" /><span
+      v-if="!collapsed" class="sb-name">{{ site.app_name }}</span></RouterLink>
     <nav class="sb-nav">
       <template v-for="g in groups" :key="g.key">
         <template v-if="g.mobileTo">
@@ -242,7 +244,10 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
   .sb-item, .sb-section, .sb-toggle { display: flex; width: 100%; background: none; border: 0; font: inherit; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; white-space: nowrap; min-height: 36px; }
   .sb-item:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
-  .sb-item.active { color: var(--text); background: var(--surface-2); font-weight: var(--weight-strong); }
+  /* 当前页（修订第 336 条）：浅强调色底、左侧细条，文字与图标为强调色 */
+  .sb-item { position: relative; }
+  .sb-item.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); font-weight: var(--weight-strong); }
+  .sb-item.active::before { content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
   .sb-item.active :deep(svg) { color: var(--accent); }
   /* 一级项文字为正文色，二级项缩进、文字与图标更浅（修订第 270 条） */
   .sb-item:not(.sub), .sb-section { color: var(--text); }
@@ -254,9 +259,12 @@ nav.groups a.active { color: var(--text); background: var(--surface-2); font-wei
   .sb-chev.open { transform: rotate(90deg); }
   .sb-item.sub { padding-left: calc(var(--space-3) + 22px); font-size: var(--font-md); color: var(--text-muted); }
   .sb-item.sub :deep(svg) { opacity: .75; }
-  .sb-item.sub.active { color: var(--text); }
+  .sb-item.sub.active { color: var(--accent); }
   .sb-item.sub.active :deep(svg) { opacity: 1; }
-  .sb-item.active:not(.sub) :deep(svg) { color: var(--accent); }
+  .sb-item.active:not(.sub) :deep(svg), .sb-item.sub.active :deep(svg) { color: var(--accent); }
+  .sb-brand { gap: var(--space-2); }
+  .sb-logo { flex: none; border-radius: 6px; }
+  .sb-name { overflow: hidden; text-overflow: ellipsis; }
   .sb-item .badge { margin-left: auto; }
   .sb-toggle { width: 100%; background: none; border: 0; font: inherit; font-size: var(--font-sm); cursor: pointer; flex: none; }
   .sb-toggle:hover { color: var(--text); background: var(--surface-2); }

@@ -54,13 +54,13 @@ const sections = computed(() => {
 
 <style scoped>
 .sec { margin-bottom: var(--space-4); }
-.sec h2 { margin: 0 0 var(--space-2) var(--space-1); font-weight: normal; }
+.sec h2 { margin: 0 0 var(--space-2) var(--space-1); font-weight: var(--weight-strong); color: var(--text-muted); letter-spacing: .02em; }
 .menu { list-style: none; margin: 0; padding: 0; overflow: hidden; }
 .menu li + li { border-top: 1px solid var(--border); }
 .row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); min-height: 56px; color: var(--text);
   text-decoration: none; width: 100%; background: none; border: 0; border-radius: 0; text-align: left; font: inherit; cursor: pointer; }
 .row:hover { background: var(--surface-2); text-decoration: none; }
-.ic { flex: none; width: 32px; height: 32px; border-radius: var(--radius-sm); display: grid; place-items: center;
+.ic { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
   background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .out .ic { background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); }
 .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
