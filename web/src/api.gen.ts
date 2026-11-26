@@ -1189,6 +1189,8 @@ export interface Subscription {
   vps: SubscriptionVPS
   /** 下次扣费日期（YYYY-MM-DD，面板本地时区，可能是今天）；已结束或一次性已扣过时为空 */
   next_charge: string
+  /** 已标记续费的最后一个扣费日（YYYY-MM-DD，修订第 330 条）；空为没有标记。next_charge 已跳过它及之前的扣费日。只经 …/renew 修改 */
+  renewed_through: string
   /** 已过结束日期 */
   ended: boolean
   /** 上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version */
@@ -2334,7 +2336,7 @@ export interface Paths {
     }
   }
   '/app/subscriptions/{id}/renew': {
-    /** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+    /** 已续费（修订第 224、330 条） */
     post: {
       params: {
         id: number
@@ -3172,8 +3174,15 @@ export interface Paths {
     }
   }
   '/subscriptions/{id}/renew': {
-    /** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+    /** 已续费（修订第 224、330 条） */
     post: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+    /** 取消已续费标记（修订第 330 条） */
+    delete: {
       params: {
         id: number
       }

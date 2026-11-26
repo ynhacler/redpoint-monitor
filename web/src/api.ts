@@ -632,9 +632,14 @@ export function renewServer(id: number) {
   return request('post', '/servers/{id}/renew', { params: { id } })
 }
 
-/** 已续费：订阅结束日期顺延一个订阅周期（修订第 224 条） */
+/** 已续费（修订第 224、330 条）：有结束日期的顺延结束日期；按周期扣费的把下一个扣费日记为已续费 */
 export function renewSubscription(id: number) {
   return request('post', '/subscriptions/{id}/renew', { params: { id } })
+}
+
+/** 取消“已续费”标记（修订第 330 条） */
+export function unrenewSubscription(id: number) {
+  return request('delete', '/subscriptions/{id}/renew', { params: { id } })
 }
 
 /** 订阅的自定义类别（修订第 314 条） */

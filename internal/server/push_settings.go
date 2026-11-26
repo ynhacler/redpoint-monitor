@@ -242,7 +242,7 @@ func upcomingSubReminders(list []Subscription, today time.Time, days int, p SubP
 	for _, x := range list {
 		// 扣费前提醒：每个扣费日在提前 remind_days 天时提醒一次
 		if x.RemindDays > 0 {
-			for t, n := nextCharge(x, today), 0; !t.IsZero() && n < 20; t, n = nextCharge(x, t.AddDate(0, 0, 1)), n+1 {
+			for t, n := nextUnpaidCharge(x, today), 0; !t.IsZero() && n < 20; t, n = nextCharge(x, t.AddDate(0, 0, 1)), n+1 {
 				fire := t.AddDate(0, 0, -x.RemindDays)
 				if fire.After(last) {
 					break

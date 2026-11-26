@@ -71,7 +71,10 @@ type Subscription struct {
 	Payer       string     `json:"payer"`        // 付款人（家庭成员等，自由填写，修订第 311 条）
 	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
 	VPS         SubVPS     `json:"vps"`          // VPS 的地址与配置（修订第 198 条）
-	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库
+	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库；已标记续费的扣费日跳过（修订第 330 条）
+	// RenewedThrough 是已标记续费的最后一个扣费日（修订第 330 条）：没有结束日期的订阅点“已续费”时记下即将到来的扣费日，
+	// 下次扣费与扣费提醒从它之后算起；空为没有标记。只经 POST / DELETE …/renew 修改，保存表单不会改动它。
+	RenewedThrough string `json:"renewed_through"`
 	Ended       bool       `json:"ended"`        // 计算得到，不入库
 	LogoVersion int64      `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
 	CreatedAt   int64      `json:"created_at"`
@@ -158,23 +161,38 @@ func nextCharge(sub Subscription, today time.Time) time.Time {
 func withSchedule(sub Subscription, now time.Time) Subscription {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	sub.Ended = sub.EndDate != "" && sub.EndDate <= today.Format("2006-01-02")
-	if t := nextCharge(sub, today); !t.IsZero() {
+	if t := nextUnpaidCharge(sub, today); !t.IsZero() {
 		sub.NextCharge = t.Format("2006-01-02")
 	}
 	return sub
 }
 
+// nextUnpaidCharge 是 today 及以后第一个还没有标记续费的扣费日（修订第 330 条）。月度花费与预算仍按 nextCharge 计算全部扣费。
+func nextUnpaidCharge(sub Subscription, today time.Time) time.Time {
+	t := nextCharge(sub, today)
+	if t.IsZero() || sub.RenewedThrough == "" {
+		return t
+	}
+	paid, err := time.ParseInLocation("2006-01-02", sub.RenewedThrough, today.Location())
+	if err != nil || t.After(paid) {
+		return t
+	}
+	return nextCharge(sub, paid.AddDate(0, 0, 1))
+}
+
 // ---- 存储 ----
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
-	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment, s.url, s.payer
+	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment, s.url, s.payer,
+	s.renewed_through
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var x Subscription
 	var phones, vps string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
-		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment, &x.URL, &x.Payer)
+		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment, &x.URL, &x.Payer,
+		&x.RenewedThrough)
 	if err == nil {
 		_ = json.Unmarshal([]byte(phones), &x.Phones)
 		_ = json.Unmarshal([]byte(vps), &x.VPS)
@@ -286,7 +304,7 @@ func (s *Server) subscriptionReminders(now time.Time) {
 		if x.RemindDays <= 0 {
 			continue
 		}
-		t := nextCharge(x, today)
+		t := nextUnpaidCharge(x, today) // 已标记续费的扣费日不再提醒（修订第 330 条）
 		if t.IsZero() {
 			continue
 		}
@@ -674,6 +692,7 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, acto
 		return
 	}
 	x.ID, x.CreatedAt = id, old.CreatedAt
+	x.RenewedThrough = old.RenewedThrough // 只经 …/renew 修改（修订第 330 条）
 	now := time.Now()
 	if err := s.store.SaveSubscription(&x, now); err != nil {
 		s.writeError(w, r, err)
@@ -717,6 +736,18 @@ const (
 	maxLogoSide  = 512
 	minLogoSide  = 16
 )
+
+// SetSubscriptionRenewedThrough 记下（或清除）订阅已标记续费的扣费日（修订第 330 条）。
+func (s *Store) SetSubscriptionRenewedThrough(id int64, date string, now time.Time) error {
+	res, err := s.DB.Exec(`UPDATE subscriptions SET renewed_through = ?, updated_at = ? WHERE id = ?`, date, now.Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errNoSub
+	}
+	return nil
+}
 
 // SaveSubscriptionLogo 保存（替换）订阅的图标。
 func (s *Store) SaveSubscriptionLogo(id int64, png []byte, now time.Time) error {
