@@ -102,8 +102,8 @@ function dueText(days: number) {
 .fleet { display: flex; flex-wrap: wrap; padding: var(--space-3) 0; margin-bottom: var(--space-3); }
 .item { flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-4); }
 .item + .item { border-left: 1px solid var(--border); }
-.label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
-.big { font-size: var(--font-lg); line-height: var(--line-lg); font-weight: var(--weight-strong); white-space: nowrap; }
+.label { font-size: var(--font-sm); line-height: var(--line-sm); color: var(--text-muted); }
+.big { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); white-space: nowrap; letter-spacing: -.01em; }
 .big small { font-size: var(--font-xs); font-weight: var(--weight-regular); color: var(--text-muted); }
 .sub { font-size: var(--font-xs); line-height: var(--line-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warn { color: var(--warn); }
