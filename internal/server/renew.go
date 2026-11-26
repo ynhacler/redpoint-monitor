@@ -2,7 +2,9 @@ package server
 
 // 已续费（修订第 224 条）：节点的到期日按计费周期、订阅的结束日期按订阅周期往后推一个周期，从原来的日期算起（不是从今天）。
 // Web 管理员与 AK 允许记录订阅的 App 设备都可以操作（App 走 accessAppSubs，约束 5 的唯一写入例外，与记录订阅同一开关）；
-// 每次续费记审计日志。一次性付费、没有到期日 / 结束日期的不能续费。
+// 每次续费记审计日志。一次性付费、没有到期日的节点不能续费。
+// 修订第 330 条：没有结束日期的订阅（按周期扣费）点“已续费”时，把即将到来的扣费日标记为已付（renewed_through），
+// 下次扣费与扣费提醒顺延到它之后；DELETE …/renew 取消标记。
 
 import (
 	"net/http"
@@ -84,6 +86,25 @@ func (s *Server) renewSubscription(w http.ResponseWriter, r *http.Request, actor
 		s.writeError(w, r, err)
 		return
 	}
+	now := time.Now()
+	if x.EndDate == "" {
+		// 按周期扣费：把下一个未付的扣费日标记为已续费（修订第 330 条）
+		due := withSchedule(x, now).NextCharge
+		if x.Cycle == "once" || due == "" {
+			s.writeError(w, r, errorf(CodeConflict, "这个订阅没有下次扣费，不需要标记续费"))
+			return
+		}
+		prev := x.RenewedThrough
+		if err := s.store.SetSubscriptionRenewedThrough(id, due, now); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		x.RenewedThrough = due
+		s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.renew", Success: true,
+			Details: map[string]any{"id": id, "name": x.Name, "renewed_through": due, "previous": prev}})
+		writeJSON(w, appSubView(r, withSchedule(x, now)))
+		return
+	}
 	next, err := renewSubEnd(x.EndDate, x.Cycle)
 	if err != nil {
 		s.writeError(w, r, err)
@@ -91,13 +112,37 @@ func (s *Server) renewSubscription(w http.ResponseWriter, r *http.Request, actor
 	}
 	prev := x.EndDate
 	x.EndDate = next
-	now := time.Now()
 	if err := s.store.SaveSubscription(&x, now); err != nil {
 		s.writeError(w, r, internalError(err))
 		return
 	}
 	s.audit(r, AuditEntry{ActorType: actor, ActorID: appActor(r), Action: "subscription.renew", Success: true,
 		Details: map[string]any{"id": id, "name": x.Name, "from": prev, "to": next}})
+	writeJSON(w, appSubView(r, withSchedule(x, now)))
+}
+
+// handleUnrenewSubscription：DELETE /api/v1/subscriptions/{id}/renew，admin。取消“已续费”标记（修订第 330 条）。
+func (s *Server) handleUnrenewSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	x, err := s.store.GetSubscription(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	now := time.Now()
+	if x.RenewedThrough != "" {
+		if err := s.store.SetSubscriptionRenewedThrough(id, "", now); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.unrenew", Success: true,
+			Details: map[string]any{"id": id, "name": x.Name, "previous": x.RenewedThrough}})
+		x.RenewedThrough = ""
+	}
 	writeJSON(w, appSubView(r, withSchedule(x, now)))
 }
 

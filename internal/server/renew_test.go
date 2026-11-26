@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 )
 
 // 已续费（修订第 224 条）：从原日期按周期顺延，月末按目标月的最后一天；一次性、没有日期的不能续费。
@@ -93,6 +95,79 @@ func TestRenewAPI(t *testing.T) {
 	for act, n := range map[string]int{"server.renew": 2, "subscription.renew": 1} {
 		if logs, _, _ := s.store.ListAudit(AuditQuery{Action: act, Limit: 10}); len(logs) != n {
 			t.Errorf("审计 %s：%d 条", act, len(logs))
+		}
+	}
+}
+
+// 没有结束日期的订阅：“已续费”把下一个扣费日记为已付，下次扣费与提醒顺延；保存表单不清除标记；可以取消（修订第 330 条）。
+func TestRenewRecurringSubscription(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	today := time.Now()
+	start := today.AddDate(0, -1, 3).Format("2006-01-02") // 3 天后扣费，月付
+	body := `{"name":"VPS","category":"vps","price_cents":3850,"currency":"CNY","cycle":"monthly","start_date":"` + start + `","remind_days":7,"country":"CN","payment":"alipay"}`
+	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))
+	var x Subscription
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	due := x.NextCharge
+	if rec.Code != 201 || due == "" || x.RenewedThrough != "" {
+		t.Fatalf("新增：%d %s", rec.Code, rec.Body)
+	}
+	dueT, _ := time.ParseInLocation("2006-01-02", due, time.Local)
+	want := addMonthsClamped(dueT, 1).Format("2006-01-02")
+
+	rec = do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/renew", admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.RenewedThrough != due || x.NextCharge != want || x.EndDate != "" {
+		t.Fatalf("标记续费：%d %s（应为 %s → %s）", rec.Code, rec.Body, due, want)
+	}
+	// 已标记的扣费日不再提醒
+	if items := upcomingSubReminders([]Subscription{x}, today, 14, defaultSubPush(), nil); len(items) != 0 {
+		t.Fatalf("已续费的扣费日不应预告提醒：%+v", items)
+	}
+	// 保存表单（PUT）不清除标记
+	rec = do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), admin, []byte(strings.Replace(body, "3850", "4000", 1)))
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.RenewedThrough != due || x.NextCharge != want {
+		t.Fatalf("修改后应保留标记：%d %s", rec.Code, rec.Body)
+	}
+	// 列表同样按标记计算
+	var list struct{ Items []Subscription }
+	json.Unmarshal(do(h, "GET", "/api/v1/subscriptions", admin, nil).Body.Bytes(), &list)
+	if len(list.Items) != 1 || list.Items[0].NextCharge != want {
+		t.Fatalf("列表：%+v", list.Items)
+	}
+	// 取消标记
+	rec = do(h, "DELETE", "/api/v1/subscriptions/"+itoa64(x.ID)+"/renew", admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.RenewedThrough != "" || x.NextCharge != due {
+		t.Fatalf("取消：%d %s", rec.Code, rec.Body)
+	}
+	// 一次性付费：409
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"买断","category":"tools","price_cents":100,"currency":"CNY","cycle":"once","start_date":"2026-01-01","country":"CN","payment":"alipay"}`))
+	var once Subscription
+	json.Unmarshal(rec.Body.Bytes(), &once)
+	if rec := do(h, "POST", "/api/v1/subscriptions/"+itoa64(once.ID)+"/renew", admin, nil); rec.Code != 409 {
+		t.Errorf("一次性付费应返回 409：%d", rec.Code)
+	}
+	if logs, _, _ := s.store.ListAudit(AuditQuery{Action: "subscription.unrenew", Limit: 10}); len(logs) != 1 {
+		t.Errorf("取消标记应记审计：%d", len(logs))
+	}
+}
+
+// nextUnpaidCharge：标记之后的第一个扣费日；标记早于下次扣费时不影响（修订第 330 条）。
+func TestNextUnpaidCharge(t *testing.T) {
+	today := time.Date(2026, 11, 26, 0, 0, 0, 0, time.Local)
+	sub := Subscription{Cycle: "monthly", StartDate: "2026-01-28"}
+	for _, c := range []struct{ renewed, want string }{
+		{"", "2026-11-28"},
+		{"2026-10-28", "2026-11-28"}, // 旧的标记
+		{"2026-11-28", "2026-12-28"},
+		{"2026-12-28", "2027-01-28"}, // 连点两次
+	} {
+		sub.RenewedThrough = c.renewed
+		if got := nextUnpaidCharge(sub, today).Format("2006-01-02"); got != c.want {
+			t.Errorf("renewed=%q：%s，应为 %s", c.renewed, got, c.want)
 		}
 	}
 }

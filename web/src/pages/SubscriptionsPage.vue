@@ -9,7 +9,7 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, getSubPush, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, getSubPush, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL, unrenewSubscription,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
@@ -490,6 +490,51 @@ async function save() {
     saving.value = false
   }
 }
+// 列表行上的“已续费”（修订第 330 条）：点一次变为“确认”，4 秒内再点才续费；完成后在行下显示结果，按周期扣费的可以撤销
+const canRenew = (s: Subscription) => s.cycle !== 'once' && (!!s.end_date || !!s.next_charge)
+// 手机宽度只在 7 天内续订、或结束日期在前后 7 天内的行显示，放在名称下一行（电脑宽度每行都显示）
+const renewSoon = (s: Subscription) => soonOf(s) || (!!s.end_date && Math.abs(daysUntil(s.end_date, today)) <= 7)
+const rowConfirm = ref(0)
+const rowBusy = ref(0)
+const rowDone = ref<{ id: number; text: string; undo: boolean; bad?: boolean } | null>(null)
+let rowTimer: ReturnType<typeof setTimeout> | undefined
+const fmtDay = (v: string) => { const [y, m, d] = v.split('-').map(Number); return y === today.getFullYear() ? t('{m} 月 {d} 日', { m, d }) : t('{y} 年 {m} 月 {d} 日', { y, m, d }) }
+function renewedText(x: Subscription) {
+  if (x.end_date) return t('已续费，结束日期顺延到 {date}', { date: fmtDay(x.end_date) })
+  return x.next_charge ? t('已续费，下次扣费 {date}', { date: fmtDay(x.next_charge) }) : t('已续费')
+}
+async function rowRenew(s: Subscription) {
+  clearTimeout(rowTimer)
+  if (rowConfirm.value !== s.id) {
+    rowConfirm.value = s.id
+    rowTimer = setTimeout(() => (rowConfirm.value = 0), 4000)
+    return
+  }
+  rowConfirm.value = 0
+  rowBusy.value = s.id
+  try {
+    const x = await renewSubscription(s.id)
+    rowDone.value = { id: s.id, text: renewedText(x), undo: !x.end_date }
+    await load()
+  } catch (e) {
+    rowDone.value = { id: s.id, text: errorText(e, t('续费失败')), undo: false, bad: true }
+  } finally {
+    rowBusy.value = 0
+  }
+}
+async function rowUndo(id: number) {
+  rowBusy.value = id
+  try {
+    await unrenewSubscription(id)
+    rowDone.value = null
+    await load()
+  } catch (e) {
+    rowDone.value = { id, text: errorText(e, t('撤销失败')), undo: false, bad: true }
+  } finally {
+    rowBusy.value = 0
+  }
+}
+
 // 已续费（修订第 224 条）：有结束日期的订阅按周期顺延结束日期（只改这一项，表单中其他未保存的修改不受影响）
 const renewMsg = ref('')
 async function renew() {
@@ -499,10 +544,24 @@ async function renew() {
     const x = await renewSubscription(editing.value.id)
     editing.value = x
     form.end_date = x.end_date
-    renewMsg.value = t('结束日期已顺延到 {date}', { date: x.end_date })
+    renewMsg.value = renewedText(x)
     await load()
   } catch (e) {
     fieldErrors.value = { _: errorText(e, t('续费失败')) }
+  } finally {
+    saving.value = false
+  }
+}
+// 取消“已续费”标记（修订第 330 条）
+async function unrenew() {
+  if (!editing.value) return
+  saving.value = true
+  try {
+    editing.value = await unrenewSubscription(editing.value.id)
+    renewMsg.value = ''
+    await load()
+  } catch (e) {
+    fieldErrors.value = { _: errorText(e, t('撤销失败')) }
   } finally {
     saving.value = false
   }
@@ -700,9 +759,11 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
       <div class="actions">
         <button type="submit" :disabled="saving || !form.name.trim()">{{ saving ? t('保存中…') : t('保存') }}</button>
         <button type="button" class="secondary" :disabled="saving" @click="editing ? close() : (step = 'pick')">{{ editing ? t('取消') : t('返回') }}</button>
-        <button v-if="editing && editing.end_date && editing.cycle !== 'once'" type="button" class="secondary" :disabled="saving"
-          :title="t('结束日期按订阅周期顺延一个周期')" @click="renew">{{ t('已续费') }}</button>
+        <button v-if="editing && canRenew(editing)" type="button" class="secondary" :disabled="saving"
+          :title="editing.end_date ? t('结束日期按订阅周期顺延一个周期') : t('把下一个扣费日记为已续费，下次扣费与提醒顺延一个周期')" @click="renew">{{ t('已续费') }}</button>
         <span v-if="renewMsg" class="small muted">{{ renewMsg }}</span>
+        <span v-else-if="editing?.renewed_through" class="small muted">{{ t('已标记续费至 {date}', { date: fmtDay(editing.renewed_through) }) }}
+          <button type="button" class="text small" :disabled="saving" @click="unrenew">{{ t('取消标记') }}</button></span>
         <template v-if="editing">
           <button v-if="!confirmDelete" type="button" class="text danger-text del" @click="confirmDelete = true">{{ t('删除') }}</button>
           <button v-else type="button" class="danger del" :disabled="saving" @click="remove">{{ t('确认删除') }}</button>
@@ -855,6 +916,14 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                 </span>
                 <Icon name="chevron-right" :size="18" class="muted chev" />
               </button>
+              <button v-if="canRenew(s)" type="button" class="renew-btn small" :class="{ confirm: rowConfirm === s.id, soon: renewSoon(s) || rowConfirm === s.id || rowBusy === s.id }" :disabled="rowBusy === s.id"
+                :title="s.end_date ? t('结束日期按订阅周期顺延一个周期') : t('把下一个扣费日记为已续费，下次扣费与提醒顺延一个周期')"
+                @click="rowRenew(s)">{{ rowBusy === s.id ? t('续费中…') : rowConfirm === s.id ? t('确认') : t('已续费') }}</button>
+              <!-- 不能续费的行占同样的宽度，各行的价格列保持对齐 -->
+              <span v-else class="renew-btn placeholder small" aria-hidden="true">{{ t('已续费') }}</span>
+              <p v-if="rowDone?.id === s.id" class="row-done small" :class="{ bad: rowDone.bad }" role="status">{{ rowDone.text }}
+                <button v-if="rowDone.undo" type="button" class="text small" :disabled="rowBusy === s.id" @click="rowUndo(s.id)">{{ t('撤销') }}</button>
+                <button type="button" class="text small muted" :aria-label="t('关闭提示')" @click="rowDone = null">×</button></p>
             </li>
             </template>
             </template>
@@ -1080,6 +1149,22 @@ button.money:hover { filter: none; }
 .sub-row > .node-link { align-self: center; }
 @media (hover: hover) { .sub-row:hover { background: var(--surface-2); filter: none; } }
 .sub-row.ended { opacity: .5; }
+/* 行右侧的“已续费”（修订第 330 条）：在行按钮之外（按钮里不能再放按钮），两次点击确认 */
+.sub-li { position: relative; display: flex; flex-wrap: wrap; align-items: center; }
+.sub-li > .sub-row { flex: 1; min-width: 0; }
+.renew-btn { flex: none; margin-right: var(--space-3); padding: 2px var(--space-2); min-height: 28px; border-radius: var(--radius-full);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); white-space: nowrap; cursor: pointer; }
+.renew-btn:hover { color: var(--text); border-color: var(--text-muted); filter: none; }
+.renew-btn.confirm { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.renew-btn.placeholder { visibility: hidden; }
+.row-done { flex-basis: 100%; margin: 0; padding: 0 var(--space-4) var(--space-2) calc(var(--space-4) + 44px + var(--space-3)); color: var(--ok);
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.row-done.bad { color: var(--bad); }
+@container subs (max-width: 599px) {
+  .sub-li > .sub-row { flex-basis: 100%; }
+  .renew-btn { margin: -6px 0 var(--space-2) calc(var(--space-4) + 44px + var(--space-3)); }
+  .renew-btn:not(.soon), .renew-btn.placeholder { display: none; }
+}
 .sub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: var(--space-3) 0; }
 .sub-name { font-size: var(--font-lg); line-height: var(--line-lg); }
 .sub-renew { font-size: var(--font-md); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

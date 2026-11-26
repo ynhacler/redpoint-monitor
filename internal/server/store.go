@@ -1073,6 +1073,8 @@ var migrations = []string{
 	`ALTER TABLE notification_channels ADD COLUMN alert_groups TEXT NOT NULL DEFAULT '';`,
 	// 迁移 70：公开展示页上节点的三网延迟地区（修订第 328 条）：空为第一个地区，off 为不显示，其他为地区名
 	`ALTER TABLE servers ADD COLUMN status_latency TEXT NOT NULL DEFAULT '';`,
+	// 迁移 71：订阅已标记续费的最后一个扣费日（修订第 330 条），空为没有标记
+	`ALTER TABLE subscriptions ADD COLUMN renewed_through TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

@@ -649,12 +649,14 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(chargeText(s))),
-          // 已续费（修订第 224 条）：有结束日期的订阅按周期顺延结束日期
-          if (s.endDate.isNotEmpty && s.cycle != 'once')
+          // 已续费（修订第 224、330 条）：有结束日期的顺延结束日期；按周期扣费的把下一个扣费日记为已续费
+          if (s.cycle != 'once' && (s.endDate.isNotEmpty || s.nextCharge.isNotEmpty))
             ListTile(
               leading: const Icon(Icons.event_repeat_outlined),
               title: const Text('已续费'),
-              subtitle: Text('结束日期 ${s.endDate} 顺延一个周期（${cycleNames[s.cycle] ?? s.cycle}）'),
+              subtitle: Text(s.endDate.isNotEmpty
+                  ? '结束日期 ${s.endDate} 顺延一个周期（${cycleNames[s.cycle] ?? s.cycle}）'
+                  : '${s.nextCharge} 的扣费记为已续费，下次扣费与提醒顺延一个周期'),
               onTap: () => Navigator.pop(ctx, 'renew'),
             ),
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('修改'), onTap: () => Navigator.pop(ctx, 'edit')),
@@ -673,7 +675,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       try {
         final x = await widget.api.renewSubscription(s.id);
         if (!mounted) return;
-        ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('“${x.name}”结束日期已顺延到 ${x.endDate}')));
+        ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
+            content: Text(x.endDate.isNotEmpty ? '“${x.name}”结束日期已顺延到 ${x.endDate}' : '“${x.name}”已续费，下次扣费 ${x.nextCharge}')));
         await _load();
       } on DeviceRevoked {
         widget.onRevoked();
