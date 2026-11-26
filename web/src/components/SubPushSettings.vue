@@ -178,6 +178,14 @@ async function save() {
 .title { font-weight: var(--weight-strong); }
 .check { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-height: 32px; }
 .check input { width: auto; }
+/* 总开关画成滑动开关（修订第 335 条，与“推送”页一致） */
+.title input[role='switch'] { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 38px; height: 22px; margin: 0; padding: 0;
+  min-height: 0; border: 0; border-radius: var(--radius-full); background: var(--track); cursor: pointer; transition: background .15s; }
+.title input[role='switch']::before { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 1px 2px color-mix(in srgb, var(--scrim) 30%, transparent); transition: transform .15s; }
+.title input[role='switch']:checked { background: var(--accent); }
+.title input[role='switch']:checked::before { transform: translateX(16px); }
+.title input[role='switch']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .check small { flex-basis: 100%; margin-left: calc(var(--space-2) + 16px); margin-top: -4px; }
 .check.disabled { color: var(--text-muted); }
 fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
