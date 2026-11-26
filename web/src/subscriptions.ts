@@ -205,6 +205,21 @@ export function chargesBetween(s: Subscription, from: Date, to: Date): Date[] {
   return out
 }
 
+/** “已续费”的效果预告（修订第 331 条，与面板 renew 一致）：有结束日期的为顺延后的结束日期；
+ * 按周期扣费的为被标记的扣费日（paid）与之后的下次扣费日（next）。不能续费时返回 null。 */
+export function renewPreview(s: Subscription): { end?: string; paid?: string; next: string } | null {
+  if (s.cycle === 'once') return null
+  if (s.end_date) {
+    const e = parse(s.end_date)
+    const n = s.cycle === 'weekly' ? new Date(e.getFullYear(), e.getMonth(), e.getDate() + 7) : addMonthsClamped(e, months[s.cycle] ?? 1)
+    return { end: s.end_date, next: ymd(n) }
+  }
+  if (!s.next_charge) return null
+  const d = parse(s.next_charge)
+  const after = chargesBetween({ ...s, end_date: '' }, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), new Date(d.getFullYear() + 2, d.getMonth(), d.getDate()))[0]
+  return after ? { paid: s.next_charge, next: ymd(after) } : null
+}
+
 /** 按扣费周期折算为每月花费（分）：每周按 52 / 12，一次性为 0 */
 export function monthlyCents(s: Subscription): number {
   if (s.cycle === 'once') return 0
