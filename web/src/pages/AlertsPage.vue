@@ -377,21 +377,24 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted);
   padding: var(--space-2) var(--space-3); white-space: nowrap; }
 .tabs button:hover { color: var(--text); }
-.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
+.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: var(--weight-strong); }
 @media (max-width: 600px) {
   .tabs button { padding: var(--space-2); }
 }
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .list, .rules { list-style: none; margin: 0; padding: 0; }
-.list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-4); }
+.list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-4);
+  transition: background .12s; }
+@media (hover: hover) { .list li:hover, .rules li:hover { background: var(--surface-2); } }
 .list li + li, .rules li + li { border-top: 1px solid var(--border); }
 .main { min-width: 0; display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: baseline; }
 .node { font-weight: var(--weight-strong); overflow-wrap: anywhere; }
 .resolved .msg, .resolved .node { color: var(--text-muted); }
 .sev { font-size: var(--font-xs); line-height: var(--line-xs); padding: 1px var(--space-2); border-radius: var(--radius-full);
   border: 1px solid currentColor; color: var(--text-muted); white-space: nowrap; font-weight: var(--weight-regular); }
-.critical .sev, .sev.critical { color: var(--bad); }
-.warning .sev, .sev.warning { color: var(--warn); }
+/* 级别标签带浅色底（修订第 335 条） */
+.critical .sev, .sev.critical { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.warning .sev, .sev.warning { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .resolved .sev { opacity: .6; }
 .ongoing { color: var(--bad); }
 .warning .ongoing { color: var(--warn); }
@@ -404,10 +407,21 @@ watch([tab, stateFilter], () => (tab.value === 'rules' ? loadRules() : tab.value
 .rule-name { font-weight: var(--weight-strong); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .scope { color: var(--accent); }
 .off .rule-name, .off .rule-main .muted { opacity: .55; }
-.switch input { width: 18px; height: 18px; margin: 0; }
+/* 开关（修订第 335 条）：原生复选框画成滑动开关，键盘与读屏照常可用 */
+.switch { display: inline-flex; align-items: center; }
+.switch input { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 38px; height: 22px; margin: 0; padding: 0; min-height: 0;
+  border: 0; border-radius: var(--radius-full); background: var(--track); cursor: pointer; transition: background .15s; }
+.switch input::before { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--scrim) 30%, transparent); transition: transform .15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::before { transform: translateX(16px); }
+.switch input:disabled { opacity: .5; cursor: default; }
+.switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .switch input, .switch input::before { transition: none; } }
 .push-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3);
-  border-left: 3px solid var(--border); }
-.push-bar.on { border-left-color: var(--ok); }
+  border-left: 3px solid var(--border); transition: background .15s; }
+.push-bar.on { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 6%, var(--surface)); }
+.push-bar.on .switch input:checked { background: var(--ok); }
 .push-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .push-err { flex-basis: 100%; margin: 0; }
 .bad { color: var(--bad); }
