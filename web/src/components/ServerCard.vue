@@ -164,13 +164,23 @@ const diskTip = computed(() => {
 .card {
   display: block; color: inherit; text-decoration: none;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4); transition: border-color .15s; container-type: inline-size;
+  padding: var(--space-3) var(--space-4); transition: border-color .15s, box-shadow .15s, transform .15s; container-type: inline-size;
+  box-shadow: var(--shadow-sm);
   /* 环 52px + 间距 4px + 说明 18px：网络与 IO 的四行均分这个高度，与环和说明上下对齐 */
   --body-h: 74px;
 }
-@media (hover: hover) { .card:hover { border-color: var(--text-muted); text-decoration: none; } } /* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条） */
-.card.offline { border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
-.card.unknown { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+/* 触摸屏点按后 :hover 会停留，只在真正能悬停的设备上加深边框（修订第 262 条）；悬停时卡片略微上浮（修订第 333 条） */
+@media (hover: hover) {
+  .card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-md); transform: translateY(-2px); text-decoration: none; }
+}
+@media (prefers-reduced-motion: reduce) { .card, .card:hover { transition: none; transform: none; } }
+/* 离线 / 状态未知：边框带颜色，左侧再加一道色条，扫一眼就能找到（修订第 333 条） */
+.card.offline { border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); box-shadow: inset 3px 0 0 var(--bad), var(--shadow-sm); }
+.card.unknown { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); box-shadow: inset 3px 0 0 var(--warn), var(--shadow-sm); }
+@media (hover: hover) {
+  .card.offline:hover { box-shadow: inset 3px 0 0 var(--bad), var(--shadow-md); }
+  .card.unknown:hover { box-shadow: inset 3px 0 0 var(--warn), var(--shadow-md); }
+}
 .ok { color: var(--ok); }
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }
@@ -203,7 +213,7 @@ const diskTip = computed(() => {
 
 .traffic { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border);
   font-size: var(--font-sm); line-height: var(--line-sm); white-space: nowrap; }
-.tbar { flex: 1; height: 4px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; min-width: 24px; }
+.tbar { flex: 1; height: 6px; border-radius: var(--radius-full); background: var(--track); overflow: hidden; min-width: 24px; }
 .tbar span { display: block; height: 100%; background: var(--ok); }
 .tbar span.warn { background: var(--warn); }
 .tbar span.bad { background: var(--bad); }
