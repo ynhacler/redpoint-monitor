@@ -254,7 +254,8 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 </template>
 
 <style scoped>
-.summary { padding: var(--space-4); }
+/* 顶部一层很淡的强调色渐变（修订第 337 条），与登录页、仪表板呼应 */
+.summary { padding: var(--space-4); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--surface)) 0, var(--surface) 140px); }
 .renew { margin-left: var(--space-2); font-size: var(--font-sm); }
 .renew-msg { margin-left: var(--space-2); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
@@ -271,7 +272,11 @@ const tiles = computed<{ icon: IconName, label: string, value: string, extra?: s
 .tile { display: flex; align-items: center; gap: var(--space-3); padding: 10px var(--space-3); border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface); min-width: 0; }
 .tile.wide { grid-column: 1 / -1; }
-.tile svg { flex: none; color: var(--text-muted); }
+/* 图标放在浅强调色的小方块里（修订第 337 条） */
+.tile > svg { flex: none; box-sizing: content-box; padding: 7px; border-radius: 8px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tile.warn > svg { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.tile.bad > svg { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .body { min-width: 0; flex: 1; }
 .label { font-size: var(--font-xs); line-height: var(--line-xs); color: var(--text-muted); }
 .value { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);

@@ -616,7 +616,7 @@ function expireTone(i: CloudInstance): string {
       </div>
     </form>
 
-    <EmptyState v-if="loaded && !accounts.length && editing === null" :text="t('还没有云账户。添加后面板会定时同步费用、实例与流量包用量。')">
+    <EmptyState v-if="loaded && !accounts.length && editing === null" icon="cloud" :text="t('还没有云账户。添加后面板会定时同步费用、实例与流量包用量。')">
       <button type="button" class="btn" @click="openNew"><Icon name="plus" />{{ t('添加账户') }}</button>
     </EmptyState>
 
