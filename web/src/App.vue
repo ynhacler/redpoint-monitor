@@ -22,7 +22,8 @@ const themeLabels = { system: '跟随系统', light: '浅色', dark: '深色' } 
 // 进行中的告警条数（来自节点列表的活动告警摘要），显示在导航上
 const alertCount = computed(() => activeAlertCount(state.servers))
 // 公开展示页（设计 45.3）没有任何导航，登录后打开也一样；路由就绪前按地址判断，避免顶栏闪一下
-const bare = computed(() => route.name === 'status' || (!route.name && location.pathname === '/status'))
+// 不显示顶栏的页面：公开展示页；登录页自带主题按钮（修订第 332 条）
+const bare = computed(() => route.name === 'status' || route.name === 'login' || (!route.name && ['/status', '/login'].includes(location.pathname)))
 const signedIn = computed(() => !!state.me && !state.me.must_change_password && !bare.value)
 const groups = computed(() => groupsFor(isViewer.value))
 const group = computed(() => activeGroup(route, groups.value))
