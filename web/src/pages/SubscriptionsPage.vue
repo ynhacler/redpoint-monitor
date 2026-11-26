@@ -1086,14 +1086,17 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 @media (min-width: 1000px) { .ov { grid-template-columns: repeat(3, minmax(0, 1fr)); } .ov-money { grid-column: auto; } }
 .ov-card { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-4); min-width: 0; border-radius: var(--radius-md); }
 .ov-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
-.ov-head h2 { margin: 0; font-size: var(--font-md); line-height: var(--line-md); }
+.ov-head h2 { margin: 0; font-size: var(--font-md); line-height: var(--line-md); font-weight: var(--weight-strong); }
 .badge { padding: 0 var(--space-2); border-radius: var(--radius-full); font-size: var(--font-xs); line-height: var(--line-xs);
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); white-space: nowrap; }
 .accent-text { color: var(--accent); }
 /* 续订日历：今天起 14 天的时间轴，相近的续订合成一簇 */
 .tl { position: relative; height: 52px; }
-.tl-line { position: absolute; left: 4%; right: 4%; top: 18px; border-top: 2px dotted var(--border); }
-.tl-today { position: absolute; left: 4%; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
+/* 时间轴（修订第 334 条）：实线轨道，左端今天为带光圈的圆点 */
+.tl-line { position: absolute; left: 4%; right: 4%; top: 17px; height: 3px; border-radius: var(--radius-full);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, var(--track)), var(--track) 60%); }
+.tl-today { position: absolute; left: 4%; top: 13px; width: 11px; height: 11px; margin-left: -5px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .tl-cluster { position: absolute; top: 4px; display: flex; align-items: center; transform: translateX(-50%); }
 .tl-av { box-shadow: 0 0 0 2px var(--surface); }
 .tl-av + .tl-av { margin-left: -10px; }
@@ -1115,7 +1118,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
 button.money { cursor: pointer; }
 button.money:hover { filter: none; }
 .money-label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); font-size: var(--font-sm); }
-.money-v { font-size: var(--font-xl); line-height: var(--line-xl); font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.money-label > :deep(svg:first-child) { color: var(--accent); }
+.money-v { font-size: 1.5rem; line-height: 2rem; font-weight: var(--weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
 .info-btn { background: none; border: 0; padding: 0 var(--space-1); color: var(--text-muted); min-height: 0; display: inline-flex; }
 .budget { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-3) var(--space-4) 0;
   padding-top: var(--space-2); border-top: 1px solid var(--border); }
