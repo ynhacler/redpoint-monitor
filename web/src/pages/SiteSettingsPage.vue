@@ -213,9 +213,10 @@ async function savePub() {
 <style scoped>
 .save { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; }
 .card { padding: 0; margin-bottom: var(--space-6); }
+/* 卡片标题行带浅底，与下面的设置项区分（修订第 336 条） */
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border); }
-.card-head h2 { margin: 0; }
+  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.card-head h2 { margin: 0; font-size: var(--font-lg); line-height: var(--line-lg); }
 .card-head p { margin: 2px 0 0; }
 .field { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4) var(--space-5); }
 .field + .field { border-top: 1px solid var(--border); }
