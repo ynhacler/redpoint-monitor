@@ -35,7 +35,10 @@ code {
 .page { max-width: var(--max-width); margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)); gap: var(--space-3); }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
+/* 卡片的柔和阴影（修订第 333 条）：只用令牌颜色混合，深色模式下几乎不可见 */
+:root { --shadow-sm: 0 1px 2px color-mix(in srgb, var(--scrim) 5%, transparent), 0 1px 3px color-mix(in srgb, var(--scrim) 4%, transparent);
+  --shadow-md: 0 6px 18px color-mix(in srgb, var(--scrim) 9%, transparent), 0 2px 6px color-mix(in srgb, var(--scrim) 5%, transparent); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); box-shadow: var(--shadow-sm); }
 /* 状态标签：圆角胶囊（账号等设置页，修订第 207 条） */
 .pill { display: inline-block; font-size: var(--font-xs); line-height: 1.125rem; font-weight: var(--weight-regular); padding: 0 var(--space-2);
   border-radius: var(--radius-full); background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
@@ -72,7 +75,8 @@ select {
    不全局清除 outline——只去掉“非 :focus-visible”的焦点装饰；输入框沿用下面自己的焦点样式 */
 :focus:not(:focus-visible) { outline: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: -1px; border-color: var(--accent); }
+/* 输入框聚焦：强调色描边 + 柔和光圈（与登录页一致，修订第 333 条） */
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
 
 /* 按钮：主 / 次 / 文字 / 危险四种（设计 41.3）；同一页面最多一个主按钮（设计 41.2.1） */
 button, .btn {
