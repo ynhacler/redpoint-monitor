@@ -15,18 +15,51 @@ ThemeData appTheme(Brightness b) {
     colorScheme: ColorScheme.fromSeed(seedColor: c.accent, brightness: b, primary: c.accent, onPrimary: c.onAccent,
         surface: c.surface, error: c.bad, outlineVariant: c.border),
     scaffoldBackgroundColor: c.bg,
-    // 与 Web 一致（设计 41.3）：卡片为表面色 + 1px 边框 + 12px 圆角，没有阴影
+    // 与 Web 一致（设计 41.3，修订第 340 条）：卡片为表面色 + 1px 边框 + 12px 圆角 + 柔和阴影
     cardTheme: CardThemeData(
       color: c.surface,
-      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      elevation: 1.5,
+      shadowColor: c.scrim.withValues(alpha: b == Brightness.dark ? 0.4 : 0.12),
       margin: const EdgeInsets.symmetric(vertical: 5),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: c.border)),
     ),
+    // 输入框（修订第 340 条）：圆角 10、表面色底，聚焦时强调色描边，与 Web 一致
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: c.surface,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: c.border)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: c.border)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: c.accent, width: 1.6)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: c.bad)),
+      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: c.bad, width: 1.6)),
+    ),
+    // 按钮圆角 10（修订第 340 条）
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), side: BorderSide(color: c.border))),
     // 顶栏同 Web：表面色、底部分隔线、滚动时不变色
     appBarTheme: AppBarTheme(backgroundColor: c.surface, surfaceTintColor: Colors.transparent, scrolledUnderElevation: 0,
         shape: Border(bottom: BorderSide(color: c.border))),
-    navigationBarTheme: NavigationBarThemeData(backgroundColor: c.surface, surfaceTintColor: Colors.transparent),
+    // 底部导航（修订第 340 条）：选中项为浅强调色药丸，图标与文字为强调色
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: c.surface,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: c.accent.withValues(alpha: b == Brightness.dark ? 0.22 : 0.12),
+      iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(color: s.contains(WidgetState.selected) ? c.accent : c.textMuted)),
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+          fontSize: 12,
+          color: s.contains(WidgetState.selected) ? c.accent : c.textMuted,
+          fontWeight: s.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w400)),
+    ),
     dividerTheme: DividerThemeData(color: c.border, space: 1),
+    // 开关（修订第 341 条）：与 Web 一致，打开为强调色 + 白色圆钮，关闭为浅灰轨道，没有描边
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.onAccent : c.surface),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.accent : c.track),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      thumbIcon: const WidgetStatePropertyAll(null),
+    ),
     textTheme: Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text),
   );
 }
