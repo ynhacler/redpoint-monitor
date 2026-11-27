@@ -53,6 +53,13 @@ ThemeData appTheme(Brightness b) {
           fontWeight: s.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w400)),
     ),
     dividerTheme: DividerThemeData(color: c.border, space: 1),
+    // 开关（修订第 341 条）：与 Web 一致，打开为强调色 + 白色圆钮，关闭为浅灰轨道，没有描边
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.onAccent : c.surface),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.accent : c.track),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      thumbIcon: const WidgetStatePropertyAll(null),
+    ),
     textTheme: Typography.material2021(platform: TargetPlatform.android).black.apply(bodyColor: c.text, displayColor: c.text),
   );
 }

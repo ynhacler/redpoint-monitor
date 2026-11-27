@@ -7,6 +7,7 @@ import '../centers.dart';
 import '../api.dart';
 import '../app_lock.dart';
 import '../push.dart';
+import '../theme.dart';
 import '../version.dart';
 
 /// “我的”页：监控中心、授权范围、云账户、推送、生物识别锁、隐私模式与解除配对
@@ -84,6 +85,29 @@ class MePage extends StatelessWidget {
     );
   }
 
+  // 一组设置：上方小标题（可省略），下方一张圆角卡片，项之间细线分隔
+  Widget _group(BuildContext context, String? title, List<Widget> tiles) {
+    final c = appColors(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (title != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 16, 6, 6),
+          child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMuted)),
+        ),
+      if (title == null) const SizedBox(height: 16),
+      Card(
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const Divider(indent: 56, height: 1),
+            tiles[i],
+          ],
+        ]),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = api.session;
@@ -91,48 +115,54 @@ class MePage extends StatelessWidget {
     final error = Theme.of(context).colorScheme.error;
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
-      body: ListView(children: [
-        const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('监控中心', style: TextStyle(fontWeight: FontWeight.w600))),
-        for (var i = 0; i < (centers.isEmpty ? 1 : centers.length); i++)
-          _centerTile(context, centers.isEmpty ? s.server : centers[i], i),
-        if (onAdd != null)
-          ListTile(leading: const Icon(Icons.add), title: const Text('添加监控中心'), subtitle: const Text('连接另一套自建面板'), onTap: onAdd),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.visibility_outlined),
-          title: Text('可查看：$scope'),
-          subtitle: Text('${s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'}${s.allowSubscriptions ? '；可记录订阅' : ''}'),
-        ),
-        if (onCloud != null)
+      // 分组卡片（修订第 341 条）：监控中心 / 权限与通知 / 安全与隐私 / 解除配对，与 Web 的“系统”菜单一致
+      body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 24), children: [
+        _group(context, '监控中心', [
+          for (var i = 0; i < (centers.isEmpty ? 1 : centers.length); i++) _centerTile(context, centers.isEmpty ? s.server : centers[i], i),
+          if (onAdd != null)
+            ListTile(leading: const Icon(Icons.add), title: const Text('添加监控中心'), subtitle: const Text('连接另一套自建面板'), onTap: onAdd),
+        ]),
+        _group(context, '权限与通知', [
           ListTile(
-            leading: const Icon(Icons.cloud_outlined),
-            title: const Text('云账户'),
-            subtitle: const Text('费用、余额与云实例（只读）'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: onCloud,
+            leading: const Icon(Icons.visibility_outlined),
+            title: Text('可查看：$scope'),
+            subtitle: Text('${s.allowLowRiskOps ? '只读，可静音告警与开启维护模式' : '只读'}${s.allowSubscriptions ? '；可记录订阅' : ''}'),
           ),
-        ListTile(
-          leading: const Icon(Icons.notifications_outlined),
-          title: const Text('告警推送'),
-          subtitle: Text(push == null ? '检查中…' : pushStateText[push]!),
-        ),
-        if (AppLockScope.of(context) case final lock?) ..._lockTiles(context, lock),
-        SwitchListTile(
-          secondary: const Icon(Icons.privacy_tip_outlined),
-          title: const Text('隐私模式'),
-          subtitle: const Text('隐藏公网 IP、价格与供应商，适合截图或给他人展示'),
-          value: privacy,
-          onChanged: onPrivacy,
-        ),
-        const Divider(),
-        ListTile(
-          leading: Icon(Icons.link_off, color: error),
-          title: Text('解除配对', style: TextStyle(color: error)),
-          onTap: () => _confirmUnpair(context),
-        ),
+          if (onCloud != null)
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text('云账户'),
+              subtitle: const Text('费用、余额与云实例（只读）'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onCloud,
+            ),
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('告警推送'),
+            subtitle: Text(push == null ? '检查中…' : pushStateText[push]!),
+          ),
+        ]),
+        _group(context, '安全与隐私', [
+          if (AppLockScope.of(context) case final lock?) ..._lockTiles(context, lock),
+          SwitchListTile(
+            secondary: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('隐私模式'),
+            subtitle: const Text('隐藏公网 IP、价格与供应商，适合截图或给他人展示'),
+            value: privacy,
+            onChanged: onPrivacy,
+          ),
+        ]),
+        _group(context, null, [
+          ListTile(
+            leading: Icon(Icons.link_off, color: error),
+            title: Text('解除配对', style: TextStyle(color: error)),
+            onTap: () => _confirmUnpair(context),
+          ),
+        ]),
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('VPS Monitor App $appVersion', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          child: Text('VPS Monitor App $appVersion',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ),
       ]),
     );
