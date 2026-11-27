@@ -334,6 +334,8 @@ function name(id: number) {
 .check input, .row input { width: auto; }
 .list { list-style: none; margin: 0; padding: 0; }
 .list li + li { border-top: 1px solid var(--border); }
+/* 列表行悬停浅底（修订第 339 条） */
+@media (hover: hover) { .list li:hover { background: var(--surface-2); } }
 .row { display: grid; grid-template-columns: auto minmax(0, 1fr) 160px 160px; align-items: baseline; gap: var(--space-3);
   padding: var(--space-3) var(--space-4); cursor: pointer; }
 .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
