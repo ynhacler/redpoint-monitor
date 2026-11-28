@@ -1191,6 +1191,8 @@ export interface Subscription {
   next_charge: string
   /** 已标记续费的最后一个扣费日（YYYY-MM-DD，修订第 330 条）；空为没有标记。next_charge 已跳过它及之前的扣费日。只经 …/renew 修改 */
   renewed_through: string
+  /** 已终止订阅（修订第 343 条）：end_date 为本期结束，到期后不再续订；在编辑中修改结束日期或续费后变为 false */
+  cancelled: boolean
   /** 已过结束日期 */
   ended: boolean
   /** 上传的图标的版本（上传时间，Unix 秒）；0 表示没有上传，使用内置标志或首字母。图标地址为 /subscriptions/{id}/logo?v=logo_version */
@@ -3182,6 +3184,22 @@ export interface Paths {
       response: Subscription
     }
     /** 取消已续费标记（修订第 330 条） */
+    delete: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+  }
+  '/subscriptions/{id}/cancel': {
+    /** 终止订阅（修订第 343 条） */
+    post: {
+      params: {
+        id: number
+      }
+      response: Subscription
+    }
+    /** 撤销终止（修订第 343 条） */
     delete: {
       params: {
         id: number

@@ -9,7 +9,7 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, getSubPush, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL, unrenewSubscription,
+  ApiError, createSubscription, deleteSubscription, deleteSubscriptionLogo, errorText, getFxRates, getSubBudget, getSubPush, listServers, listSubCategories, putSubBudget, listSubscriptions, renewSubscription, subscriptionLogoURL, unrenewSubscription, cancelSubscription, uncancelSubscription,
   updateSubscription, uploadSubscriptionLogo,
   type FxRates, type Subscription, type SubscriptionInput,
 } from '../api'
@@ -440,6 +440,7 @@ function openEdit(s: Subscription) {
   editing.value = s
   renewMsg.value = ''
   renewAsk.value = false
+  cancelAsk.value = false
   Object.assign(form, {
     ...s, price: (s.price_cents / 100).toFixed(2), phones: s.phones.map((p) => ({ ...p })),
     vps: {
@@ -493,7 +494,10 @@ async function save() {
 }
 // 列表行上的“已续费”（修订第 330 条）：点一次在行下展开确认条，写明顺延到哪一天（修订第 331 条），确认后才续费；
 // 完成后在行下显示结果，按周期扣费的可以撤销
-const canRenew = (s: Subscription) => s.cycle !== 'once' && (!!s.end_date || !!s.next_charge)
+const canRenew = (s: Subscription) => !s.cancelled && s.cycle !== 'once' && (!!s.end_date || !!s.next_charge)
+// 终止订阅（修订第 343 条）：进行中、按周期扣费、还有下次扣费的才能终止；结束日期为本期结束（与面板一致）
+const canCancel = (s: Subscription) => !s.cancelled && !s.ended && s.cycle !== 'once' && !!s.next_charge
+const cancelEnd = (s: Subscription) => (s.end_date && s.next_charge && s.end_date < s.next_charge ? s.end_date : s.next_charge ?? '')
 // 手机宽度只在 7 天内续订、或结束日期在前后 7 天内的行显示，放在名称下一行（电脑宽度每行都显示）
 const renewSoon = (s: Subscription) => soonOf(s) || (!!s.end_date && Math.abs(daysUntil(s.end_date, today)) <= 7)
 const rowConfirm = ref(0)
@@ -559,6 +563,38 @@ async function renew() {
     saving.value = false
   }
 }
+// 终止订阅 / 撤销终止（修订第 343 条）：先确认，写明哪天到期
+const cancelAsk = ref(false)
+async function doCancel() {
+  if (!editing.value) return
+  cancelAsk.value = false
+  saving.value = true
+  try {
+    const x = await cancelSubscription(editing.value.id)
+    editing.value = x
+    form.end_date = x.end_date
+    await load()
+  } catch (e) {
+    fieldErrors.value = { _: errorText(e, t('终止失败')) }
+  } finally {
+    saving.value = false
+  }
+}
+async function undoCancel() {
+  if (!editing.value) return
+  saving.value = true
+  try {
+    const x = await uncancelSubscription(editing.value.id)
+    editing.value = x
+    form.end_date = x.end_date
+    await load()
+  } catch (e) {
+    fieldErrors.value = { _: errorText(e, t('撤销失败')) }
+  } finally {
+    saving.value = false
+  }
+}
+
 // 取消“已续费”标记（修订第 330 条）
 async function unrenew() {
   if (!editing.value) return
@@ -775,6 +811,15 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
         <span v-if="renewMsg" class="small muted">{{ renewMsg }}</span>
         <span v-else-if="editing?.renewed_through" class="small muted">{{ t('已标记续费至 {date}', { date: fmtDay(editing.renewed_through) }) }}
           <button type="button" class="text small" :disabled="saving" @click="unrenew">{{ t('取消标记') }}</button></span>
+        <!-- 终止订阅（修订第 343 条）：本期照常使用，到期后不再续订 -->
+        <button v-if="editing && canCancel(editing) && !cancelAsk" type="button" class="secondary" :disabled="saving"
+          :title="t('本期照常使用，到期后不再续订')" @click="cancelAsk = true">{{ t('终止订阅') }}</button>
+        <span v-if="editing && cancelAsk" class="row-confirm edit-confirm cancel-confirm small" role="alert">
+          <span>{{ t('将于 {date} 终止：本期照常使用，之后不再扣费；到期前照常提醒', { date: fmtDay(cancelEnd(editing)) }) }}</span>
+          <button type="button" class="danger small" :disabled="saving" @click="doCancel">{{ t('确认终止') }}</button>
+          <button type="button" class="secondary small" @click="cancelAsk = false">{{ t('取消') }}</button></span>
+        <span v-if="editing?.cancelled" class="small cancelled-note">{{ t('已终止，{date} 到期', { date: fmtDay(editing.end_date) }) }}
+          <button type="button" class="text small" :disabled="saving" @click="undoCancel">{{ t('撤销终止') }}</button></span>
         <template v-if="editing">
           <button v-if="!confirmDelete" type="button" class="text danger-text del" @click="confirmDelete = true">{{ t('删除') }}</button>
           <button v-else type="button" class="danger del" :disabled="saving" @click="remove">{{ t('确认删除') }}</button>
@@ -910,7 +955,8 @@ const phoneError = (i: number) => fieldErrors.value[`phones[${i}].cc`] || fieldE
                   <b class="sub-name ellipsis" :title="s.name">{{ s.name }}<small v-if="s.phones.length" class="num id-inline">{{ fmtPhone(s.phones[0]) }}</small><template
                     v-else-if="s.category === 'vps'"><small v-if="s.note" class="id-inline">{{ s.note }}</small><small v-if="s.vps.ips.length"
                     class="mono id-inline">{{ s.vps.ips[0] }}</small></template></b>
-                  <span class="sub-renew" :class="{ soon: soonOf(s) }">{{ renewText(s, today) }}</span>
+                  <span class="sub-renew" :class="{ soon: soonOf(s) }">{{ renewText(s, today) }}<small v-if="s.cancelled && !s.ended"
+                    class="cancel-tag">{{ t('已终止') }}</small></span>
                   <span v-if="progOf(s) != null" class="prog" :title="t('本期已过 {p}', { p: fmtPct(progOf(s)!) })">
                     <span :style="{ width: `${progOf(s)}%`, background: categoryColors[s.category] }" /></span>
                 </span>
@@ -1184,7 +1230,14 @@ button.money:hover { filter: none; }
   background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
 .row-confirm span { flex: 1; min-width: 12em; }
 .row-confirm button { min-height: 28px; padding: 2px var(--space-3); }
-.edit-confirm { margin: 0; flex-basis: 100%; order: 5; }
+/* 编辑弹窗里的确认条（续费 / 终止）独占一行，放在按钮下面；手机上不撑宽页面 */
+.edit-confirm { margin: 0; flex: 1 1 100%; min-width: 0; box-sizing: border-box; order: 5; }
+.edit-confirm > span { min-width: 0; }
+.cancel-confirm { background: color-mix(in srgb, var(--bad) 6%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 30%, var(--border)); }
+.cancelled-note { color: var(--warn); }
+/* 列表中已终止的标记（修订第 343 条） */
+.cancel-tag { margin-left: var(--space-2); padding: 0 6px; border-radius: var(--radius-full); font-size: var(--font-xs); line-height: var(--line-xs);
+  color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); vertical-align: 1px; }
 @container subs (max-width: 599px) {
   .sub-li > .sub-row { flex-basis: 100%; }
   .renew-btn { margin: -6px 0 var(--space-2) calc(var(--space-4) + 44px + var(--space-3)); }
@@ -1283,7 +1336,7 @@ button.money:hover { filter: none; }
 .price { display: flex; gap: var(--space-2); }
 .price select { width: 84px; flex: none; }
 .price input { flex: 1; min-width: 0; }
-.actions { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-4); }
+.actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-4); }
 .countries { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px var(--space-2); border-radius: var(--radius-full); background: var(--surface);
   color: var(--text-muted); border: 1px solid var(--border); font-size: var(--font-sm); }

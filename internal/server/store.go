@@ -1075,6 +1075,9 @@ var migrations = []string{
 	`ALTER TABLE servers ADD COLUMN status_latency TEXT NOT NULL DEFAULT '';`,
 	// 迁移 71：订阅已标记续费的最后一个扣费日（修订第 330 条），空为没有标记
 	`ALTER TABLE subscriptions ADD COLUMN renewed_through TEXT NOT NULL DEFAULT '';`,
+	// 迁移 72、73：终止订阅（修订第 343 条）：cancelled 为已终止，cancel_prev_end 为终止前的结束日期（撤销时恢复）
+	`ALTER TABLE subscriptions ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0;`,
+	`ALTER TABLE subscriptions ADD COLUMN cancel_prev_end TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

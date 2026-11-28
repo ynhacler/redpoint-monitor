@@ -597,7 +597,16 @@ String renewText(Subscription s, {DateTime? now}) {
     if (first.isAfter(DateTime(n.year, n.month, n.day))) return '试用中，${first.month} 月 ${first.day} 日开始扣费';
   }
   final d = _date(s.nextCharge);
-  if (d == null) return s.cycle == 'once' ? '一次性，已扣费' : '没有下次扣费';
+  if (d == null) {
+    if (s.cycle == 'once') return '一次性，已扣费';
+    // 有结束日期、本期之后不再扣费（含“终止订阅”，修订第 343 条）：显示到期日，与 Web 一致
+    final e = _date(s.endDate);
+    if (e == null) return '没有下次扣费';
+    final left = _dayDiff(e, n);
+    if (left == 0) return '今天到期';
+    if (left <= 7) return '$left 天后到期';
+    return e.year != n.year ? '${e.year} 年 ${e.month} 月 ${e.day} 日到期' : '${e.month} 月 ${e.day} 日到期';
+  }
   final days = _dayDiff(d, n);
   final verb = s.cycle == 'once' ? '扣费' : '续订';
   if (days == 0) return '今天$verb';
