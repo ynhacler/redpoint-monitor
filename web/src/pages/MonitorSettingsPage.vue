@@ -20,5 +20,8 @@ import { t } from '../i18n'
 </template>
 
 <style scoped>
-.later { margin-top: var(--space-6); }
+/* 分区标题（修订第 342 条）：左侧强调色短条，分区之间细线分隔 */
+h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: var(--font-lg); line-height: var(--line-lg); }
+h2::before { content: ''; width: 4px; height: 18px; border-radius: 2px; background: var(--accent); flex: none; }
+.later { margin-top: var(--space-7); padding-top: var(--space-5); border-top: 1px solid var(--border); }
 </style>
