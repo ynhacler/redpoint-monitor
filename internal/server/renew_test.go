@@ -104,7 +104,8 @@ func TestRenewRecurringSubscription(t *testing.T) {
 	s, h, _ := testServer(t)
 	admin := adminToken(t, s)
 	today := time.Now()
-	start := today.AddDate(0, -1, 3).Format("2006-01-02") // 3 天后扣费，月付
+	// 固定在每月 10 日扣费：从今天倒推到月末附近时（如 10-31）扣费日会锚定在 31 日，“下次 + 1 个月”就不是简单的加一个月
+	start := time.Date(today.Year(), today.Month()-1, 10, 0, 0, 0, 0, time.Local).Format("2006-01-02")
 	body := `{"name":"VPS","category":"vps","price_cents":3850,"currency":"CNY","cycle":"monthly","start_date":"` + start + `","remind_days":7,"country":"CN","payment":"alipay"}`
 	rec := do(h, "POST", "/api/v1/subscriptions", admin, []byte(body))
 	var x Subscription
