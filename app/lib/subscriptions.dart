@@ -77,6 +77,7 @@ class Subscription {
     this.vps = const SubVPS(),
     this.nextCharge = '',
     this.ended = false,
+    this.cancelled = false,
     this.logoVersion = 0,
     this.country = '',
     this.payment = '',
@@ -132,6 +133,9 @@ class Subscription {
   /// 已结束
   final bool ended;
 
+  /// 已终止订阅（修订第 343、344 条）：本期结束后不再续订；只显示，不在 App 中修改
+  final bool cancelled;
+
   /// 上传图标的版本，0 表示没有
   final int logoVersion;
 
@@ -177,6 +181,7 @@ class Subscription {
       ),
       nextCharge: j['next_charge'] as String? ?? '',
       ended: j['ended'] as bool? ?? false,
+      cancelled: j['cancelled'] as bool? ?? false,
       logoVersion: (j['logo_version'] as num?)?.toInt() ?? 0,
       country: j['country'] as String? ?? '',
       payment: j['payment'] as String? ?? '',
@@ -577,7 +582,8 @@ Analysis analyze(Iterable<Subscription> list, FxRates fx) {
 double? billingProgress(Subscription s, {DateTime? now}) {
   final n = now ?? DateTime.now();
   final today = DateTime(n.year, n.month, n.day);
-  final to = _date(s.nextCharge);
+  // 本期的终点：下次扣费日；没有下次扣费但有结束日期（含“终止订阅”，修订第 344 条）时为结束日期，与 Web 一致
+  final to = _date(s.nextCharge.isNotEmpty ? s.nextCharge : s.endDate);
   if (s.ended || s.cycle == 'once' || to == null) return null;
   final past = chargesBetween(s, DateTime(today.year - 2, today.month, today.day), DateTime(today.year, today.month, today.day + 1));
   final from = past.isNotEmpty ? past.last : _date(s.startDate);
