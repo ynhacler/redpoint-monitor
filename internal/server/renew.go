@@ -112,6 +112,7 @@ func (s *Server) renewSubscription(w http.ResponseWriter, r *http.Request, actor
 	}
 	prev := x.EndDate
 	x.EndDate = next
+	x.Cancelled = false // 续费即不再终止（修订第 343 条）
 	if err := s.store.SaveSubscription(&x, now); err != nil {
 		s.writeError(w, r, internalError(err))
 		return
@@ -164,4 +165,66 @@ func (s *Server) handleAppRenewServer(w http.ResponseWriter, r *http.Request) {
 // handleAppRenewSubscription：POST /api/v1/app/subscriptions/{id}/renew，accessAppSubs（修订第 224 条）。
 func (s *Server) handleAppRenewSubscription(w http.ResponseWriter, r *http.Request) {
 	s.renewSubscription(w, r, "app")
+}
+
+// handleCancelSubscription：POST /api/v1/subscriptions/{id}/cancel，admin。终止订阅（修订第 343 条）：
+// 结束日期设为本期结束（下一个未付扣费日；已有更早的结束日期时不变），之后不再扣费，到期前照常提醒，到期后为“已结束”。
+func (s *Server) handleCancelSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	x, err := s.store.GetSubscription(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	now := time.Now()
+	v := withSchedule(x, now)
+	if x.Cancelled {
+		writeJSON(w, appSubView(r, v))
+		return
+	}
+	if v.Ended || x.Cycle == "once" || v.NextCharge == "" {
+		s.writeError(w, r, errorf(CodeConflict, "这个订阅已经结束或没有下次扣费，不需要终止"))
+		return
+	}
+	end := v.NextCharge
+	if x.EndDate != "" && x.EndDate < end {
+		end = x.EndDate
+	}
+	if err := s.store.SetSubscriptionCancel(id, end, true, x.EndDate, now); err != nil {
+		s.writeError(w, r, internalError(err))
+		return
+	}
+	s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.cancel", Success: true,
+		Details: map[string]any{"id": id, "name": x.Name, "end": end, "previous_end": x.EndDate}})
+	x.EndDate, x.Cancelled, x.CancelPrevEnd = end, true, x.EndDate
+	writeJSON(w, appSubView(r, withSchedule(x, now)))
+}
+
+// handleUncancelSubscription：DELETE /api/v1/subscriptions/{id}/cancel，admin。撤销终止，恢复终止前的结束日期（修订第 343 条）。
+func (s *Server) handleUncancelSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	x, err := s.store.GetSubscription(id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	now := time.Now()
+	if x.Cancelled {
+		if err := s.store.SetSubscriptionCancel(id, x.CancelPrevEnd, false, "", now); err != nil {
+			s.writeError(w, r, internalError(err))
+			return
+		}
+		s.audit(r, AuditEntry{ActorType: "admin", Action: "subscription.uncancel", Success: true,
+			Details: map[string]any{"id": id, "name": x.Name, "end": x.CancelPrevEnd}})
+		x.EndDate, x.Cancelled, x.CancelPrevEnd = x.CancelPrevEnd, false, ""
+	}
+	writeJSON(w, appSubView(r, withSchedule(x, now)))
 }

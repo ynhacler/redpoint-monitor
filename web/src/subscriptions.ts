@@ -456,7 +456,19 @@ export function renewText(s: Subscription, today: Date): string {
   const first = parse(s.start_date)
   first.setDate(first.getDate() + s.trial_days)
   if (s.trial_days > 0 && first > today) return t('试用中，{m} 月 {d} 日开始扣费', { m: first.getMonth() + 1, d: first.getDate() })
-  if (!s.next_charge) return s.cycle === 'once' ? t('一次性，已扣费') : t('没有下次扣费')
+  if (!s.next_charge) {
+    if (s.cycle === 'once') return t('一次性，已扣费')
+    // 有结束日期、本期之后不再扣费（含“终止订阅”，修订第 343 条）：显示到期日
+    if (s.end_date) {
+      const e = parse(s.end_date)
+      const n = daysUntil(s.end_date, today)
+      const v = { n, y: e.getFullYear(), m: e.getMonth() + 1, d: e.getDate() }
+      if (n === 0) return t('今天到期')
+      if (n <= 7) return t('{n} 天后到期', v)
+      return e.getFullYear() !== today.getFullYear() ? t('{y} 年 {m} 月 {d} 日到期', v) : t('{m} 月 {d} 日到期', v)
+    }
+    return t('没有下次扣费')
+  }
   const n = daysUntil(s.next_charge, today)
   const d = parse(s.next_charge)
   const v = { n, y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() }

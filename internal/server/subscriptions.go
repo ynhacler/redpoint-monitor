@@ -53,32 +53,35 @@ var phoneCC = regexp.MustCompile(`^\+[0-9]{1,4}$`)
 
 // Subscription 是一行 subscriptions（api/openapi.yaml Subscription）。
 type Subscription struct {
-	ID          int64      `json:"id"`
-	Name        string     `json:"name"`
-	Brand       string     `json:"brand"`
-	Category    string     `json:"category"`
-	PriceCents  int64      `json:"price_cents"`
-	Currency    string     `json:"currency"`
-	Cycle       string     `json:"cycle"`
-	TrialDays   int        `json:"trial_days"`
-	StartDate   string     `json:"start_date"`
-	EndDate     string     `json:"end_date"`
-	RemindDays  int        `json:"remind_days"`
-	Note        string     `json:"note"`
-	Country     string     `json:"country"`      // 订阅的国家 / 地区（两位代码，修订第 223 条）
-	Payment     string     `json:"payment"`      // 支付方式（subPayments 中的键）
-	URL         string     `json:"url"`          // 管理或退订页面的网址，只允许 http / https（修订第 311 条）
-	Payer       string     `json:"payer"`        // 付款人（家庭成员等，自由填写，修订第 311 条）
-	Phones      []SubPhone `json:"phones"`       // SIM 电话卡的号码（修订第 189 条）
-	VPS         SubVPS     `json:"vps"`          // VPS 的地址与配置（修订第 198 条）
-	NextCharge  string     `json:"next_charge"`  // 计算得到，不入库；已标记续费的扣费日跳过（修订第 330 条）
+	ID         int64      `json:"id"`
+	Name       string     `json:"name"`
+	Brand      string     `json:"brand"`
+	Category   string     `json:"category"`
+	PriceCents int64      `json:"price_cents"`
+	Currency   string     `json:"currency"`
+	Cycle      string     `json:"cycle"`
+	TrialDays  int        `json:"trial_days"`
+	StartDate  string     `json:"start_date"`
+	EndDate    string     `json:"end_date"`
+	RemindDays int        `json:"remind_days"`
+	Note       string     `json:"note"`
+	Country    string     `json:"country"`     // 订阅的国家 / 地区（两位代码，修订第 223 条）
+	Payment    string     `json:"payment"`     // 支付方式（subPayments 中的键）
+	URL        string     `json:"url"`         // 管理或退订页面的网址，只允许 http / https（修订第 311 条）
+	Payer      string     `json:"payer"`       // 付款人（家庭成员等，自由填写，修订第 311 条）
+	Phones     []SubPhone `json:"phones"`      // SIM 电话卡的号码（修订第 189 条）
+	VPS        SubVPS     `json:"vps"`         // VPS 的地址与配置（修订第 198 条）
+	NextCharge string     `json:"next_charge"` // 计算得到，不入库；已标记续费的扣费日跳过（修订第 330 条）
 	// RenewedThrough 是已标记续费的最后一个扣费日（修订第 330 条）：没有结束日期的订阅点“已续费”时记下即将到来的扣费日，
 	// 下次扣费与扣费提醒从它之后算起；空为没有标记。只经 POST / DELETE …/renew 修改，保存表单不会改动它。
 	RenewedThrough string `json:"renewed_through"`
-	Ended       bool       `json:"ended"`        // 计算得到，不入库
-	LogoVersion int64      `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
-	CreatedAt   int64      `json:"created_at"`
-	UpdatedAt   int64      `json:"updated_at"`
+	// Cancelled 表示已“终止订阅”（修订第 343 条）：结束日期设为本期结束，不再续订；CancelPrevEnd 是终止前的结束日期，撤销时恢复，不输出。
+	Cancelled     bool   `json:"cancelled"`
+	CancelPrevEnd string `json:"-"`
+	Ended         bool   `json:"ended"`        // 计算得到，不入库
+	LogoVersion   int64  `json:"logo_version"` // 上传图标的时间，0 表示没有（修订第 189 条）
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
 var (
@@ -184,7 +187,7 @@ func nextUnpaidCharge(sub Subscription, today time.Time) time.Time {
 
 const subCols = `s.id, s.name, s.brand, s.category, s.price_cents, s.currency, s.cycle, s.trial_days, s.start_date, s.end_date,
 	s.remind_days, s.note, s.phones, s.vps, s.created_at, s.updated_at, COALESCE(l.updated_at, 0), s.country, s.payment, s.url, s.payer,
-	s.renewed_through
+	s.renewed_through, s.cancelled, s.cancel_prev_end
 	FROM subscriptions s LEFT JOIN subscription_logos l ON l.subscription_id = s.id`
 
 func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
@@ -192,7 +195,7 @@ func scanSub(sc interface{ Scan(...any) error }) (Subscription, error) {
 	var phones, vps string
 	err := sc.Scan(&x.ID, &x.Name, &x.Brand, &x.Category, &x.PriceCents, &x.Currency, &x.Cycle, &x.TrialDays, &x.StartDate,
 		&x.EndDate, &x.RemindDays, &x.Note, &phones, &vps, &x.CreatedAt, &x.UpdatedAt, &x.LogoVersion, &x.Country, &x.Payment, &x.URL, &x.Payer,
-		&x.RenewedThrough)
+		&x.RenewedThrough, &x.Cancelled, &x.CancelPrevEnd)
 	if err == nil {
 		_ = json.Unmarshal([]byte(phones), &x.Phones)
 		_ = json.Unmarshal([]byte(vps), &x.VPS)
@@ -263,8 +266,8 @@ func (s *Store) SaveSubscription(x *Subscription, now time.Time) error {
 	}
 	res, err := s.DB.Exec(`UPDATE subscriptions SET name = ?, brand = ?, category = ?, price_cents = ?, currency = ?, cycle = ?,
 		trial_days = ?, start_date = ?, end_date = ?, remind_days = ?, note = ?, phones = ?, vps = ?, country = ?, payment = ?, url = ?, payer = ?,
-		updated_at = ? WHERE id = ?`, x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate,
-		x.RemindDays, x.Note, string(phones), string(vps), x.Country, x.Payment, x.URL, x.Payer, now.Unix(), x.ID)
+		cancelled = ?, updated_at = ? WHERE id = ?`, x.Name, x.Brand, x.Category, x.PriceCents, x.Currency, x.Cycle, x.TrialDays, x.StartDate, x.EndDate,
+		x.RemindDays, x.Note, string(phones), string(vps), x.Country, x.Payment, x.URL, x.Payer, x.Cancelled, now.Unix(), x.ID)
 	if err != nil {
 		return err
 	}
@@ -693,6 +696,8 @@ func (s *Server) updateSubscription(w http.ResponseWriter, r *http.Request, acto
 	}
 	x.ID, x.CreatedAt = id, old.CreatedAt
 	x.RenewedThrough = old.RenewedThrough // 只经 …/renew 修改（修订第 330 条）
+	// 终止标记只经 …/cancel 修改；在表单中改了结束日期即视为不再是“终止”（修订第 343 条）
+	x.Cancelled, x.CancelPrevEnd = old.Cancelled && x.EndDate == old.EndDate, old.CancelPrevEnd
 	now := time.Now()
 	if err := s.store.SaveSubscription(&x, now); err != nil {
 		s.writeError(w, r, err)
@@ -736,6 +741,19 @@ const (
 	maxLogoSide  = 512
 	minLogoSide  = 16
 )
+
+// SetSubscriptionCancel 保存“终止订阅”（修订第 343 条）：结束日期、终止标记与终止前的结束日期。
+func (s *Store) SetSubscriptionCancel(id int64, end string, cancelled bool, prevEnd string, now time.Time) error {
+	res, err := s.DB.Exec(`UPDATE subscriptions SET end_date = ?, cancelled = ?, cancel_prev_end = ?, updated_at = ? WHERE id = ?`,
+		end, cancelled, prevEnd, now.Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errNoSub
+	}
+	return nil
+}
 
 // SetSubscriptionRenewedThrough 记下（或清除）订阅已标记续费的扣费日（修订第 330 条）。
 func (s *Store) SetSubscriptionRenewedThrough(id int64, date string, now time.Time) error {

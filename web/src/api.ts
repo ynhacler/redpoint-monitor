@@ -637,6 +637,16 @@ export function renewSubscription(id: number) {
   return request('post', '/subscriptions/{id}/renew', { params: { id } })
 }
 
+/** 终止订阅：本期结束后不再续订（修订第 343 条） */
+export function cancelSubscription(id: number) {
+  return request('post', '/subscriptions/{id}/cancel', { params: { id } })
+}
+
+/** 撤销终止，恢复原来的结束日期（修订第 343 条） */
+export function uncancelSubscription(id: number) {
+  return request('delete', '/subscriptions/{id}/cancel', { params: { id } })
+}
+
 /** 取消“已续费”标记（修订第 330 条） */
 export function unrenewSubscription(id: number) {
   return request('delete', '/subscriptions/{id}/renew', { params: { id } })

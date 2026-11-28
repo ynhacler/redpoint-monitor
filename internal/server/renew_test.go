@@ -171,3 +171,64 @@ func TestNextUnpaidCharge(t *testing.T) {
 		}
 	}
 }
+
+// 终止订阅（修订第 343 条）：结束日期设为本期结束，之后不再扣费；撤销恢复原结束日期；在表单中改结束日期或续费后不再是终止。
+func TestCancelSubscription(t *testing.T) {
+	s, h, _ := testServer(t)
+	admin := adminToken(t, s)
+	today := time.Now()
+	start := today.AddDate(0, -1, 5).Format("2006-01-02") // 5 天后扣费，月付
+	body := `{"name":"VPS","category":"vps","price_cents":3850,"currency":"CNY","cycle":"monthly","start_date":"` + start + `","remind_days":1,"country":"CN","payment":"alipay"}`
+	var x Subscription
+	json.Unmarshal(do(h, "POST", "/api/v1/subscriptions", admin, []byte(body)).Body.Bytes(), &x)
+	due := x.NextCharge
+	rec := do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || !x.Cancelled || x.EndDate != due || x.NextCharge != "" || x.Ended {
+		t.Fatalf("终止：%d %s（本期结束 %s）", rec.Code, rec.Body, due)
+	}
+	// 再点一次不变
+	if rec := do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil); rec.Code != 200 {
+		t.Fatalf("重复终止：%d", rec.Code)
+	}
+	// 撤销：恢复为没有结束日期
+	rec = do(h, "DELETE", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.Cancelled || x.EndDate != "" || x.NextCharge != due {
+		t.Fatalf("撤销：%d %s", rec.Code, rec.Body)
+	}
+	// 再终止后在表单中改结束日期：不再是终止
+	do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil)
+	later := today.AddDate(0, 3, 0).Format("2006-01-02")
+	rec = do(h, "PUT", "/api/v1/subscriptions/"+itoa64(x.ID), admin, []byte(strings.Replace(body, `"remind_days":1`, `"remind_days":1,"end_date":"`+later+`"`, 1)))
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if rec.Code != 200 || x.Cancelled || x.EndDate != later {
+		t.Fatalf("改结束日期：%d %s", rec.Code, rec.Body)
+	}
+	// 有更晚的结束日期时终止：提前到本期结束；撤销恢复原结束日期
+	rec = do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil)
+	json.Unmarshal(rec.Body.Bytes(), &x)
+	if !x.Cancelled || x.EndDate != due {
+		t.Fatalf("有结束日期时终止：%s", rec.Body)
+	}
+	json.Unmarshal(do(h, "DELETE", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil).Body.Bytes(), &x)
+	if x.EndDate != later {
+		t.Fatalf("撤销后应恢复 %s：%s", later, x.EndDate)
+	}
+	// 续费（有结束日期的顺延）也会清除终止
+	do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/cancel", admin, nil)
+	json.Unmarshal(do(h, "POST", "/api/v1/subscriptions/"+itoa64(x.ID)+"/renew", admin, nil).Body.Bytes(), &x)
+	if x.Cancelled {
+		t.Fatalf("续费后不应再是终止：%+v", x)
+	}
+	// 一次性：409
+	rec = do(h, "POST", "/api/v1/subscriptions", admin, []byte(`{"name":"买断","category":"tools","price_cents":100,"currency":"CNY","cycle":"once","start_date":"2026-01-01","country":"CN","payment":"alipay"}`))
+	var once Subscription
+	json.Unmarshal(rec.Body.Bytes(), &once)
+	if rec := do(h, "POST", "/api/v1/subscriptions/"+itoa64(once.ID)+"/cancel", admin, nil); rec.Code != 409 {
+		t.Errorf("一次性付费应返回 409：%d", rec.Code)
+	}
+	if logs, _, _ := s.store.ListAudit(AuditQuery{Action: "subscription.cancel", Limit: 10}); len(logs) < 3 {
+		t.Errorf("终止应记审计：%d", len(logs))
+	}
+}
