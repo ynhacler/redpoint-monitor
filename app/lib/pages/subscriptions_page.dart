@@ -611,7 +611,20 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              Text(renewText(s), style: TextStyle(fontSize: 13, color: soon ? colors.warn : c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Row(children: [
+                Flexible(
+                  child: Text(renewText(s), style: TextStyle(fontSize: 13, color: soon ? colors.warn : c.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                // 已终止的标记（修订第 344 条，与 Web 一致）
+                if (s.cancelled && !s.ended) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(color: colors.warn.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
+                    child: Text('已终止', style: TextStyle(fontSize: 11, color: colors.warn)),
+                  ),
+                ],
+              ]),
               if (p != null) ...[
                 const SizedBox(height: 6),
                 FractionallySizedBox(widthFactor: 0.75, child: _bar(context, p, categoryColor(c, s.category), height: 4)),
@@ -763,6 +776,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
             line(s.category == 'vps' ? '购买日期' : '开始订阅', s.startDate),
             if (s.trialDays > 0) line('免费试用', '${s.trialDays} 天'),
             if (s.endDate.isNotEmpty) line('结束订阅', s.endDate),
+            if (s.cancelled && !s.ended) line('状态', '已终止：本期照常使用，到期后不再续订'),
             if (s.phones.isNotEmpty) line('号码', s.phones.map(phone).join('\n')),
             if (s.category == 'vps' && s.vps.summary.isNotEmpty) line('配置', s.vps.summary),
             if (s.category == 'vps' && s.vps.ips.isNotEmpty) line('地址', s.vps.ips.map((ip) => widget.privacy ? maskIP(ip) : ip).join('\n')),

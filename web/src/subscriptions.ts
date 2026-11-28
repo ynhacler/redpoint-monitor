@@ -439,8 +439,10 @@ export function daysUntil(d: string, today: Date): number {
 
 /** 当前账期：上次扣费（或开始日期）到下次扣费，pct 为已过去的比例（0～100）；一次性、已结束、没有下次扣费时为 null */
 export function billingProgress(s: Subscription, today: Date): { from: Date; to: Date; pct: number } | null {
-  if (s.ended || s.cycle === 'once' || !s.next_charge) return null
-  const to = parse(s.next_charge)
+  // 本期的终点：下次扣费日；没有下次扣费但有结束日期（含“终止订阅”，修订第 344 条）时为结束日期
+  const end = s.next_charge || s.end_date
+  if (s.ended || s.cycle === 'once' || !end) return null
+  const to = parse(end)
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
   const past = chargesBetween(s, new Date(today.getFullYear() - 2, today.getMonth(), today.getDate()), tomorrow)
   const from = past.at(-1) ?? parse(s.start_date)
